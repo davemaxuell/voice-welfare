@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>[모의] 본인인증 (가상 화면)</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+    <div class="mock-banner" role="note">모의 인증 · 실제 인증 아님 (MOCK) — 실제 아이디/비밀번호를 입력하지 마세요.</div>
+    <header class="site-header">
+      <p class="site-name">모의 복지 신청 사이트 (데모)</p>
+      <nav aria-label="사이트"><a href="/">처음으로</a></nav>
+    </header>
+    <main id="main" tabindex="-1">
+      <h1 id="login-title" tabindex="-1">모의 본인인증 (가상 화면)</h1>
+      <p>이 화면은 인증 인계(AUTH_HANDOFF) 시연용입니다. AI 도우미는 이 화면에 입력하지 않습니다. 직접 키보드로 입력하세요.</p>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="loginId">아이디</label>
+          <input id="loginId" name="loginId" type="text" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="loginPassword">비밀번호</label>
+          <input id="loginPassword" name="loginPassword" type="password" autocomplete="off" />
+        </div>
+        <button type="submit" class="primary">모의 로그인</button>
+      </form>
+      <p id="login-status" role="status" hidden></p>
+    </main>
+    <script type="module" src="/src/login.js"></script>
+  </body>
+</html>

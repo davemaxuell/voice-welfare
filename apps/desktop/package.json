@@ -1,0 +1,13 @@
+{
+  "name": "ieum-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "이음 PC 데스크톱 앱(Electron 셸): Python 서버(python -m ieum.server --desktop)를 띄우고 앱 창·전역 단축키로 음성 대화",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.3.3"
+  }
+}
