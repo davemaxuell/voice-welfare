@@ -1,11 +1,15 @@
+import { FormSkill } from "../agents/web/skills/form.ts";
+import { GuidedFill } from "../agents/web/skills/guided.ts";
+import { ApplicationCommands } from "./application.ts";
+import { PersonalDialogue } from "../personal/dialogue.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { ExecContext, type PageView, type WebExecutionAgent } from "../agents/web/agent.ts";
 import { fieldVocabulary, type FieldProfile } from "../agents/web/profile.ts";
 import { BrowseSkill } from "../agents/web/skills/browse.ts";
-import { isFormOpen, notOpen } from "../agents/web/skills/common.ts";
+import { isFormOpen } from "../agents/web/skills/common.ts";
 import type { DownloadStore } from "../agents/web/downloads.ts";
 import type { WelfareInformationAgent } from "../agents/welfare/agent.ts";
-import type { UserProfile } from "../agents/welfare/discovery.ts";
+import { PROFILE_QUESTIONS, parseProfileAnswer, type ProfileSlot, type UserProfile } from "../agents/welfare/discovery.ts";
 import { DialogueState } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
@@ -59,6 +63,8 @@ const PLAN_STOP_STATES = new Set<SessionState>(["NEEDS_CLARIFICATION", "VALIDATI
 export const sessionPatterns = {
   spaces: /\p{White_Space}+/gu, phraseEnd: /[.!?。~]+(?=\n?$)/u, digit: /\p{Nd}/u,
   doneReply: /^(다\p{White_Space}*)?(했어|했어요|했습니다|했다|했고|끝났어|끝났어요|끝|완료|됐어|됐어요|됐다|입력했어|입력했어요|넣었어|넣었어요)/u,
+  profileCommand: /(줘|주세요|알려|열어|도움|뭐야|어떻게|멈춰|그만)/u,
+  applyMatch: /(신청|도와|하고\p{White_Space}*싶)/u,
   sentences: /(?<=[.!?。]|요\.|다\.)\p{White_Space}+/u,
 };
 export class NotPorted extends Error {
@@ -89,16 +95,10 @@ export class SessionOrchestrator {
   #secretHint = false;
   #secretGuarded?: string;
 
-  readonly form = {
-    askNext(view: PageView): string {
-      if (!isFormOpen(view)) return "";
-      throw new NotPorted("form");
-    },
-    next(_ctx: ExecContext): Promise<Draft> { throw new NotPorted("NEXT"); },
-    prev(_ctx: ExecContext): Promise<Draft> { throw new NotPorted("PREV"); },
-    prepareSubmit(_ctx: ExecContext): Promise<Draft> { throw new NotPorted("PREPARE_SUBMIT"); },
-    fillOne(_field: FieldProfile, _value: string, _ctx: ExecContext): Promise<Draft> { throw new NotPorted("FILL"); },
-  };
+  readonly form: FormSkill;
+  readonly guided: GuidedFill;
+  readonly application: ApplicationCommands;
+  readonly personalDialogue: PersonalDialogue;
 
   constructor(deps: OrchestratorDeps) {
     this.deps = deps;
@@ -109,12 +109,20 @@ export class SessionOrchestrator {
     this.personal = deps.personal ?? new PersonalStore();
     this.progress.spoken = this.personal.speech().progressSpoken;
     this.narrator = new Narrator(deps);
+    this.form = new FormSkill(deps.web, this.dialogue, this.narrator);
+    this.personalDialogue = new PersonalDialogue(this.personal, this.dialogue, prefs => { this.progress.spoken = prefs.progressSpoken; }, deps.actionLog);
     this.browse = new BrowseSkill({ web: deps.web, dialogue: this.dialogue, narrator: this.narrator, form: this.form, deps,
       progress: this.progress, officialText: url => deps.welfare.readableService(url) });
     const vocabulary = fieldVocabulary(deps.web.profile);
     this.rules = new RuleBasedIntentProvider(vocabulary);
     this.understanding = new Understanding(this.rules, deps, vocabulary);
+    this.guided = new GuidedFill(deps.web, this.dialogue, this.narrator, this.rules, {
+      savedValue: label => this.personalDialogue.savedFor(label),
+      siteAllowed: origin => this.personal.siteAllowed(origin), allowSite: origin => this.personal.allowSite(origin),
+    });
+    this.browse.guidedResume = view => this.guided.resumeAfterAuth(view);
     this.replies = new SessionReplies(this);
+    this.application = new ApplicationCommands(this);
   }
   get consentStatus() { return this.#consent; }
   get web() { return this.deps.web; }
@@ -255,6 +263,32 @@ export class SessionOrchestrator {
           return this.#finish(turn, draft(this.state, "auth-handoff",
             "혹시 비밀번호나 인증번호라면 저에게 말하지 말고 화면의 입력란에 직접 입력해 주세요. 명령이었다면 한 번 더 말씀해 주세요.", { secretDetected: true }));
         }
+        const asked = this.dialogue.profileQuestion as ProfileSlot | undefined;
+        if (asked !== undefined) {
+          const answer = parseProfileAnswer(text, asked);
+          if (Object.keys(answer).length > 0) {
+            turn.intentType = "PROFILE_ANSWER";
+            this.profile = { ...this.profile, ...answer };
+            return this.#finish(turn, await this.replies.discoverStep(turn, false));
+          }
+          const other = this.rules.parseSync(text, { state: this.state });
+          if (other.type === "UNKNOWN" && Array.from(text).length <= 20 && !sessionPatterns.profileCommand.test(text) &&
+              parsePersonalCommand(text, this.today) === undefined && detectLangSwitch(text) === undefined) {
+            turn.intentType = "PROFILE_ANSWER";
+            return this.#finish(turn, draft(this.state, "discover", "제가 잘 못 알아들었어요. " + PROFILE_QUESTIONS[asked]));
+          }
+          this.dialogue.profileDone();
+        }
+        if (this.guided.active() && this.dialogue.approval === undefined) {
+          turn.intentType = "GUIDED_FILL";
+          const next = await this.guided.answer(text, turn.ctx);
+          if (next !== undefined) return this.#finish(turn, next);
+        }
+        if (this.guided.wantsStart(text)) {
+          turn.intentType = "GUIDED_FILL";
+          const refused = this.#refused(gateRefusal(["GUIDED_FILL"], this.#consent, this.state));
+          return this.#finish(turn, refused ?? await this.guided.start(turn.ctx));
+        }
         const short = this.#shortReply(text);
         if (short !== undefined) { turn.intentType = "ACK"; return this.#finish(turn, short); }
         text = redactText(stripFiller(text));
@@ -372,9 +406,33 @@ export class SessionOrchestrator {
       if (picked !== undefined) { this.dialogue.clearChoice(); return this.form.fillOne(picked, pending.value, ctx); }
     }
     if (intent.type !== "UNKNOWN") this.dialogue.clearChoice();
+    const welfare = this.deps.welfare;
+    if (welfare.hasMatches && this.lastSemantic !== "list-links" && ["START_APPLICATION","DISCOVER","UNKNOWN","POLICY_QUESTION"].includes(intent.type)) {
+      const hit = welfare.findInMatches(turn.text);
+      if (hit !== undefined) {
+        welfare.pick(turn.text);
+        this.grounded = undefined;
+        turn.ctx.trace("PLANNING", AGENT_IDS.welfare, "찾기 결과에서 고름: " + hit.servNm);
+        if (sessionPatterns.applyMatch.test(turn.text)) intent = { type: "START_APPLICATION" };
+        else if (intent.type !== "POLICY_QUESTION") return this.replies.welfareDraft(await welfare.serviceDetail(hit.servNm), "discover");
+      }
+    }
     const refused = this.#refused(consentRefusal([intent.type], this.#consent));
     if (refused !== undefined) return refused;
     switch (intent.type) {
+      case "START_APPLICATION": return this.application.start(turn);
+      case "FILL": return this.form.fill(intent.fills, ctx);
+      case "READ_FIELD": return this.form.readField(intent.fieldMention, ctx);
+      case "EDIT_FIELD": return this.form.editField(intent.fieldMention, ctx);
+      case "REVIEW": return this.form.review(ctx);
+      case "EXPLAIN": return this.explain(intent.fieldMention, turn);
+      case "PREPARE_SUBMIT": return this.form.prepareSubmit(ctx);
+      case "APPROVE": return this.application.approve(turn);
+      case "REJECT": return this.application.reject();
+      case "DISCOVER": return this.replies.discover(turn);
+      case "SERVICE_DETAIL": return this.replies.welfareReply(welfare.serviceDetail(intent.service), "discover");
+      case "PRECHECK": return this.replies.welfareReply(welfare.precheck(intent.service, this.profile), "precheck");
+      case "PREPARE_APPLY": return this.replies.welfareReply(welfare.prepare(intent.service), "prepare-apply");
       case "PREV": return isFormOpen(this.web.currentView) ? this.form.prev(ctx) : this.browse.back(ctx);
       case "NEXT": return this.form.next(ctx);
       case "OPEN_SITE": return this.browse.openSite(intent.target, ctx);
@@ -397,10 +455,7 @@ export class SessionOrchestrator {
       default: throw new NotPorted(intent.type);
     }
   }
-  async explain(_mention: string | undefined, _turn: Turn): Promise<Draft> {
-    if (!isFormOpen(this.web.currentView)) return notOpen(this.web.currentView, this.state);
-    throw new NotPorted("EXPLAIN");
-  }
+  explain(mention: string | undefined, turn: Turn) { return this.application.explain(mention, turn); }
   #summarize(view?: PageView) {
     if (view === undefined) return undefined;
     const fields = view.fields.map(f => ({ ...f, value: f.sensitive ? "" : this.web.field(f.fieldId)?.maskOnReadback === true && f.value.length > 0 ? maskValue(f.value) : f.value }));

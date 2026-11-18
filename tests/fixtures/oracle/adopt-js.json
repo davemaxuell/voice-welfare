@@ -31,7 +31,7 @@
     "kind": "approval-action-count",
     "fn": "agents.web.approval.recheck",
     "test": "an added or removed assist action cancels the entire approval",
-    "reason": "Python compares only overlapping action positions. A changed number of proposed actions invalidates the approval before any action ID is granted."
+    "reason": "Python compares only overlapping action positions. A changed number of proposed actions invalidates the approval before any action ID is granted. Execute the checked snapshot so later changes to the pending object cannot change what is performed."
   },
   {
     "kind": "guided-auth-origin",

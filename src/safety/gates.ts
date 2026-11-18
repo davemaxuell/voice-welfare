@@ -1,7 +1,7 @@
 import { INTENTS, type IntentType } from "../core/intents.ts";
 import type { SessionState } from "../core/turn.ts";
 
-export const ALLOWED_WITHOUT_CONSENT: ReadonlySet<IntentType> = new Set(
+export const ALLOWED_WITHOUT_CONSENT: ReadonlySet<string> = new Set(
   INTENTS.filter(spec => spec.beforeConsent).map(spec => spec.type),
 );
 export type Consent = "granted" | "pending" | "declined";
@@ -9,7 +9,8 @@ export type GateRefusal =
   | { semanticAction: "consent"; speech: string; state?: undefined }
   | { semanticAction: "none"; speech: string; state: "STOPPED" };
 
-export function consentRefusal(types: readonly IntentType[], consent: Consent): GateRefusal | undefined {
+type GateIntent = IntentType | "GUIDED_FILL" | `PERSONAL_${string}`;
+export function consentRefusal(types: readonly GateIntent[], consent: Consent): GateRefusal | undefined {
   if (consent === "granted" || types.every(type => ALLOWED_WITHOUT_CONSENT.has(type))) return undefined;
   return {
     semanticAction: "consent",
@@ -20,7 +21,7 @@ export function consentRefusal(types: readonly IntentType[], consent: Consent): 
 }
 
 /** 멈춤은 턴 시작에 한 번만 확인한다. 재개 뒤 이어지는 명령은 같은 턴에서 실행할 수 있다. */
-export function gateRefusal(types: readonly [IntentType, ...IntentType[]], consent: Consent, state: SessionState): GateRefusal | undefined {
+export function gateRefusal(types: readonly [GateIntent, ...GateIntent[]], consent: Consent, state: SessionState): GateRefusal | undefined {
   const refusal = consentRefusal(types, consent);
   if (refusal !== undefined) return refusal;
   if (state === "STOPPED" && types[0] !== "RESUME") {
