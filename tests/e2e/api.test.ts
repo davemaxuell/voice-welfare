@@ -184,6 +184,16 @@ it("test_empty_transcript_tts_health", async () => {
   });
 });
 
+it("test_blank_audio_content_type_is_read_as_webm", async () => {
+  heard = "다음으로";
+  const res = await app.request("/api/audio/transcribe", {
+    method: "POST",
+    body: new Uint8Array(1000),
+    headers: { "content-type": "" },
+  });
+  expect(await res.json()).toMatchObject({ text: "다음으로" });
+});
+
 it("bounds audio and JSON bodies and counts supplementary characters as one", async () => {
   expect((await post("/api/turn", { sessionId: "nope", text: "😀".repeat(500) })).status).toBe(404);
   expect((await post("/api/turn", { sessionId: "nope", text: "😀".repeat(501) })).status).toBe(400);

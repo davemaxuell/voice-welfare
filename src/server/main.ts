@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { REPO_ROOT, practiceSite } from "../core/assets.ts";
 import { stopPlaywright } from "../agents/web/browser/index.ts";
+import { textOr } from "../core/text.ts";
 import { createPracticeSite } from "../practice_site/serve.ts";
 import { makeApp } from "./app.ts";
 import { AgentRuntime, loadConfig } from "./runtime.ts";
@@ -61,6 +62,13 @@ export async function build(desktop = false, env: NodeJS.ProcessEnv = process.en
   return { app, runtime, close };
 }
 
+export function listenPort(cliPort: string | undefined, desktop: boolean, env: NodeJS.ProcessEnv = process.env) {
+  const cli = Number(cliPort ?? 0);
+  const port = cli !== 0 ? cli : Number(textOr(env[desktop ? "DESKTOP_PORT" : "PORT"], desktop ? "8790" : "8787"));
+  if (!Number.isInteger(cli) || !Number.isInteger(port) || port < 0 || port > 65535) throw new Error("올바른 포트가 필요합니다.");
+  return port;
+}
+
 export async function main(args = process.argv.slice(2)) {
   if (existsSync(join(REPO_ROOT, ".env"))) process.loadEnvFile(join(REPO_ROOT, ".env"));
   const { values } = parseArgs({
@@ -73,10 +81,7 @@ export async function main(args = process.argv.slice(2)) {
     },
   });
   const desktop = values.desktop;
-  const port = Number(
-    values.port ?? (desktop ? process.env.DESKTOP_PORT : process.env.PORT) ?? (desktop ? 8790 : 8787),
-  );
-  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("올바른 포트가 필요합니다.");
+  const port = listenPort(values.port, desktop);
   const stopMock = values["no-mock"] ? async () => {} : await ensurePracticeSite();
   try {
     const { app, runtime, close } = await build(desktop);

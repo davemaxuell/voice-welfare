@@ -43,3 +43,15 @@ it("test_takes_the_port_once_the_other_server_stops", async () => {
   const own = await worker;
   try { expect(own?.port).toBe(site.port); } finally { await own?.close(); }
 });
+it("test_blank_wait_setting_keeps_the_default_wait", async () => {
+  const saved = process.env.MOCK_SITE_WAIT_S;
+  process.env.MOCK_SITE_WAIT_S = "";
+  const site = await foreign(), worker = ensureMockSite(site.port);
+  try {
+    await delay(60); await site.close();
+    const own = await worker;
+    try { expect(own?.port).toBe(site.port); } finally { await own?.close(); }
+  } finally {
+    if (saved === undefined) delete process.env.MOCK_SITE_WAIT_S; else process.env.MOCK_SITE_WAIT_S = saved;
+  }
+});
