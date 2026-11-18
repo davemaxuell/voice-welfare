@@ -8,7 +8,7 @@ import { redactText } from "../safety/privacy.ts";
 
 export const DEMO_SCENARIO_PATH = join(evaluationData, "demo_scenarios.json");
 export const SYNTHETIC_SCENARIO_PATH = join(evaluationData, "scenarios_30.json");
-export const RAG_QA_PATH = join(evaluationData, "rag_qa.json");
+export { computeMetrics, evaluateRetrieval, loadRagQa, RAG_QA_PATH, RagItemSchema, RagQaSchema, summarize, type RagQa } from "./metrics.ts";
 
 export const ScenarioStepSchema = z.object({ utterance: z.string(), expect: z.record(z.string(), z.json()) });
 export const ScenarioSchema = z.object({

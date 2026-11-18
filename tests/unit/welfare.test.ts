@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { parseAction } from "../../src/core/actions.ts";
-import { evaluationData } from "../../src/core/assets.ts";
+import { evaluateRetrieval, loadRagQa } from "../../src/evaluation/index.ts";
 import { parseIntent } from "../../src/core/intents.ts";
 import { AGENT_IDS, AgentHandoffSchema } from "../../src/core/turn.ts";
 import { cite, sourceSentence, WelfareInformationAgent } from "../../src/agents/welfare/agent.ts";
@@ -11,7 +11,7 @@ import {
   cleanApiText, FixtureWelfareDataProvider, OfficialCentralWelfareApiProvider, parseWelfareDetail, parseWelfareList, parseXml,
   type WelfareDataProvider, type WelfareService,
 } from "../../src/agents/welfare/data/index.ts";
-import { chunkService, retrieve } from "../../src/agents/welfare/rag.ts";
+import { chunkService } from "../../src/agents/welfare/rag.ts";
 import { fakeFetch, FakeLlm } from "../helpers.ts";
 
 const xml = (file: string) => readFileSync(join(import.meta.dirname, "../fixtures", file), "utf8");
@@ -135,12 +135,7 @@ it("test_chunk_sections", () => {
 });
 
 it("test_retrieval_quality", () => {
-  const qa = z.object({items:z.array(z.object({q:z.string(), expected:z.array(z.string())}))}).parse(JSON.parse(readFileSync(join(evaluationData,"rag_qa.json"),"utf8")));
-  const chunks = chunkService(service);
-  const ranks = qa.items.map(item => retrieve(item.q, chunks, chunks.length).findIndex(c => item.expected.includes(c.section)) + 1);
-  expect(ranks).toHaveLength(20);
-  expect(ranks.filter(r => r > 0 && r <= 3).length / ranks.length).toBe(1);
-  expect(ranks.reduce((s,r) => s + (r > 0 ? 1 / r : 0), 0) / ranks.length).toBe(0.95);
+  expect(evaluateRetrieval(service, loadRagQa(), 3)).toEqual({ k: 3, questions: 20, recallAtK: 1, mrr: 0.95, misses: [] });
 });
 
 it("test_rag_answer_within_evidence", async () => {

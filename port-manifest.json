@@ -361,8 +361,7 @@
       "python": [
         "src/cheongeum/evaluation/__init__.py"
       ],
-      "sha": "5db04c0",
-      "partial": true
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
     },
     "src/voice/errors.ts": {
       "python": [
@@ -466,6 +465,72 @@
         "src/cheongeum/web/static/styles.css"
       ],
       "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/evaluation/metrics.ts": {
+      "python": [
+        "src/cheongeum/evaluation/__init__.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/evaluation/asr.ts": {
+      "python": [
+        "src/cheongeum/evaluation/asr.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/practice_site/serve.ts": {
+      "python": [
+        "src/cheongeum/practice_site/serve.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/mock-site.ts": {
+      "python": [
+        "src/cheongeum/practice_site/serve.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/eval-agent.ts": {
+      "python": [
+        "scripts/eval_agent.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/eval-stt.ts": {
+      "python": [
+        "scripts/eval_stt.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/run-scenarios.ts": {
+      "python": [
+        "scripts/run_scenarios.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/check-llm.ts": {
+      "python": [
+        "scripts/check_llm.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/check-voice.ts": {
+      "python": [
+        "scripts/check_voice.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/check-welfare.ts": {
+      "python": [
+        "scripts/check_welfare.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/setup-models.ts": {
+      "python": [
+        "scripts/setup_local_models.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
     }
   }
 }
