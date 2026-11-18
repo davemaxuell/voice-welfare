@@ -1,12 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { REPO_ROOT } from "../src/core/assets.ts";
+import { reference } from "./port-manifest.ts";
 
-const collect = execFileSync("uv", ["run", "pytest", "--collect-only", "-q"], {
-  cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
-});
+const collect = readFileSync(join(REPO_ROOT, reference.collection), "utf8");
 const python = new Set<string>();
 for (const line of collect.split(/\r?\n/u)) {
   const match = /^tests[\\/].*?::(?:[A-Za-z_][\w]*::)*(test_\w+)(?:\[.*\])?$/u.exec(line);
@@ -27,4 +25,6 @@ for (const file of globSync("tests/**/*.test.ts", { cwd: REPO_ROOT })) {
   }
   visit(source);
 }
-for (const missing of [...python].filter((name) => !ported.has(name)).sort((a, b) => a.localeCompare(b, "en"))) console.log(missing);
+const missing = [...python].filter(name => !ported.has(name)).sort((a,b) => a.localeCompare(b, "en"));
+for (const name of missing) console.log(name);
+if (missing.length > 0) process.exitCode = 1;

@@ -55,7 +55,7 @@ function runtimeSpecifiers(file: string): string[] {
 it("test_imports_follow_pipeline_layers", () => {
   const errors: string[] = [];
   const openData = join(src, "agents", "welfare", "open_data") + sep;
-  for (const rel of globSync("**/*.ts", { cwd: src, exclude: ["cheongeum/**"] })) {
+  for (const rel of globSync("**/*.ts", { cwd: src })) {
     const file = join(src, rel);
     const from = layer(file);
     expect(allowed[from], rel).toBeDefined();

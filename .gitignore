@@ -10,7 +10,7 @@ node_modules/
 /dist/
 *.log
 .DS_Store
-# 로컬 모델(scripts/setup_local_models.py가 받음)·받아쓰기 평가용 녹음(사용자 목소리)
+# 로컬 모델(scripts/setup-models.ts가 받음)·받아쓰기 평가용 녹음(사용자 목소리)
 models/
 recordings/
 # 데스크톱 설치 파일 빌드 결과(npm run dist)

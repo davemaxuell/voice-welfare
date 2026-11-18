@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { pythonCommand, pythonProject } from "../src/core/python.ts";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -75,17 +76,14 @@ async function setupStt(work: string, keep: boolean): Promise<void> {
   if (LocalWhisperStt.available(dest)) { console.log("✓ 받아쓰기 모델이 이미 있습니다: models/" + sttDir); return; }
   const src = keep ? join(downloads, "whisper-small-komixv2", stt.revision) : join(work, "whisper-small-komixv2");
   await download(stt, src, work);
-  const projectPython = join(REPO_ROOT, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-  const configured = process.env.CHEONGEUM_PYTHON;
-  const python = configured !== undefined && configured.length > 0 ? configured : existsSync(projectPython) ? projectPython : undefined;
-  const probe = spawnSync(python ?? "uv", [...(python === undefined ? ["run", "python"] : []),
-    "-c", "from importlib.metadata import version;print(version('ctranslate2'))"], {cwd: REPO_ROOT, encoding: "utf8", windowsHide: true});
+  const [command, ...args] = pythonCommand("-c", "from importlib.metadata import version;print(version('ctranslate2'))");
+  const probe = spawnSync(command, args, { cwd: REPO_ROOT, encoding: "utf8", windowsHide: true });
   if (probe.error) throw probe.error;
   if (probe.status !== 0 || probe.stdout.trim().length === 0) throw new Error("받아쓰기 실행 환경의 CTranslate2 판을 확인할 수 없습니다.");
   const version = probe.stdout.trim();
   console.log(`변환 중(CTranslate2 ${version}, int8). 처음에는 transformers·torch를 임시로 받느라 몇 분 걸립니다…`);
   const stage = join(work, "stt");
-  const converter = join(REPO_ROOT, "scripts", "convert_whisper_ct2.py");
+  const converter = join(pythonProject, "convert_whisper_ct2.py");
   const converted = spawnSync("uv", ["run", "--no-project", "--with", "ctranslate2==" + version, "--with", "transformers",
     "--with", "torch", "python", converter, src, stage], {cwd: REPO_ROOT, stdio: "inherit", windowsHide: true});
   if (converted.error) throw converted.error;

@@ -48,7 +48,7 @@ export async function build(desktop = false, env: NodeJS.ProcessEnv = process.en
   const settings = { ...env };
   if (desktop) {
     settings.PRACTICE_MODE ??= "false";
-    settings.CHEONGEUM_DATA_DIR ??= join(homedir(), ".cheongeum-ts");
+    settings.CHEONGEUM_DATA_DIR ??= join(homedir(), ".cheongeum");
   }
   const runtime = await AgentRuntime.create(loadConfig(settings));
   const app = makeApp(runtime, { web: true, csp: desktop });

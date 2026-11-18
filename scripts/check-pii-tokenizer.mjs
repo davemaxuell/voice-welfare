@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { pythonCommand } from "../src/core/python.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -9,9 +10,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const corpusPath = join(root, "tests/fixtures/regex/corpus.json");
 const model = resolve(process.env.PII_MODEL ?? join(root, "models/koelectra-ko-pii-ner"), "tokenizer.json");
 const corpus = JSON.parse(readFileSync(corpusPath, "utf8"));
-const local = join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-const python = process.env.CHEONGEUM_PYTHON || (existsSync(local) ? local : undefined);
-const reference = spawnSync(python ?? "uv", [...(python ? [] : ["run", "python"]), "-c", `
+const [command, ...args] = pythonCommand("-c", `
 import json, sys
 from pathlib import Path
 from tokenizers import Tokenizer
@@ -20,7 +19,8 @@ tokenizer.no_padding()
 tokenizer.enable_truncation(max_length=512)
 texts = json.loads(Path(sys.argv[2]).read_text(encoding="utf8"))
 print(json.dumps([[e.ids, e.offsets] for e in tokenizer.encode_batch(texts)]))
-`, model, corpusPath], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, cwd: root });
+`, model, corpusPath);
+const reference = spawnSync(command, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, cwd: root });
 if (reference.error) throw reference.error;
 if (reference.status !== 0) throw new Error(reference.stderr);
 const expected = JSON.parse(reference.stdout);
