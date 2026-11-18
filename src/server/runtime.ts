@@ -11,7 +11,7 @@ import { REPO_ROOT } from "../core/assets.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { createStructuredLlm, overlayLlm, type LlmConfig } from "../core/llm.ts";
 import { omitAbsent } from "../core/schema.ts";
-import { strip } from "../core/text.ts";
+import { strip, textOr } from "../core/text.ts";
 import { parseUrl } from "../core/url.ts";
 import { SessionOrchestrator } from "../orchestrator/session.ts";
 import { ActionLog } from "../personal/action_log.ts";
@@ -28,9 +28,6 @@ type Env = Record<string, string | undefined>;
 function blank(value: string | undefined) {
   const cleaned = strip(value ?? "");
   return cleaned.length === 0 ? undefined : cleaned;
-}
-function fallback(value: string | undefined, defaultValue: string) {
-  return value === undefined || value.length === 0 ? defaultValue : value;
 }
 function decimal(value: string | undefined) {
   const text = blank(value);
@@ -50,7 +47,7 @@ export function loadConfig(env: Env = process.env) {
   const headless = env.HEADLESS === "true" || env.HEADLESS === "1";
   const speed = decimal(env.TTS_SPEED);
   const llm: LlmConfig = omitAbsent({
-    provider: fallback(env.LLM_PROVIDER, "mock"),
+    provider: textOr(env.LLM_PROVIDER, "mock"),
     model: blank(env.LLM_MODEL),
     baseUrl: blank(env.LLM_BASE_URL),
     apiKey: blank(env.LLM_API_KEY),
@@ -67,8 +64,8 @@ export function loadConfig(env: Env = process.env) {
     });
   };
   const voice: VoiceConfig = omitAbsent({
-    stt: fallback(env.STT_PROVIDER, "mock"),
-    tts: fallback(env.TTS_PROVIDER, "mock"),
+    stt: textOr(env.STT_PROVIDER, "mock"),
+    tts: textOr(env.TTS_PROVIDER, "mock"),
     apiKey: blank(env.VOICE_API_KEY) ?? blank(env.LLM_API_KEY),
     baseUrl: blank(env.VOICE_BASE_URL),
     sttBaseUrl: blank(env.STT_BASE_URL),
@@ -89,7 +86,7 @@ export function loadConfig(env: Env = process.env) {
     .filter((v) => v.length > 0)
     .map((v) => parseUrl(v).origin);
   return omitAbsent({
-    mockSiteUrl: fallback(env.MOCK_SITE_URL, "http://localhost:5174"),
+    mockSiteUrl: textOr(env.MOCK_SITE_URL, "http://localhost:5174"),
     extraAllowedOrigins,
     headless,
     slowMoMs: Math.trunc(decimal(env.BROWSER_SLOWMO_MS) ?? 0),
@@ -100,7 +97,7 @@ export function loadConfig(env: Env = process.env) {
     chromeProfileDir: blank(env.CHROME_PROFILE_DIR) ?? join(homedir(), ".cheongeum", "chrome-profile"),
     readOnlyWeb: env.READ_ONLY_WEB !== "false",
     readOnlyClicks:
-      strip(fallback(env.READ_ONLY_CLICKS, "any")).toLowerCase() === "any" ? ("any" as const) : ("safe" as const),
+      strip(textOr(env.READ_ONLY_CLICKS, "any")).toLowerCase() === "any" ? ("any" as const) : ("safe" as const),
     searchUrlTemplate: blank(env.WEB_SEARCH_URL),
     visualCursor:
       env.VISUAL_CURSOR === undefined || env.VISUAL_CURSOR === "" ? !headless : env.VISUAL_CURSOR === "true",
