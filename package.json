@@ -16,7 +16,7 @@
     "test-parity": "node scripts/test-parity.ts",
     "dev:web": "vite",
     "build:web": "vite build",
-    "start": "uv run cheongeum-server",
+    "start": "node --env-file-if-exists=.env src/server/main.ts",
     "eval": "uv run python scripts/run_scenarios.py",
     "record:observations": "uv run python scripts/record_observations.py"
   },
@@ -30,10 +30,12 @@
     "vitest": "^5.1.1"
   },
   "dependencies": {
+    "@hono/node-server": "2.1.9",
     "@napi-rs/keyring": "2.1.2",
     "entities": "9.0.0",
     "fast-xml-parser": "5.12.1",
     "fflate": "0.8.3",
+    "hono": "4.13.19",
     "playwright": "1.65.1",
     "unpdf": "2.2.1",
     "zod": "^4.6.7"

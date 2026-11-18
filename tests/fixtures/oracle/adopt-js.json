@@ -44,5 +44,10 @@
     "fn": "agents.web.downloads.DownloadStore.read_latest",
     "test": "reads a downloaded HWPX using its original filename in an ephemeral browser session",
     "reason": "Chromium stores temporary downloads under extensionless UUIDs. Python selects the parser from that UUID and rejects the file. TypeScript selects the parser from the original filename and reads the bytes from Chromium's stored path."
+  },
+  {
+    "kind": "audio-text-privacy-boundary",
+    "fn": "server.app.audio_turn",
+    "reason": "Apply the approved mask-before-cut rule to the 500-code-point transcription boundary. Scan the full local transcript, preserve the original input budget, and route a disclosure without exposing a partial identifier in the response, history or model input."
   }
 ]
