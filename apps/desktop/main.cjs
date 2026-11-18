@@ -1,7 +1,6 @@
 /**
  * 청음 데스크톱 앱(Electron 메인 프로세스).
- * - 서버·모의 사이트는 자식 프로세스(Python: python -m cheongeum.server --desktop)로 띄운다.
- *   파이썬은 CHEONGEUM_PYTHON → 저장소의 .venv → uv run 순서로 찾는다. 앱을 끄면 stdin을 닫아 서버가 스스로 정리하게 한다.
+ * - Node.js 24 이상으로 로컬 서버를 실행한다. 앱을 끄면 stdin을 닫아 서버가 세션과 브라우저를 정리한다.
  * - 마이크 권한과 소리 자동재생을 미리 허용해, 앱을 켜면 클릭 없이 바로 안내를 듣고 Enter로 동의할 수 있다.
  * - 전역 단축키 Cmd/Ctrl+Shift+Space = '지금 말하기'(크롬 창을 보고 있어도 동작). 동의 안내 중에는 '동의'.
  * - 기본은 백그라운드 실행: 창 없이 메뉴 막대(트레이)에만 '청음'이 있고 음성으로만 쓴다. CHEONGEUM_SHOW_WINDOW=1이면 창을 띄운다.
@@ -58,22 +57,20 @@ function createTray() {
   );
 }
 
-/** 서버를 띄울 파이썬: CHEONGEUM_PYTHON → .venv → uv run */
-function pythonCommand() {
-  const args = ['-m', 'cheongeum.server', '--desktop', '--port', String(PORT)];
-  if (process.env.CHEONGEUM_PYTHON) return { cmd: process.env.CHEONGEUM_PYTHON, args };
-  const venv = process.platform === 'win32' ? path.join(ROOT, '.venv', 'Scripts', 'python.exe') : path.join(ROOT, '.venv', 'bin', 'python');
-  if (require('node:fs').existsSync(venv)) return { cmd: venv, args };
-  return { cmd: 'uv', args: ['run', 'python', ...args] };
-}
-
 function startServices() {
-  const { cmd, args } = pythonCommand();
+  const cmd = process.env.CHEONGEUM_NODE || 'node';
+  const args = ['--env-file-if-exists=.env', 'src/server/main.ts', '--desktop', '--port', String(PORT)];
   services = spawn(cmd, args, {
     cwd: ROOT,
-    env: { ...process.env, DESKTOP_PORT: String(PORT), PYTHONIOENCODING: 'utf-8', CHEONGEUM_PARENT_PIPE: '1' },
+    env: { ...process.env, DESKTOP_PORT: String(PORT), CHEONGEUM_PARENT_PIPE: '1' },
+    windowsHide: true,
     // stdin은 파이프로 열어 둔다: 이 앱이 꺼지면(비정상 종료 포함) 파이프가 닫히고 서버가 스스로 정리한다.
     stdio: ['pipe', 'inherit', 'inherit'],
+  });
+  services.on('error', () => {
+    if (app.isQuitting) return;
+    dialog.showErrorBox('청음', '서버를 시작하지 못했습니다. Node.js 설치와 CHEONGEUM_NODE 경로를 확인하세요.');
+    app.quit();
   });
   services.on('exit', (code) => {
     if (!app.isQuitting) {
@@ -99,7 +96,7 @@ async function waitReady(timeoutMs = 60_000) {
 
 async function createWindow() {
   // 이 앱 화면(자기 주소)에만 마이크를 허용한다.
-  const ours = (url) => typeof url === 'string' && url.startsWith(BASE);
+  const ours = (url) => typeof url === 'string' && URL.canParse(url) && new URL(url).origin === BASE;
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
     cb(permission === 'media' && ours(details.requestingUrl || wc.getURL()));
   });
