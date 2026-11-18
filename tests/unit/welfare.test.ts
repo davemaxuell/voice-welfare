@@ -138,6 +138,16 @@ it("test_retrieval_quality", () => {
   expect(evaluateRetrieval(service, loadRagQa(), 3)).toEqual({ k: 3, questions: 20, recallAtK: 1, mrr: 0.95, misses: [] });
 });
 
+it("test_retrieval_recall_misses_rank_k", () => {
+  const plain: WelfareService = {
+    servId: "S", servNm: "가나", summary: "다라", target: "마바", criteria: "사아", benefit: "자차", applyMethod: "카타",
+    source: { title: "t", url: "https://example.test/", lastCheckedAt: "2026-11-19", version: "v" }, dataOrigin: "fixture",
+  };
+  // 'zz'는 어느 조각과도 겹치지 않아 순서가 개요·지원대상·선정기준·지원내용이다. 지원내용은 4위(rank 3).
+  const r = evaluateRetrieval(plain, { description: "", service: "가나", items: [{ q: "zz", expected: ["지원내용"] }] }, 3);
+  expect(r).toMatchObject({ recallAtK: 0, mrr: 0.25 });
+});
+
 it("test_rag_answer_within_evidence", async () => {
   const a = await new WelfareInformationAgent(provider(),rag("18세에서 64세는 2026년 기준 매월 최대 349,700원입니다.")).answerQuestion(pensionAmount);
   expect(a).toMatchObject({method:"rag-llm", grounded:true});
