@@ -6,7 +6,7 @@ import { InMemoryEventLog } from "../../src/core/events.ts";
 import { UnsupportedSttProvider } from "../../src/voice/stt.ts";
 import { UnsupportedTtsProvider } from "../../src/voice/tts.ts";
 import { createTestRuntime, openBrowserTranscript } from "./session-runtime.ts";
-import { fixtureIndex, loadTranscript, openSlice, replayTranscript } from "./transcripts.ts";
+import { fixtureIndex, loadTranscript, replayTranscript } from "./transcripts.ts";
 
 const base = new URL("../fixtures/transcripts/", import.meta.url);
 const index = fixtureIndex.parse(JSON.parse(readFileSync(new URL("index.json", base), "utf8")));
@@ -62,7 +62,7 @@ const open = openBrowserTranscript(runtime, async (session) => {
   };
 });
 for (const entry of index.cases) {
-  const test = entry.excluded === undefined && openSlice.has(entry.slice) ? it : it.skip;
+  const test = entry.excluded === undefined ? it : it.skip;
   test("HTTP " + entry.slice + " " + entry.case, async () => {
     const tape = loadTranscript(base, entry);
     vi.stubEnv("TZ", "Asia/Seoul");
