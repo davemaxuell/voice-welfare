@@ -1,4 +1,3 @@
-import { isIPv6 } from "node:net";
 import { strip } from "./text.ts";
 
 const defaultPorts = new Map([["http", 80], ["https", 443], ["ws", 80], ["wss", 443], ["ftp", 21]]);
@@ -67,7 +66,11 @@ function hostParts(authority: string) {
     const match = /^\[([^\]]+)\](?::(.*))?$/u.exec(host);
     if (match?.[1] === undefined) throw new TypeError("잘못된 IPv6 주소입니다.");
     hostname = match[1];
-    if (!isIPv6(hostname) && !/^v[0-9a-fA-F]+\..+$/u.test(hostname)) invalid();
+    // WHATWG는 영역 ID를 받지 않는다. 영역을 분리한 주소만 IP 문법으로 검사한다.
+    const [address, zone, extraZone] = hostname.split("%");
+    const validIPv6 = address?.includes(":") === true && zone !== "" && extraZone === undefined &&
+      URL.canParse("http://[" + address + "]/");
+    if (!validIPv6 && !/^v[0-9a-fA-F]+\..+$/u.test(hostname)) invalid();
     portText = match[2] ?? "";
   } else {
     const colon = host.indexOf(":");

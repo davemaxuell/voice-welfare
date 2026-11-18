@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, expect, it, vi } from "vitest";
-import { closeTranscriptRuntime, fixtureIndex, loadTranscript, openSlice, replayTranscript } from "./transcripts.ts";
+import { closeTranscriptRuntime, fixtureIndex, loadTranscript, openRecordedSession, replayTranscript } from "./transcripts.ts";
 import type { OpenTranscript } from "./transcripts.ts";
 
 const directory = new URL("../fixtures/transcripts/", import.meta.url);
@@ -9,15 +9,14 @@ const catalog = fixtureIndex.parse(JSON.parse(readFileSync(new URL("index.json",
 afterAll(closeTranscriptRuntime);
 for (const entry of catalog.cases) {
   const tape = loadTranscript(directory, entry);
-  const open = openSlice.get(entry.slice);
-  if (entry.excluded !== undefined || open === undefined) {
-    it.skip(`${entry.slice} ${entry.case} (${entry.excluded ?? "session pending"})`);
+  if (entry.excluded !== undefined) {
+    it.skip(`${entry.slice} ${entry.case} (${entry.excluded})`);
   } else {
     it(`${entry.slice} ${entry.case}`, async () => {
       // Only the Node wall clock is fixed. Chromium, actionability and performance timers run normally.
       vi.stubEnv("TZ", "Asia/Seoul");
       vi.setSystemTime(new Date(tape.session.calendarDay + "T03:00:00.000Z"));
-      try { await replayTranscript(tape, open); }
+      try { await replayTranscript(tape, openRecordedSession); }
       finally { vi.useRealTimers(); vi.unstubAllEnvs(); }
     });
   }
