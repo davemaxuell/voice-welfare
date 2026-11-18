@@ -38,11 +38,27 @@ def local(url):
     return f"{parts.scheme}://{parts.netloc}" in ORIGINS
 
 
+def normalize(value, refs, *, ticker=False):
+    if isinstance(value, list):
+        return [normalize(item, refs, ticker=ticker) for item in value]
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            if key in ("ref", "fieldId") and isinstance(item, str) and re.fullmatch(r"(?:r|cheongeum-)\d+-[a-z0-9]+", item):
+                group = refs.setdefault(key, {})
+                out[key] = group.setdefault(item, f"{key}-{len(group) + 1}")
+            else:
+                out[key] = normalize(item, refs, ticker=ticker)
+        return out
+    if ticker and isinstance(value, str):
+        return re.sub(r"전산 점검 안내 \d+호", "전산 점검 안내 1호", value)
+    return value
+
+
 async def snapshot(page):
     raw = await page.evaluate(OBSERVE_SCRIPT)
     # 원문에 있는 시계·난수만 정규화한다. 출처·경로·역할과 이름은 보존한다.
     text = re.sub(r"MOCK-\d{8}-\d{4}", "MOCK-20261118-0000", encode(raw))
-    text = re.sub(r"(cheongeum-\d+-)[a-z0-9]{1,4}(?=\")", r"\g<1>test", text)
     view = parse_observation({**json.loads(text), "platform": "pc", "url": page.url, "capturedAt": "2026-11-18T00:00:00.000Z"})
     return {**view, "pageId": PROFILE.classify(page.url)}
 
@@ -68,13 +84,14 @@ class Observations:
                 for file in sorted(SITE_DIR.glob("*.html")):
                     url = origin + "/" + file.name
                     await page.goto(url)
-                    self.pages[url] = self.store(await snapshot(page))
+                    self.pages[url] = self.store(normalize(await snapshot(page), {}))
                 await page.goto(origin + "/portal2.html?rotate=1")
                 previous = None
+                refs = {}
                 churn = Churn()
                 for n in range(1, 5):
                     await page.wait_for_function("(n) => document.getElementById('ticker').textContent.endsWith(n + '호')", arg=n)
-                    view = await snapshot(page)
+                    view = normalize(await snapshot(page), refs)
                     churn.observe(view, previous)
                     self.idle.append({"origin": origin, "view": self.store(view), "volatile": churn.volatile()})
                     previous = view
@@ -85,13 +102,14 @@ class Observations:
             page = adapter.page
             if action["type"] != "click" or page is None or not local(page.url):
                 return await original(adapter, action, signal)
-            before = await snapshot(page)
+            refs = {}
+            before = normalize(await snapshot(page), refs, ticker=True)
             result = await original(adapter, action, signal)
             page = adapter.page
             if page is None or page.is_closed() or not local(page.url):
                 return result
-            after = await snapshot(page)
-            target = action.get("target") or {}
+            after = normalize(await snapshot(page), refs, ticker=True)
+            target = normalize(action.get("target") or {}, refs)
             simple = {"type": "click", "target": target}
             row = {"before": self.store(before), "after": self.store(after), "action": simple,
                    "effect": diff_views(before, after, target.get("ref")),
