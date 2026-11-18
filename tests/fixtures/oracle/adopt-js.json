@@ -55,5 +55,11 @@
     "fn": "scripts.eval_agent.main",
     "test": "meters the model that handles browse_step",
     "reason": "The Python report wraps the web-answer model. When the goal model handles browse_step it reports zero input characters. Count each browse_step on the session's resolved goal model and leave shared providers untouched."
+  },
+  {
+    "kind": "goal-time-budget-hard-cap",
+    "fn": "agents.web.autopilot.Autopilot.run",
+    "test": "모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 멈춘다",
+    "reason": "Python checks the 75-second deadline only at the top of each step, so a model reply or browser action that starts in time is used even when it finishes after the budget. TypeScript aborts the model call and the browser action when the budget ends and reports the step limit. The owner keeps the hard cap because a voice user should never wait past the budget."
   }
 ]
