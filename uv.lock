@@ -184,7 +184,7 @@ requires-dist = [
     { name = "faster-whisper", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", specifier = ">=25.7.0" },
-    { name = "playwright", specifier = ">=1.52" },
+    { name = "playwright", specifier = "==1.65.2" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pypdf", specifier = ">=7.1.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
