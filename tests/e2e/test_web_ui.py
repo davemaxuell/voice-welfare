@@ -1,6 +1,7 @@
 """웹 UI(바닐라 JS) E2E: 실제 서버(API + 정적 UI)를 띄우고 Chromium으로 화면을 조작한다."""
 import asyncio
 import socket
+from types import SimpleNamespace
 
 import pytest_asyncio
 import uvicorn
@@ -229,3 +230,119 @@ async def test_stop_plays_stopped_once_even_with_voice_guidance_off(ui_url, page
     await page.get_by_role("button", name="멈춰 (모든 동작 중단)").click()
     await expect(page.locator("#st-state")).to_have_text("중단됨", timeout=20000)
     assert await page.evaluate("window.__cues ?? []") == ["stopped"]
+
+
+class TextStt:
+    """녹음 대신 글자를 보내는 받아쓰기. 진행 물음이 아니면 늦게 돌려준다(오래 걸리는 일)."""
+
+    name = "test-text"
+    supported = True
+    localLanguages = ["ko"]
+
+    async def transcribe(self, audio: bytes, *, language: str, mime_type: str, signal=None) -> dict:
+        text = audio.decode().strip()
+        if "어디까지" not in text:
+            await asyncio.sleep(6)
+        return {"text": text}
+
+
+@pytest_asyncio.fixture(scope="module")
+async def voice_ui_url():
+    rt = create_test_runtime({"REQUIRE_CONSENT": "true"})
+    app, sessions = create_app(rt, voice=SimpleNamespace(stt=TextStt(), tts=rt.tts))
+    mount_web_ui(app)
+    port = free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.05)
+    yield f"http://127.0.0.1:{port}/"
+    server.should_exit = True
+    await task
+    await close_all(sessions)
+    await rt.close()
+
+
+# 마이크 대신: window.__clips의 글자를 차례로 한 발화씩 돌려준다. 없으면 cancelListening()까지 기다린다.
+FAKE_MIC = """
+export const browserStt = { supported: false, listen() { return () => {}; } };
+export async function startRecording() { throw new Error('no mic'); }
+export async function listMicrophones() { return []; }
+export function preferredMicrophone() { return undefined; }
+export class VoiceLoop {
+  async start() {}
+  get deviceLabel() { return '시험 마이크'; }
+  async isSilent() { return false; }
+  async startClapDetector() {}
+  listenOnce() {
+    const text = (window.__clips ??= []).shift();
+    if (text) return Promise.resolve(new Blob([text.padEnd(300, ' ')], { type: 'audio/webm' }));
+    return new Promise((resolve) => { this.pending = resolve; });
+  }
+  cancelListening() { this.pending?.(null); this.pending = undefined; }
+  watchBargeIn() { return () => {}; }
+  async listenAfterBarge() { return null; }
+  stop() { this.cancelListening(); }
+}
+"""
+
+# 말하기 대신: 한 번 말할 때마다 window.__speakMs 동안 말한 것으로 치고 [시작, 끝]을 window.__talking에,
+# 신호음은 [종류, 시각]을 window.__cues에 적는다.
+FAKE_SPEECH = """
+import * as real from '/speaker.js?real';
+const now = () => performance.now();
+export const applySpeechPrefs = real.applySpeechPrefs;
+export const serverTts = real.serverTts;
+export const progressVoice = real.progressVoice;
+export const takeInterruptedSpeech = real.takeInterruptedSpeech;
+export const preloadCues = real.preloadCues;
+export const transitionCue = real.transitionCue;
+export const browserTts = {
+  supported: true,
+  speak() {},
+  async speakAndWait() {
+    const start = now();
+    await new Promise((r) => setTimeout(r, window.__speakMs));
+    (window.__talking ??= []).push([start, now()]);
+  },
+  cancel() {},
+};
+export function earcon(kind) {
+  (window.__cues ??= []).push([kind, now()]);
+  return real.earcon(kind);
+}
+"""
+
+
+def serve_js(body):
+    async def serve(route):
+        await route.fulfill(content_type="text/javascript", body=body)
+
+    return serve
+
+
+async def fake_voice(page):
+    await page.route(lambda url: str(url).endswith("/mic.js"), serve_js(FAKE_MIC))
+    await page.route(lambda url: str(url).endswith("/speaker.js"), serve_js(FAKE_SPEECH))
+
+
+async def test_progress_cues_never_play_over_speech(voice_ui_url, page):
+    await fake_voice(page)
+    # 동의하면 바로 대화가 시작된다: 질문(6초 걸림)을 받고, 일하는 동안 진행 상황을 묻는다.
+    await page.add_init_script("""
+      window.__speakMs = 2500;
+      window.__clips = ['장애인연금이 뭐야', '지금 어디까지 했어?'];
+    """)
+    await consented(page, voice_ui_url)
+    # 동의 안내 → 인사 → 진행 물음의 답 → 질문의 답을 말한 뒤 다시 듣기 신호음까지
+    await page.wait_for_function(
+        "() => (window.__talking ?? []).length >= 4"
+        " && (window.__cues ?? []).filter(([k]) => k === 'listen').length >= 2",
+        timeout=40000,
+    )
+    talking = await page.evaluate("window.__talking")
+    cues = await page.evaluate("window.__cues")
+    progress = [(kind, round(at)) for kind, at in cues if kind in ("thinking", "working")]
+    assert any(kind == "working" for kind, _ in progress), cues
+    over_speech = [(kind, at) for kind, at in progress if any(s <= at <= e for s, e in talking)]
+    assert over_speech == [], (over_speech, [(round(s), round(e)) for s, e in talking])
