@@ -21,5 +21,10 @@
     "python": "😀안내 90010",
     "typescript": "😀안내 [비공개]",
     "reason": "The Python digest cuts before scanning, which exposes part of a resident number at a page boundary. Scan and mask the whole main text before choosing a window. Keep read_more/find coordinates in original code points and show a full mask in every window intersecting a secret."
+  },
+  {
+    "kind": "application-id-collision",
+    "fn": "personal.store.PersonalStore.add_application",
+    "reason": "Two applications recorded within the same millisecond share an ID in Python. Allocate the next unused millisecond ID in TypeScript so updating a deadline or marking an application complete changes only the selected record."
   }
 ]
