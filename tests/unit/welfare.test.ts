@@ -188,9 +188,9 @@ it("keeps personal identifiers out of both model requests", async () => {
 });
 
 it("test_rag_unknown_chunk_ids_replaced", async () => {
-  const a = await new WelfareInformationAgent(provider(),rag("아마 30만원쯤일 거예요.", "made-up#9")).answerQuestion("장애인연금 얼마 받아?");
+  const a = await new WelfareInformationAgent(provider(),rag("주민센터에 가면 바로 받을 수 있어요.", "made-up#9")).answerQuestion("장애인연금 얼마 받아?");
   expect(a.method).toBe("topic-rule");
-  expect(a.speech).not.toContain("30만원쯤");
+  expect(a.speech).not.toContain("바로 받을 수 있어요");
 });
 
 it("test_rag_follow_up_remembers_service", async () => {
