@@ -285,6 +285,17 @@ it("test_deadline_open_from_year_round_text", async () => {
   expect(a.speech).toContain("신청할 수 있어요");
 });
 
+it.each([
+  ["없는 날짜의 시행 종료일", {enfcBgngYmd:"20240101",enfcEndYmd:"20260230"}, "2026-11-18"],
+  ["본문의 2월 30일 마감", {applyMethod:"신청기간 : 2026년 2월 30일까지 방문 신청."}, "2026-02-25"],
+  ["윤년이 아닌 해의 2월 29일", {enfcBgngYmd:"20250301",enfcEndYmd:"20250301"}, "2025-02-29"],
+] as const)("test_deadline_invalid_day_is_unknown (%s)", async (_name, extra, today) => {
+  const a = await deadlineAgent(extra).answerQuestion(deadlineQ, today);
+  expect(a.speech).toContain("확인하지 못");
+  expect(a.speech).not.toContain("신청할 수 있어요");
+  expect(a.speech).not.toContain("신청할 수 없어요");
+});
+
 it("test_deadline_unknown_without_period_gives_contact", async () => {
   const a = await new WelfareInformationAgent(provider()).answerQuestion("장애인연금 지금 신청할 수 있어?","2026-11-18");
   expect(a.speech).toContain("확인하지 못");
