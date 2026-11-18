@@ -419,7 +419,8 @@ export class SessionOrchestrator {
     }
     const refused = this.#refused(consentRefusal([intent.type], this.#consent));
     if (refused !== undefined) return refused;
-    switch (intent.type) {
+    const type = intent.type;
+    switch (type) {
       case "GOAL": return this.browse.runGoal(intent.goal, ctx);
       case "LOGIN": return this.browse.login(turn.text, ctx);
       case "CLEAR_LOGIN": return this.browse.clearLogin(ctx);
@@ -457,7 +458,7 @@ export class SessionOrchestrator {
       case "PROGRESS": return this.#progress(false);
       case "STOP": return draft("STOPPED", "stop", "멈췄습니다.");
       case "UNKNOWN": return this.replies.unknown(redactText(intent.text ?? turn.text), turn);
-      default: throw new NotPorted(intent.type);
+      default: throw new NotPorted(type);
     }
   }
   explain(mention: string | undefined, turn: Turn) { return this.application.explain(mention, turn); }
