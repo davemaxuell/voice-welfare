@@ -291,11 +291,24 @@ class PlaywrightExecutionAdapter:
                 await page.goto("about:blank")
                 return
             try:
-                await page.goto(prev, wait_until="domcontentloaded", timeout=self.navigation_timeout)
-            except Exception:  # noqa: BLE001
-                await page.goto("about:blank")
+                await self._open(page, prev)
+            except Exception as e:  # noqa: BLE001
+                if "net::ERR_" in str(e):
+                    await page.goto("about:blank")
         except Exception:  # noqa: BLE001
             pass  # 되돌리지 못해도 '열지 못함'은 그대로 알린다
+
+    async def _open(self, page: Page, url: str) -> None:
+        """
+        주소를 연다. 응답이 들어오면(commit) 열린 것이고, 화면 글이 다 그려지기(DOMContentLoaded)는 같은 시간까지만 기다린다.
+        공공 누리집은 응답이 바로 와도 막는 스크립트 때문에 첫 방문에 다 그리기까지 10초쯤 걸린다(복지로).
+        그것을 실패로 알리면 사용자는 '열지 못했다'고 듣는데 화면은 곧 열린다.
+        """
+        await page.goto(url, wait_until="commit", timeout=self.navigation_timeout)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout)
+        except Exception:  # noqa: BLE001
+            pass
 
     @asynccontextmanager
     async def _no_form_resend(self, page: Page) -> AsyncIterator[list[str]]:
@@ -328,7 +341,7 @@ class PlaywrightExecutionAdapter:
                 raise AdapterError("NAVIGATION_FAILED")
             prev = page.url
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+                await self._open(page, url)
             except Exception as e:
                 # 내려받기 등으로 이동이 취소된 것(ERR_ABORTED)은 오류 화면을 남기지 않는다
                 if "net::ERR_" in str(e) and "ERR_ABORTED" not in str(e):
