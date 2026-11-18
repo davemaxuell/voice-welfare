@@ -7,6 +7,10 @@ export function hasText(value?: string | null): value is string {
   return value != null && value.length > 0;
 }
 
+export function textOr(value: string | null | undefined, fallback: string): string {
+  return hasText(value) ? value : fallback;
+}
+
 export function asciiDecimalDigits(text: string): string {
   return text.replace(/\p{Nd}/gu, digit => {
     const point = digit.codePointAt(0)!;

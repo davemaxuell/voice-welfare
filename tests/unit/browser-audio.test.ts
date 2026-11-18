@@ -72,6 +72,59 @@ it("끼어들기 제한 시간이 지난 뒤에도 다음 발화는 끝까지 �
   expect(vi.getTimerCount()).toBe(0);
 });
 
+it("안내 중 짧은 말로 끼어들면 그 말을 담은 녹음을 돌려준다", async () => {
+  vi.useFakeTimers();
+  const word = { from: 0, to: 0 };
+  const speaking = () => Date.now() >= word.from && Date.now() < word.to;
+  vi.stubGlobal("window", { AudioContext: class {
+    state = "running";
+    createMediaStreamSource() { return { connect: vi.fn(), disconnect: vi.fn() }; }
+    createAnalyser() { return { fftSize: 0, getFloatTimeDomainData: (data: Float32Array) => data.fill(speaking() ? 0.2 : 0.001) }; }
+  } });
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => Promise.resolve(microphone().stream) } });
+  vi.stubGlobal("MediaRecorder", class {
+    static isTypeSupported() { return true; }
+    state = "inactive";
+    mimeType = "audio/webm";
+    onstop?: (() => void) | null;
+    ondataavailable?: (e: { data: Blob }) => void;
+    private since = 0;
+    private timer?: ReturnType<typeof setInterval>;
+    start(slice: number) {
+      this.state = "recording";
+      this.since = Date.now();
+      this.timer = setInterval(() => this.emit(), slice);
+    }
+    private emit() {
+      const heard = word.from < Date.now() && word.to > this.since;
+      this.since = Date.now();
+      this.ondataavailable?.({ data: new Blob([heard ? "멈춰" : "-"]) });
+    }
+    stop() {
+      clearInterval(this.timer);
+      this.emit();
+      this.state = "inactive";
+      this.onstop?.();
+    }
+  });
+  const { VoiceLoop } = await import("../../web/src/mic.ts");
+  const voice = new VoiceLoop();
+  const start = voice.start();
+  await vi.advanceTimersByTimeAsync(450);
+  await start;
+  word.from = Date.now() + 500;
+  word.to = word.from + 450;
+  let barged = false;
+  const stopWatch = voice.watchBargeIn(() => { barged = true; });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(barged).toBe(true);
+  stopWatch();
+  const clip = voice.listenAfterBarge(2000);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(await (await clip)?.text()).toContain("멈춰");
+  voice.stop();
+});
+
 it("취소 후 브라우저 음성 예약과 서버 음성 요청이 남지 않는다", async () => {
   vi.useFakeTimers();
   const speak = vi.fn();

@@ -48,12 +48,20 @@ export class Seal {
   }
 }
 
-export function readPrivateFile(path: string, seal?: Seal) {
+export function readPrivateFile<T>(path: string, seal: Seal | undefined, parse: (data: unknown) => T) {
   if (!existsSync(path)) return undefined;
-  const bytes = readFileSync(path);
-  const sealed = seal?.isSealed(bytes) === true;
-  const text = sealed ? seal!.open(bytes).toString("utf8") : bytes.toString("utf8");
-  return { data: JSON.parse(text) as unknown, sealed };
+  try {
+    const bytes = readFileSync(path);
+    const sealed = seal?.isSealed(bytes) === true;
+    const text = sealed ? seal!.open(bytes).toString("utf8") : bytes.toString("utf8");
+    return { data: parse(JSON.parse(text)), sealed };
+  } catch {
+    // 맞는 키가 돌아오면 다시 열 수 있게 덮어쓰지 않고 옆으로 옮긴다. 오류 문구는 파일 내용을 담을 수 있어 남기지 않는다.
+    const aside = `${path}.unreadable-${new Date().toISOString().replace(/[:.]/gu, "-")}`;
+    renameSync(path, aside);
+    process.stderr.write(`[personal] 읽을 수 없는 파일을 ${aside}(으)로 옮기고 새로 시작합니다.\n`);
+    return undefined;
+  }
 }
 
 export function writePrivateFile(path: string, data: unknown, seal?: Seal) {

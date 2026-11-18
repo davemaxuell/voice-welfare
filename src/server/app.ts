@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { webStatic } from "../core/assets.ts";
-import { strip } from "../core/text.ts";
+import { strip, textOr } from "../core/text.ts";
 import { LangSchema, LANGS } from "../core/turn.ts";
 import type { SessionOrchestrator } from "../orchestrator/session.ts";
 import { redactText, detectSensitive } from "../safety/privacy.ts";
@@ -164,7 +164,7 @@ export function makeApp<S extends HttpSession>(
       throw new VoiceNotSupportedError(
         "서버 STT가 설정되지 않았습니다. 브라우저 음성 인식이나 텍스트 입력을 사용하세요.",
       );
-    const mimeType = request.headers.get("content-type") ?? "audio/webm";
+    const mimeType = textOr(request.headers.get("content-type"), "audio/webm");
     if (!mimeType.startsWith("audio/") && !mimeType.startsWith("application/octet-stream")) return "";
     const audio = await limitedBytes(request, AUDIO_LIMIT);
     return audio === undefined || audio.length < 200

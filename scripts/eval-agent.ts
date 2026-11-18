@@ -1,4 +1,5 @@
-import { fixed, textOr } from "./eval-text.ts";
+import { textOr } from "../src/core/text.ts";
+import { fixed } from "./eval-text.ts";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";

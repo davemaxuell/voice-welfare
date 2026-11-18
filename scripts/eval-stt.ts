@@ -1,4 +1,4 @@
-import { fixed, textOr } from "./eval-text.ts";
+import { fixed } from "./eval-text.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { createMockWelfareProfile, fieldVocabulary } from "../src/agents/web/profile.ts";
 import { REPO_ROOT } from "../src/core/assets.ts";
-import { strip } from "../src/core/text.ts";
+import { strip, textOr } from "../src/core/text.ts";
 import { cer, digitRuns, hasSpelledNumbers } from "../src/evaluation/asr.ts";
 import { detectLangSwitch } from "../src/language/i18n.ts";
 import { detectSensitive, redactText } from "../src/safety/privacy.ts";

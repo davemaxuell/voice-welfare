@@ -27,13 +27,9 @@ export class PersonalStore {
     this.path = path;
     this.#seal = seal;
     if (path === undefined) return;
-    let previous;
-    try { previous = readPrivateFile(path, seal); }
-    catch { return; }
+    const previous = readPrivateFile(path, seal, data => StoreSchema.parse(data));
     if (previous === undefined) return;
-    const parsed = StoreSchema.safeParse(previous.data);
-    if (!parsed.success) return;
-    this.#data = parsed.data;
+    this.#data = previous.data;
     if (seal !== undefined && !previous.sealed) this.#save(this.#data);
   }
   #save(data: Stored) {

@@ -10,6 +10,7 @@ const mime = new Map([[".js","text/javascript; charset=utf-8"],[".css","text/css
 function hasCode(error: unknown, ...codes: string[]) {
   return error instanceof Error && "code" in error && typeof error.code === "string" && codes.includes(error.code);
 }
+function blankAsUnset(value: string | undefined) { return value === "" ? undefined : value; }
 function within(root: string, file: string) {
   const suffix = relative(root,file);
   return suffix !== ".." && !suffix.startsWith(".." + sep) && !isAbsolute(suffix);
@@ -66,7 +67,7 @@ export function createPracticeSite(rootPath: string) {
       req.on("error", error => done(hasCode(error,"ECONNREFUSED") ? "free" : "other"));
     });
   }
-  async function ensureMockSite(port = 5174, waitSeconds = Number(process.env.MOCK_SITE_WAIT_S ?? 120)) {
+  async function ensureMockSite(port = 5174, waitSeconds = Number(blankAsUnset(process.env.MOCK_SITE_WAIT_S) ?? 120)) {
     if (!Number.isFinite(waitSeconds) || waitSeconds < 0) throw Error("MOCK_SITE_WAIT_S에는 0 이상의 초를 입력하세요.");
     const until = performance.now() + waitSeconds*1000;
     while (true) {

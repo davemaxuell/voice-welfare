@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -111,4 +111,50 @@ it("동시에 등록한 두 신청은 각각의 기한을 보관한다", () => {
     store.updateApplication(second.id, { dueDate: "2026-12-03" });
     expect(store.applications()).toEqual([first, { ...second, dueDate: "2026-12-03" }]);
   } finally { clock.mockRestore(); }
+});
+
+function movedAside(name: string) {
+  const moved = readdirSync(directory).filter(file => file.startsWith(name + ".unreadable-"));
+  expect(moved).toHaveLength(1);
+  return join(directory, moved[0]!);
+}
+it("test_unreadable_vault_moved_aside_not_overwritten", () => {
+  const path = join(directory, "personal.json");
+  const original = new Seal({ key: Buffer.alloc(32, 1) });
+  new PersonalStore(path, original).saveVault({ name: "김하늘" });
+  const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  try {
+    const fresh = new PersonalStore(path, new Seal({ key: Buffer.alloc(32, 2) }));
+    expect(fresh.vault()).toEqual({});
+    fresh.saveVault({ phone: "010-1234-5678" });
+    const moved = movedAside("personal.json");
+    expect(new PersonalStore(moved, original).vault()).toEqual({ name: "김하늘" });
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]![0])).toContain(moved);
+  } finally { stderr.mockRestore(); }
+});
+it("test_unparsable_plain_vault_moved_aside_without_logging_contents", () => {
+  const path = join(directory, "personal.json");
+  const broken = '{"vault": {"name": "김하늘"';
+  writeFileSync(path, broken);
+  const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  try {
+    new PersonalStore(path).saveVault({ phone: "010" });
+    expect(readFileSync(movedAside("personal.json"), "utf8")).toBe(broken);
+    expect(String(stderr.mock.calls[0]![0])).not.toContain("김하늘");
+  } finally { stderr.mockRestore(); }
+  expect(new PersonalStore(path).vault()).toEqual({ phone: "010" });
+});
+it("test_unreadable_action_log_moved_aside_not_overwritten", () => {
+  const path = join(directory, "actions.sealed");
+  const original = new Seal({ key: Buffer.alloc(32, 1) });
+  const first = new ActionLog(path, original).append({ label: redactText("모의 접수") });
+  const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  try {
+    const fresh = new ActionLog(path, new Seal({ key: Buffer.alloc(32, 2) }));
+    expect(fresh.recent()).toEqual([]);
+    expect(fresh.append({ label: redactText("다음") }).seq).toBe(1);
+    expect(new ActionLog(movedAside("actions.sealed"), original).recent()).toEqual([first]);
+    expect(stderr).toHaveBeenCalledTimes(1);
+  } finally { stderr.mockRestore(); }
 });

@@ -80,7 +80,8 @@ const SYSTEM = `너는 시각장애인을 대신해 웹을 탐색하는 브라�
 thought는 한 문장.`;
 
 const decision = z.object({
-  action: z.enum(DECISION_SCHEMA.properties.action.enum),
+  // 작은 모델은 목록에 없는 행동(예: scroll)을 낼 때가 있다. 그런 행동은 undefined로 두고 그 단계를 건너뛴다.
+  action: z.enum(DECISION_SCHEMA.properties.action.enum).or(z.string().min(1).transform(() => undefined)),
   target: z.string().nullish().catch(undefined),
   answer: z.string().nullish().catch(undefined),
   evidence: z.array(z.unknown()).nullish().catch(undefined),
@@ -179,6 +180,7 @@ export class Autopilot {
         let raw = await ask();
         if (raw === undefined && !ctx.signal.aborted && performance.now() < deadline) raw = await ask();
         if (raw === undefined) return done('failed', '다음에 무엇을 할지 정하지 못했어요. 조금 더 구체적으로 말씀해 주시겠어요?');
+        if (raw.action === undefined) continue;
 
         // 같은 행동·대상을 세 번째 반복하면 멈춘다(헛도는 것 방지). 거절된 답의 재시도는 rejected 횟수로 따로 막는다.
         const terminal = raw.action === 'answer' || raw.action === 'ask_user' || raw.action === 'fail';

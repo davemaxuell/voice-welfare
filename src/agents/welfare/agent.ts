@@ -5,7 +5,7 @@ import { redactText } from '../../safety/privacy.ts';
 import { redactedJson, type StructuredLlm } from '../../core/llm.ts';
 import { boundedText, omitAbsent } from '../../core/schema.ts';
 import { todayIso } from '../../core/time.ts';
-import { asciiDecimalDigits, strip } from '../../core/text.ts';
+import { asciiDecimalDigits, hasText, strip } from '../../core/text.ts';
 import { tryUrl } from '../../core/url.ts';
 import type { ServiceSummary, WelfareDataProvider, WelfareService } from './data/index.ts';
 import { describeProfile, matchServices, type Match, type UserProfile } from './discovery.ts';
@@ -346,7 +346,7 @@ export class WelfareInformationAgent {
    */
   async precheck(ref: string | undefined, profile: UserProfile): Promise<GroundedAnswer> {
     const s = this.pick(ref);
-    const name = s?.servNm ?? ref ?? this.currentServiceName;
+    const name = [s?.servNm, ref].find(hasText) ?? this.currentServiceName;
     const detail = await this.detailOf(s, name);
     if (name === undefined || name.length === 0 || (!s && !detail)) return { speech: "어떤 제도의 자격을 살펴볼까요? 예: '1번 자격 확인해줘'.", sources: [], grounded: false };
     if (detail) this.selectedDetail = detail;
@@ -403,7 +403,7 @@ export class WelfareInformationAgent {
   /** 신청 준비: 신청 경로·서식·문의처를 짧게. 자세한 건 Agent A가 공식 페이지를 열어 준다. */
   async prepare(ref: string | undefined): Promise<GroundedAnswer> {
     const s = this.pick(ref);
-    const name = s?.servNm ?? ref ?? this.currentServiceName;
+    const name = [s?.servNm, ref].find(hasText) ?? this.currentServiceName;
     const detail = await this.detailOf(s, name);
     if (!detail) {
       return {

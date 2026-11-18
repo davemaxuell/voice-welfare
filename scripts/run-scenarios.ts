@@ -1,4 +1,4 @@
-import { textOr } from "./eval-text.ts";
+import { textOr } from "../src/core/text.ts";
 import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";

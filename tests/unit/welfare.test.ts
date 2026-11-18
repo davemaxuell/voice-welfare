@@ -104,6 +104,13 @@ it("test_official_error_falls_back", async () => {
   expect(p.lastError).toContain("SERVICE_KEY_IS_NOT_REGISTERED_ERROR");
 });
 
+it.each([
+  ["list", () => parseWelfareList("<wantedList><resultCode>99</resultCode><resultMessage></resultMessage></wantedList>")],
+  ["detail", () => parseWelfareDetail("<wantedDtl><resultCode>99</resultCode><resultMessage></resultMessage></wantedDtl>", "https://www.bokjiro.go.kr/x")],
+])("test_empty_result_message_names_result_code (%s)", (_name, parse) => {
+  expect(parse).toThrow(expect.objectContaining({ reason: "resultCode != 0" }));
+});
+
 it("keeps the API credential out of recorded request URLs and fallback diagnostics", async () => {
   const key = "test+key/with=symbols";
   const fetchImpl = fakeFetch(listOrDetail);
@@ -136,6 +143,16 @@ it("test_chunk_sections", () => {
 
 it("test_retrieval_quality", () => {
   expect(evaluateRetrieval(service, loadRagQa(), 3)).toEqual({ k: 3, questions: 20, recallAtK: 1, mrr: 0.95, misses: [] });
+});
+
+it("test_retrieval_recall_misses_rank_k", () => {
+  const plain: WelfareService = {
+    servId: "S", servNm: "가나", summary: "다라", target: "마바", criteria: "사아", benefit: "자차", applyMethod: "카타",
+    source: { title: "t", url: "https://example.test/", lastCheckedAt: "2026-11-19", version: "v" }, dataOrigin: "fixture",
+  };
+  // 'zz'는 어느 조각과도 겹치지 않아 순서가 개요·지원대상·선정기준·지원내용이다. 지원내용은 4위(rank 3).
+  const r = evaluateRetrieval(plain, { description: "", service: "가나", items: [{ q: "zz", expected: ["지원내용"] }] }, 3);
+  expect(r).toMatchObject({ recallAtK: 0, mrr: 0.25 });
 });
 
 it("test_rag_answer_within_evidence", async () => {
@@ -188,9 +205,9 @@ it("keeps personal identifiers out of both model requests", async () => {
 });
 
 it("test_rag_unknown_chunk_ids_replaced", async () => {
-  const a = await new WelfareInformationAgent(provider(),rag("아마 30만원쯤일 거예요.", "made-up#9")).answerQuestion("장애인연금 얼마 받아?");
+  const a = await new WelfareInformationAgent(provider(),rag("주민센터에 가면 바로 받을 수 있어요.", "made-up#9")).answerQuestion("장애인연금 얼마 받아?");
   expect(a.method).toBe("topic-rule");
-  expect(a.speech).not.toContain("30만원쯤");
+  expect(a.speech).not.toContain("바로 받을 수 있어요");
 });
 
 it("test_rag_follow_up_remembers_service", async () => {
@@ -273,6 +290,17 @@ it("test_deadline_open_from_year_round_text", async () => {
   const a = await deadlineAgent({applyMethod:"신청기간 : 연중 신청. 방문 또는 인터넷."}).answerQuestion(deadlineQ,"2026-06-01");
   expect(a.grounded).toBe(true);
   expect(a.speech).toContain("신청할 수 있어요");
+});
+
+it.each([
+  ["없는 날짜의 시행 종료일", {enfcBgngYmd:"20240101",enfcEndYmd:"20260230"}, "2026-11-18"],
+  ["본문의 2월 30일 마감", {applyMethod:"신청기간 : 2026년 2월 30일까지 방문 신청."}, "2026-02-25"],
+  ["윤년이 아닌 해의 2월 29일", {enfcBgngYmd:"20250301",enfcEndYmd:"20250301"}, "2025-02-29"],
+] as const)("test_deadline_invalid_day_is_unknown (%s)", async (_name, extra, today) => {
+  const a = await deadlineAgent(extra).answerQuestion(deadlineQ, today);
+  expect(a.speech).toContain("확인하지 못");
+  expect(a.speech).not.toContain("신청할 수 있어요");
+  expect(a.speech).not.toContain("신청할 수 없어요");
 });
 
 it("test_deadline_unknown_without_period_gives_contact", async () => {
@@ -373,4 +401,20 @@ it("cancelling a model reply stops the general-answer fallback", async () => {
   reply.resolve(noEvidence);
   await expect(answer).rejects.toBe(controller.signal.reason);
   expect(llm.calls.map(c => c.schemaName)).toEqual(["grounded_answer"]);
+});
+
+it("test_precheck_empty_ref_uses_current_service", async () => {
+  const agent = new WelfareInformationAgent(fixtures);
+  await agent.applicationContext();
+  const r = await agent.precheck("", { age: 30 });
+  expect(r.speech).toContain("장애인연금 자격을 미리 살펴봤어요");
+  expect(r.grounded).toBe(true);
+});
+
+it("test_prepare_empty_ref_uses_current_service", async () => {
+  const agent = new WelfareInformationAgent(fixtures);
+  await agent.applicationContext();
+  const r = await agent.prepare("");
+  expect(r.speech).toContain("장애인연금 신청은");
+  expect(r.grounded).toBe(true);
 });

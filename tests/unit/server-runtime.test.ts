@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { loadConfig } from "../../src/server/runtime.ts";
+import { listenPort } from "../../src/server/main.ts";
 
 it("test_load_config_role_overrides", () => {
   const cfg = loadConfig({
@@ -16,4 +17,12 @@ it("test_load_config_role_overrides", () => {
   expect(cfg.llmGoal).toMatchObject({ provider: "ollama", model: "qwen2.5:7b" });
   expect(cfg.llmUnderstand).toMatchObject({ provider: "openai", model: "gpt-4o" });
   expect(cfg.llmWeb.model).toBe("gpt-4o-mini");
+});
+
+it("test_blank_or_zero_port_settings_fall_back_like_python", () => {
+  expect(listenPort(undefined, false, { PORT: "" })).toBe(8787);
+  expect(listenPort(undefined, true, { DESKTOP_PORT: "" })).toBe(8790);
+  expect(listenPort("0", false, { PORT: "9001" })).toBe(9001);
+  expect(listenPort("9002", false, { PORT: "9001" })).toBe(9002);
+  expect(() => listenPort("abc", false, {})).toThrow();
 });

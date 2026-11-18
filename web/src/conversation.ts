@@ -9,11 +9,13 @@ interface VoiceMode {
 }
 type Consent = 'loading' | 'intro' | 'ask' | 'granted' | 'declined';
 interface Message { role: 'user' | 'assistant' | 'system'; text: string }
+/** 화면 낭독기에 알릴 글. 같은 글이어도 id가 새로우면 다시 읽힌다. */
+interface Notice { text: string; id: number }
 export interface UiState {
-  sessionId?: string; state: SessionState; last?: TurnResult; lang: Lang; busy: boolean;
-  listening: boolean; voiceMode: VoiceMode; tts: boolean; contrast: boolean; error?: string;
+  sessionId?: string; state: SessionState; last?: TurnResult; lang: Lang; pendingLang?: Lang; busy: boolean;
+  listening: boolean; voiceMode: VoiceMode; tts: boolean; contrast: boolean; error?: Notice;
   phase: keyof typeof PHASE_LABELS; consent: Consent; mics: {id: string; label: string}[];
-  micId?: string; messages: (Message & { id: number })[]; announcement: string;
+  micId?: string; messages: (Message & { id: number })[]; announcement?: Notice;
   focus?: { id: string }; clearInput: number;
 }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
@@ -109,7 +111,7 @@ const readMicId = () => {
 
 /** 화면 상태(바뀌면 render()로 해당 부분만 다시 그린다) */
 let ui: UiState = {
-  messages: [], announcement: "", clearInput: 0,
+  messages: [], clearInput: 0,
   sessionId: undefined,
   state: 'IDLE',
   last: undefined,
@@ -134,6 +136,7 @@ let recording: Awaited<ReturnType<typeof startRecording>> | undefined;
 let stopListening: (() => void) | undefined;
 let reminderTimer: ReturnType<typeof setInterval> | undefined;
 let messageSeq = 0;
+let noticeSeq = 0;
 // 일하는 동안: 사용자가 말하는 중 / 청음이 짧은 안내(진행 상황)를 말하는 중
 let hearingVoice: VoiceLoop | undefined;
 let busySpeech: object | undefined;
@@ -164,8 +167,8 @@ function set(patch: Partial<UiState>) {
   for (const listener of listeners) listener();
 }
 function focus(id: string) { set({ focus: { id } }); }
-function announce(text: string) { set({ announcement: text }); }
-function setError(message: string) { set({ error: message }); }
+function announce(text: string) { set({ announcement: { text, id: noticeSeq++ } }); }
+function setError(message: string) { set({ error: { text: message, id: noticeSeq++ } }); }
 function push(message: Message) { set({messages: [...ui.messages, { ...message, id: messageSeq++ }]}); }
 function setPhase(p: UiState['phase']) {
   set({ phase: p });
@@ -296,7 +299,7 @@ async function startConversation() {
     setError(micTrouble);
     announce(micTrouble);
     const epoch = turnEpoch;
-    const stillOff = () => epoch === turnEpoch && loop === undefined && ui.error === micTrouble;
+    const stillOff = () => epoch === turnEpoch && loop === undefined && ui.error?.text === micTrouble;
     void cue('problem', stillOff).then(() => { if (stillOff()) return speakAndWait(micTrouble); });
   }
   try {
@@ -773,11 +776,18 @@ export function selectMic(id: string) {
 }
 export async function selectLanguage(lang: Lang) {
   if (ui.sessionId === undefined) return;
+  set({ pendingLang: lang });
+  // 그 사이 다른 언어를 골랐으면 그 선택을 화면에 남긴다.
+  const settle = () => { if (ui.pendingLang === lang) set({ pendingLang: undefined }); };
   try {
     const r = await api.language(ui.sessionId, lang);
+    settle();
     await applyResult(r, loop === undefined);
     if (loop !== undefined) await speakAndWait(r.speech);
-  } catch (error) { setError(errorMessage(error)); }
+  } catch (error) {
+    settle();
+    setError(errorMessage(error));
+  }
 }
 function bind() {
   // 데스크톱 앱: 전역 단축키(Cmd/Ctrl+Shift+Space)로 '지금 말하기'

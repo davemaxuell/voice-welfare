@@ -202,7 +202,13 @@ export class VoiceLoop {
                 else
                     resolve(send ? new Blob(chunks, { type: recorder.mimeType.length > 0 ? recorder.mimeType : 'audio/webm' }) : null);
             };
+            // 끼어들기를 일으킨 소리는 이미 시작된 말이다. 짧은 '멈춰'는 여기서 끝나므로 다시 기다리면 버려진다.
+            const barged = prefix !== undefined;
             begin();
+            if (barged) {
+                started = true;
+                onSpeechStart?.();
+            }
             const tick = 50;
             const timer = setInterval(() => {
                 const loud = this.level() > threshold;

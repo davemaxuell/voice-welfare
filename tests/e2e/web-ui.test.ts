@@ -190,6 +190,85 @@ it("test_command_focus_and_value_survive_rerender", async () => {
   await browserExpect(input).toHaveValue("장애인연금 신재청");
 });
 
+/** 화면 낭독기는 aria-live 영역의 DOM이 바뀔 때만 읽는다. 그 바뀜을 센다. */
+async function watchLiveRegion(id: string) {
+  await page.evaluate(id => {
+    const w = window as unknown as { __mutations: Record<string, number> };
+    w.__mutations = { ...w.__mutations, [id]: 0 };
+    new MutationObserver(records => { w.__mutations[id] = (w.__mutations[id] ?? 0) + records.length; })
+      .observe(document.getElementById(id)!, { childList: true, characterData: true, subtree: true });
+  }, id);
+  return {
+    count: () => page.evaluate(id => (window as unknown as { __mutations: Record<string, number> }).__mutations[id] ?? 0, id),
+    reset: () => page.evaluate(id => { (window as unknown as { __mutations: Record<string, number> }).__mutations[id] = 0; }, id),
+  };
+}
+
+it("test_repeated_announcement_reaches_screen_reader", async () => {
+  await consent();
+  await send("장애인연금 신청 도와줘");
+  await browserExpect(state()).toHaveText("신청서 작성 중", turnTimeout);
+  await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+  const announce = await watchLiveRegion("announce");
+  await send("이름은 김하늘");
+  await browserExpect(page.locator("#fields")).toContainText("입력됨: 김하늘", turnTimeout);
+  await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+  await browserExpect(page.locator("#announce")).toHaveText("상태: 신청서 작성 중");
+  expect(await announce.count()).toBeGreaterThan(0);
+  await announce.reset();
+  await page.getByRole("button", { name: "고대비 꺼짐" }).click();
+  await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
+  expect(await announce.count()).toBe(0);
+});
+
+it("test_repeated_error_reaches_screen_reader", async () => {
+  await consent();
+  await page.route("**/language", route => route.fulfill({
+    status: 500, contentType: "application/json", body: JSON.stringify({ message: "언어를 바꾸지 못했습니다." }),
+  }));
+  const select = page.locator("#lang-select");
+  await select.selectOption("en");
+  await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
+  const alert = await watchLiveRegion("error");
+  await select.selectOption("zh");
+  await browserExpect.poll(alert.count).toBeGreaterThan(0);
+  await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
+});
+
+it("test_language_choice_stays_while_request_runs", async () => {
+  await consent();
+  const requested: unknown[] = [];
+  let answered = 0;
+  page.on("response", response => { if (response.url().endsWith("/language")) answered++; });
+  await page.route("**/language", async route => {
+    requested.push(route.request().postDataJSON());
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  const select = page.locator("#lang-select");
+  await select.focus();
+  await page.keyboard.press("ArrowDown");
+  await browserExpect(select).toHaveValue("en");
+  await page.keyboard.press("ArrowDown");
+  await browserExpect(select).toHaveValue("zh");
+  await browserExpect.poll(() => answered, turnTimeout).toBe(2);
+  expect(requested).toEqual([{ lang: "en" }, { lang: "zh" }]);
+  await browserExpect(select, "언어 모델이 없는 시험 서버는 세션 언어를 한국어로 둔다").toHaveValue("ko");
+});
+
+it("test_failed_language_change_restores_session_language", async () => {
+  await consent();
+  await page.route("**/language", async route => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "언어를 바꾸지 못했습니다." }) });
+  });
+  const select = page.locator("#lang-select");
+  await select.selectOption("en");
+  await browserExpect(select).toHaveValue("en");
+  await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
+  await browserExpect(select).toHaveValue("ko");
+});
+
 it.each([false, true])("test_web_ui_axe_violations (고대비 %s)", async highContrast => {
   await openConsent();
   if (highContrast) {
