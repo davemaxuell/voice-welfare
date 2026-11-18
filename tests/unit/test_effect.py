@@ -1,3 +1,6 @@
+from unittest.mock import AsyncMock, Mock
+
+from cheongeum.agents.web.agent import WebExecutionAgent
 from cheongeum.agents.web.effect import Churn, diff_views, item_changed, looks_loading
 
 
@@ -66,6 +69,18 @@ def test_a_spot_that_changed_in_two_pauses_is_ignored_for_any_text():
     churn = learned(PAGE.format("알림 1호"), PAGE.format("알림 2호"), PAGE.format("알림 3호"))
     assert churn.volatile() == {"보조기기 지원": 1}
     assert diff_views(view(PAGE.format("알림 3호")), view(PAGE.format("알림 9호")), volatile=churn.volatile()) == ("none", "")
+
+
+async def test_observe_learns_churn_only_after_idle_gaps():
+    adapter = AsyncMock()
+    adapter.observe.side_effect = [view(PAGE.format(f"알림 {i}호")) for i in range(4)]
+    agent = WebExecutionAgent(adapter, Mock(), Mock())
+    agent.clock = iter([0, 0.5, 1.5, 2.5]).__next__
+    for _ in range(3):
+        await agent.observe()
+    assert agent._churn.volatile() == {}
+    await agent.observe()
+    assert agent._churn.volatile() == {"보조기기 지원": 1}
 
 
 def test_content_that_arrived_once_is_not_ignored():

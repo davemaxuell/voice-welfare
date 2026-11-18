@@ -149,6 +149,7 @@ class WebExecutionAgent:
         self._last_view: dict | None = None
         self._last_view_at = 0.0
         self._acted_since_observe = False
+        self.clock: Callable[[], float] = time.monotonic
         self._churn = Churn()
 
     @property
@@ -446,7 +447,7 @@ class WebExecutionAgent:
             ctx.trace("OBSERVING", self.id)
         obs = await self.adapter.observe()
         view = {**obs, "pageId": self.profile.classify(obs["url"])}
-        now = time.monotonic()
+        now = self.clock()
         idle = not poll and not self._acted_since_observe and now - self._last_view_at >= IDLE_GAP_S
         self._churn.observe(view, self._last_view if idle else None)
         self._last_view, self._last_view_at, self._acted_since_observe = view, now, False
