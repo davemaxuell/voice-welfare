@@ -61,9 +61,12 @@ export class ApplicationCommands {
     let handoff: AgentHandoff | undefined;
     if (grounded !== undefined) {
       const targetUrl = s.web.profile.urls.apply;
-      handoff = omitAbsent({from: AGENT_IDS.welfare, to: AGENT_IDS.web, taskId: turn.id, goal: grounded.servNm + " 모의 신청서 열기",
-        targetUrl, sources: grounded.sources, requiresApprovedDomain: true as const, domainApproved: s.web.isApprovedUrl(targetUrl),
-        officialUrl: grounded.sources[0]?.url});
+      handoff = omitAbsent({
+        from: AGENT_IDS.welfare, to: AGENT_IDS.web, taskId: turn.id,
+        goal: grounded.servNm + " 모의 신청서 열기", targetUrl, sources: grounded.sources,
+        requiresApprovedDomain: true as const, domainApproved: s.web.isApprovedUrl(targetUrl),
+        officialUrl: grounded.sources[0]?.url,
+      });
       turn.ctx.trace("PLANNING", AGENT_IDS.welfare, "handoff → " + AGENT_IDS.web + " (approved=" + String(handoff.domainApproved) + ")");
       if (!handoff.domainApproved) return draft(s.state, "agent-handoff", "인계받은 신청 주소가 허용된 사이트가 아니라서 열지 않았습니다.", {handoff});
     }
@@ -107,11 +110,12 @@ export class ApplicationCommands {
 
   async approve(turn: Turn): Promise<Draft> {
     const s = this.session;
-    const approval = s.dialogue.approval;
-    if (approval === undefined) return draft(s.state, "none", "지금 승인할 작업이 없습니다. 승인은 실행 직전에만 요청합니다.");
+    const pending = s.dialogue.approval;
+    if (pending === undefined) return draft(s.state, "none", "지금 승인할 작업이 없습니다. 승인은 실행 직전에만 요청합니다.");
     const view = await s.web.observe(turn.ctx);
     turn.ctx.signal.throwIfAborted();
-    if (approval !== s.dialogue.approval) return draft(s.state, "none", "지금 승인할 작업이 없습니다. 승인은 실행 직전에만 요청합니다.");
+    if (pending !== s.dialogue.approval) return draft(s.state, "none", "지금 승인할 작업이 없습니다. 승인은 실행 직전에만 요청합니다.");
+    const approval = structuredClone(pending);
     const actions = approval.kind === "assist" ? approval.actions : [approval.action];
     const [now, changed] = recheck(approval.fingerprint, view, actions);
     if (changed !== undefined) {
@@ -122,7 +126,7 @@ export class ApplicationCommands {
     if (s.dialogue.approvalAge >= APPROVAL_TTL_SECONDS) {
       s.dialogue.askApproval({...approval, fingerprint: now});
       return draft("WAITING_FOR_USER_CONFIRMATION", approval.kind === "click" ? "confirm-click" : "prepare-submit",
-        "여쭤본 지 2분이 지나서 다시 여쭤볼게요. " + now.speech, {view, masked: true});
+        "여쭤본 지 " + APPROVAL_TTL_SECONDS / 60 + "분이 지나서 다시 여쭤볼게요. " + now.speech, {view, masked: true});
     }
     return turn.ctx.granted(actions.map(a => a.id), async () => {
       if (approval.kind === "click") return s.browse.clickApproved(approval, turn.ctx);

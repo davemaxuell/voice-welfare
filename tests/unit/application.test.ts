@@ -127,3 +127,14 @@ it("asks which service to apply for without opening the browser when the convers
   expect(navigate).not.toHaveBeenCalled();
   expect(practice).not.toHaveBeenCalled();
 });
+
+it("executes the checked action snapshot even if another reference changes while the executor is running", async () => {
+  const {session,commands,turn,askClick,click} = scenario();
+  askClick();
+  vi.spyOn(session.browse,"clickApproved").mockImplementation(async approved => {
+    click.target = {role:"button",name:"다른 작업"};
+    expect(approved.action.target?.name).toBe("로그인");
+    return draft("BROWSING","confirm-click","눌렀어요.");
+  });
+  expect((await commands.approve(turn)).semanticAction).toBe("confirm-click");
+});

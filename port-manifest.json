@@ -340,6 +340,25 @@
       ],
       "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876",
       "partial": true
+    },
+    "src/agents/web/skills/form.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/form.py"
+      ],
+      "sha": "2f6c2ba3ea2e27377e794e8d5c894ac6db39846f"
+    },
+    "src/agents/web/skills/guided.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/guided.py"
+      ],
+      "sha": "2f6c2ba3ea2e27377e794e8d5c894ac6db39846f"
+    },
+    "src/orchestrator/application.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "2f6c2ba3ea2e27377e794e8d5c894ac6db39846f",
+      "partial": true
     }
   }
 }
