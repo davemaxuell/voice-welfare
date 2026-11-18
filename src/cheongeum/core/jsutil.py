@@ -15,7 +15,7 @@ import math
 import time
 import uuid as _uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, TypeVar
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
@@ -57,8 +57,11 @@ def now_iso() -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S.") + f"{t.microsecond // 1000:03d}Z"
 
 
+KST = timezone(timedelta(hours=9))
+
+
 def today_iso() -> str:
-    return now_iso()[:10]
+    return datetime.now(KST).date().isoformat()
 
 
 def js_round(x: float) -> int:
