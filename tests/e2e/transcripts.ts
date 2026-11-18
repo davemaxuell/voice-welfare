@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { createTestRuntime, openBrowserTranscript } from "./session-runtime.ts";
 
 type Json = z.infer<ReturnType<typeof z.json>>;
 const fields = z.record(z.string(), z.json());
@@ -46,7 +47,6 @@ type Turn = z.infer<typeof turn>;
 type IndexEntry = z.infer<typeof fixtureIndex>["cases"][number];
 type Generate = (request: { schemaName: string; system: string; user: string }) => Json | undefined;
 
-// PR8에서 각 단위가 구현되면 이 경계에 실제 세션을 연결한다. 관찰·개인 정보는 호출이 끝난 뒤 읽는다.
 export interface TranscriptSession {
   bindModels(roles: Turn["roles"], generate: Generate): void;
   dispatch(call: Turn["call"]): Promise<unknown>;
@@ -54,7 +54,9 @@ export interface TranscriptSession {
   close(): Promise<void>;
 }
 export type OpenTranscript = (options: Header) => Promise<TranscriptSession>;
-export const openSlice = new Map<IndexEntry["slice"], OpenTranscript>();
+const runtime = createTestRuntime();
+export const openSlice = new Map<IndexEntry["slice"], OpenTranscript>([["PR8a", openBrowserTranscript(runtime)]]);
+export const closeTranscriptRuntime = runtime.close;
 
 export function loadTranscript(base: URL, entry: IndexEntry) {
   const rows = readFileSync(new URL(entry.file, base), "utf8").trimEnd().split("\n");
@@ -79,8 +81,8 @@ class Normalizer {
     return alias;
   }
 
-  clean(value: Json, key = ""): Json {
-    if (key === "reply") return value;
+  clean(value: unknown, key = ""): Json {
+    if (key === "reply") return z.json().parse(value);
     if (typeof value === "string") {
       if (key === "id" && /^\d{13}$/u.test(value)) return this.ordinal(value, this.ids, "$id");
       return value.replace(/\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/giu, id => this.ordinal(id, this.ids, "$id"))
@@ -93,10 +95,11 @@ class Normalizer {
       return items.filter((item, i) => i === 0 || item === null || typeof item !== "object" ||
         Array.isArray(item) || item.phase !== "OBSERVING" || JSON.stringify(item) !== JSON.stringify(items[i - 1]));
     }
-    if (value === null || typeof value !== "object") return value;
+    if (value === null || typeof value !== "object") return z.json().parse(value);
+    const fields = z.record(z.string(), z.unknown()).parse(value);
     const result: Record<string, Json> = {};
-    for (const k of Object.keys(value).sort((a, b) => a === b ? 0 : a < b ? -1 : 1)) {
-      const v = value[k];
+    for (const k of Object.keys(fields).sort((a, b) => a === b ? 0 : a < b ? -1 : 1)) {
+      const v = fields[k];
       if (v !== null && v !== undefined && k !== "latencyMs" && k !== "atMs") result[k] = this.clean(v, k);
     }
     return result;
@@ -122,8 +125,9 @@ function mask(root: Json, path: readonly (number | string)[]) {
 export async function replayTranscript(tape: { session: Header; turns: Turn[] }, open: OpenTranscript) {
   const session = await open(tape.session);
   const normal = new Normalizer();
-  normal.clean(tape.session);
   try {
+    assert.deepEqual(normal.clean(session.inspect().personal), tape.session.initialPersonal,
+      `${tape.session.case} initial personal store`);
     for (const [index, row] of tape.turns.entries()) {
       const actualCalls: Turn["llm"] = [];
       let consumed = 0;
@@ -149,10 +153,10 @@ export async function replayTranscript(tape: { session: Header; turns: Turn[] },
       assert.equal(extraCall, false, "unexpected model call");
       assert.equal(consumed, row.llm.length, "missing model call");
       const { unstable: ignored = [], ...expectedRow } = row;
-      const actual = normal.clean(z.json().parse({
+      const actual = normal.clean({
         kind: "turn", call: row.call, roles: row.roles, result,
         llm: actualCalls, ...session.inspect(),
-      }));
+      });
       const expected = z.json().parse(expectedRow);
       for (const path of ignored) {
         mask(actual, path);

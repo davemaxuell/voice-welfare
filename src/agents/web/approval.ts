@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import type { ApprovalFingerprint } from "../../core/dialogue.ts";
 import type { Action, ActionTarget } from "../../core/actions.ts";
 import { tryUrl } from "../../core/url.ts";
 import { josa, speakLabel } from "../../speech/phrasing.ts";
 import type { WebObservation } from "./view.ts";
 
 export type ApprovalAction = Pick<Action, "type" | "value" | "target">;
-export type ApprovalFingerprint = ReturnType<typeof fingerprint>;
+export type { ApprovalFingerprint } from "../../core/dialogue.ts";
 
 function valueHash(value: string | undefined): string | null {
   return value === undefined ? null : createHash("sha256").update(value, "utf8").digest("hex").slice(0, 16);
@@ -22,7 +23,7 @@ function targetNow(view: WebObservation, target: ActionTarget) {
 }
 
 // 본문·제목이 바뀌어도 무효화하지 않는다. 화면 값과 앞으로 넣을 값은 지문에 해시로만 저장한다.
-export function fingerprint(view: WebObservation, actions: readonly ApprovalAction[], speech: string, fieldIds?: readonly string[]) {
+export function fingerprint(view: WebObservation, actions: readonly ApprovalAction[], speech: string, fieldIds?: readonly string[]): ApprovalFingerprint {
   const fields = fieldIds ?? actions.flatMap(({ target }) => target?.fieldId === undefined || target.fieldId.length === 0 ? [] : [target.fieldId]);
   const observed = new Map((view.fields ?? []).map(field => [field.fieldId, field]));
   const url = tryUrl(view.url);

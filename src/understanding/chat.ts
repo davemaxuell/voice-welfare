@@ -19,13 +19,13 @@ export interface ChatContext {
   askedJustNow: boolean;
 }
 
-export async function chatRoute(llm: StructuredLlm, text: Redacted, ctx: ChatContext): Promise<Record<string, unknown>> {
+export async function chatRoute(llm: StructuredLlm, text: Redacted, ctx: ChatContext, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const routes = ["welfare", "web_search", "web_task", "general", "language"];
   if (!ctx.askedJustNow) routes.push("clarify");
   const output = await llm.generate({
     system: SYSTEM,
     user: redactedJson({ utterance: text, page: ctx.page ?? null, lastAssistant: ctx.lastAssistant ?? null, recent: ctx.recent }),
-    schemaName: "chat_route",
+    schemaName: "chat_route", signal,
     schema: {
       type: "object", additionalProperties: false,
       required: ["route", "reply", "searchQuery", "language"],

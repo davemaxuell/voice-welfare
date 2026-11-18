@@ -3,6 +3,10 @@ export function strip(text: string): string {
   return text.replace(/^[\p{White_Space}\u001c-\u001f]+|[\p{White_Space}\u001c-\u001f]+$/gu, "");
 }
 
+export function hasText(value?: string | null): value is string {
+  return value != null && value.length > 0;
+}
+
 export function asciiDecimalDigits(text: string): string {
   return text.replace(/\p{Nd}/gu, digit => {
     const point = digit.codePointAt(0)!;
