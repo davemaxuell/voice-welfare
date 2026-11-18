@@ -2,7 +2,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { PORTAL2, scripted, step } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
-import { openSlice } from "./transcripts.ts";
 
 const runtime = createTestRuntime({ readOnlyClicks: "any" });
 afterEach(runtime.closeSessions);
@@ -15,7 +14,7 @@ async function openPortal(query = "") {
 }
 const applyQuote = "신청 방법은 주소지 행정복지센터 3층 복지과 창구를 방문하는 것입니다";
 
-it.runIf(openSlice.has("PR8c"))("test_menu_buttons_reach_the_model", async () => {
+it("test_menu_buttons_reach_the_model", async () => {
   const { session } = await runtime.createBrowserSession();
   const seen = scripted(session, [step("open_url", url), step("answer", null, "복지서비스 메뉴가 있어요.", ["복지서비스"])]);
   await session.handleTurn(PORTAL2 + "에서 메뉴 뭐 있는지 알려줘");
@@ -24,7 +23,7 @@ it.runIf(openSlice.has("PR8c"))("test_menu_buttons_reach_the_model", async () =>
   expect(names).not.toContain("글자 크게");
 });
 
-it.runIf(openSlice.has("PR8c")).each([
+it.each([
   ["복지 상담 센터", "복지 상담 센터"], ["이용 안내서", "이용 안내서"], ["관련 법령 보기", "관련 법령"], ["보조기기 체험관 둘러보기", "보조기기 체험관"],
 ])("test_clicks_elements_missed_before", async (target, title) => {
   const { session } = await runtime.createBrowserSession();
@@ -34,7 +33,7 @@ it.runIf(openSlice.has("PR8c")).each([
   expect(result.observation?.title).toBe("[테스트] 복지 포털 2 - " + title);
 });
 
-it.runIf(openSlice.has("PR8c")).each([
+it.each([
   ["신청방법", applyQuote], ["서비스 내용", "서비스 내용은 보조기기 대여료를 한 달에 최대 3만 원까지 지원하는 것입니다"],
 ])("test_tab_reveals_its_panel", async (tab, quote) => {
   const { session } = await runtime.createBrowserSession();
@@ -47,7 +46,7 @@ it.runIf(openSlice.has("PR8c")).each([
   expect(result.trace.some(t => /새로 보이는 내용입니다|같은 화면에서 내용이 바뀌었어요/u.test(t.note ?? ""))).toBe(true);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_expander_opens_in_place", async () => {
+it("test_expander_opens_in_place", async () => {
   const { session } = await runtime.createBrowserSession();
   const quote = "필요한 서류는 신분증 사본과 진단서 두 가지입니다";
   const seen = scripted(session, [step("open_url", url), step("click", "서류는 몇 장인가요?"), step("answer", null, "신분증 사본과 진단서, 두 가지예요.", [quote])]);
@@ -57,7 +56,7 @@ it.runIf(openSlice.has("PR8c"))("test_expander_opens_in_place", async () => {
   expect([expanded(1), expanded(2)]).toEqual([false, true]);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_find_moves_the_text_window", async () => {
+it("test_find_moves_the_text_window", async () => {
   const { session } = await runtime.createBrowserSession();
   const quote = "이의 신청은 결정 통지를 받은 날부터 90일 안에 할 수 있습니다";
   const answer = "결정 통지를 받고 90일 안에 이의 신청할 수 있어요.";
@@ -68,7 +67,7 @@ it.runIf(openSlice.has("PR8c"))("test_find_moves_the_text_window", async () => {
   expect(result.speech).toBe(answer);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_nothing_changed_is_reported", async () => {
+it("test_nothing_changed_is_reported", async () => {
   const { session } = await runtime.createBrowserSession();
   scripted(session, [step("open_url", url), step("click", "글자 크게"), step("fail", null, "못 찾았어요.")]);
   const result = await session.handleTurn(PORTAL2 + "에서 글자 크게 버튼 찾아줘");
@@ -133,14 +132,14 @@ it("test_link_inside_popup_can_be_pressed", async () => {
   expect(result.observation?.title).toBe("[테스트] 복지 포털 2 - 공지");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_login_button_waits_for_the_go_word", async () => {
+it("test_login_button_waits_for_the_go_word", async () => {
   const { session } = await openPortal();
   const result = await session.handleTurn("로그인 눌러줘");
   expect(result.speech).toContain("누를까요?");
   expect(result.actions.filter(a => a.action.type === "click")).toEqual([]);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_login_click_is_dropped_when_the_button_changed", async () => {
+it("test_login_click_is_dropped_when_the_button_changed", async () => {
   const { session, page } = await openPortal();
   await session.handleTurn("로그인 눌러줘");
   const ref = session.dialogue.approval?.action.target?.ref;
@@ -152,7 +151,7 @@ it.runIf(openSlice.has("PR8c"))("test_login_click_is_dropped_when_the_button_cha
   expect(session.dialogue.approval).toBeUndefined();
 });
 
-it.runIf(openSlice.has("PR8c"))("test_rotating_notice_does_not_cancel_an_approval", async () => {
+it("test_rotating_notice_does_not_cancel_an_approval", async () => {
   const { session } = await openPortal("?rotate=1");
   await session.handleTurn("로그인 눌러줘");
   await delay(1500);
@@ -186,7 +185,7 @@ it("test_elements_are_classified_for_the_guard", async () => {
   });
 });
 
-it.runIf(openSlice.has("PR8c"))("test_safe_mode_allows_information_tabs_only", async () => {
+it("test_safe_mode_allows_information_tabs_only", async () => {
   const { session } = await runtime.createBrowserSession({ readOnlyClicks: "safe" });
   const answer = "행정복지센터 3층 복지과 창구에서 신청해요.";
   scripted(session, [step("open_url", url), step("click", "온라인 신청하기"), step("click", "보조기기 체험관 둘러보기"),
