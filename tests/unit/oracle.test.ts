@@ -1,20 +1,17 @@
-import { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { z } from "zod";
+import { portedSources } from "../../scripts/port-manifest.ts";
 import { implementations, loadOracle, oracleImplementation, replayCase } from "./oracle.ts";
 
 const fixtures = fileURLToPath(new URL("../fixtures/oracle/", import.meta.url));
 const groups = loadOracle(fixtures);
-const manifest = z.object({ modules: z.record(z.string(), z.object({ python: z.array(z.string()) })) })
-  .parse(JSON.parse(readFileSync(new URL("../../port-manifest.json", import.meta.url), "utf8")));
-const ported = new Set(Object.values(manifest.modules).flatMap(entry => entry.python));
 const pending = [];
 
 for (const [name, { module, cases }] of groups) {
-  const implementation = oracleImplementation(name, module, ported);
+  const implementation = oracleImplementation(name, module, portedSources);
   if (implementation === undefined) {
     pending.push(name);
     it.skip(`missing TS implementation: ${name} (${cases.length})`);

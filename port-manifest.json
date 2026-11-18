@@ -1,1 +1,133 @@
-{"modules":{}}
+{
+  "modules": {
+    "src/core/actions.ts": {
+      "python": [
+        "src/cheongeum/core/actions.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/intents.ts": {
+      "python": [
+        "src/cheongeum/core/intents.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/turn.ts": {
+      "python": [
+        "src/cheongeum/core/turn.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/dialogue.ts": {
+      "python": [
+        "src/cheongeum/core/dialogue.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/events.ts": {
+      "python": [
+        "src/cheongeum/core/events.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/progress.ts": {
+      "python": [
+        "src/cheongeum/core/progress.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/llm.ts": {
+      "python": [
+        "src/cheongeum/core/llm.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/chat.ts": {
+      "python": [
+        "src/cheongeum/understanding/chat.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/llm_planner.ts": {
+      "python": [
+        "src/cheongeum/understanding/llm_planner.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/understand.ts": {
+      "python": [
+        "src/cheongeum/understanding/understand.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/rules.ts": {
+      "python": [
+        "src/cheongeum/understanding/rules.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/filters.ts": {
+      "python": [
+        "src/cheongeum/understanding/filters.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/understanding/sites.ts": {
+      "python": [
+        "src/cheongeum/understanding/sites.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/time.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/url.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/abort.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/text.ts": {
+      "python": [
+        "src/cheongeum/understanding/filters.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/mutex.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/sequence_matcher.ts": {
+      "python": [
+        "src/cheongeum/agents/web/effect.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    },
+    "src/core/schema.ts": {
+      "python": [
+        "src/cheongeum/core/actions.py",
+        "src/cheongeum/core/turn.py",
+        "src/cheongeum/core/intents.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
+      "partial": true
+    }
+  }
+}
