@@ -1,3 +1,5 @@
+import { sttRegexPorts } from "./stt-regex.ts";
+import { evaluationRegexPorts } from "./evaluation-regex.ts";
 import { formSkillRegexPorts } from "./form-skill-regex.ts";
 import { applicationRegex } from "./application-regex.ts";
 import { sessionPatterns } from "../../src/orchestrator/session.ts";
@@ -24,4 +26,4 @@ const sessionRegexPorts = new Map([["src/cheongeum/orchestrator/session.py", new
 const documentRegexPorts = new Map([["src/cheongeum/agents/web/docs.py", new Map([
   ["ccb516f0c08a9a300999", documentPatterns.lineEnd], ["4e7d97ccd5d741ffc4a5", documentPatterns.spaces],
 ])]]);
-export const regexPorts: ReadonlyMap<string, ReadonlyMap<string, RegExp>> = new Map([...formSkillRegexPorts, ...sessionRegexPorts, ...browseSkillRegexPorts, ...ruleRegexPorts, ...plannerRegexPorts, ...privacyRegexPorts, ...policyRegexPorts, ...speechRegexPorts, ...webViewRegexPorts, ...webPolicyRegexPorts, ...browserRegexPorts, ...webAgentRegexPorts, ...documentRegexPorts, ...welfareRegexPorts, ...personalRegexPorts]);
+export const regexPorts: ReadonlyMap<string, ReadonlyMap<string, RegExp>> = new Map([...sttRegexPorts, ...evaluationRegexPorts, ...formSkillRegexPorts, ...sessionRegexPorts, ...browseSkillRegexPorts, ...ruleRegexPorts, ...plannerRegexPorts, ...privacyRegexPorts, ...policyRegexPorts, ...speechRegexPorts, ...webViewRegexPorts, ...webPolicyRegexPorts, ...browserRegexPorts, ...webAgentRegexPorts, ...documentRegexPorts, ...welfareRegexPorts, ...personalRegexPorts]);

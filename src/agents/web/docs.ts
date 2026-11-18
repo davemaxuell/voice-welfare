@@ -48,9 +48,9 @@ function hwpxText(bytes: Uint8Array) {
   if (text.length === 0) text = all.flatMap(name => words(files[name]!, true)).join("");
   return strip(text.replace(documentPatterns.spaces, " "));
 }
-export async function readDocument(path: string, { maxChars = 8000 }: { maxChars?: number } = {}): Promise<DocumentRead> {
+export async function readDocument(path: string, { maxChars = 8000, filename }: { maxChars?: number; filename?: string } = {}): Promise<DocumentRead> {
   if ((await stat(path).catch(() => undefined))?.isFile() !== true) return { ok: false, kind: "other", speech: "그 파일을 찾지 못했어요." };
-  const name = basename(path);
+  const name = basename(filename ?? path);
   const extension = extname(name).toLowerCase();
   if (extension === ".hwp") return { ok: false, kind: "hwp", speech: `'${name}'은 예전 한글 파일(HWP)이라 글자를 뽑지 못해요. HWPX나 PDF로 받아 주세요.` };
   if (extension !== ".pdf" && extension !== ".hwpx") return { ok: false, kind: "other", speech: `'${name}'은 아직 읽어 드리지 못하는 형식이에요. PDF나 HWPX만 돼요.` };

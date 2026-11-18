@@ -19,6 +19,7 @@ import type { OpenTranscript, TranscriptSession } from "./transcripts.ts";
 export interface SessionOptions {
   mockSiteUrl?: string;
   searchUrlTemplate?: string;
+  navigationTimeoutMs?: number;
   readOnlyWeb?: boolean;
   readOnlyClicks?: "safe" | "any";
   requireConsent?: boolean;
@@ -39,7 +40,8 @@ export function createTestRuntime(defaults: SessionOptions = {}) {
     const allowedOrigins = [profile.origin];
     const readOnlyWeb = opts.readOnlyWeb ?? true;
     const downloads = new DownloadStore();
-    const adapter = new PlaywrightExecutionAdapter({ browser: await browser, allowedOrigins, readOnlyWeb, downloads });
+    const adapter = new PlaywrightExecutionAdapter({ browser: await browser, allowedOrigins, readOnlyWeb, downloads,
+      navigationTimeoutMs: opts.navigationTimeoutMs });
     try {
       await adapter.start();
       const guard = new PolicyGuard({ allowedOrigins, readOnlyWeb, readOnlyClicks: opts.readOnlyClicks ?? "safe",
@@ -86,7 +88,8 @@ const InitialPersonal = z.object({
   allowedSites: z.array(z.string()),
 });
 
-export function openBrowserTranscript(runtime: ReturnType<typeof createTestRuntime>): OpenTranscript {
+type DispatchFactory = (session: SessionOrchestrator) => Promise<TranscriptSession["dispatch"]>;
+export function openBrowserTranscript(runtime: ReturnType<typeof createTestRuntime>, via?: DispatchFactory): OpenTranscript {
   return async header => {
     const initial = InitialPersonal.parse(header.initialPersonal);
     const personal = new PersonalStore();
@@ -97,6 +100,9 @@ export function openBrowserTranscript(runtime: ReturnType<typeof createTestRunti
     const day = header.calendarDay;
     const actionLog = header.actionLogEnabled ? new ActionLog(undefined, undefined, () => new Date(day + "T03:00:00Z")) : undefined;
     const { session, close } = await runtime.createBrowserSession({ ...header.config, personal, actionLog, today: () => day });
+    let dispatch: TranscriptSession["dispatch"] | undefined;
+    try { dispatch = await via?.(session); }
+    catch (error) { await close(); throw error; }
     const dialogue = session.dialogue;
     let before = actionLog?.recent(10_000).length ?? 0;
     const transcript: TranscriptSession = {
@@ -109,6 +115,7 @@ export function openBrowserTranscript(runtime: ReturnType<typeof createTestRunti
       },
       async dispatch(call) {
         before = actionLog?.recent(10_000).length ?? 0;
+        if (dispatch !== undefined) return dispatch(call);
         switch (call.method) {
           case "handle_turn": return session.handleTurn(call.args[0]);
           case "confirm": return session.confirm(call.args[0]);

@@ -331,15 +331,13 @@
       "python": [
         "src/cheongeum/orchestrator/session.py"
       ],
-      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876",
-      "partial": true
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
     },
     "src/orchestrator/replies.ts": {
       "python": [
         "src/cheongeum/orchestrator/session.py"
       ],
-      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876",
-      "partial": true
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
     },
     "src/agents/web/skills/form.ts": {
       "python": [
@@ -357,8 +355,68 @@
       "python": [
         "src/cheongeum/orchestrator/session.py"
       ],
-      "sha": "2f6c2ba3ea2e27377e794e8d5c894ac6db39846f",
+      "sha": "2f6c2ba3ea2e27377e794e8d5c894ac6db39846f"
+    },
+    "src/evaluation/index.ts": {
+      "python": [
+        "src/cheongeum/evaluation/__init__.py"
+      ],
+      "sha": "5db04c0",
       "partial": true
+    },
+    "src/voice/errors.ts": {
+      "python": [
+        "src/cheongeum/voice/errors.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/voice/stt.ts": {
+      "python": [
+        "src/cheongeum/voice/stt.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/voice/stt_local.ts": {
+      "python": [
+        "src/cheongeum/voice/stt_local.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/voice/tts.ts": {
+      "python": [
+        "src/cheongeum/voice/tts.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/voice/config.ts": {
+      "python": [
+        "src/cheongeum/voice/config.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/server/main.ts": {
+      "python": [
+        "src/cheongeum/server/__main__.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/server/app.ts": {
+      "python": [
+        "src/cheongeum/server/app.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/server/runtime.ts": {
+      "python": [
+        "src/cheongeum/server/runtime.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "python/cheongeum_stt/sidecar.py": {
+      "python": [
+        "src/cheongeum/voice/stt_local.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
     }
   }
 }

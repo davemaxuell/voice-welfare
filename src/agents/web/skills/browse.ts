@@ -353,8 +353,12 @@ export class BrowseSkill {
     const view = await this.#visiblePage(ctx);
     if (!view) return {...notOpen(this.web.currentView, this.dialogue.state), semanticAction: "describe-screen"};
     const detailed = view.pageId.startsWith("mock") || browsePatterns.detailed.test(text);
-    const speech = detailed ? [this.narrator.describeScreen(view), this.form.askNext(view)].filter(Boolean).join(" ") : await this.narrator.briefScreen(view, ctx);
-    return draft(this.dialogue.state, "describe-screen", speech, {view, masked: true});
+    if (detailed) {
+      const prompt = this.form.askNext(view);
+      const speech = [this.narrator.describeScreen(view), prompt].filter(Boolean).join(" ");
+      return draft(this.dialogue.state, "describe-screen", speech, {view, masked: true, historySpeech: this.narrator.historyScreen(view, prompt)});
+    }
+    return draft(this.dialogue.state, "describe-screen", await this.narrator.briefScreen(view, ctx), {view, masked: true});
   }
 
   async currentStep(ctx: ExecContext): Promise<Draft> {
