@@ -1,16 +1,14 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { realpath } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { Hono } from "hono";
 import { getRequestListener } from "@hono/node-server";
 import { REPO_ROOT, practiceSite } from "../core/assets.ts";
 import { stopPlaywright } from "../agents/web/browser/index.ts";
-import { makeApp, staticFiles } from "./app.ts";
+import { createPracticeSite } from "../practice_site/serve.ts";
+import { makeApp } from "./app.ts";
 import { AgentRuntime, loadConfig } from "./runtime.ts";
 
 function listen(server: Server, host: string, port: number) {
@@ -42,33 +40,8 @@ async function ensurePracticeSite() {
   } catch {
     /* 모의 사이트가 없으면 같은 포트에 띄운다. */
   }
-  const app = new Hono();
-  const checkout = createHash("sha1")
-    .update(await realpath(practiceSite))
-    .digest("hex")
-    .slice(0, 12);
-  app.use("*", async (c, next) => {
-    await next();
-    c.header("X-Ieum-Checkout", checkout);
-  });
-  app.use("*", staticFiles(practiceSite));
-  const makeServer = () => createServer(getRequestListener(app.fetch));
-  const v4 = makeServer(),
-    v6 = makeServer();
-  try {
-    await listen(v4, "127.0.0.1", 5174);
-    try {
-      await listen(v6, "::1", 5174);
-    } catch (e) {
-      if (!(e instanceof Error && "code" in e && (e.code === "EAFNOSUPPORT" || e.code === "EADDRNOTAVAIL"))) throw e;
-    }
-  } catch (e) {
-    await Promise.all([closeServer(v4), closeServer(v6)]);
-    throw e;
-  }
-  return async () => {
-    await Promise.all([closeServer(v4), closeServer(v6)]);
-  };
+  const site = await createPracticeSite(practiceSite).startMockSite(5174);
+  return site.close;
 }
 
 export async function build(desktop = false, env: NodeJS.ProcessEnv = process.env) {
