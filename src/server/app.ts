@@ -1,8 +1,7 @@
 import { Hono, type Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { REPO_ROOT, webStatic } from "../core/assets.ts";
+import { REPO_ROOT } from "../core/assets.ts";
 import { strip } from "../core/text.ts";
 import { LangSchema, LANGS } from "../core/turn.ts";
 import type { SessionOrchestrator } from "../orchestrator/session.ts";
@@ -307,17 +306,16 @@ export function makeApp<S extends HttpSession>(
     } catch (e) {
       return voiceError(e);
     }
-    const utterance = Array.from(text).slice(0, 500).join("");
     if (busy) {
       const spans = (await runtime.scanner?.scan([text]))?.[0];
       const safe = redactText(text, spans);
-      if (isStopUtterance(safe)) return Response.json({ stopped: true, result: await session.handleTurn(utterance) });
+      if (isStopUtterance(safe)) return Response.json({ stopped: true, result: await session.handleTurn(text, 500) });
       if (isProgressQuestion(safe))
-        return Response.json({ stopped: false, result: await session.handleTurn(utterance) });
+        return Response.json({ stopped: false, result: await session.handleTurn(text, 500) });
       return Response.json({ stopped: false });
     }
     if (text.length === 0) return error(422, "EMPTY_TRANSCRIPT", "말씀을 알아듣지 못했습니다. 다시 말씀해 주세요.");
-    return Response.json(await session.handleTurn(utterance));
+    return Response.json(await session.handleTurn(text, 500));
   }
   app.post("/api/audio/turn", (c) => voiceTurn(c, false));
   app.post("/api/audio/stop", (c) => voiceTurn(c, true));
@@ -354,9 +352,7 @@ export function makeApp<S extends HttpSession>(
     }),
   );
   if (options.web === true) {
-    const built = join(REPO_ROOT, "dist/web");
-    const root = existsSync(join(built, "index.html")) ? built : webStatic;
-    const files = staticFiles(root);
+    const files = staticFiles(join(REPO_ROOT, "dist/web"));
     app.use("*", async (c, next) => {
       if (c.req.path.startsWith("/api/")) return next();
       return files(c, next);

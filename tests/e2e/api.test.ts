@@ -236,3 +236,16 @@ it("keeps audio on the client until consent, then uses the selected conversation
     await restricted.close();
   }
 });
+
+it("긴 음성의 500번째 글자에 걸친 주민번호도 전부 가린다", async () => {
+  const id = await sessionId();
+  for (const prefix of ["가".repeat(497), "😀".repeat(497), "  " + "가".repeat(495)]) {
+    const response = await say(id, prefix + "900101-1234567");
+    expect(response.status).toBe(200);
+    const turn = TurnResultSchema.parse(await response.json());
+    expect(turn.intentType).toBe("SECRET_DISCLOSURE");
+    expect(turn.userUtterance).toContain("[비공개]");
+    expect(turn.userUtterance).not.toContain("900");
+    expect(JSON.stringify(app.sessions.get(id)?.exportHistory().map(row => row.text))).not.toContain("900");
+  }
+});
