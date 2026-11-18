@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+from contextvars import ContextVar
 import dataclasses
 import inspect
 import json
@@ -66,6 +67,7 @@ TICKER = re.compile(r"알림: 전산 점검 안내 (\d+)호")
 REFERENCE_DAY = date(2026, 11, 18)
 STOP_RACE = "test_safety.py::test_stop_interrupts_inflight_and_blocks_later"
 MOCK_ORIGINS = ("http://localhost:5174/", "http://127.0.0.1:5174/")
+POLL = ContextVar("oracle_browser_poll", default=False)
 
 
 class ReferenceDate(date):
@@ -118,6 +120,12 @@ class RecordedLlm:
 
 def call_inputs(name, bound):
     args = dict(bound.arguments)
+    if name == "diff_views":
+        before, after = args["before"], args["after"]
+        if "capturedAt" in before and before["url"] != after["url"]:
+            # URL이 바뀌면 moved로 즉시 반환한다. 새 문서가 얼마나 로드됐는지는 입력에 넣지 않는다.
+            for key in ("before", "after"):
+                args[key] = {"url": args[key]["url"], "title": ""}
     if "self" in args:
         receiver = args.pop("self")
         if name.startswith("RuleBasedIntentProvider."):
@@ -151,7 +159,7 @@ def unstable_browser_sample(name, args):
     # 모의 HTML에는 모두 title이 있다. 이동 직후 아직 문서가 없는 순간은 폴링 속도에 달렸다.
     for key in ("before", "after", "view", "idle_prev"):
         view = args.get(key)
-        if view and view.get("url", "").startswith(MOCK_ORIGINS) and view.get("title") == "" and not (view.get("outline") or {}).get("mainText"):
+        if view and "outline" in view and view.get("url", "").startswith(MOCK_ORIGINS) and view.get("title") == "" and not (view.get("outline") or {}).get("mainText"):
             return True
     if name == "Churn.observe":
         page = args["state"]["page"]
@@ -206,6 +214,8 @@ class Recorder:
         def capture(*args, **kwargs):
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
+            if name == "Churn.observe" and POLL.get():
+                return original(*args, **kwargs)
             inputs = call_inputs(name, bound)
             result = original(*args, **kwargs)
             if module == "safety.privacy":
@@ -228,8 +238,22 @@ class Recorder:
 
     @contextlib.contextmanager
     def installed(self):
+        from cheongeum.agents.web.agent import WebExecutionAgent
+
         aliases = {}
         with contextlib.ExitStack() as patches:
+            observe = WebExecutionAgent.observe
+
+            @wraps(observe)
+            async def mark_poll(agent, ctx=None, poll=False):
+                token = POLL.set(poll)
+                try:
+                    return await observe(agent, ctx, poll=poll)
+                finally:
+                    POLL.reset(token)
+
+            # Churn의 폴링 횟수는 브라우저 로드 시간에 달렸다. 사용자를 기다린 관찰은 그대로 기록한다.
+            patches.enter_context(patch.object(WebExecutionAgent, "observe", mark_poll))
             for module, names in TARGETS.items():
                 source = import_module(f"cheongeum.{module}")
                 for name in names.split():

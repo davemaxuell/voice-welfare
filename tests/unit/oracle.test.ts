@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,10 +42,12 @@ it("rejects an altered oracle result", async () => {
 
 it("reports a missing oracle fixture even when its function is pending", () => {
   const directory = mkdtempSync(join(tmpdir(), "cheongeum-oracle-"));
+  const inventory = join(directory, "inventory.json");
+  writeFileSync(inventory, JSON.stringify({ control: ["control.echo"] }));
   try {
-    writeFileSync(join(directory, "inventory.json"), JSON.stringify({ control: ["control.echo"] }));
     expect(() => loadOracle(directory)).toThrow(/missing oracle fixture.*control\.jsonl/u);
   } finally {
-    rmSync(directory, { recursive: true, force: true });
+    unlinkSync(inventory);
+    rmdirSync(directory);
   }
 });

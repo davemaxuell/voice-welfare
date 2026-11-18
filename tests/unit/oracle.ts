@@ -8,7 +8,7 @@ const rowSchema = z.object({
   args: z.record(z.string(), z.unknown()),
   result: z.json(),
 }).strict();
-type OracleCase = z.infer<typeof rowSchema>;
+type OracleCase = z.infer<typeof rowSchema> & { location?: string };
 type OracleGroup = { module: string; cases: OracleCase[] };
 type Implementation = (args: OracleCase["args"]) => unknown;
 
@@ -27,7 +27,8 @@ function readFixture(path: string): string {
 }
 
 export function loadOracle(directory: string): Map<string, OracleGroup> {
-  const inventory = z.record(z.string(), z.array(z.string()).min(1)).parse(
+  const moduleName = z.string().regex(/^[a-z_]\w*(?:\.[a-z_]\w*)*$/u);
+  const inventory = z.record(moduleName, z.array(z.string().min(1)).min(1)).parse(
     JSON.parse(readFixture(join(directory, "inventory.json"))),
   );
   for (const file of readdirSync(directory)) {
@@ -44,13 +45,19 @@ export function loadOracle(directory: string): Map<string, OracleGroup> {
     }
     const lines = readFixture(path).trimEnd();
     if (lines.length === 0) throw new Error(`missing oracle cases: ${path}`);
-    for (const line of lines.split(/\r?\n/u)) {
-      const row = rowSchema.parse(JSON.parse(line));
+    for (const [index, line] of lines.split(/\r?\n/u).entries()) {
+      const location = `${path}:${index + 1}`;
+      let row;
+      try {
+        row = rowSchema.parse(JSON.parse(line));
+      } catch (error) {
+        throw new Error(`invalid oracle case at ${location}`, { cause: error });
+      }
       const group = grouped.get(row.fn);
       if (group === undefined || group.module !== module) {
         throw new Error(`unexpected oracle function in ${path}: ${row.fn}`);
       }
-      group.cases.push(row);
+      group.cases.push({ ...row, location });
     }
     for (const name of names) {
       if (grouped.get(name)?.cases.length === 0) throw new Error(`missing oracle cases: ${name}`);
@@ -70,5 +77,5 @@ export function oracleImplementation(name: string, module: string, ported: Reado
 }
 
 export async function replayCase(row: OracleCase, invoke: Implementation): Promise<void> {
-  deepStrictEqual(await invoke(row.args), row.result, `${row.fn}: ${JSON.stringify(row.args)}`);
+  deepStrictEqual(await invoke(row.args), row.result, row.location ?? row.fn);
 }
