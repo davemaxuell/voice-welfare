@@ -398,26 +398,24 @@ const THINKING_DELAY_MS = 1000;
 const WORKING_START_MS = 3000;
 const WORKING_EVERY_MS = 2500;
 
-/** 생각중·일하는중 신호음. 반환값을 부르면 타이머를 모두 지운다. */
-function progressCues() {
-  let cancelled = false;
+/** work가 끝날 때까지만 생각중·일하는중 신호음을 낸다. 답을 말하기 전에 그치고, 일하는 중에 안내를 말하는 동안은 건너뛴다. */
+async function withProgressCues(work) {
+  const tick = (kind) => {
+    if (!busyTalking) void cue(kind);
+  };
   let intervalId;
-  const thinkingId = setTimeout(() => {
-    if (!cancelled) void cue('thinking');
-  }, THINKING_DELAY_MS);
+  const thinkingId = setTimeout(() => tick('thinking'), THINKING_DELAY_MS);
   const workingId = setTimeout(() => {
-    if (cancelled) return;
-    void cue('working');
-    intervalId = setInterval(() => {
-      if (!cancelled) void cue('working');
-    }, WORKING_EVERY_MS);
+    tick('working');
+    intervalId = setInterval(() => tick('working'), WORKING_EVERY_MS);
   }, WORKING_START_MS);
-  return () => {
-    cancelled = true;
+  try {
+    return await work;
+  } finally {
     clearTimeout(thinkingId);
     clearTimeout(workingId);
-    if (intervalId !== undefined) clearInterval(intervalId);
-  };
+    clearInterval(intervalId);
+  }
 }
 
 function endConversation(withCue = true) {
@@ -496,9 +494,8 @@ async function startConversation() {
     if (!audio || !conversationOn) break;
     void cue('done');
     setPhase('thinking');
-    const stopProgress = progressCues();
     try {
-      const r = await whileBusy(api.audioTurn(ui.sessionId, audio), current);
+      const r = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId, audio), current));
       failures = 0;
       await applyResult(r, false);
       if (!conversationOn) break;
@@ -527,7 +524,7 @@ async function startConversation() {
         void cue('done');
         setPhase('thinking');
         try {
-          const again = await whileBusy(api.audioTurn(ui.sessionId, clip), current);
+          const again = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId, clip), current));
           await applyResult(again, false);
           if (!conversationOn) break;
           setPhase('speaking');
@@ -555,8 +552,6 @@ async function startConversation() {
         await speakAndWait('문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요.');
         break;
       }
-    } finally {
-      stopProgress();
     }
     // 스피커 소리 잔향이 마이크로 들어가지 않게 잠깐 쉰다.
     await new Promise((r) => setTimeout(r, 300));
@@ -825,8 +820,7 @@ async function toggleMic() {
   stopListening = browserStt.listen(
     (text) => {
       void cue('done');
-      const stop = progressCues();
-      void send(text).finally(stop);
+      void withProgressCues(send(text));
     },
     (msg) => setError(msg),
     () => set({ listening: false }),
@@ -851,13 +845,11 @@ async function toggleServerMic() {
     announce('인식 중입니다.');
     const audio = await rec.stop();
     void cue('done');
-    const stopProgress = progressCues();
     try {
-      await applyResult(await whileBusy(api.audioTurn(ui.sessionId, audio)));
+      await applyResult(await withProgressCues(whileBusy(api.audioTurn(ui.sessionId, audio))));
     } catch (e) {
       setError(e.message);
     } finally {
-      stopProgress();
       set({ busy: false });
     }
     return;
