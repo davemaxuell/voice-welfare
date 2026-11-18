@@ -1,3 +1,6 @@
+import { privacyImplementations } from "./privacy-oracle.ts";
+import { policyImplementations } from "./policy-oracle.ts";
+import { speechImplementations } from "./speech-oracle.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deepStrictEqual } from "node:assert/strict";
@@ -15,7 +18,7 @@ type OracleGroup = { module: string; cases: OracleCase[] };
 type Implementation = (args: OracleCase["args"]) => unknown;
 
 // 각 이식 PR에서 Python 호출 이름과 TypeScript 함수를 연결한다.
-export const implementations = new Map<string, Implementation>([...ruleImplementations, ...plannerImplementations]);
+export const implementations = new Map<string, Implementation>([...ruleImplementations, ...plannerImplementations, ...privacyImplementations, ...policyImplementations, ...speechImplementations]);
 
 function readFixture(path: string): string {
   try {
