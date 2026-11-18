@@ -2,7 +2,6 @@ import { afterAll, afterEach, expect, it } from "vitest";
 import type { TurnResult } from "../../src/core/turn.ts";
 import { PORTAL } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
-import { openSlice } from "./transcripts.ts";
 
 const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
@@ -180,7 +179,7 @@ it("test_missing_field_not_found", async () => {
   expect(result.actions).toEqual([]);
 });
 
-it.runIf(openSlice.has("PR8d"))("test_guided_fill_with_vault", async () => {
+it("test_guided_fill_with_vault", async () => {
   const { session } = await openPortal();
   const save = await session.handleTurn("내 이름은 김하늘이라고 저장해줘");
   expect(save.speech).toContain("이름 김하늘");

@@ -9,6 +9,34 @@ export type SensitiveKind = keyof typeof SENSITIVE_LABELS_KO;
 export type SecretSpan = readonly [kind: SensitiveKind, start: number, end: number];
 export const REDACTED = "[비공개]";
 
+const noticeStart = "보안을 위해 ";
+const noticeMiddle = "는 저에게 말하지 마세요. 방금 말씀하신 값은 저장하거나 화면에 입력하지 않았습니다. ";
+const loginInstructions = ["인증이 필요하면 '로그인하고 싶어'라고 말씀하시고, 열린 화면에 직접 입력해 주세요.", "인증 화면의 입력란에 키보드로 직접 입력해 주세요."];
+const labels = new Set<string>(Object.values(SENSITIVE_LABELS_KO));
+export const POSSIBLE_SECRET_NOTICE = "혹시 비밀번호나 인증번호라면 저에게 말하지 말고 화면의 입력란에 직접 입력해 주세요. 명령이었다면 한 번 더 말씀해 주세요.";
+
+export function disclosureNotice(kinds: readonly SensitiveKind[], onLogin: boolean) {
+  return noticeStart + (kinds.length === 0 ? "민감 정보" : kinds.map(k => SENSITIVE_LABELS_KO[k]).join(", ")) + noticeMiddle + loginInstructions[onLogin ? 1 : 0];
+}
+
+function isFixedGuidance(text: string) {
+  if (text === POSSIBLE_SECRET_NOTICE) return true;
+  if (/^(?:[1-9]|10)\. (?:비밀번호|인증번호), 보안 입력란, (?:선택|필수), 직접 입력해야 하는 칸\.$/u.test(text) && text.endsWith(".")) return true;
+  if (!text.startsWith(noticeStart)) return false;
+  const cut = text.indexOf(noticeMiddle, noticeStart.length);
+  if (cut < 0 || !loginInstructions.includes(text.slice(cut + noticeMiddle.length))) return false;
+  const names = text.slice(noticeStart.length, cut);
+  return names === "민감 정보" || names.split(", ").every(name => labels.has(name));
+}
+
+export function joinRedacted(parts: readonly Redacted[]): Redacted {
+  return parts.filter(s => s.length > 0).join(" ") as Redacted;
+}
+
+export function historyLine(role: "user" | "assistant", text: Redacted): Redacted {
+  return ((role === "user" ? "사용자: " : "청음: ") + Array.from(text).slice(0,400).join("")) as Redacted;
+}
+
 const p = {
   passwordKo: /(비밀\p{White_Space}*번호|비번|패스\p{White_Space}*워드|암호(?!화)|핀\p{White_Space}*번호)/u,
   password: /(password|passcode|密码|密碼|パスワード|暗証番号|(?<![A-Za-z0-9_İı])P[Iı]N(?![A-Za-z0-9_İı]))/iu,
@@ -120,6 +148,7 @@ function projectMask(window: TextWindow | undefined, start: number, end: number,
 }
 
 function redact(text: string, modelSpans: readonly SecretSpan[], window?: TextWindow): Redacted {
+  if (modelSpans.length === 0 && isFixedGuidance(text)) return (window === undefined ? text : text.slice(window.start, window.end)) as Redacted;
   const spans: Array<[number, number]> = modelSpans.map(([, start, end]) => [start, end]);
   for (const [start, end, number] of spokenDigitSpans(text)) {
     if (spokenValueKind(number) !== undefined) spans.push([start, end]);

@@ -38,5 +38,11 @@
     "fn": "agents.web.skills.guided.GuidedFill.resume_after_auth",
     "test": "guided auth redirects ask the new site for vault permission",
     "reason": "Python retains the previous origin and keeps all visible fields after authentication. TypeScript checks the redirected origin before offering saved values and rechecks which fields remain eligible for voice input."
+  },
+  {
+    "kind": "download-original-filename",
+    "fn": "agents.web.downloads.DownloadStore.read_latest",
+    "test": "reads a downloaded HWPX using its original filename in an ephemeral browser session",
+    "reason": "Chromium stores temporary downloads under extensionless UUIDs. Python selects the parser from that UUID and rejects the file. TypeScript selects the parser from the original filename and reads the bytes from Chromium's stored path."
   }
 ]

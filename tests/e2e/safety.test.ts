@@ -5,7 +5,6 @@ import type { SessionOrchestrator } from "../../src/orchestrator/session.ts";
 import { REDACTED } from "../../src/safety/privacy.ts";
 import { FakeLlm, fieldValue, withLlm } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
-import { openSlice } from "./transcripts.ts";
 
 const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
@@ -220,7 +219,7 @@ it("test_resume_plan_runs_its_later_steps", async () => {
   expect(result.speech).not.toContain("중단 상태");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_password_never_stored_spoken_or_entered", async () => {
+it("test_password_never_stored_spoken_or_entered", async () => {
   const session = await newSession();
   await session.handleTurn("로그인하고 싶어");
   const result = await session.handleTurn("내 비밀번호는 hunter2pass야");
@@ -233,7 +232,7 @@ it.runIf(openSlice.has("PR8c"))("test_password_never_stored_spoken_or_entered", 
   expect(JSON.stringify(events.all())).not.toContain("hunter2pass");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_bare_password_on_login_page_not_sent_or_stored", async () => {
+it("test_bare_password_on_login_page_not_sent_or_stored", async () => {
   const session = await newSession();
   const model = new FakeLlm();
   withLlm(session, model);
@@ -346,7 +345,7 @@ it("test_timed_out_low_risk_click_is_retried_once", async () => {
   expect(result.observation?.step?.index).toBe(2);
 });
 
-it.runIf(openSlice.has("PR8d"))("test_cancel_drops_a_pending_vault_save_and_says_so", async () => {
+it("test_cancel_drops_a_pending_vault_save_and_says_so", async () => {
   const session = await newSession();
   await session.handleTurn("내 이름은 박하늘이라고 저장해줘");
   const stop = await session.handleTurn("취소");
@@ -358,7 +357,7 @@ it.runIf(openSlice.has("PR8d"))("test_cancel_drops_a_pending_vault_save_and_says
   expect(Object.values(session.personal.vault())).not.toContain("박하늘");
 });
 
-it.runIf(openSlice.has("PR8d"))("test_vault_and_records_wait_while_stopped", async () => {
+it("test_vault_and_records_wait_while_stopped", async () => {
   const session = await newSession();
   await session.handleTurn("내 이름은 최하늘이라고 저장해줘");
   await session.handleTurn("응");
@@ -373,7 +372,7 @@ it.runIf(openSlice.has("PR8d"))("test_vault_and_records_wait_while_stopped", asy
   expect(session.personal.applications().length).toBe(records);
 });
 
-it.runIf(openSlice.has("PR8d"))("test_vault_and_records_wait_for_consent", async () => {
+it("test_vault_and_records_wait_for_consent", async () => {
   const { session } = await runtime.createBrowserSession({ requireConsent: true });
   const save = await session.handleTurn("내 이름은 김하늘이라고 저장해줘");
   expect(save.speech).toContain("동의해 주세요");
@@ -409,7 +408,7 @@ it("test_web_answer_hides_resident_number_from_llm", async () => {
   expect(call?.user).not.toContain("900101");
 });
 
-it.runIf(openSlice.has("PR8d"))("test_vault_values_hidden_in_history", async () => {
+it("test_vault_values_hidden_in_history", async () => {
   const session = await newSession();
   await session.handleTurn("내 이름은 박하늘이라고 저장해줘");
   await session.handleTurn("응");

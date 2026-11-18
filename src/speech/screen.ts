@@ -6,9 +6,9 @@ import { AGENT_IDS } from "../core/turn.ts";
 import type { ExecContext, WebExecutionAgent } from "../agents/web/agent.ts";
 import { PAGE_KIND_LABEL, digestPage, pageTextForLlm } from "../agents/web/digest.ts";
 import { blockedSpeech } from "../agents/web/playbook.ts";
-import type { WebField, WebObservation } from "../agents/web/view.ts";
+import { WebObservationSchema, type WebField, type WebObservation } from "../agents/web/view.ts";
 import type { PiiScanner } from "../safety/pii_model.ts";
-import { maskValue, redactText } from "../safety/privacy.ts";
+import { joinRedacted, maskValue, redactText } from "../safety/privacy.ts";
 import { unsupportedNumbers } from "../safety/verify.ts";
 import { READ_CHUNK, chunkText, josa, readback, speakLabel } from "./phrasing.ts";
 
@@ -88,6 +88,17 @@ export class Narrator {
   }
 
   describeScreen(view: WebObservation): string {
+    return this.#screenParts(view).join(" ");
+  }
+
+  historyScreen(view: WebObservation, prompt: string) {
+    // 본문을 자르기 전에 각 원문을 가린다. 문구와 입력란 설명도 각각 검사한다.
+    const clean = WebObservationSchema.parse(JSON.parse(JSON.stringify(view), (_key, value: unknown) =>
+      typeof value === "string" ? redactText(value) : value));
+    return joinRedacted([...this.#screenParts(clean), prompt].map(part => redactText(part)));
+  }
+
+  #screenParts(view: WebObservation): string[] {
     const o = view.outline;
     const parts = [`화면 전체를 위에서부터 설명합니다. 페이지 제목은 '${view.title}'입니다.`];
     const digest = view.pageId === "mock-welfare" ? undefined : digestPage(view);
@@ -110,9 +121,9 @@ export class Narrator {
     const fields = (view.fields ?? []).filter(f => f.visible === true);
     if (fields.length > 0) {
       const shown = fields.slice(0, 10);
-      const listed = shown.map((f, i) => `${i+1}. ${this.describeField(f, true)}${f.searchable === true ? "(검색창)" : ""}`).join(". ");
-      const rest = fields.length > shown.length ? ` 나머지 ${fields.length - shown.length}개는 생략했습니다.` : "";
-      parts.push(`입력 항목은 ${fields.length}개입니다. ${listed}.${rest}`);
+      parts.push(`입력 항목은 ${fields.length}개입니다.`);
+      for (const [i,f] of shown.entries()) parts.push(`${i+1}. ${this.describeField(f, true)}${f.searchable === true ? "(검색창)" : ""}.`);
+      if (fields.length > shown.length) parts.push(`나머지 ${fields.length - shown.length}개는 생략했습니다.`);
     }
     if (hasText(view.status)) parts.push(`상태 안내: ${view.status}.`);
     if (view.pageId !== "mock-welfare") {
@@ -127,7 +138,7 @@ export class Narrator {
         ? `링크 ${total}개 중 앞 15개: ${links.slice(0,15).join(", ")}. 전체는 '링크 목록 알려줘'라고 말씀하세요.`
         : `링크: ${links.join(", ")}.`);
     }
-    return parts.filter(Boolean).join(" ");
+    return parts.filter(Boolean);
   }
 
   mainChunk(view: WebObservation, offset: number, size = READ_CHUNK): string {
