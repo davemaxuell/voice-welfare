@@ -278,6 +278,36 @@
         "src/cheongeum/agents/welfare/__init__.py"
       ],
       "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/store.ts": {
+      "python": [
+        "src/cheongeum/personal/store.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/seal.ts": {
+      "python": [
+        "src/cheongeum/personal/seal.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/action_log.ts": {
+      "python": [
+        "src/cheongeum/personal/action_log.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/commands.ts": {
+      "python": [
+        "src/cheongeum/personal/commands.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/dialogue.ts": {
+      "python": [
+        "src/cheongeum/personal/dialogue.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
     }
   }
 }
