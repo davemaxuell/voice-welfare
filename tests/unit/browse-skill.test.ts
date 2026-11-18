@@ -22,7 +22,7 @@ const cases: [AutopilotStep["action"], string | undefined, boolean, string][] = 
   ["open_url", "모르는곳", false, "'모르는곳'을 열려고 했어요."],
   ["answer", undefined, false, "찾은 답이 화면과 맞는지 다시 보고 있어요."],
 ];
-it.each(cases)("test_step_sentence %s %s", (action, target, ok, said) => {
+it.each(cases)("test_step_sentence", (action, target, ok, said) => {
   expect(stepSentence({action, target, ok}, "정부24", "복지로")).toBe(said);
 });
 it("test_page_text_and_model_text_are_never_spoken", () => {
