@@ -41,6 +41,39 @@ def test_digest_for_llm_gives_the_footer_with_personal_data_hidden():
     assert "1355" not in page["mainText"]
 
 
+def test_footer_is_redacted_before_it_is_cut():
+    # 400자에서 자르기 전에 가린다. 자른 뒤에 가리면 경계에 걸린 번호 조각('900101-1')이 그대로 나간다.
+    page = digest_for_llm(digest_page(view(outline={**OUTLINE, "mainText": "본문", "footerText": "가" * 392 + RRN})))
+    assert "900101" not in page["footer"]
+
+
+async def test_page_summary_sends_the_llm_redacted_text():
+    from cheongeum.speech.screen import Narrator
+
+    sent: dict = {}
+
+    class Llm:
+        async def generate(self, **kw):
+            sent.update(kw)
+            return {"text": "기초연금 안내 페이지예요."}
+
+    class Deps:
+        llm = Llm()
+        web = None
+
+    class Ctx:
+        signal = None
+
+        def trace(self, *a) -> None:
+            pass
+
+    v = view(title=f"안내 {RRN}", outline={**OUTLINE, "mainText": f"본인 확인 주민등록번호 {RRN} 입니다. 기초연금은 주민센터에서 신청합니다."})
+    await Narrator(Deps()).summarize_body(v, Ctx())
+    assert RRN not in sent["user"]
+    assert "900101" not in sent["user"]
+    assert "기초연금은 주민센터에서 신청합니다" in sent["user"]
+
+
 def test_digest_for_llm_redacts_title_heading_and_dialog():
     page = digest_for_llm(
         digest_page(
