@@ -65,6 +65,24 @@ it("재시도는 승인 없는 저위험 시간 초과에 한 번만 한다", as
   expect(execute).toHaveBeenCalledTimes(3);
 });
 
+it("test_approved_low_risk_timeout_is_not_retried", async () => {
+  const readOnly = new PolicyGuard({ allowedOrigins: [profile.origin], allowedActionTypes: ACTION_TYPES, allowedFieldIds: [],
+    secretFieldIds: [], maxActionsPerTurn: 12, readOnlyWeb: true });
+  const portal: Observation = { platform: "pc", url: "https://www.example.kr/", title: "예시 포털", fields: [], errors: [], dialogs: [], capturedAt: "",
+    outline: { headings: [], notices: [], steps: [], buttons: [], links: ["로그인"], mainText: "안내",
+      items: [{ ref: "e1", role: "link", name: "로그인", region: "main", disabled: false }] } };
+  const execute = vi.fn(async (action: Action) => action.type === "focus" ? { actionId: action.id, ok: true, verified: true, latencyMs: 1 } : timeout(action));
+  const web = new WebExecutionAgent({ observe: async () => portal, execute, async close() {} }, readOnly, profile);
+  const ctx = context();
+  const asked = await web.pointAt("로그인", ctx);
+  expect(asked).toMatchObject({ status: "needs-approval", pending: { risk: "low" } });
+  const pending = asked.pending!;
+  const out = await ctx.granted([pending.id], () => web.clickApproved(pending, ctx));
+  expect(out.actions.at(-1)?.policy.code).toBe("APPROVED");
+  expect(execute.mock.calls.filter(([action]) => action.type === "click")).toHaveLength(1);
+  expect(out.status).toBe("unconfirmed");
+});
+
 it("중단된 턴은 시간 초과가 나도 재실행하거나 다시 관찰하지 않는다", async () => {
   const controller = new AbortController();
   const ctx = context(controller.signal);
