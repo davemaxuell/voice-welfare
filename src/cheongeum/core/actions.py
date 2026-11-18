@@ -168,6 +168,7 @@ class ScreenOutline(_Loose):
     menuLinks: Optional[list[str]] = None
     mainLinks: Optional[list[str]] = None
     mainText: Optional[str] = None
+    footerText: Optional[str] = None
     landmarks: Optional[list[str]] = None
     items: Optional[list[InteractiveItem]] = None
 
