@@ -1,0 +1,78 @@
+{
+  "understanding.rules": [
+    "understanding.rules.RuleBasedIntentProvider.parse_sync",
+    "understanding.rules.RuleBasedIntentProvider.split_commands",
+    "understanding.rules.is_stop_utterance",
+    "understanding.rules.is_progress_question",
+    "understanding.rules.clean_value"
+  ],
+  "understanding.filters": [
+    "understanding.filters.strip_address",
+    "understanding.filters.short_reply_kind",
+    "understanding.filters.split_questions",
+    "understanding.filters.vague_question",
+    "understanding.filters.is_question_like",
+    "understanding.filters.strip_filler"
+  ],
+  "understanding.chat": [
+    "understanding.chat.chat_route"
+  ],
+  "understanding.sites": [
+    "understanding.sites.site_name_from",
+    "understanding.sites.mentions_known_site",
+    "understanding.sites.near_site",
+    "understanding.sites.site_label",
+    "understanding.sites.resolve_site"
+  ],
+  "language.i18n": [
+    "language.i18n.foreign_confirmation",
+    "language.i18n.detect_lang_switch",
+    "language.i18n.detect_script_lang"
+  ],
+  "safety.privacy": [
+    "safety.privacy.detect_sensitive",
+    "safety.privacy.redact_text"
+  ],
+  "speech.phrasing": [
+    "speech.phrasing.josa",
+    "speech.phrasing.speak_label",
+    "speech.phrasing.speak_date",
+    "speech.phrasing.chunk_text",
+    "speech.phrasing.readback"
+  ],
+  "safety.verify": [
+    "safety.verify.quote_in_source",
+    "safety.verify.unsupported_numbers",
+    "safety.verify.check_grounding"
+  ],
+  "safety.guard": [
+    "safety.guard.PolicyGuard.check"
+  ],
+  "agents.web.digest": [
+    "agents.web.digest.digest_page"
+  ],
+  "agents.web.effect": [
+    "agents.web.effect.diff_views",
+    "agents.web.effect.Churn.observe"
+  ],
+  "agents.web.auth_page": [
+    "agents.web.auth_page.auth_page_kind"
+  ],
+  "agents.web.approval": [
+    "agents.web.approval.fingerprint"
+  ],
+  "agents.welfare.rag": [
+    "agents.welfare.rag.retrieve"
+  ],
+  "agents.welfare.discovery": [
+    "agents.welfare.discovery.parse_profile_answer",
+    "agents.welfare.discovery.next_profile_slot",
+    "agents.welfare.discovery.match_services"
+  ],
+  "agents.welfare.agent": [
+    "agents.welfare.agent.application_open_status"
+  ],
+  "personal.commands": [
+    "personal.commands.parse_personal_command"
+  ]
+}

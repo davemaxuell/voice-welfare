@@ -6,6 +6,8 @@ __pycache__/
 reports/
 test-results/
 apps/desktop/node_modules/
+node_modules/
+/dist/
 *.log
 .DS_Store
 # 로컬 모델(scripts/setup_local_models.py가 받음)·받아쓰기 평가용 녹음(사용자 목소리)
