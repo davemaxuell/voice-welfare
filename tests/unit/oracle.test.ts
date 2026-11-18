@@ -8,20 +8,14 @@ import { implementations, loadOracle, oracleImplementation, replayCase } from ".
 
 const fixtures = fileURLToPath(new URL("../fixtures/oracle/", import.meta.url));
 const groups = loadOracle(fixtures);
-const pending = [];
 
 for (const [name, { module, cases }] of groups) {
   const implementation = oracleImplementation(name, module, portedSources);
-  if (implementation === undefined) {
-    pending.push(name);
-    it.skip(`missing TS implementation: ${name} (${cases.length})`);
-  } else {
-    it(name, async () => {
-      for (const row of cases) await replayCase(row, implementation);
-    });
-  }
+  it(name, async () => {
+    if (implementation === undefined) throw new Error(`missing TS oracle: ${name}`);
+    for (const row of cases) await replayCase(row, implementation);
+  });
 }
-if (pending.length > 0) process.stdout.write(`missing TS implementations (oracle):\n${pending.join("\n")}\n`);
 
 it("requires an adapter for each ported source file and package", () => {
   for (const path of ["src/cheongeum/control.py", "src/cheongeum/control/__init__.py"]) {

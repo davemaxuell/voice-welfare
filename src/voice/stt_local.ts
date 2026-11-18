@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { REPO_ROOT } from "../core/assets.ts";
+import { pythonCommand, pythonProject } from "../core/python.ts";
 import { strip } from "../core/text.ts";
 import { STT_PROMPT, isHallucination, isPromptEcho, type SttProvider, type VoiceInput } from "./stt.ts";
 
@@ -39,13 +40,11 @@ export class LocalWhisperStt implements SttProvider {
   #open(): Worker {
     if (this.#closed) throw Error("받아쓰기 서비스를 종료했습니다.");
     if (this.#worker !== undefined) return this.#worker;
-    const local = join(REPO_ROOT, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-    const config = process.env.CHEONGEUM_PYTHON;
-    const python = config !== undefined && config.length > 0 ? config : statSync(local, { throwIfNoEntry: false })?.isFile() === true ? local : undefined;
-    const args = [...(python === undefined ? ["run","python"] : []), "-u", join(REPO_ROOT, "python", "cheongeum_stt", "sidecar.py"),
-      this.modelDir, String(Math.max(0,this.#opts.threads ?? 0)), String(Math.max(1,this.#opts.beamSize ?? 1))];
-    const custom = this.#opts.workerCommand;
-    const child = spawn(custom?.[0] ?? python ?? "uv", custom?.slice(1) ?? args, { cwd: REPO_ROOT, windowsHide: true, stdio: ["pipe","pipe","pipe"] });
+    const [command, ...args] = this.#opts.workerCommand ?? pythonCommand(
+      "-u", join(pythonProject, "cheongeum_stt", "sidecar.py"), this.modelDir,
+      String(Math.max(0, this.#opts.threads ?? 0)), String(Math.max(1, this.#opts.beamSize ?? 1)),
+    );
+    const child = spawn(command, args, { cwd: REPO_ROOT, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
     child.stderr.resume();
     const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
     child.on("error", () => reader.close());

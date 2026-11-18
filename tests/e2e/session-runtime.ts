@@ -88,6 +88,18 @@ const InitialPersonal = z.object({
   allowedSites: z.array(z.string()),
 });
 
+// 원본 u7u8_probe.py의 세 예외를 각각 같은 턴과 의존성에 주입한다.
+function applyRecordedFault(scenario: string, turn: number, session: SessionOrchestrator, personal: PersonalStore) {
+  function fail(): never {
+    const error = new Error("probe");
+    error.name = "RuntimeError";
+    throw error;
+  }
+  if (scenario === "probe/guided_answer_exc" && turn === 3) session.deps.web.assistFill = fail;
+  if (scenario === "probe/guided_start_exc" && turn === 2) session.deps.web.observe = fail;
+  if (scenario === "probe/personal_exc" && turn === 1) personal.addApplication = fail;
+}
+
 type DispatchFactory = (session: SessionOrchestrator) => Promise<TranscriptSession["dispatch"]>;
 export function openBrowserTranscript(runtime: ReturnType<typeof createTestRuntime>, via?: DispatchFactory): OpenTranscript {
   return async header => {
@@ -105,6 +117,7 @@ export function openBrowserTranscript(runtime: ReturnType<typeof createTestRunti
     catch (error) { await close(); throw error; }
     const dialogue = session.dialogue;
     let before = actionLog?.recent(10_000).length ?? 0;
+    let turn = 0;
     const transcript: TranscriptSession = {
       bindModels(roles, generate) {
         const model = new FakeLlm(generate);
@@ -114,6 +127,7 @@ export function openBrowserTranscript(runtime: ReturnType<typeof createTestRunti
         session.deps.welfare.llm = roles.includes("welfare") ? model : undefined;
       },
       async dispatch(call) {
+        applyRecordedFault(header.case, ++turn, session, personal);
         before = actionLog?.recent(10_000).length ?? 0;
         if (dispatch !== undefined) return dispatch(call);
         switch (call.method) {
