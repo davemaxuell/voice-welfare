@@ -60,7 +60,7 @@ function ConversationPanel({ui}: {ui: UiState}) {
     <div role="log" aria-live="polite" aria-relevant="additions" aria-label="대화 기록">
       <ol className="log" id="log">{ui.messages.map(m => <li key={m.id} data-id={m.id} className={`msg ${m.role}`}><span className="who">{m.role === "user" ? "나" : m.role === "assistant" ? "청음" : "안내"}: </span>{m.text}</li>)}</ol>
     </div>
-    <p className="error" role="alert" id="error" hidden={(ui.error?.length ?? 0) === 0}>{ui.error}</p>
+    <p className="error" role="alert" id="error" hidden={ui.error === undefined || ui.error.text.length === 0}><span key={ui.error?.id}>{ui.error?.text}</span></p>
     <form className="command-form" id="command-form" onSubmit={e => { e.preventDefault(); if (input.current !== null) void send(input.current.value); }}>
       <label htmlFor="command">명령 입력 (말하듯이 입력하세요)</label>
       <div className="row">
@@ -131,7 +131,7 @@ export function App() {
   return <div id="app" className={ui.contrast ? "app high-contrast" : "app"}>
     <a className="skip-link" href="#command">명령 입력으로 바로가기</a>
     <div className="mock-banner" role="note">데모 · 모의 신청 전용 — 실제 복지로 접수가 아닙니다. 합성 데이터만 사용하세요.</div>
-    <Toolbar ui={ui}/><div className="sr-only" aria-live="assertive" id="announce">{ui.announcement}</div>
+    <Toolbar ui={ui}/><div className="sr-only" aria-live="assertive" id="announce"><span key={ui.announcement?.id}>{ui.announcement?.text}</span></div>
     <ConsentPanel ui={ui}/><main id="main" className="layout"><ConversationPanel ui={ui}/><StatusPanels ui={ui}/></main>
   </div>;
 }
