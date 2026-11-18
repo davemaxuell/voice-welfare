@@ -4,8 +4,8 @@ import type { PendingConfirmation, SessionState } from "./turn.ts";
 export interface ApprovalFingerprint {
   page: string;
   speech: string;
-  fields: { fieldId: string; label: string; valueHash?: string }[];
-  actions: { type: Action["type"]; role?: string; name?: string; now?: ActionTarget; valueHash?: string }[];
+  fields: { fieldId: string; label: string; valueHash?: string | null }[];
+  actions: { type: Action["type"]; role?: string | null; name?: string | null; now?: Partial<ActionTarget> | null; valueHash?: string | null }[];
 }
 
 type Approval = { action: Action; confirmation: PendingConfirmation; fingerprint: ApprovalFingerprint } & (

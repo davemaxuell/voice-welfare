@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Action, ActionResult, ActionTarget, Observation } from "../../core/actions.ts";
 import type { Redacted } from "../../core/llm.ts";
-import { AGENT_IDS, PIPELINE_PHASES, type ExecutedAction } from "../../core/turn.ts";
+import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
 import { PolicyGuard, type AccessTier } from "../../safety/guard.ts";
@@ -46,6 +46,7 @@ export interface WebAdapter {
   execute(action: Action, signal?: AbortSignal): Promise<ActionResult>;
   close(): Promise<void>;
   bringToFront?(): Promise<void>;
+  takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
 }
 export interface WebAuditEntry {
@@ -53,7 +54,7 @@ export interface WebAuditEntry {
   approvalId?: string; phase: "before" | "after"; ok?: boolean;
 }
 export type WebActionResult = ActionResult | { ok: false; errorCode: "LOG_FAILED"; latencyMs: 0 };
-export type WebAction = Omit<ExecutedAction, "result"> & { result?: WebActionResult };
+export type WebAction = DraftAction;
 export const webAgentPatterns = {
   assistSecret: /(비밀\p{White_Space}*번호|password|인증\p{White_Space}*번호|otp|주민|계좌|카드)/iu,
   checked: /^(예|네|응|체크)/u,

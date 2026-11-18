@@ -328,3 +328,54 @@ it("test_cite_rewrites_fixture_version_label", () => {
   expect(sourceSentence(s)).toContain("저장된 자료 기준");
   expect(sourceSentence(s)).not.toContain("fixture-v1");
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return {promise, resolve};
+}
+
+it("a cancelled welfare lookup cannot select a service after the next turn starts", async () => {
+  const request = deferred<WelfareService>();
+  const started = deferred<void>();
+  const agent = new WelfareInformationAgent({
+    ...provider(),
+    findService() { started.resolve(); return request.promise; },
+  });
+  const controller = new AbortController();
+  const answer = agent.answerQuestion(pensionAmount, undefined, controller.signal);
+  await started.promise;
+  controller.abort();
+  request.resolve(service);
+  await expect(answer).rejects.toBe(controller.signal.reason);
+  expect(agent.lastService).toBeUndefined();
+});
+
+it("cancelling a welfare turn aborts its official API request and bypasses the fixture fallback", async () => {
+  const started = deferred<AbortSignal>();
+  const fetchImpl = fakeFetch(request => new Promise<Response>((_resolve, reject) => {
+    started.resolve(request.signal);
+    request.signal.addEventListener("abort", () => reject(request.signal.reason), {once:true});
+  }));
+  const controller = new AbortController();
+  const data = official(fetchImpl);
+  const answer = new WelfareInformationAgent(data).answerQuestion(pensionAmount, undefined, controller.signal);
+  const networkSignal = await started.promise;
+  controller.abort();
+  await expect(answer).rejects.toBe(controller.signal.reason);
+  expect(networkSignal.aborted).toBe(true);
+  expect(data.lastError).toBeUndefined();
+});
+
+it("cancelling a model reply stops the general-answer fallback", async () => {
+  const started = deferred<AbortSignal | undefined>();
+  const reply = deferred<typeof noEvidence>();
+  const llm = new FakeLlm({}, request => { started.resolve(request.signal); return reply.promise; });
+  const controller = new AbortController();
+  const answer = new WelfareInformationAgent(provider(), llm).answerQuestion(pensionAmount, undefined, controller.signal);
+  expect(await started.promise).toBe(controller.signal);
+  controller.abort();
+  reply.resolve(noEvidence);
+  await expect(answer).rejects.toBe(controller.signal.reason);
+  expect(llm.calls.map(c => c.schemaName)).toEqual(["grounded_answer"]);
+});
