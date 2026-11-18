@@ -14,7 +14,7 @@ from cheongeum.agents.web.digest import digest_for_llm, digest_page, text_offset
 from cheongeum.agents.web.effect import click_note
 from cheongeum.core.jsutil import I, jdumps, rx
 from cheongeum.core.turn import AGENT_IDS
-from cheongeum.safety import check_grounding, quote_in_source
+from cheongeum.safety import check_grounding, quote_in_source, redact_text
 
 
 @dataclass
@@ -91,8 +91,9 @@ _TERMINAL = ("answer", "ask_user", "fail")
 
 
 def _history_line(s: dict) -> str:
+    # 메모에는 화면 제목·누른 뒤 드러난 글이 들어간다. 다음 단계 LLM에 가므로 가린다.
     target = f' "{s["target"]}"' if s.get("target") else ""
-    return f"{s['n']}. {s['action']}{target} → {'성공' if s['ok'] else '실패'}: {s['note']}"
+    return f"{s['n']}. {s['action']}{target} → {'성공' if s['ok'] else '실패'}: {redact_text(s['note'])}"
 _NEEDS_VISIT = rx(r"https?:\/\/|\.(?:kr|com|net|org)(?![A-Za-z0-9_])|\d+\.\d+\.\d+\.\d+")
 
 
