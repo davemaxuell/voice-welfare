@@ -1,3 +1,4 @@
+import { createMockWelfareProfile, fieldVocabulary } from "../../src/agents/web/profile.ts";
 import { filtersPatterns } from "../../src/understanding/filters.ts";
 import { RuleBasedIntentProvider, rulesPatterns } from "../../src/understanding/rules.ts";
 import { sitesPatterns } from "../../src/understanding/sites.ts";
@@ -105,7 +106,7 @@ const aliasIds = new Map<string, readonly [string, string]>([
   ["소득", ["e7137fdd2b1579cf6218", "d6d17c5eb3b760af07bd"]],
   ["재산", ["56ce834e0b75ada1f2cb", "30bc43e84a9fb6dde66f"]],
 ]);
-export const practiceVocabulary = [...aliasIds.keys()];
+export const practiceVocabulary = fieldVocabulary(createMockWelfareProfile("http://localhost:5174"));
 const parser = new RuleBasedIntentProvider(practiceVocabulary);
 for (const { alias, re, anyRe } of parser.aliases) {
   const ids = aliasIds.get(alias);
