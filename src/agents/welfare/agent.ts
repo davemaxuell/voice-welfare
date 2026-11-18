@@ -257,8 +257,10 @@ export class WelfareInformationAgent {
   }
 
   /** 프로필로 받을 수 있을 법한 제도를 찾는다(자격 판정 아님). */
-  async discover(profile: UserProfile): Promise<GroundedAnswer & { count: number }> {
-    const catalog = await this.provider.catalog(profile.ctpv ?? undefined);
+  async discover(profile: UserProfile, signal?: AbortSignal): Promise<GroundedAnswer & { count: number }> {
+    signal?.throwIfAborted();
+    const catalog = await this.provider.catalog(profile.ctpv ?? undefined, signal);
+    signal?.throwIfAborted();
     this.matches = matchServices(catalog, profile);
     this.shown = 0;
     if (this.matches.length === 0) {
@@ -459,13 +461,15 @@ export class WelfareInformationAgent {
   }
 
   /** 질문에서 제도 이름을 찾고, 없으면 직전 제도 → 기본(장애인연금) 순서. */
-  private async service(question: string): Promise<WelfareService | undefined> {
+  private async service(question: string, signal?: AbortSignal): Promise<WelfareService | undefined> {
     const named = SERVICE_NAME.exec(question.replace(agentPatterns.spaces, ''))?.[1];
     if (named !== undefined && named.length > 0) {
-      const exact = await this.provider.findService(named);
+      const exact = await this.provider.findService(named, signal);
+      signal?.throwIfAborted();
       if (exact) return exact;
-      const first = (await this.provider.listServices(named))[0];
-      if (first) return (await this.provider.getService(first.servId)) ?? first;
+      const first = (await this.provider.listServices(named, signal))[0];
+      signal?.throwIfAborted();
+      if (first) return (await this.provider.getService(first.servId, signal)) ?? first;
       return undefined;
     }
     // 제도 이름도, 이전 대화의 제도도 없으면 특정 제도를 가정하지 않는다(호출자가 되묻는다).
@@ -492,10 +496,12 @@ export class WelfareInformationAgent {
     return { speech: answer + " " + sourceSentence(s.source), sources: [cite(s.source)], grounded: status !== 'unknown',
       method: 'topic-rule', service: { servId: s.servId, servNm: s.servNm, dataOrigin: s.dataOrigin } };
   }
-  async answerQuestion(question: string, today?: string): Promise<GroundedAnswer> {
+  async answerQuestion(question: string, today?: string, signal?: AbortSignal): Promise<GroundedAnswer> {
+    signal?.throwIfAborted();
     const named = SERVICE_NAME.test(question.replace(agentPatterns.spaces, ''));
     if (!named && !this.lastService) return {...WelfareInformationAgent.ASK_SERVICE, sources: []};
-    const s = await this.service(question);
+    const s = await this.service(question, signal);
+    signal?.throwIfAborted();
     if (!s) {
       return { speech: '그 제도의 공식 자료를 찾지 못했어요. 보건복지상담센터 129에 문의해 보세요.', sources: [], grounded: false, method: 'none' };
     }
@@ -507,9 +513,10 @@ export class WelfareInformationAgent {
     const raw = await this.llm.generate({
       system: RAG_SYSTEM,
       user: redactedJson({ question: redactText(question), 제도: redactText(s.servNm), 기준: redactText(s.source.version), 근거: top.map(c => ({ id: redactText(c.id), 항목: redactText(c.section), 내용: redactText(c.text) })) }),
-      schemaName: 'grounded_answer',
+      schemaName: 'grounded_answer', signal,
       schema: RAG_JSON_SCHEMA,
     });
+    signal?.throwIfAborted();
     const parsed = RagOutputSchema.safeParse(raw);
     const ids = new Set(top.map((c) => c.id));
     const used = parsed.success ? parsed.data.usedChunkIds.filter((id) => ids.has(id)) : [];
@@ -528,9 +535,10 @@ export class WelfareInformationAgent {
         system:
           '사용자의 복지 질문에 대한 답이 공식 자료에 없었다. 일반적으로 널리 알려진 사실이 확실할 때만 known=true로 1~2문장 쉬운 존댓말 답을 써라. 확실하지 않거나 개인마다 다르면 known=false. 수급 자격은 판정하지 말 것.',
         user: redactedJson({ question: redactText(question), 제도: redactText(s.servNm) }),
-        schemaName: 'general_answer',
+        schemaName: 'general_answer', signal,
         schema: { type: 'object', additionalProperties: false, required: ['known', 'answer'], properties: { known: { type: 'boolean' }, answer: { type: 'string' } } },
       }));
+      signal?.throwIfAborted();
       const said = general.success && general.data.known ? strip(general.data.answer) : '';
       const numbered = agentPatterns.number.test(said);
       if (said.length > 0 && !numbered) {

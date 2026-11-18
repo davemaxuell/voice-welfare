@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it } from "vitest";
 import { z } from "zod";
-import { portedSources as ported } from "../../scripts/port-manifest.ts";
+import { partialSources, portedSources as ported } from "../../scripts/port-manifest.ts";
 import { regexPorts } from "./regex-ports.ts";
 
 const span = z.tuple([z.int().nonnegative(), z.int().nonnegative()]);
@@ -89,7 +89,7 @@ it("정규식 예제·등록·예외가 현재 기록에 있는지 확인한다"
   expect(patterns.length).toBeGreaterThan(0);
   expect(new Set(patterns.map(row => row.id)).size).toBe(patterns.length);
   for (const [file, entries] of regexPorts) {
-    expect(ported.has(file), file).toBe(true);
+    expect(ported.has(file) || partialSources.has(file), file).toBe(true);
     for (const id of entries.keys()) {
       expect(patterns.some(row => row.id === id && row.sites.some(([owner]) => owner === file)), id).toBe(true);
     }
@@ -104,9 +104,9 @@ it("정규식 예제·등록·예외가 현재 기록에 있는지 확인한다"
 
 const files = new Set(patterns.flatMap(row => row.sites.map(([file]) => file)));
 for (const file of files) {
-  it.skipIf(!ported.has(file))(`정규식 일치 구간 · ${file}`, () => {
+  it.skipIf(!ported.has(file) && !regexPorts.has(file))(`정규식 일치 구간 · ${file}`, () => {
     for (const row of patterns.filter(row => row.sites.some(([owner]) => owner === file))) {
-      compare(row, portedExpression(file, row.id), exceptions);
+      if (ported.has(file) || regexPorts.get(file)?.has(row.id) === true) compare(row, portedExpression(file, row.id), exceptions);
     }
   });
 }

@@ -308,6 +308,38 @@
         "src/cheongeum/personal/dialogue.py"
       ],
       "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/agents/web/skills/common.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/common.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
+    },
+    "src/agents/web/skills/browse.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/browse.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
+    },
+    "src/speech/screen.ts": {
+      "python": [
+        "src/cheongeum/speech/screen.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
+    },
+    "src/orchestrator/session.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876",
+      "partial": true
+    },
+    "src/orchestrator/replies.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876",
+      "partial": true
     }
   }
 }
