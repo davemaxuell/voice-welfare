@@ -26,7 +26,7 @@ import { dueReminder, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalStore, VAULT_LABELS, type VaultKey } from "../personal/store.ts";
 import { consentRefusal, gateRefusal, type Consent, type GateRefusal } from "../safety/gates.ts";
 import type { PiiScanner } from "../safety/pii_model.ts";
-import { POSSIBLE_SECRET_NOTICE, REDACTED, detectSensitive, disclosureNotice, historyLine, maskValue, redactText } from "../safety/privacy.ts";
+import { POSSIBLE_SECRET_NOTICE, REDACTED, detectSensitive, disclosureNotice, historyLine, maskValue, redactText, redactTextWindow, type SecretSpan } from "../safety/privacy.ts";
 import { josa, speakLabel } from "../speech/phrasing.ts";
 import { Narrator } from "../speech/screen.ts";
 import { isQuestionLike, shortReplyKind, splitQuestions, stripAddress, stripFiller, vagueQuestion } from "../understanding/filters.ts";
@@ -136,9 +136,14 @@ export class SessionOrchestrator {
       return this.#finish(turn, draft("IDLE", "consent", "동의해 주셔서 감사합니다. 시작할게요." + (due === undefined ? "" : " 알려 드릴 게 있어요. " + due)));
     });
   }
-  async handleTurn(raw: string) {
-    const normalized = strip(raw.normalize("NFC")).replace(sessionPatterns.spaces, " ");
-    const safe = redactText(normalized);
+  async handleTurn(raw: string, maxCodePoints?: number) {
+    const normalize = (s: string) => strip(s.normalize("NFC")).replace(sessionPatterns.spaces, " ");
+    const normalized = normalize(raw);
+    const prefix = maxCodePoints === undefined ? raw : Array.from(raw).slice(0, maxCodePoints).join("");
+    const limit = prefix === raw ? undefined : Array.from(normalize(prefix)).length;
+    const safeText = (spans: readonly SecretSpan[] = []) => limit === undefined
+      ? redactText(normalized, spans) : redactTextWindow(normalized, 0, limit, spans);
+    const safe = safeText();
     if (isStopUtterance(safe)) return this.#stop(safe);
     const spoken = stripAddress(safe);
     if (spoken.length === 0) return this.#enqueue(async () => this.#fixed(safe, "네, 말씀하세요.", "ko"));
@@ -152,7 +157,7 @@ export class SessionOrchestrator {
       const epoch = this.#queue.epoch;
       const spans = (await this.deps.scanner?.scan([normalized]))?.[0];
       if (epoch !== this.#queue.epoch) return this.#voided();
-      const text = redactText(stripAddress(redactText(normalized, spans)));
+      const text = redactText(stripAddress(safeText(spans)));
       return this.#process(text, detectSensitive(normalized, spans));
     });
   }
