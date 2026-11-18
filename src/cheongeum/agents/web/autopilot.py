@@ -80,6 +80,13 @@ def _evidence_text(view: dict) -> str:
     return "\n".join([d.title, *d.headings, d.main, *d.contentLinks, *d.menu, *d.buttons, *labels, *d.dialogs])
 
 
+def is_korean_text(text: str) -> bool:
+    """들려줄 말이 한국어인지. 한국 뉴스 제목의 한자 한두 글자(尹·與 등)는 허용하고, 한자 문장(중국어 답)·영어 위주는 아니다."""
+    hangul = len(rx(r"[가-힣]").findall(text))
+    han = len(rx(r"[一-鿿]").findall(text))
+    return not (han > max(3, hangul * 0.2) or hangul < len(text) * 0.2)
+
+
 _TERMINAL = ("answer", "ask_user", "fail")
 
 
@@ -185,10 +192,7 @@ class Autopilot:
             target = raw_target.strip() if isinstance(raw_target, str) and raw_target.strip() else None
             # 사용자에게 들려줄 말은 한국어여야 한다. 한자(중국어)·영어 위주면 다시 쓰게 한다.
             text = raw["answer"].strip() if isinstance(raw.get("answer"), str) else ""
-            # 한국 뉴스 제목의 한자 한두 글자(尹·與 등)는 허용하고, 한자 문장(중국어 답)만 다시 쓰게 한다.
-            hangul = len(rx(r"[가-힣]").findall(text))
-            han = len(rx(r"[一-鿿]").findall(text))
-            not_korean = bool(text) and (han > max(3, hangul * 0.2) or hangul < len(text) * 0.2)
+            not_korean = bool(text) and not is_korean_text(text)
             visited = any(s["ok"] and s["action"] in ("open_url", "search", "click") for s in steps)
             if terminal and (not_korean or (action == "answer" and needs_visit and not visited)):
                 rejected += 1
