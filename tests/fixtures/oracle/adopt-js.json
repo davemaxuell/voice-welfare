@@ -26,5 +26,17 @@
     "kind": "application-id-collision",
     "fn": "personal.store.PersonalStore.add_application",
     "reason": "Two applications recorded within the same millisecond share an ID in Python. Allocate the next unused millisecond ID in TypeScript so updating a deadline or marking an application complete changes only the selected record."
+  },
+  {
+    "kind": "approval-action-count",
+    "fn": "agents.web.approval.recheck",
+    "test": "an added or removed assist action cancels the entire approval",
+    "reason": "Python compares only overlapping action positions. A changed number of proposed actions invalidates the approval before any action ID is granted."
+  },
+  {
+    "kind": "guided-auth-origin",
+    "fn": "agents.web.skills.guided.GuidedFill.resume_after_auth",
+    "test": "guided auth redirects ask the new site for vault permission",
+    "reason": "Python retains the previous origin and keeps all visible fields after authentication. TypeScript checks the redirected origin before offering saved values and rechecks which fields remain eligible for voice input."
   }
 ]

@@ -447,9 +447,11 @@ export class WelfareInformationAgent {
   }
 
   /** 말에 제도 이름이 있으면 공식 자료에서 찾아 대화의 기준 제도로 삼는다(실제 사이트 신청 안내용). */
-  async selectService(text: string): Promise<string | undefined> {
+  async selectService(text: string, signal?: AbortSignal): Promise<string | undefined> {
     if (!SERVICE_NAME.test(text.replace(agentPatterns.spaces, ''))) return undefined;
-    const s = await this.service(text);
+    signal?.throwIfAborted();
+    const s = await this.service(text, signal);
+    signal?.throwIfAborted();
     if (!s) return undefined;
     this.selectedDetail = s;
     this.picked = undefined;
@@ -601,7 +603,8 @@ export class WelfareInformationAgent {
    * 지금 제도의 요점 한두 문장: 누가 → 무엇을 → 어떻게 신청. 듣자마자 머리에 그려지게.
    * LLM이 있으면 공식 자료로 압축하고(숫자는 자료에 있는 것만), 없거나 틀리면 자료 첫 문장들로.
    */
-  async briefing(): Promise<string | undefined> {
+  async briefing(signal?: AbortSignal): Promise<string | undefined> {
+    signal?.throwIfAborted();
     const s = this.lastService;
     if (!s) return undefined;
     const source = Array.from([`대상: ${s.target}`, `내용: ${s.benefit ?? s.summary}`, `신청: ${s.applyMethod}`].join('\n')).slice(0, 2500).join('');
@@ -610,9 +613,10 @@ export class WelfareInformationAgent {
         system:
           '복지 제도 공식 자료를 시각장애인이 듣자마자 이해하도록 요점만 말한다. "누가 무엇을 받고, 어디서 신청하는지"를 쉬운 존댓말 1~2문장, 합쳐 80자 안팎으로. 자료에 없는 내용·숫자는 쓰지 않는다. 예외 조건·계산식은 빼고, 자격을 단정하지 않는다.',
         user: redactedJson({ 제도: redactText(s.servNm), 자료: redactText(source) }),
-        schemaName: 'service_brief',
+        schemaName: 'service_brief', signal,
         schema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string' } } },
       }));
+      signal?.throwIfAborted();
       const text = out.success ? strip(out.data.text) : '';
       if (text.length > 0 && unsupportedNumbers(text, [source]).length === 0) return text;
     }
@@ -665,8 +669,10 @@ export class WelfareInformationAgent {
   }
 
   /** 신청서를 열 때 덧붙이는 짧은 실제 신청 경로 안내와 근거. */
-  async applicationContext(): Promise<GroundedAnswer> {
-    const s = await this.provider.findService(DEFAULT_SERVICE);
+  async applicationContext(signal?: AbortSignal): Promise<GroundedAnswer> {
+    signal?.throwIfAborted();
+    const s = await this.provider.findService(DEFAULT_SERVICE, signal);
+    signal?.throwIfAborted();
     if (!s) return { speech: '', sources: [], grounded: false };
     // 신청을 시작했으면 이후 "소득 있어도 돼?" 같은 질문은 이 제도에 대한 것이다.
     this.selectedDetail = s;
