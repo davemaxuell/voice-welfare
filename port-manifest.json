@@ -1,4 +1,8 @@
 {
+  "reference": {
+    "commit": "14400191400610a80a7d6fa1d2318635208d4a1f",
+    "collection": ".audit/ts-port/baseline/ccd78bbe5dc33171f605783cc8c26da35e734959/collect.txt"
+  },
   "modules": {
     "src/core/actions.ts": {
       "python": [
@@ -531,6 +535,12 @@
         "scripts/setup_local_models.py"
       ],
       "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "python/convert_whisper_ct2.py": {
+      "python": [
+        "scripts/convert_whisper_ct2.py"
+      ],
+      "sha": "14400191400610a80a7d6fa1d2318635208d4a1f"
     }
   }
 }

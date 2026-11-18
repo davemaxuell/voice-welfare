@@ -5,6 +5,7 @@
   "description": "청음 PC 데스크톱 앱(Electron 셸): 로컬 TypeScript 서버를 띄우고 앱 창·전역 단축키로 음성 대화",
   "main": "main.cjs",
   "scripts": {
+    "prestart": "npm --prefix ../.. run build:web",
     "start": "electron .",
     "dist": "electron-builder --config electron-builder.yml",
     "dist:win": "electron-builder --config electron-builder.yml --win",

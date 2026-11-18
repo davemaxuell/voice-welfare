@@ -1,7 +1,6 @@
 import { Hono, type Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { join } from "node:path";
-import { REPO_ROOT } from "../core/assets.ts";
+import { webStatic } from "../core/assets.ts";
 import { strip } from "../core/text.ts";
 import { LangSchema, LANGS } from "../core/turn.ts";
 import type { SessionOrchestrator } from "../orchestrator/session.ts";
@@ -352,7 +351,7 @@ export function makeApp<S extends HttpSession>(
     }),
   );
   if (options.web === true) {
-    const files = staticFiles(join(REPO_ROOT, "dist/web"));
+    const files = staticFiles(webStatic);
     app.use("*", async (c, next) => {
       if (c.req.path.startsWith("/api/")) return next();
       return files(c, next);

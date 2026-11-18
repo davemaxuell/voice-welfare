@@ -196,7 +196,7 @@ ${byCategory}
 ${byAction}
 
 ## RAG 검색 정확도
-- 데이터: 장애인연금 공식 API 상세 응답(2026-11-16 저장), 질문 ${rag.questions}개(src/cheongeum/evaluation/data/rag_qa.json)
+- 데이터: 장애인연금 공식 API 상세 응답(2026-11-16 저장), 질문 ${rag.questions}개(src/evaluation/data/rag_qa.json)
 - Recall@${rag.k}: **${(rag.recallAtK * 100).toFixed(1)}%**, MRR: **${rag.mrr.toFixed(3)}**
 - 한계: 질문과 검색 규칙을 같은 사람이 만들어 낙관적일 수 있음 → 팀 외부에서 작성한 질문 세트로 재평가 필요
 ${misses}
