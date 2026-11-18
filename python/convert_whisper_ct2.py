@@ -1,7 +1,7 @@
 """
 whisper-small-komixv2(transformers 형식) → CTranslate2 int8 + tokenizer.json.
-setup_local_models.py가 임시 환경(transformers·torch, 프로젝트 의존성에 넣지 않음)에서 부른다:
-    uv run --no-project --with ctranslate2==<버전> --with transformers --with torch python scripts/convert_whisper_ct2.py <원본 폴더> <출력 폴더>
+scripts/setup-models.ts가 임시 환경(transformers·torch, 프로젝트 의존성에 넣지 않음)에서 부른다:
+    uv run --no-project --with ctranslate2==<버전> --with transformers --with torch python python/convert_whisper_ct2.py <원본 폴더> <출력 폴더>
 """
 from __future__ import annotations
 
