@@ -53,6 +53,8 @@ class PageDigest:
     # 할 수 있는 일(쉬운 말)
     canDo: list[str] = field(default_factory=list)
     controls: list[dict] = field(default_factory=list)
+    # 꼬리말 글(대표번호·주소 등). 읽어 주는 본문에는 넣지 않는다.
+    footer: str = ""
 
 
 _WS = rx(r"\s+")
@@ -208,6 +210,7 @@ def digest_page(view: dict) -> PageDigest:
         dialogs=[d["title"] for d in view.get("dialogs", [])],
         canDo=can_do,
         controls=_controls(o),
+        footer=o.get("footerText") or "",
     )
 
 
@@ -252,4 +255,5 @@ def digest_for_llm(d: PageDigest, offset: int = 0, main_chars: int = 1500, max_l
         "dialogs": [redact_text(x) for x in d.dialogs],
         "mainText": redact_text(flat[offset : offset + main_chars]),
         "moreText": len(flat) > offset + main_chars,
+        "footer": redact_text(d.footer[:400]),
     }

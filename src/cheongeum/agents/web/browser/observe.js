@@ -117,6 +117,19 @@
       .replace(/<[^>]{0,80}>/g, ' ') // 일부 사이트는 태그 문자열을 그대로 노출한다
       .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 20000);
   }
+  // 꼬리말 글: 대표번호·주소 같은 연락처는 흔히 여기에만 있다. 본문(mainText)에서는 빼므로 따로 담고, 메뉴 링크 글자는 뺀다.
+  const footerEls = Array.from(document.querySelectorAll('footer, [role="contentinfo"]')).filter((el) => isVisible(el) && !inDialog(el));
+  const footerText = footerEls
+    .filter((el) => !footerEls.some((o) => o !== el && o.contains(el)))
+    .map((el) => {
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll('script, style, noscript, nav, button, select, [aria-hidden="true"], [hidden], a:not([href^="tel:"])').forEach((n) => n.remove());
+      clone.querySelectorAll('p, div, li, dt, dd, br, span, address').forEach((n) => n.append(' '));
+      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    })
+    .filter(Boolean)
+    .join(' / ')
+    .slice(0, 600);
   let refSeq = 0;
   const usedRefs = new Set();
   const refOf = (el) => {
@@ -216,6 +229,7 @@
       ? uniq(linkEls.filter((a) => mainEl.contains(a) && !a.closest('nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]')).map(linkName)).slice(0, 80)
       : uniq(linkEls.filter((a) => !a.closest('nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]')).map(linkName)).slice(0, 80),
     mainText,
+    footerText,
     landmarks,
     items,
   };
