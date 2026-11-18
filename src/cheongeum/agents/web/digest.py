@@ -231,6 +231,15 @@ def text_offset(d: PageDigest, needle: str) -> int | None:
     return start + 3 if start >= 0 else 0
 
 
+def page_text_for_llm(d: PageDigest, limit: int = 3000) -> tuple[str, str]:
+    """
+    요약·답에 쓸 본문(제목글 + 정리한 본문): (원문, LLM에 줄 비식별화본). 원문은 검증에만 쓴다.
+    가린 뒤에 자른다. 자른 뒤에 가리면 경계에 걸린 번호 조각('900101-1')이 그대로 나간다.
+    """
+    raw = "\n".join([*d.headings[:6], d.main])
+    return raw[:limit], redact_text(raw)[:limit]
+
+
 def digest_for_llm(d: PageDigest, offset: int = 0, main_chars: int = 1500, max_links: int = 30) -> dict:
     """목표 수행 LLM에 넘길 짧은 화면 요약. items 이름은 그대로 눌러야 하므로 바꾸지 않는다. 제목·제목글·대화창·본문은 비식별화한다."""
     content = d.contentLinks[:max_links]
