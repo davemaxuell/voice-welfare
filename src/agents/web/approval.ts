@@ -45,6 +45,7 @@ export function fingerprint(view: WebObservation, actions: readonly ApprovalActi
 
 function difference(asked: ApprovalFingerprint, now: ApprovalFingerprint): string | undefined {
   if (asked.page !== now.page) return "여쭤본 뒤에 화면이 바뀌었어요.";
+  if (asked.actions.length !== now.actions.length) return "여쭤본 뒤에 할 작업이 바뀌었어요.";
   for (const [i, action] of asked.actions.entries()) {
     const current = now.actions[i];
     if (current === undefined) break;
