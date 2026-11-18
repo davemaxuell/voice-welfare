@@ -1,0 +1,264 @@
+"""프로세스 단위 조립: 브라우저 1개를 공유하고 세션마다 격리된 컨텍스트를 만든다."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping
+
+from playwright.async_api import Browser, BrowserContext
+
+from cheongeum.agents.web import WebExecutionAgent, create_mock_welfare_profile, field_vocabulary
+from cheongeum.agents.web.browser import PlaywrightExecutionAdapter, launch_browser, launch_chrome_profile
+from cheongeum.agents.welfare import WelfareInformationAgent
+from cheongeum.agents.welfare.data import create_welfare_data_provider
+from cheongeum.core.events import InMemoryEventLog
+from cheongeum.core.jsutil import parse_url
+from cheongeum.core.llm import LlmConfig, create_structured_llm
+from cheongeum.orchestrator import OrchestratorDeps, SessionOrchestrator
+from cheongeum.personal import PersonalStore
+from cheongeum.safety import PolicyConfig, PolicyGuard, set_pii_model
+from cheongeum.safety.pii_model import PiiModel
+from cheongeum.understanding import create_intent_provider
+from cheongeum.voice import VoiceConfig, create_voice_providers
+
+log = logging.getLogger("cheongeum.runtime")
+
+
+@dataclass
+class RuntimeConfig:
+    mockSiteUrl: str
+    extraAllowedOrigins: list[str]
+    headless: bool
+    slowMoMs: int
+    # 시작 동의 전에는 화면을 읽거나 조작하지 않음
+    requireConsent: bool
+    # 연습(모의) 사이트를 기본으로 쓸지. False = 실제 사이트 모드
+    practiceMode: bool
+    # 지원 사이트 외 모든 웹사이트를 읽기 전용으로 열 수 있음
+    readOnlyWeb: bool
+    # 시연용 가상 커서
+    visualCursor: bool
+    # chromium = 테스트용 Chromium(세션마다 격리), chrome = 설치된 Google Chrome + 영구 프로필(로그인 유지)
+    browserMode: str
+    chromeProfileDir: str
+    llm: LlmConfig
+    voice: VoiceConfig
+    welfareApiKey: str | None = None
+    welfareApiBaseUrl: str | None = None
+    # 금고·신청 기록을 둘 폴더(없으면 대화 메모리에만). 데스크톱 앱은 ~/.cheongeum
+    dataDir: str | None = None
+    # 웹 검색 주소 틀({q})
+    searchUrlTemplate: str | None = None
+    # 로컬 개인정보 인식 모델 폴더(없으면 규칙만)와 판정 기준 확률
+    piiModel: str | None = None
+    piiThreshold: float = 0.5
+
+
+# 저장소 루트(src/cheongeum/server/runtime.py → 세 단계 위). 모델 폴더 같은 상대 경로의 기준.
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def _blank(v: str | None) -> str | None:
+    return v.strip() if v and v.strip() else None
+
+
+def _float(v: str | None) -> float | None:
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _int(v: str | None, default: int) -> int:
+    try:
+        return int(float(v)) if v not in (None, "") else default
+    except ValueError:
+        return default
+
+
+def _path(v: str | None) -> str | None:
+    """상대 경로는 저장소 루트 기준(서버를 어디서 띄우든 같은 폴더)."""
+    p = _blank(v)
+    if not p:
+        return None
+    path = Path(p).expanduser()
+    return str(path if path.is_absolute() else ROOT / path)
+
+
+def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
+    env = dict(os.environ if env is None else env)
+    headless = env.get("HEADLESS") in ("true", "1")
+    speed = _float(env.get("TTS_SPEED"))
+    extra = [parse_url(s.strip()).origin for s in (env.get("EXTRA_ALLOWED_ORIGINS") or "").split(",") if s.strip()]
+    try:
+        slow_mo = int(float(env.get("BROWSER_SLOWMO_MS") or 0))
+    except ValueError:
+        slow_mo = 0
+    return RuntimeConfig(
+        mockSiteUrl=env.get("MOCK_SITE_URL") or "http://localhost:5174",
+        extraAllowedOrigins=extra,
+        headless=headless,
+        slowMoMs=slow_mo,
+        requireConsent=env.get("REQUIRE_CONSENT") != "false",
+        practiceMode=env.get("PRACTICE_MODE") != "false",
+        dataDir=_blank(env.get("CHEONGEUM_DATA_DIR")),
+        browserMode="chrome" if env.get("BROWSER_MODE") == "chrome" else "chromium",
+        chromeProfileDir=_blank(env.get("CHROME_PROFILE_DIR")) or str(Path.home() / ".cheongeum" / "chrome-profile"),
+        readOnlyWeb=env.get("READ_ONLY_WEB") != "false",
+        searchUrlTemplate=_blank(env.get("WEB_SEARCH_URL")),
+        visualCursor=env["VISUAL_CURSOR"] == "true" if env.get("VISUAL_CURSOR") else not headless,
+        llm=LlmConfig(
+            provider=env.get("LLM_PROVIDER") or "mock",
+            model=_blank(env.get("LLM_MODEL")),
+            baseUrl=_blank(env.get("LLM_BASE_URL")),
+            apiKey=_blank(env.get("LLM_API_KEY")),
+            reasoningEffort=_blank(env.get("LLM_REASONING_EFFORT")),
+        ),
+        voice=VoiceConfig(
+            stt=env.get("STT_PROVIDER") or "mock",
+            tts=env.get("TTS_PROVIDER") or "mock",
+            # 음성 전용 키가 없으면 OpenAI LLM 키를 함께 쓴다.
+            apiKey=_blank(env.get("VOICE_API_KEY")) or _blank(env.get("LLM_API_KEY")),
+            baseUrl=_blank(env.get("VOICE_BASE_URL")),
+            sttBaseUrl=_blank(env.get("STT_BASE_URL")),
+            sttModel=_blank(env.get("STT_MODEL")),
+            sttLocalModel=_path(env.get("STT_LOCAL_MODEL")),
+            sttLocalThreads=_int(env.get("STT_LOCAL_THREADS"), 0),
+            sttLocalBeam=_int(env.get("STT_LOCAL_BEAM"), 1),
+            sttLocalPrompt=env.get("STT_LOCAL_PROMPT") in ("true", "1"),
+            ttsModel=_blank(env.get("TTS_MODEL")),
+            ttsVoice=_blank(env.get("TTS_VOICE")),
+            ttsInstructions=_blank(env.get("TTS_INSTRUCTIONS")),
+            ttsSpeed=min(4.0, max(0.25, speed)) if speed and speed > 0 else None,
+        ),
+        welfareApiKey=_blank(env.get("WELFARE_API_KEY")) if env.get("WELFARE_DATA_MODE") == "official-api" else None,
+        welfareApiBaseUrl=_blank(env.get("WELFARE_API_BASE_URL")),
+        piiModel=_path(env.get("PII_MODEL")),
+        piiThreshold=_float(env.get("PII_THRESHOLD")) or 0.5,
+    )
+
+
+def _load_pii_model(config: RuntimeConfig) -> PiiModel | None:
+    """PII_MODEL이 있으면 개인정보 인식 모델을 켠다(민감정보 판정 = 규칙 ∪ 모델). 없거나 실패하면 규칙만."""
+    if not config.piiModel:
+        set_pii_model(None)
+        return None
+    if not PiiModel.available(config.piiModel):
+        log.error("[privacy] PII_MODEL=%s 에 모델이 없습니다. uv run python scripts/setup_local_models.py 를 실행하세요 → 규칙만 사용", config.piiModel)
+        set_pii_model(None)
+        return None
+    model = PiiModel(config.piiModel, threshold=config.piiThreshold)
+    try:
+        model.load()
+    except Exception as e:  # noqa: BLE001
+        log.error("[privacy] 개인정보 인식 모델을 불러오지 못했습니다(%s) → 규칙만 사용", type(e).__name__)
+        set_pii_model(None)
+        return None
+    set_pii_model(model)
+    return model
+
+
+class AgentRuntime:
+    """프로세스 단위 조립: 브라우저 1개를 공유하고 세션마다 격리된 컨텍스트를 만든다."""
+
+    def __init__(self, config: RuntimeConfig) -> None:
+        self.config = config
+        self.profile = create_mock_welfare_profile(config.mockSiteUrl)
+        self.welfare_provider = create_welfare_data_provider(api_key=config.welfareApiKey, api_base_url=config.welfareApiBaseUrl)
+        self.intent_provider = create_intent_provider(config.llm, field_vocabulary(self.profile))
+        # 근거 기반 답변 생성용(없으면 주제 규칙 답변)
+        self.answer_llm = create_structured_llm(config.llm)
+        self.events = InMemoryEventLog()
+        self.stt, self.tts = create_voice_providers(config.voice)
+        self.pii_model = _load_pii_model(config)
+        # 한 사용자의 컴퓨터용 앱이라 금고·신청 기록은 세션끼리 같은 것을 쓴다
+        self._personal: PersonalStore | None = None
+        self._browser: asyncio.Task[Browser] | None = None
+        self._chrome: asyncio.Task[BrowserContext] | None = None
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        return [self.profile.origin, *self.config.extraAllowedOrigins]
+
+    async def _get_browser(self) -> Browser:
+        if self._browser is None:
+            self._browser = asyncio.ensure_future(launch_browser(self.config.headless, self.config.slowMoMs))
+        return await self._browser
+
+    async def _get_chrome(self) -> BrowserContext:
+        """실제 크롬(영구 프로필)은 프로세스에 하나. 사용자가 창을 닫으면 다음 세션에서 다시 띄운다."""
+        if self._chrome is None:
+
+            async def launch() -> BrowserContext:
+                ctx = await launch_chrome_profile(self.config.chromeProfileDir, self.config.slowMoMs)
+
+                def on_close(_c) -> None:
+                    self._chrome = None
+
+                ctx.on("close", on_close)
+                return ctx
+
+            self._chrome = asyncio.ensure_future(launch())
+        return await self._chrome
+
+    async def create_session(self) -> SessionOrchestrator:
+        chrome = await self._get_chrome() if self.config.browserMode == "chrome" else None
+        adapter = PlaywrightExecutionAdapter(
+            context=chrome,
+            browser=None if chrome else await self._get_browser(),
+            allowed_origins=self.allowed_origins,
+            read_only_web=self.config.readOnlyWeb,
+            visual_cursor=self.config.visualCursor,
+        )
+        await adapter.start()
+        fields = self.profile.fields
+        guard = PolicyGuard(
+            PolicyConfig(
+                allowedOrigins=self.allowed_origins,
+                allowedActionTypes=["navigate", "back", "click", "fill", "press", "select", "check", "read", "focus", "scroll"],
+                allowedFieldIds=[f.field_id for f in fields if f.sensitivity != "secret"],
+                secretFieldIds=[f.field_id for f in fields if f.sensitivity == "secret"],
+                maxActionsPerTurn=12,
+                safeButtons=[self.profile.buttons.next, self.profile.buttons.prev, *self.profile.buttons.dismiss_dialog],
+                readOnlyWeb=self.config.readOnlyWeb,
+            )
+        )
+        if self._personal is None:
+            self._personal = PersonalStore(str(Path(self.config.dataDir) / "personal.json") if self.config.dataDir else None)
+        session = SessionOrchestrator(
+            OrchestratorDeps(
+                intent_provider=self.intent_provider,
+                web=WebExecutionAgent(adapter, guard, self.profile),
+                welfare=WelfareInformationAgent(self.welfare_provider, self.answer_llm),
+                events=self.events,
+                require_consent=self.config.requireConsent,
+                practice_mode=self.config.practiceMode,
+                personal=self._personal,
+                llm=self.answer_llm,
+                search_url_template=self.config.searchUrlTemplate,
+            )
+        )
+        # 동의가 필요하면 동의 후에 첫 화면을 띄운다.
+        if not self.config.requireConsent:
+            await session.prepare()
+        return session
+
+    async def close(self) -> None:
+        if self._chrome is not None:
+            try:
+                ctx = await self._chrome
+                await ctx.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._chrome = None
+        if self._browser is not None:
+            try:
+                b = await self._browser
+                await b.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._browser = None
+        # Playwright 드라이버는 프로세스에 하나라 다른 런타임이 쓸 수 있다. 끝낼 때 stop_playwright()를 따로 부른다.

@@ -1,0 +1,203 @@
+==== LINKS_PER_PAGE -> browse.py:LINKS_PER_PAGE  (0 changed lines)
+==== _mock_sites -> browse.py:mock_sites  (2 changed lines)
+@@ -1 +1 @@
+-def _mock_sites(self) -> list[KnownSite]:
++def mock_sites(self) -> list[KnownSite]:
+==== _after_navigation -> browse.py:after_navigation  (2 changed lines)
+@@ -1 +1 @@
+-def _after_navigation(self, view: dict) -> None:
++def after_navigation(self, view: dict) -> None:
+==== _search_url -> browse.py:search_url  (2 changed lines)
+@@ -1 +1 @@
+-def _search_url(self, query: str) -> str:
++def search_url(self, query: str) -> str:
+==== _open_site -> browse.py:open_site  (14 changed lines)
+@@ -1,2 +1,2 @@
+-async def _open_site(self, target: str, turn: Turn) -> dict:
+-    site = resolve_site(target, self._mock_sites())
++async def open_site(self, target: str, ctx: ExecContext) -> dict:
++    site = resolve_site(target, self.mock_sites())
+@@ -8 +8 @@
+-        out = await self.web.open_site(self._search_url(f"{name} 홈페이지"), turn.ctx)
++        out = await self.web.open_site(self.search_url(f"{name} 홈페이지"), ctx)
+@@ -15 +15 @@
+-        self._after_navigation(out.view)
++        self.after_navigation(out.view)
+@@ -24 +24 @@
+-    out = await self.web.open_site(site["url"], turn.ctx)
++    out = await self.web.open_site(site["url"], ctx)
+@@ -27 +27 @@
+-    self._after_navigation(out.view)
++    self.after_navigation(out.view)
+@@ -31 +31 @@
+-        f"{josa(site['label'], '을', '를')} 열었어요. {await self.narrator.page_intro(out.view, turn.ctx)}",
++        f"{josa(site['label'], '을', '를')} 열었어요. {await self.narrator.page_intro(out.view, ctx)}",
+==== _follow_link -> browse.py:follow_link  (16 changed lines)
+@@ -1 +1 @@
+-async def _follow_link(self, name: str, turn: Turn) -> dict:
++async def follow_link(self, name: str, ctx: ExecContext) -> dict:
+@@ -10 +10 @@
+-            return await self.form.next(turn.ctx)
++            return await self.form.next(ctx)
+@@ -12 +12 @@
+-            return await self.form.prev(turn.ctx)
++            return await self.form.prev(ctx)
+@@ -14 +14 @@
+-            return await self.form.prepare_submit(turn.ctx)
++            return await self.form.prepare_submit(ctx)
+@@ -21 +21 @@
+-            return await self._open_site(u.origin, turn)
++            return await self.open_site(u.origin, ctx)
+@@ -23 +23 @@
+-    out = await self.web.follow_link(name, turn.ctx)
++    out = await self.web.follow_link(name, ctx)
+@@ -45 +45 @@
+-    self._after_navigation(out.view)
++    self.after_navigation(out.view)
+@@ -49 +49 @@
+-        f"'{out.readValue}' 링크를 열었습니다. {await self.narrator.page_intro(out.view, turn.ctx)}",
++        f"'{out.readValue}' 링크를 열었습니다. {await self.narrator.page_intro(out.view, ctx)}",
+==== _back -> browse.py:back  (8 changed lines)
+@@ -1,2 +1,2 @@
+-async def _back(self, turn: Turn) -> dict:
+-    out = await self.web.back(turn.ctx)
++async def back(self, ctx: ExecContext) -> dict:
++    out = await self.web.back(ctx)
+@@ -5 +5 @@
+-    self._after_navigation(out.view)
++    self.after_navigation(out.view)
+@@ -9 +9 @@
+-        f"이전 페이지로 돌아왔습니다. {await self.narrator.page_intro(out.view, turn.ctx)}",
++        f"이전 페이지로 돌아왔습니다. {await self.narrator.page_intro(out.view, ctx)}",
+==== _readable_text -> browse.py:_readable_text  (2 changed lines)
+@@ -9 +9 @@
+-        official = await self.deps.welfare.readable_service(view["url"])
++        official = await self._official_text(view["url"])
+==== _read_main -> browse.py:read_main  (4 changed lines)
+@@ -1,2 +1,2 @@
+-async def _read_main(self, more: bool, turn: Turn) -> dict:
+-    view = await self.web.observe(turn.ctx)
++async def read_main(self, more: bool, ctx: ExecContext) -> dict:
++    view = await self.web.observe(ctx)
+==== _list_links -> browse.py:list_links  (4 changed lines)
+@@ -1,2 +1,2 @@
+-async def _list_links(self, more: bool, turn: Turn) -> dict:
+-    view = await self.web.observe(turn.ctx)
++async def list_links(self, more: bool, ctx: ExecContext) -> dict:
++    view = await self.web.observe(ctx)
+==== _search -> browse.py:search  (12 changed lines)
+@@ -1 +1 @@
+-async def _search(self, query: str, site: str | None, turn: Turn) -> dict:
++async def search(self, query: str, site: str | None, ctx: ExecContext) -> dict:
+@@ -4 +4 @@
+-        opened = await self._open_site(site, turn)
++        opened = await self.open_site(site, ctx)
+@@ -8 +8 @@
+-    out = await self.web.search(query, turn.ctx)
++    out = await self.web.search(query, ctx)
+@@ -11 +11 @@
+-        out = await self.web.open_site(self._search_url(query), turn.ctx)
++        out = await self.web.open_site(self.search_url(query), ctx)
+@@ -15 +15 @@
+-    self._after_navigation(out.view)
++    self.after_navigation(out.view)
+@@ -20 +20 @@
+-        f"{quoted} 검색했어요. {await self.narrator.page_intro(out.view, turn.ctx)}",
++        f"{quoted} 검색했어요. {await self.narrator.page_intro(out.view, ctx)}",
+==== _resume -> browse.py:resume  (4 changed lines)
+@@ -1 +1 @@
+-async def _resume(self, turn: Turn) -> dict:
++async def resume(self, ctx: ExecContext) -> dict:
+@@ -4 +4 @@
+-    view = await self.web.observe(turn.ctx)
++    view = await self.web.observe(ctx)
+==== _screen -> browse.py:screen  (8 changed lines)
+@@ -1 +1 @@
+-async def _screen(self, turn: Turn) -> dict:
++async def screen(self, text: str, ctx: ExecContext) -> dict:
+@@ -3 +3 @@
+-        view = await self.web.observe(turn.ctx)
++        view = await self.web.observe(ctx)
+@@ -9 +9 @@
+-    detailed = view["pageId"].startswith("mock") or bool(rx(r"(자세히|전체|전부|하나하나|구성)").search(turn.text))
++    detailed = view["pageId"].startswith("mock") or bool(rx(r"(자세히|전체|전부|하나하나|구성)").search(text))
+@@ -13 +13 @@
+-        speech = await self.narrator.brief_screen(view, turn.ctx)
++        speech = await self.narrator.brief_screen(view, ctx)
+==== _current_step -> browse.py:current_step  (4 changed lines)
+@@ -1 +1 @@
+-async def _current_step(self, turn: Turn) -> dict:
++async def current_step(self, ctx: ExecContext) -> dict:
+@@ -3 +3 @@
+-        view = await self.web.observe(turn.ctx)
++        view = await self.web.observe(ctx)
+==== _about_site -> browse.py:about_site  (4 changed lines)
+@@ -1 +1 @@
+-def _about_site(self) -> dict:
++def about_site(self) -> dict:
+@@ -21 +21 @@
+-    known = next((s for s in [*self._mock_sites(), *KNOWN_SITES] if s.about and host(s.url) == here), None)
++    known = next((s for s in [*self.mock_sites(), *KNOWN_SITES] if s.about and host(s.url) == here), None)
+==== _web_answer -> browse.py:web_answer  (10 changed lines)
+@@ -1 +1 @@
+-async def _web_answer(self, question: str, query: str, turn: Turn) -> dict:
++async def web_answer(self, question: str, query: str, ctx: ExecContext) -> dict:
+@@ -3 +3 @@
+-    url = self._search_url(query)
++    url = self.search_url(query)
+@@ -6 +6 @@
+-    out = await self.web.open_site(url, turn.ctx)
++    out = await self.web.open_site(url, ctx)
+@@ -9 +9 @@
+-    self._after_navigation(out.view)
++    self.after_navigation(out.view)
+@@ -31 +31 @@
+-        self._trace(turn, "VERIFYING", AGENT_IDS.verifier, "검색 답변 근거 확인" if check.ok else f"검색 답변 근거 부족: {', '.join(check.reasons)}")
++        ctx.trace("VERIFYING", AGENT_IDS.verifier, "검색 답변 근거 확인" if check.ok else f"검색 답변 근거 부족: {', '.join(check.reasons)}")
+==== _run_goal -> browse.py:run_goal  (10 changed lines)
+@@ -1 +1 @@
+-async def _run_goal(self, goal: str, turn: Turn) -> dict:
++async def run_goal(self, goal: str, ctx: ExecContext) -> dict:
+@@ -10 +10 @@
+-        r = resolve_site(name, self._mock_sites())
++        r = resolve_site(name, self.mock_sites())
+@@ -13,2 +13,2 @@
+-    pilot = Autopilot(self.web, self.deps.llm, search_url=self._search_url, resolve_site=resolve)
+-    result = await pilot.run(goal, turn.ctx)
++    pilot = Autopilot(self.web, self.deps.llm, search_url=self.search_url, resolve_site=resolve)
++    result = await pilot.run(goal, ctx)
+@@ -16 +16 @@
+-        self._after_navigation(result.view)
++        self.after_navigation(result.view)
+==== _login -> browse.py:login  (10 changed lines)
+@@ -1 +1 @@
+-async def _login(self, turn: Turn) -> dict:
++async def login(self, text: str, ctx: ExecContext) -> dict:
+@@ -6,2 +6,2 @@
+-        if rx(r"(눌러|클릭|열어|화면|페이지|가\s*줘|이동|들어가)").search(turn.text):
+-            out = await self.web.follow_link("로그인", turn.ctx)
++        if rx(r"(눌러|클릭|열어|화면|페이지|가\s*줘|이동|들어가)").search(text):
++            out = await self.web.follow_link("로그인", ctx)
+@@ -9 +9 @@
+-                self._after_navigation(out.view)
++                self.after_navigation(out.view)
+@@ -29 +29 @@
+-    out = await self.web.open_login(turn.ctx)
++    out = await self.web.open_login(ctx)
+==== _auth_done -> browse.py:auth_done  (4 changed lines)
+@@ -1,2 +1,2 @@
+-async def _auth_done(self, turn: Turn) -> dict:
+-    view = await self.web.observe(turn.ctx)
++async def auth_done(self, ctx: ExecContext) -> dict:
++    view = await self.web.observe(ctx)
+==== _unknown -> session.py:_unknown  (7 changed lines)
+@@ -9,4 +9,3 @@
+-    if numbered and self._listed_links:
+-        idx = int(numbered.group(1)) - 1
+-        if 0 <= idx < len(self._listed_links):
+-            return await self._follow_link(self._listed_links[idx], turn)
++    link = self.browse.listed_link(int(numbered.group(1)) - 1) if numbered else None
++    if link is not None:
++        return await self.browse.follow_link(link, turn.ctx)
+MISSING: none
+STILL IN session.py: none

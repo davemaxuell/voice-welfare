@@ -1,0 +1,303 @@
+........................................................................ [ 25%]
+........................................................................ [ 50%]
+........................................................................ [ 75%]
+......................................................................   [100%]
+=================================== PASSES ====================================
+__________________ test_voice_fallback_without_key_or_model ___________________
+------------------------------ Captured log call ------------------------------
+WARNING  cheongeum.voice:config.py:43 [voice] STT: API 키 또는 STT_MODEL 미설정 → 브라우저 음성 사용
+WARNING  cheongeum.voice:config.py:43 [voice] TTS: API 키 또는 TTS_MODEL 미설정 → 브라우저 음성 사용
+___________________________ test_no_key_means_rules ___________________________
+------------------------------ Captured log call ------------------------------
+WARNING  cheongeum.llm:llm_planner.py:193 [llm] LLM_API_KEY 미설정 → mock 규칙 파서만 사용합니다.
+_______________________ test_official_error_falls_back ________________________
+------------------------------ Captured log call ------------------------------
+WARNING  cheongeum.welfare:__init__.py:420 [welfare] 공식 API 실패 → fixture 사용: welfare api: SERVICE_KEY_IS_NOT_REGISTERED_ERROR (등록되지 않은 서비스키)
+=========================== short test summary info ===========================
+PASSED tests/e2e/test_api.py::test_session_turn_state_cancel
+PASSED tests/e2e/test_api.py::test_bad_requests_and_unsupported_voice
+PASSED tests/e2e/test_api.py::test_voice_turn_reaches_screen
+PASSED tests/e2e/test_api.py::test_spoken_password_never_returned
+PASSED tests/e2e/test_api.py::test_empty_transcript_tts_health
+PASSED tests/e2e/test_autopilot.py::test_goal_intent_by_rules
+PASSED tests/e2e/test_autopilot.py::test_open_click_answer
+PASSED tests/e2e/test_autopilot.py::test_uses_search_box
+PASSED tests/e2e/test_autopilot.py::test_policy_guard_blocks_action_button
+PASSED tests/e2e/test_autopilot.py::test_stops_when_looping
+PASSED tests/e2e/test_autopilot.py::test_rejects_answer_without_visit
+PASSED tests/e2e/test_autopilot.py::test_rewrites_non_korean_answer
+PASSED tests/e2e/test_autopilot.py::test_few_hanja_allowed
+PASSED tests/e2e/test_autopilot.py::test_verifier_rejects_invented_evidence_and_numbers
+PASSED tests/e2e/test_autopilot.py::test_verifier_gives_up_honestly
+PASSED tests/e2e/test_autopilot.py::test_llm_gets_digested_page
+PASSED tests/e2e/test_autopilot.py::test_no_llm_step_by_step
+PASSED tests/e2e/test_browsing.py::test_open_external_read_only_summary
+PASSED tests/e2e/test_browsing.py::test_read_main_in_chunks_ignoring_instructions
+PASSED tests/e2e/test_browsing.py::test_links_by_number_and_back
+PASSED tests/e2e/test_browsing.py::test_ambiguous_link_asks_then_number
+PASSED tests/e2e/test_browsing.py::test_duplicate_link_name_opens_first
+PASSED tests/e2e/test_browsing.py::test_follows_new_tab
+PASSED tests/e2e/test_browsing.py::test_search_box_only
+PASSED tests/e2e/test_browsing.py::test_no_general_input_or_buttons_on_external
+PASSED tests/e2e/test_browsing.py::test_apply_from_external_opens_mock_form
+PASSED tests/e2e/test_browsing.py::test_unknown_site_name_is_searched
+PASSED tests/e2e/test_browsing.py::test_consent_required_before_screen
+PASSED tests/e2e/test_browsing.py::test_declined_consent_keeps_blocking
+PASSED tests/e2e/test_browsing.py::test_assist_fill_after_yes
+PASSED tests/e2e/test_browsing.py::test_assist_no_means_no
+PASSED tests/e2e/test_browsing.py::test_submit_button_left_to_user
+PASSED tests/e2e/test_browsing.py::test_missing_field_not_found
+PASSED tests/e2e/test_browsing.py::test_guided_fill_with_vault
+PASSED tests/e2e/test_browsing.py::test_guided_fill_with_spoken_value
+PASSED tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence
+PASSED tests/e2e/test_conversation.py::test_plan_stops_on_clarification
+PASSED tests/e2e/test_conversation.py::test_llm_plan_when_rules_cannot_split
+PASSED tests/e2e/test_conversation.py::test_rephrase_without_llm
+PASSED tests/e2e/test_conversation.py::test_rephrase_with_llm
+PASSED tests/e2e/test_conversation.py::test_general_question_then_resume
+PASSED tests/e2e/test_conversation.py::test_realtime_question_searches_and_grounds
+PASSED tests/e2e/test_conversation.py::test_verifier_blocks_ungrounded_search_answer
+PASSED tests/e2e/test_conversation.py::test_welfare_question_not_in_official_data
+PASSED tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uc5f4\uc5b4\uc918-\uc5b4\ub290 \uc0ac\uc774\ud2b8\ub97c \uc5f4\uae4c\uc694]
+PASSED tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uac80\uc0c9\ud574\uc918-\ubb34\uc5c7\uc744 \uac80\uc0c9\ud560\uae4c\uc694]
+PASSED tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uadf8\uac70 \ud574\uc918-\ubb34\uc5c7\uc744 \ud560\uae4c\uc694]
+PASSED tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uc54c\ub824\uc918-\ubb34\uc5c7\uc744 \uc54c\ub824\ub4dc\ub9b4\uae4c\uc694]
+PASSED tests/e2e/test_conversation.py::test_apply_without_service_name_asks
+PASSED tests/e2e/test_conversation.py::test_welfare_question_without_context_asks_service
+PASSED tests/e2e/test_conversation.py::test_fillers_not_entered_as_name
+PASSED tests/e2e/test_conversation.py::test_other_service_context_does_not_open_disability_form
+PASSED tests/e2e/test_conversation.py::test_discover_flow
+PASSED tests/e2e/test_conversation.py::test_discover_interrupted_by_other_command
+PASSED tests/e2e/test_conversation.py::test_no_consecutive_clarify
+PASSED tests/e2e/test_conversation.py::test_llm_language_route
+PASSED tests/e2e/test_conversation.py::test_brief_screen_vs_detailed
+PASSED tests/e2e/test_conversation.py::test_summary_with_unknown_number_dropped
+PASSED tests/e2e/test_conversation.py::test_login_link_only_then_handoff
+PASSED tests/e2e/test_conversation.py::test_main_screen_opens_site_home
+PASSED tests/e2e/test_conversation.py::test_custom_named_link_is_follow_link
+PASSED tests/e2e/test_conversation.py::test_short_replies_not_values
+PASSED tests/e2e/test_conversation.py::test_multiple_questions
+PASSED tests/e2e/test_conversation.py::test_real_site_mode
+PASSED tests/e2e/test_multilingual.py::test_switch_to_english_then_translate
+PASSED tests/e2e/test_multilingual.py::test_stop_without_translation
+PASSED tests/e2e/test_multilingual.py::test_only_rule_words_approve
+PASSED tests/e2e/test_multilingual.py::test_changed_numbers_fall_back_to_korean
+PASSED tests/e2e/test_multilingual.py::test_auto_switch_by_script
+PASSED tests/e2e/test_multilingual.py::test_no_llm_no_switch
+PASSED tests/e2e/test_multilingual.py::test_about_unknown_site
+PASSED tests/e2e/test_multilingual.py::test_about_practice_site
+PASSED tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval
+PASSED tests/e2e/test_safety.py::test_multi_field_fill_verified_in_dom
+PASSED tests/e2e/test_safety.py::test_two_address_fields_asks_before_fill
+PASSED tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions
+PASSED tests/e2e/test_safety.py::test_guided_dialogue_value_only
+PASSED tests/e2e/test_safety.py::test_question_mid_form_then_resume
+PASSED tests/e2e/test_safety.py::test_edit_waiting_then_new_value
+PASSED tests/e2e/test_safety.py::test_info_popup_closed_and_announced
+PASSED tests/e2e/test_safety.py::test_stop_interrupts_inflight_and_blocks_later
+PASSED tests/e2e/test_safety.py::test_multi_question_turn_waits_for_consent
+PASSED tests/e2e/test_safety.py::test_picking_discovered_service_waits_for_consent
+PASSED tests/e2e/test_safety.py::test_multi_question_turn_blocked_while_stopped
+PASSED tests/e2e/test_safety.py::test_resume_plan_runs_its_later_steps
+PASSED tests/e2e/test_safety.py::test_password_never_stored_spoken_or_entered
+PASSED tests/e2e/test_safety.py::test_mock_submit_receipt
+PASSED tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]
+PASSED tests/e2e/test_scenarios.py::test_demo_scenario[S2-field-validation]
+PASSED tests/e2e/test_scenarios.py::test_demo_scenario[S3-sensitive-auth-handoff]
+PASSED tests/e2e/test_scenarios.py::test_demo_scenario[S4-stop-cancel]
+PASSED tests/e2e/test_scenarios.py::test_demo_scenario[S5-agent-collaboration]
+PASSED tests/e2e/test_web_ui.py::test_consent_then_text_command
+PASSED tests/e2e/test_web_ui.py::test_decline_and_high_contrast
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[state]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[approval]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[awaiting]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[clarification]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[profile_question]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[vault_confirm]
+PASSED tests/unit/test_dialogue.py::test_slots_are_read_only[guided]
+PASSED tests/unit/test_dialogue.py::test_value_filled_releases_matching_wait_and_voids_approval
+PASSED tests/unit/test_dialogue.py::test_value_filled_keeps_wait_for_another_field
+PASSED tests/unit/test_dialogue.py::test_navigated_off_form_drops_wait_and_approval
+PASSED tests/unit/test_dialogue.py::test_navigated_on_form_keeps_wait
+PASSED tests/unit/test_dialogue.py::test_stop_clears_approval_wait_and_choice_only
+PASSED tests/unit/test_discovery_personal.py::test_central_catalog
+PASSED tests/unit/test_discovery_personal.py::test_local_catalog
+PASSED tests/unit/test_discovery_personal.py::test_profile_answer_many_at_once
+PASSED tests/unit/test_discovery_personal.py::test_profile_short_answers
+PASSED tests/unit/test_discovery_personal.py::test_profile_unrelated
+PASSED tests/unit/test_discovery_personal.py::test_rank_severe_basic
+PASSED tests/unit/test_discovery_personal.py::test_rank_senior_low_income
+PASSED tests/unit/test_discovery_personal.py::test_rank_with_region
+PASSED tests/unit/test_discovery_personal.py::test_local_detail
+PASSED tests/unit/test_discovery_personal.py::test_vault_values
+PASSED tests/unit/test_discovery_personal.py::test_vault_key_for_label
+PASSED tests/unit/test_discovery_personal.py::test_store_file_mode
+PASSED tests/unit/test_discovery_personal.py::test_personal_commands
+PASSED tests/unit/test_discovery_personal.py::test_parse_date
+PASSED tests/unit/test_discovery_personal.py::test_due_reminder
+PASSED tests/unit/test_grounding.py::test_quote_tolerates_spacing_punctuation_endings
+PASSED tests/unit/test_grounding.py::test_quote_not_in_source_or_too_short
+PASSED tests/unit/test_grounding.py::test_units_converted
+PASSED tests/unit/test_grounding.py::test_unsupported_amounts_and_phones
+PASSED tests/unit/test_grounding.py::test_small_numbers_ignored
+PASSED tests/unit/test_grounding.py::test_dates
+PASSED tests/unit/test_grounding.py::test_check_grounding
+PASSED tests/unit/test_grounding.py::test_digest_menu_and_content
+PASSED tests/unit/test_grounding.py::test_digest_kinds
+PASSED tests/unit/test_grounding.py::test_digest_for_llm_is_smaller
+PASSED tests/unit/test_grounding.py::test_readable_body
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc601\uc5b4\ub85c \ub9d0\ud574\uc918-en]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[Speak English-en]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[English please-en]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[English, please.-en]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[Korean, please.-ko]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc911\uad6d\uc5b4\ub85c \ub300\ub2f5\ud574 \uc918-zh]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u8bf4\u4e2d\u6587-zh]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc77c\ubcf8\uc5b4\ub85c \ud574\uc918-ja]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u65e5\u672c\u8a9e\u3067\u8a71\u3057\u3066-ja]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\ud55c\uad6d\uc5b4\ub85c-ko]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[Korean please-ko]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u97d3\u56fd\u8a9e\u3067\u304a\u9858\u3044\u3057\u307e\u3059-ko]
+PASSED tests/unit/test_i18n_voice_llm.py::test_lang_name_inside_long_sentence_is_not_command
+PASSED tests/unit/test_i18n_voice_llm.py::test_script_lang
+PASSED tests/unit/test_i18n_voice_llm.py::test_foreign_confirmation
+PASSED tests/unit/test_i18n_voice_llm.py::test_stop_words_multilingual
+PASSED tests/unit/test_i18n_voice_llm.py::test_translation_number_units
+PASSED tests/unit/test_i18n_voice_llm.py::test_translate_out_retries_on_changed_numbers
+PASSED tests/unit/test_i18n_voice_llm.py::test_translate_out_retries_when_korean_left
+PASSED tests/unit/test_i18n_voice_llm.py::test_stt_sends_model_language_extension
+PASSED tests/unit/test_i18n_voice_llm.py::test_stt_prompt_echo_retries_without_language
+PASSED tests/unit/test_i18n_voice_llm.py::test_stt_echo_twice_returns_empty
+PASSED tests/unit/test_i18n_voice_llm.py::test_stt_no_korean_prompt_for_other_languages
+PASSED tests/unit/test_i18n_voice_llm.py::test_tts_body_and_mp3
+PASSED tests/unit/test_i18n_voice_llm.py::test_provider_error_status_only
+PASSED tests/unit/test_i18n_voice_llm.py::test_voice_fallback_without_key_or_model
+PASSED tests/unit/test_i18n_voice_llm.py::test_audio_extension
+PASSED tests/unit/test_i18n_voice_llm.py::test_prompt_echo_detection
+PASSED tests/unit/test_i18n_voice_llm.py::test_rules_first_no_llm_call
+PASSED tests/unit/test_i18n_voice_llm.py::test_openai_strict_schema_no_temperature
+PASSED tests/unit/test_i18n_voice_llm.py::test_compatible_mode_json_object
+PASSED tests/unit/test_i18n_voice_llm.py::test_llm_cannot_approve_or_stop
+PASSED tests/unit/test_i18n_voice_llm.py::test_llm_failures_fall_back
+PASSED tests/unit/test_i18n_voice_llm.py::test_flat_unknown_uses_utterance
+PASSED tests/unit/test_i18n_voice_llm.py::test_no_key_means_rules
+PASSED tests/unit/test_layers.py::test_imports_follow_pipeline_layers
+PASSED tests/unit/test_layers.py::test_layer_table_has_no_cycle
+PASSED tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ub3c4\uc640\uc918-START_APPLICATION]
+PASSED tests/unit/test_parser.py::test_intents[\uc2e0\uccad \ud398\uc774\uc9c0\ub97c \uc5f4\uc5b4\uc918-START_APPLICATION]
+PASSED tests/unit/test_parser.py::test_intents[\uc8fc\uc18c \ub2e4\uc2dc \uc77d\uc5b4\uc918-READ_FIELD]
+PASSED tests/unit/test_parser.py::test_intents[\ub2e4\uc74c\uc73c\ub85c-NEXT]
+PASSED tests/unit/test_parser.py::test_intents[\uc774\uc804\uc73c\ub85c-PREV]
+PASSED tests/unit/test_parser.py::test_intents[\uc774 \ud56d\ubaa9\uc740 \ubb34\uc2a8 \ub73b\uc774\uc57c?-EXPLAIN]
+PASSED tests/unit/test_parser.py::test_intents[\uc9c0\uae08\uae4c\uc9c0 \uc4f4 \ub0b4\uc6a9 \uc77d\uc5b4\uc918-REVIEW]
+PASSED tests/unit/test_parser.py::test_intents[\ubaa8\uc758 \uc811\uc218 \ub0b4\uc6a9\uc744 \ud655\uc778\ud588\uc5b4-PREPARE_SUBMIT]
+PASSED tests/unit/test_parser.py::test_intents[\ucd5c\uc885 \ud655\uc778\ud560\uac8c-PREPARE_SUBMIT]
+PASSED tests/unit/test_parser.py::test_intents[\uc81c\ucd9c\ud574-PREPARE_SUBMIT]
+PASSED tests/unit/test_parser.py::test_intents[\ubaa8\uc758\uc811\uc218 \uc2b9\uc778-APPROVE]
+PASSED tests/unit/test_parser.py::test_intents[\uc2b9\uc778 \uc548 \ud574-REJECT]
+PASSED tests/unit/test_parser.py::test_intents[\uba48\ucdb0-STOP]
+PASSED tests/unit/test_parser.py::test_intents[\ub2e4\uc2dc \uc2dc\uc791-RESUME]
+PASSED tests/unit/test_parser.py::test_intents[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4-LOGIN]
+PASSED tests/unit/test_parser.py::test_intents[\uc8fc\uc18c \uc218\uc815\ud560\uac8c-EDIT_FIELD]
+PASSED tests/unit/test_parser.py::test_intents[\ud604\uc7ac \ub2e8\uacc4 \uc54c\ub824\uc918-CURRENT_STEP]
+PASSED tests/unit/test_parser.py::test_intents[\ud654\uba74 \uc124\uba85\ud574\uc918-DESCRIBE_SCREEN]
+PASSED tests/unit/test_parser.py::test_intents[\uc9c0\uae08 \ud654\uba74\uc5d0 \ubb50\uac00 \uc788\uc5b4?-DESCRIBE_SCREEN]
+PASSED tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ud654\uba74 \uc124\uba85\ud574\uc918-DESCRIBE_SCREEN]
+PASSED tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uacfc \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918-POLICY_QUESTION]
+PASSED tests/unit/test_parser.py::test_intents[\uc0c1\ub2f4\uc6d0 \uc5f0\uacb0\ud574\uc918-HELP_HUMAN]
+PASSED tests/unit/test_parser.py::test_intents[\uc624\ub298 \ub0a0\uc528 \uc5b4\ub54c-UNKNOWN]
+PASSED tests/unit/test_parser.py::test_field_and_value_split
+PASSED tests/unit/test_parser.py::test_multiple_fields_in_one_sentence
+PASSED tests/unit/test_parser.py::test_specific_alias_beats_generic
+PASSED tests/unit/test_parser.py::test_edit_with_value_is_fill
+PASSED tests/unit/test_parser.py::test_awaiting_value_long_address_not_navigation
+PASSED tests/unit/test_parser.py::test_stop_is_rule_based
+PASSED tests/unit/test_parser.py::test_clean_value
+PASSED tests/unit/test_parser.py::test_split_commands[\uc774\ub984\uc740 \uae40\ud558\ub298\uc774\uace0 \uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10, \ub2e4\uc74c\uc73c\ub85c \ub118\uc5b4\uac00\uc918-3]
+PASSED tests/unit/test_parser.py::test_split_commands[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918 \uadf8\ub9ac\uace0 \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-2]
+PASSED tests/unit/test_parser.py::test_split_commands[\uc774\ub984\uc740 \uae40\ud558\ub298-1]
+PASSED tests/unit/test_parser.py::test_rephrase
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918-expected0]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\uc815\ubd8024 \ub4e4\uc5b4\uac00\uc918-expected1]
+PASSED tests/unit/test_parser.py::test_browsing_commands[gov.kr \uc5f4\uc5b4\uc918-expected2]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ubaa8\uc758 \uc0ac\uc774\ud2b8 \uc5f4\uc5b4\uc918-expected3]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ubcf8\ubb38 \uc77d\uc5b4\uc918-expected4]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\uacc4\uc18d \uc77d\uc5b4\uc918-expected5]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ub9c1\ud06c \ubaa9\ub85d \uc54c\ub824\uc918-expected6]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ub9c1\ud06c \ub354 \uc54c\ub824\uc918-expected7]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\uc7a5\uc560\uc778\uc5f0\uae08 \uc548\ub0b4 \ub9c1\ud06c \ub20c\ub7ec\uc918-expected8]
+PASSED tests/unit/test_parser.py::test_browsing_commands['\uc790\uc138\ud788 \ubcf4\uae30' \ub20c\ub7ec\uc918-expected9]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ub4a4\ub85c \uac00\uc918-expected10]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\uc7a5\uc560\uc778\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-expected11]
+PASSED tests/unit/test_parser.py::test_browsing_commands[\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-expected12]
+PASSED tests/unit/test_parser.py::test_browsing_does_not_clash
+PASSED tests/unit/test_parser.py::test_resolve_site
+PASSED tests/unit/test_parser.py::test_resolve_site_stt_variants
+PASSED tests/unit/test_parser.py::test_tiers
+PASSED tests/unit/test_parser.py::test_read_only_policy[\ub2e4\ub978 \uc0ac\uc774\ud2b8\ub85c \uc774\ub3d9-action0-ALLOWED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\ub9c1\ud06c \ud074\ub9ad-action1-ALLOWED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\ub4a4\ub85c-action2-ALLOWED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9\ucc3d \uc785\ub825-action3-ALLOWED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9 \uc2e4\ud589-action4-ALLOWED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\ubc84\ud2bc \ud074\ub9ad-action5-DENIED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uc77c\ubc18 \uc785\ub825\ub780-action6-DENIED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uc120\ud0dd-action7-DENIED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[Enter \uc678 \ud0a4-action8-DENIED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9\uc5b4\uc5d0 \uc8fc\ubbfc\ubc88\ud638-action9-DENIED_SECRET]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\uc911\uc694 \ub3d9\uc791-action10-DENIED_READ_ONLY]
+PASSED tests/unit/test_parser.py::test_read_only_policy[\ud30c\uc77c \uc8fc\uc18c \uc774\ub3d9-action11-DENIED_ORIGIN]
+PASSED tests/unit/test_parser.py::test_read_only_off_means_supported_sites_only
+PASSED tests/unit/test_parser.py::test_assist_needs_approval
+PASSED tests/unit/test_parser.py::test_assist_secret_always_denied
+PASSED tests/unit/test_parser.py::test_assist_low_risk_input_denied
+PASSED tests/unit/test_policy.py::test_allowed_low_risk_fill
+PASSED tests/unit/test_policy.py::test_schema_mismatch_denied
+PASSED tests/unit/test_policy.py::test_origin_outside_allowlist_denied
+PASSED tests/unit/test_policy.py::test_secret_field_and_values_always_denied
+PASSED tests/unit/test_policy.py::test_unknown_field_denied
+PASSED tests/unit/test_policy.py::test_consequential_needs_prior_approval
+PASSED tests/unit/test_policy.py::test_stopped_and_rate_limit
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 123456\uc774\uc57c-True]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 \uc9c1\uc811 \uc785\ub825\ud560\uac8c-False]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\uc8fc\ubbfc\ubc88\ud638 900101-1234567-True]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[9001011234567-True]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[OTP 482913-True]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\uacc4\uc88c\ubc88\ud638\ub294 110-123-456789-True]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4-False]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10-False]
+PASSED tests/unit/test_policy.py::test_detect_sensitive[\uc5f0\ub77d\ucc98\ub294 010-1234-5678-False]
+PASSED tests/unit/test_policy.py::test_redact
+PASSED tests/unit/test_policy.py::test_mask_phone
+PASSED tests/unit/test_welfare.py::test_list_mapping
+PASSED tests/unit/test_welfare.py::test_detail_mapping
+PASSED tests/unit/test_welfare.py::test_entity_cleanup
+PASSED tests/unit/test_welfare.py::test_official_paths_params_and_cache
+PASSED tests/unit/test_welfare.py::test_official_error_falls_back
+PASSED tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uc774 \ub204\uad6c\uc57c?-expected0]
+PASSED tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc5bc\ub9c8 \ubc1b\uc544?-expected1]
+PASSED tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918-expected2]
+PASSED tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \ud544\uc694\ud55c \uc11c\ub958 \uc54c\ub824\uc918-expected3]
+PASSED tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc5b4\ub514\uc5d0 \ubb38\uc758\ud574?-expected4]
+PASSED tests/unit/test_welfare.py::test_chunk_sections
+PASSED tests/unit/test_welfare.py::test_retrieval_quality
+PASSED tests/unit/test_welfare.py::test_rag_answer_within_evidence
+PASSED tests/unit/test_welfare.py::test_rag_invented_amount_replaced
+PASSED tests/unit/test_welfare.py::test_rag_not_answerable
+PASSED tests/unit/test_welfare.py::test_rag_unknown_chunk_ids_replaced
+PASSED tests/unit/test_welfare.py::test_rag_follow_up_remembers_service
+PASSED tests/unit/test_welfare.py::test_application_context_switches_service
+PASSED tests/unit/test_welfare.py::test_rule_answer_without_llm
+PASSED tests/unit/test_welfare.py::test_explain_field_has_source
+PASSED tests/unit/test_welfare.py::test_explain_unknown_field_no_guess
+PASSED tests/unit/test_welfare.py::test_policy_question_has_disclaimer
+PASSED tests/unit/test_welfare.py::test_profile_validators
+PASSED tests/unit/test_welfare.py::test_contracts
+PASSED tests/unit/test_welfare.py::test_scenario_file_and_evaluator
+PASSED tests/unit/test_welfare.py::test_validate_name[\uae40\ud558\ub298-True]
+PASSED tests/unit/test_welfare.py::test_validate_name[\ub0a8\uad81\ubbfc\uc218-True]
+PASSED tests/unit/test_welfare.py::test_validate_name[John Smith-True]
+PASSED tests/unit/test_welfare.py::test_validate_name[\uc74c \uadf8\ub0e5 \uc880 \ub3c4\uc640\uc904\ub798-False]
+PASSED tests/unit/test_welfare.py::test_validate_name[\uadfc\ub370 \uc774 \uc2e0\uccad\ud558\uba74-False]
+PASSED tests/unit/test_welfare.py::test_validate_name[\ub124-False]
+PASSED tests/unit/test_welfare.py::test_validate_name[1234-False]
+286 passed in 97.49s (0:01:37)
