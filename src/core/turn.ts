@@ -1,3 +1,4 @@
+import type { Redacted } from "./llm.ts";
 import { z } from "zod";
 import {
   ActionSchema, ActionResultSchema, ObservedFieldSchema, StepInfoSchema, UrlStringSchema,
@@ -132,6 +133,7 @@ type DraftExtras = Partial<Pick<TurnResult, "field" | "value" | "verification" |
   masked?: boolean;
   secretDetected?: boolean;
   summary?: string;
+  historySpeech?: Redacted;
 };
 export type Draft = Pick<TurnResult, "state" | "semanticAction" | "speech"> & DraftExtras;
 export function draft(state: SessionState, semanticAction: SemanticAction, speech: string, extra: DraftExtras = {}): Draft {

@@ -2,7 +2,6 @@ import { afterAll, afterEach, expect, it } from "vitest";
 import type { TurnResult } from "../../src/core/turn.ts";
 import { PORTAL } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
-import { openSlice } from "./transcripts.ts";
 
 const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
@@ -91,7 +90,7 @@ it("test_search_box_only", async () => {
   expect(result.actions.map(a => [a.action.type, a.policy.code])).toEqual([["fill", "ALLOWED_READ_ONLY"], ["press", "ALLOWED_READ_ONLY"]]);
 });
 
-it.runIf(openSlice.has("PR8b"))("test_no_general_input_or_buttons_on_external", async () => {
+it("test_no_general_input_or_buttons_on_external", async () => {
   const { session } = await openPortal();
   expect((await session.handleTurn("이름은 김하늘")).actions).toEqual([]);
   const press = await session.handleTurn("보내기 버튼 눌러줘");
@@ -99,7 +98,7 @@ it.runIf(openSlice.has("PR8b"))("test_no_general_input_or_buttons_on_external", 
   expect(press.observation?.title ?? "").not.toContain("의견이 전송됨");
 });
 
-it.runIf(openSlice.has("PR8b"))("test_apply_from_external_opens_mock_form", async () => {
+it("test_apply_from_external_opens_mock_form", async () => {
   const { session } = await openPortal();
   const result = await session.handleTurn("장애인연금 신청 도와줘");
   expect(result.speech).toContain("실제 신청을 대신하지 않아요");
@@ -115,7 +114,7 @@ it("test_unknown_site_name_is_searched", async () => {
   expect(decodeURIComponent(result.observation?.url ?? "")).toContain("우리동네복지관");
 });
 
-it.runIf(openSlice.has("PR8b"))("test_consent_required_before_screen", async () => {
+it("test_consent_required_before_screen", async () => {
   const { session } = await runtime.createBrowserSession({ requireConsent: true });
   expect(session.state).toBe("AWAITING_CONSENT");
   const blocked = await session.handleTurn("장애인연금 신청 도와줘");
@@ -136,7 +135,7 @@ it("test_declined_consent_keeps_blocking", async () => {
   expect(result.actions).toEqual([]);
 });
 
-it.runIf(openSlice.has("PR8b"))("test_assist_fill_after_yes", async () => {
+it("test_assist_fill_after_yes", async () => {
   const { session } = await openPortal();
   const ask = await session.handleTurn("이름 칸에 김하늘 써줘");
   expect(ask.state).toBe("WAITING_FOR_USER_CONFIRMATION");
@@ -148,7 +147,7 @@ it.runIf(openSlice.has("PR8b"))("test_assist_fill_after_yes", async () => {
   expect(done.actions[0]?.policy.code).toBe("APPROVED");
 });
 
-it.runIf(openSlice.has("PR8b"))("test_assist_no_means_no", async () => {
+it("test_assist_no_means_no", async () => {
   const { session } = await openPortal();
   await session.handleTurn("이름 칸에 김하늘 써줘");
   const result = await session.handleTurn("아니");
@@ -156,7 +155,7 @@ it.runIf(openSlice.has("PR8b"))("test_assist_no_means_no", async () => {
   expect(opinionName(result)).toBe("");
 });
 
-it.runIf(openSlice.has("PR8b"))("test_assist_fill_dropped_when_the_field_changed", async () => {
+it("test_assist_fill_dropped_when_the_field_changed", async () => {
   const { session, page } = await openPortal();
   await session.handleTurn("이름 칸에 김하늘 써줘");
   await page.fill("#opinionName", "홍길동");
@@ -173,14 +172,14 @@ it("test_submit_button_left_to_user", async () => {
   expect(result.observation?.title ?? "").not.toContain("의견이 전송됨");
 });
 
-it.runIf(openSlice.has("PR8b"))("test_missing_field_not_found", async () => {
+it("test_missing_field_not_found", async () => {
   const { session } = await openPortal();
   const result = await session.handleTurn("주민등록 주소 칸에 부산광역시 예시구 예시로 10 써줘");
   expect(result.speech).toContain("찾지 못했어요");
   expect(result.actions).toEqual([]);
 });
 
-it.runIf(openSlice.has("PR8d"))("test_guided_fill_with_vault", async () => {
+it("test_guided_fill_with_vault", async () => {
   const { session } = await openPortal();
   const save = await session.handleTurn("내 이름은 김하늘이라고 저장해줘");
   expect(save.speech).toContain("이름 김하늘");
@@ -194,7 +193,7 @@ it.runIf(openSlice.has("PR8d"))("test_guided_fill_with_vault", async () => {
   expect(done.actions.some(a => a.action.type === "click")).toBe(false);
 });
 
-it.runIf(openSlice.has("PR8b"))("test_guided_fill_with_spoken_value", async () => {
+it("test_guided_fill_with_spoken_value", async () => {
   const { session } = await openPortal();
   await session.handleTurn("입력 칸 하나씩 채워줘");
   expect((await session.handleTurn("홍길동")).state).toBe("WAITING_FOR_USER_CONFIRMATION");
