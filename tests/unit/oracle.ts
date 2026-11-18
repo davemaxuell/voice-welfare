@@ -1,3 +1,10 @@
+import { welfareImplementations } from "./welfare-oracle.ts";
+import { parsePersonalCommand } from "../../src/personal/commands.ts";
+import { webViewImplementations } from "./web-view-oracle.ts";
+import { webPolicyImplementations } from "./web-policy-oracle.ts";
+import { privacyImplementations } from "./privacy-oracle.ts";
+import { policyImplementations } from "./policy-oracle.ts";
+import { speechImplementations } from "./speech-oracle.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deepStrictEqual } from "node:assert/strict";
@@ -15,7 +22,15 @@ type OracleGroup = { module: string; cases: OracleCase[] };
 type Implementation = (args: OracleCase["args"]) => unknown;
 
 // 각 이식 PR에서 Python 호출 이름과 TypeScript 함수를 연결한다.
-export const implementations = new Map<string, Implementation>([...ruleImplementations, ...plannerImplementations]);
+export const implementations = new Map<string, Implementation>([...welfareImplementations, ...ruleImplementations, ...plannerImplementations, ...privacyImplementations, ...policyImplementations, ...speechImplementations, ...webViewImplementations, ...webPolicyImplementations,
+  ["personal.commands.parse_personal_command", args => {
+    const { text, today } = z.object({ text: z.string(), today: z.string() }).parse(args);
+    const cmd = parsePersonalCommand(text, today);
+    if (cmd?.kind === "app-due" || cmd?.kind === "app-done") return { ...cmd, service: cmd.service ?? null };
+    if (cmd?.kind === "app-record") return { ...cmd, receiptNo: cmd.receiptNo ?? null };
+    return cmd ?? null;
+  }],
+]);
 
 function readFixture(path: string): string {
   try {

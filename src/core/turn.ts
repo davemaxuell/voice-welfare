@@ -1,3 +1,4 @@
+import type { Redacted } from "./llm.ts";
 import { z } from "zod";
 import {
   ActionSchema, ActionResultSchema, ObservedFieldSchema, StepInfoSchema, UrlStringSchema,
@@ -123,11 +124,16 @@ export function parseTurnResult(raw: unknown): TurnResult {
   return TurnResultSchema.parse(raw);
 }
 
-type DraftExtras = Partial<Pick<TurnResult, "field" | "value" | "actions" | "verification" | "handoff" | "sources" | "missingFields" | "lang">> & {
+export type DraftAction = Omit<ExecutedAction, "result"> & {
+  result?: ExecutedAction["result"] | { ok: false; errorCode: "LOG_FAILED"; latencyMs: 0 };
+};
+type DraftExtras = Partial<Pick<TurnResult, "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang">> & {
+  actions?: DraftAction[];
   view?: Observation & { pageId: string };
   masked?: boolean;
   secretDetected?: boolean;
   summary?: string;
+  historySpeech?: Redacted;
 };
 export type Draft = Pick<TurnResult, "state" | "semanticAction" | "speech"> & DraftExtras;
 export function draft(state: SessionState, semanticAction: SemanticAction, speech: string, extra: DraftExtras = {}): Draft {

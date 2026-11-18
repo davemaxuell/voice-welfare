@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { expect, it } from "vitest";
 import { HELP_GROUPS, INTENTS, INTENT_TYPES, helpPages, parseIntent, type HelpGroup, type Intent } from "../../src/core/intents.ts";
 import { SESSION_STATES, type SessionState } from "../../src/core/turn.ts";
@@ -52,7 +54,21 @@ it("test_planner_prompt_describes_exactly_the_llm_types", () => {
 });
 
 // PR8에서 실제 세션의 라우팅 표와 대조한다.
-it.todo("test_every_type_except_unknown_is_routed");
+it("test_every_type_except_unknown_is_routed", () => {
+  const path = new URL("../../src/orchestrator/session.ts", import.meta.url);
+  const source = ts.createSourceFile("session.ts", readFileSync(path, "utf8"), ts.ScriptTarget.Latest);
+  const routes = new Set<string>();
+  function visit(node: ts.Node) {
+    if (ts.isSwitchStatement(node) && node.expression.getText(source) === "intent.type") {
+      for (const clause of node.caseBlock.clauses) {
+        if (ts.isCaseClause(clause) && ts.isStringLiteral(clause.expression)) routes.add(clause.expression.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  expect(routes).toEqual(new Set(INTENTS.map(spec => spec.type)));
+});
 
 const topicParams = new Set(["topic", "goal", "target", "name", "query", "service"]);
 function flat(intent: Intent): Record<string, unknown> {

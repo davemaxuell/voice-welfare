@@ -1,0 +1,114 @@
+import { createHash, randomBytes } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ActionLog } from "../../src/personal/action_log.ts";
+import { PersonalStore } from "../../src/personal/store.ts";
+import { Seal } from "../../src/personal/seal.ts";
+import { redactText } from "../../src/safety/privacy.ts";
+
+let directory: string;
+beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "cheongeum-personal-")); });
+afterEach(() => { rmSync(directory, { recursive: true, force: true }); });
+
+it("test_seal_roundtrip", () => {
+  let value: string | null = null;
+  const entry = { getPassword: () => value, setPassword: (v: string) => { value = v; } };
+  const seal = new Seal({ entry });
+  const plain = Buffer.from('{"ok":true}');
+  const blob = seal.seal(plain);
+  expect(seal.isSealed(blob)).toBe(true);
+  expect(blob.subarray(0, 4)).toEqual(Buffer.from("CE1\0"));
+  expect(value).toMatch(/^[0-9a-f]{64}$/u);
+  expect(new Seal({ entry }).open(blob)).toEqual(plain);
+  expect(seal.seal(plain)).not.toEqual(blob);
+  const damaged = Buffer.from(blob);
+  damaged[damaged.length - 1] = damaged.at(-1)! ^ 1;
+  expect(() => seal.open(damaged)).toThrow();
+  expect(() => new Seal({ key: randomBytes(32) }).open(blob)).toThrow();
+  const locked = { getPassword() { throw Error("locked"); }, setPassword() { throw Error("unexpected write"); } };
+  expect(() => new Seal({ entry: locked })).toThrow("locked");
+});
+it("test_action_log_hash_chain", () => {
+  const seal = new Seal({ key: randomBytes(32) });
+  const path = join(directory, "actions.sealed");
+  const log = new ActionLog(path, seal);
+  const entry = { host: "example.go.kr", actionType: "click", label: redactText("다음 누르기") };
+  const a = log.append({ ...entry, phase: "before" });
+  const b = log.append({ ...entry, phase: "after", ok: true });
+  expect(b.prev).toBe(a.hash);
+  const { hash, prev, ...body } = a;
+  expect(hash).toBe(createHash("sha256").update(prev + JSON.stringify(body, Object.keys(body).sort((a,b) => a < b ? -1 : a > b ? 1 : 0))).digest("hex"));
+  expect(seal.isSealed(readFileSync(path))).toBe(true);
+  if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
+  const again = new ActionLog(path, seal);
+  expect(again.recent()).toEqual([a,b]);
+  expect(again.speakRecent()).toBe("오늘 한 일 1건이에요. 1. 다음 누르기, example.go.kr.");
+});
+it("test_action_log_refuse_path_memory", () => {
+  const log = new ActionLog();
+  expect(log.speakRecent()).toBe("오늘 기록된 조작이 없어요.");
+  log.append({ actionType: "navigate", label: redactText("포털 열기") });
+  expect(log.speakRecent()).toBe("오늘 한 일 1건이에요. 1. 포털 열기.");
+});
+it("test_store_file_mode", () => {
+  const path = join(directory, "personal.json");
+  new PersonalStore(path).saveVault({ name: "김하늘" });
+  expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ vault: { name: "김하늘" } });
+  if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
+  expect(new PersonalStore(path).vault()).toEqual({ name: "김하늘" });
+});
+it("test_store_sealed", () => {
+  const path = join(directory, "personal.json");
+  const seal = new Seal({ key: randomBytes(32) });
+  new PersonalStore(path, seal).saveVault({ name: "김하늘" });
+  expect(seal.isSealed(readFileSync(path))).toBe(true);
+  expect(readFileSync(path).includes(Buffer.from("김하늘"))).toBe(false);
+  expect(new PersonalStore(path, seal).vault()).toEqual({ name: "김하늘" });
+  writeFileSync(path, JSON.stringify({ vault: { phone: "010" }, applications: [] }));
+  expect(new PersonalStore(path, seal).vault()).toEqual({ phone: "010" });
+  expect(seal.isSealed(readFileSync(path))).toBe(true);
+});
+it("test_speech_prefs_persist", () => {
+  const path = join(directory, "personal.json");
+  const store = new PersonalStore(path);
+  store.saveSpeech({ rate: 0.9, progressSpoken: false });
+  const again = new PersonalStore(path);
+  expect(again.speech()).toMatchObject({ rate: 0.9, progressSpoken: false });
+  again.clearSpeech();
+  expect(new PersonalStore(path).speech().rate).toBe(1.25);
+});
+it("저장 실패 후 변경은 기록되지 않고 다시 시도할 수 있다", () => {
+  const path = join(directory, "actions.sealed");
+  const log = new ActionLog(path);
+  mkdirSync(path);
+  expect(() => log.append({ label: redactText("실패") })).toThrow();
+  expect(log.recent()).toEqual([]);
+  rmSync(path, { recursive: true });
+  expect(log.append({ label: redactText("다시") })).toMatchObject({ seq: 1, prev: "0".repeat(64) });
+});
+it("오래된 기록을 열면 보관 기간 경계의 조작부터 보여 준다", () => {
+  const path = join(directory, "actions.sealed");
+  let day = new Date(2026,9,18,12);
+  const log = new ActionLog(path, undefined, () => day);
+  log.append({ label: redactText("오래됨") });
+  day = new Date(2026,9,19,12);
+  const boundary = log.append({ label: redactText("보관") });
+  day = new Date(2026,10,18,12);
+  const next = new ActionLog(path, undefined, () => day);
+  expect(next.recent()).toEqual([boundary]);
+  expect(next.append({ label: redactText("다음") }).prev).toBe(boundary.hash);
+});
+
+it("동시에 등록한 두 신청은 각각의 기한을 보관한다", () => {
+  const store = new PersonalStore();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1795000000000);
+  try {
+    const first = store.addApplication({ service: "기초연금", appliedAt: "2026-11-18" });
+    const second = store.addApplication({ service: "장애수당", appliedAt: "2026-11-18" });
+    expect(first.id).not.toBe(second.id);
+    store.updateApplication(second.id, { dueDate: "2026-12-03" });
+    expect(store.applications()).toEqual([first, { ...second, dueDate: "2026-12-03" }]);
+  } finally { clock.mockRestore(); }
+});
