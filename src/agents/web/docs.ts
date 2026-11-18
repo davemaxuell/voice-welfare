@@ -15,7 +15,7 @@ async function pdfText(bytes: Uint8Array) {
   return text.join("\n").replace(documentPatterns.lineEnd, "\n");
 }
 type XmlNode = { [name: string]: XmlNode[] | string };
-const xml = new XMLParser({ preserveOrder: true, removeNSPrefix: true, ignoreAttributes: true, trimValues: false, parseTagValue: false });
+const xml = new XMLParser({ preserveOrder: true, removeNSPrefix: true, ignoreAttributes: true, trimValues: false, parseTagValue: false, htmlEntities: true });
 
 function words(bytes: Uint8Array, fallback: boolean) {
   const encoding = bytes[0] === 255 && bytes[1] === 254 ? "utf-16le" :
