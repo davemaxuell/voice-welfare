@@ -1,0 +1,1065 @@
+{
+  "cases": [
+    {
+      "case": "probe/form",
+      "file": "probe-form-e1d806a42bdf.jsonl",
+      "slice": "PR8b",
+      "turns": 10
+    },
+    {
+      "case": "probe/guided_answer_exc",
+      "file": "probe-guided_answer_exc-db4da6314d5a.jsonl",
+      "slice": "PR8b",
+      "turns": 3,
+      "excluded": "patch"
+    },
+    {
+      "case": "probe/guided_basic",
+      "file": "probe-guided_basic-a2fa63cbe0c0.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "probe/guided_fold",
+      "file": "probe-guided_fold-b2abcec41dd9.jsonl",
+      "slice": "PR8b",
+      "turns": 7
+    },
+    {
+      "case": "probe/guided_left",
+      "file": "probe-guided_left-1ce6e2a19f23.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "probe/guided_start_exc",
+      "file": "probe-guided_start_exc-befcad5b281a.jsonl",
+      "slice": "PR8b",
+      "turns": 2,
+      "excluded": "patch"
+    },
+    {
+      "case": "probe/guided_stop_skip",
+      "file": "probe-guided_stop_skip-86af5857006e.jsonl",
+      "slice": "PR8b",
+      "turns": 6
+    },
+    {
+      "case": "probe/guided_vault",
+      "file": "probe-guided_vault-bd4f53df0417.jsonl",
+      "slice": "PR8d",
+      "turns": 5
+    },
+    {
+      "case": "probe/personal_exc",
+      "file": "probe-personal_exc-3dba34730c06.jsonl",
+      "slice": "PR8d",
+      "turns": 1,
+      "excluded": "patch"
+    },
+    {
+      "case": "probe/provider_only",
+      "file": "probe-provider_only-eae512649f2a.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "probe/records",
+      "file": "probe-records-a530848deb7b.jsonl",
+      "slice": "PR8d",
+      "turns": 6
+    },
+    {
+      "case": "probe/understanding_llm",
+      "file": "probe-understanding_llm-c246b2cbaa9e.jsonl",
+      "slice": "PR8b",
+      "turns": 9
+    },
+    {
+      "case": "probe/vault",
+      "file": "probe-vault-45c935f1f613.jsonl",
+      "slice": "PR8d",
+      "turns": 11
+    },
+    {
+      "case": "probe/vault_fold_exc",
+      "file": "probe-vault_fold_exc-d6223f10feb4.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "scenario/E01-incomplete-address",
+      "file": "scenario-E01-incomplete-address-5a3cf216786c.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/E02-missing-required-then-fix",
+      "file": "scenario-E02-missing-required-then-fix-daa2b8b4d56e.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/E03-ambiguous-address-field",
+      "file": "scenario-E03-ambiguous-address-field-361834f84148.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/E04-invalid-name",
+      "file": "scenario-E04-invalid-name-18b04e50eb35.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/E05-invalid-phone",
+      "file": "scenario-E05-invalid-phone-dda1f3f72365.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/E06-edit-field",
+      "file": "scenario-E06-edit-field-29f1c2e4fc25.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/E07-ambiguous-option",
+      "file": "scenario-E07-ambiguous-option-fa3550744c91.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/E08-unknown-site-searched-not-guessed",
+      "file": "scenario-E08-unknown-site-searched-not-guessed-6bc12abe5de5.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "scenario/E09-ambiguous-link",
+      "file": "scenario-E09-ambiguous-link-ea10883b66f0.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "scenario/E10-question-while-awaiting",
+      "file": "scenario-E10-question-while-awaiting-939cbb6981ca.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/N01-full-mock-application",
+      "file": "scenario-N01-full-mock-application-4b1c063f007a.jsonl",
+      "slice": "PR8b",
+      "turns": 6
+    },
+    {
+      "case": "scenario/N02-multi-fill-and-review",
+      "file": "scenario-N02-multi-fill-and-review-bb672bc8c526.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/N03-guided-bare-values",
+      "file": "scenario-N03-guided-bare-values-bd834844c458.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/N04-conditional-residence",
+      "file": "scenario-N04-conditional-residence-79c94a58b944.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/N05-phone-masked",
+      "file": "scenario-N05-phone-masked-45c502afe2ee.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/N06-step2-select-and-number",
+      "file": "scenario-N06-step2-select-and-number-f2da6f929ce4.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/N07-explain-then-continue",
+      "file": "scenario-N07-explain-then-continue-72b17c55a9fc.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/N08-policy-then-handoff",
+      "file": "scenario-N08-policy-then-handoff-3ed76971d8a4.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "scenario/N09-read-only-browse",
+      "file": "scenario-N09-read-only-browse-176b537fac43.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/N10-read-only-search",
+      "file": "scenario-N10-read-only-search-bc76c44ab8a5.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "scenario/S1-normal-flow",
+      "file": "scenario-S1-normal-flow-9f588a83f95f.jsonl",
+      "slice": "PR8b",
+      "turns": 9
+    },
+    {
+      "case": "scenario/S2-field-validation",
+      "file": "scenario-S2-field-validation-d533f677b62c.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/S3-sensitive-auth-handoff",
+      "file": "scenario-S3-sensitive-auth-handoff-3ab8fff1aa32.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "scenario/S4-stop-cancel",
+      "file": "scenario-S4-stop-cancel-b0a58430dd8b.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/S5-agent-collaboration",
+      "file": "scenario-S5-agent-collaboration-b8b252502def.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "scenario/X01-password-handoff",
+      "file": "scenario-X01-password-handoff-5203c65d66be.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "scenario/X02-rrn-not-filled",
+      "file": "scenario-X02-rrn-not-filled-9bf7d064ce9c.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "scenario/X03-stop-blocks-submit",
+      "file": "scenario-X03-stop-blocks-submit-450b1258592f.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "scenario/X04-stop-resume",
+      "file": "scenario-X04-stop-resume-f42938e68b40.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "scenario/X05-approve-without-pending",
+      "file": "scenario-X05-approve-without-pending-0807b4ced77e.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "scenario/X06-prepare-then-reject",
+      "file": "scenario-X06-prepare-then-reject-4b34a2a701d1.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/X07-page-injection-ignored",
+      "file": "scenario-X07-page-injection-ignored-4752b2b07b17.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "scenario/X08-read-only-no-input",
+      "file": "scenario-X08-read-only-no-input-339f1652da29.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "scenario/X09-external-login-handoff",
+      "file": "scenario-X09-external-login-handoff-5b94ce939da8.jsonl",
+      "slice": "PR8c",
+      "turns": 3
+    },
+    {
+      "case": "scenario/X10-submit-needs-approval",
+      "file": "scenario-X10-submit-needs-approval-5e3ececc1ad5.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_answers_a_contact_number_from_the_footer",
+      "file": "tests-e2e-test_autopilot.py-test_answers_a_contact_number_from_the_footer-f9f1c370163d.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_few_hanja_allowed",
+      "file": "tests-e2e-test_autopilot.py-test_few_hanja_allowed-0d53317e7308.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_footer_numbers_do_not_back_an_answer_that_quotes_elsewhere",
+      "file": "tests-e2e-test_autopilot.py-test_footer_numbers_do_not_back_an_answer_that_quotes_elsewhere-bbe2ff9085fe.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_goal_intent_by_rules",
+      "file": "tests-e2e-test_autopilot.py-test_goal_intent_by_rules-bb95a89ec614.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+      "file": "tests-e2e-test_autopilot.py-test_goal_mode_asks_aloud_before_mock_submit-c318f75e28e3.jsonl",
+      "slice": "PR8c",
+      "turns": 7
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_risky_button_and_clicks_after_go",
+      "file": "tests-e2e-test_autopilot.py-test_goal_mode_asks_aloud_before_risky_button_and_clicks_after_go-1dd691862641.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_llm_gets_digested_page",
+      "file": "tests-e2e-test_autopilot.py-test_llm_gets_digested_page-c4d31ec4cb64.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_no_llm_step_by_step",
+      "file": "tests-e2e-test_autopilot.py-test_no_llm_step_by_step-1b3564b295f4.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_open_click_answer",
+      "file": "tests-e2e-test_autopilot.py-test_open_click_answer-c65d694cd227.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_policy_guard_blocks_action_button",
+      "file": "tests-e2e-test_autopilot.py-test_policy_guard_blocks_action_button-95f29123b471.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_rejecting_a_risky_click_leaves_the_page_alone",
+      "file": "tests-e2e-test_autopilot.py-test_rejecting_a_risky_click_leaves_the_page_alone-5ba2f1494a0e.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_rejects_answer_without_visit",
+      "file": "tests-e2e-test_autopilot.py-test_rejects_answer_without_visit-33e8140a3b54.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_rewrites_non_korean_answer",
+      "file": "tests-e2e-test_autopilot.py-test_rewrites_non_korean_answer-c4c0c603a28c.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_stops_when_looping",
+      "file": "tests-e2e-test_autopilot.py-test_stops_when_looping-42234b654ba7.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_uses_search_box",
+      "file": "tests-e2e-test_autopilot.py-test_uses_search_box-d6967c4ac15b.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_verifier_gives_up_honestly",
+      "file": "tests-e2e-test_autopilot.py-test_verifier_gives_up_honestly-92c74704556c.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_autopilot.py::test_verifier_rejects_invented_evidence_and_numbers",
+      "file": "tests-e2e-test_autopilot.py-test_verifier_rejects_invented_evidence_and_numbers-fa60fd7bdbd9.jsonl",
+      "slice": "PR8c",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_ambiguous_link_asks_then_number",
+      "file": "tests-e2e-test_browsing.py-test_ambiguous_link_asks_then_number-5319bdb106f6.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_apply_from_external_opens_mock_form",
+      "file": "tests-e2e-test_browsing.py-test_apply_from_external_opens_mock_form-ae5a615720c6.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_assist_fill_after_yes",
+      "file": "tests-e2e-test_browsing.py-test_assist_fill_after_yes-b1af5b49052f.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_assist_no_means_no",
+      "file": "tests-e2e-test_browsing.py-test_assist_no_means_no-cd5133a26497.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_consent_required_before_screen",
+      "file": "tests-e2e-test_browsing.py-test_consent_required_before_screen-00a098491d7c.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_declined_consent_keeps_blocking",
+      "file": "tests-e2e-test_browsing.py-test_declined_consent_keeps_blocking-86c1f882a4cc.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_duplicate_link_name_opens_first",
+      "file": "tests-e2e-test_browsing.py-test_duplicate_link_name_opens_first-798679653fe1.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_follows_new_tab",
+      "file": "tests-e2e-test_browsing.py-test_follows_new_tab-70f8d3655444.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_guided_fill_with_spoken_value",
+      "file": "tests-e2e-test_browsing.py-test_guided_fill_with_spoken_value-6925f402c064.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_guided_fill_with_vault",
+      "file": "tests-e2e-test_browsing.py-test_guided_fill_with_vault-795af560f657.jsonl",
+      "slice": "PR8d",
+      "turns": 7
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_links_by_number_and_back",
+      "file": "tests-e2e-test_browsing.py-test_links_by_number_and_back-9d6ad41e4779.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_missing_field_not_found",
+      "file": "tests-e2e-test_browsing.py-test_missing_field_not_found-a1616c9e46d6.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_no_general_input_or_buttons_on_external",
+      "file": "tests-e2e-test_browsing.py-test_no_general_input_or_buttons_on_external-4809bd93e617.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_open_external_read_only_summary",
+      "file": "tests-e2e-test_browsing.py-test_open_external_read_only_summary-3bb27d82b07b.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_read_main_in_chunks_ignoring_instructions",
+      "file": "tests-e2e-test_browsing.py-test_read_main_in_chunks_ignoring_instructions-b05ba33d9557.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_search_box_only",
+      "file": "tests-e2e-test_browsing.py-test_search_box_only-e0f41b1937f6.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_site_that_fails_to_load_leaves_the_user_where_they_were",
+      "file": "tests-e2e-test_browsing.py-test_site_that_fails_to_load_leaves_the_user_where_they_were-20ad2ebcf767.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_submit_button_left_to_user",
+      "file": "tests-e2e-test_browsing.py-test_submit_button_left_to_user-d2548a4abe29.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_browsing.py::test_unknown_site_name_is_searched",
+      "file": "tests-e2e-test_browsing.py-test_unknown_site_name_is_searched-09517af18146.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_apply_without_service_name_asks",
+      "file": "tests-e2e-test_conversation.py-test_apply_without_service_name_asks-d180219d2d58.jsonl",
+      "slice": "PR8b",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_auth_done_stays_while_login_page_unchanged",
+      "file": "tests-e2e-test_conversation.py-test_auth_done_stays_while_login_page_unchanged-acec2c9f9b73.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_brief_screen_vs_detailed",
+      "file": "tests-e2e-test_conversation.py-test_brief_screen_vs_detailed-faf7fbae15d9.jsonl",
+      "slice": "PR8a",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_called_by_name",
+      "file": "tests-e2e-test_conversation.py-test_called_by_name-9b5ae63a25e9.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_custom_named_link_is_follow_link",
+      "file": "tests-e2e-test_conversation.py-test_custom_named_link_is_follow_link-437fc2175467.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_discover_flow",
+      "file": "tests-e2e-test_conversation.py-test_discover_flow-5338242bda5c.jsonl",
+      "slice": "PR8b",
+      "turns": 7
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_discover_interrupted_by_other_command",
+      "file": "tests-e2e-test_conversation.py-test_discover_interrupted_by_other_command-962843c42efb.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_fillers_not_entered_as_name",
+      "file": "tests-e2e-test_conversation.py-test_fillers_not_entered_as_name-ae212335d628.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_general_question_then_resume",
+      "file": "tests-e2e-test_conversation.py-test_general_question_then_resume-be7d5025de8a.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_help_before_consent",
+      "file": "tests-e2e-test_conversation.py-test_help_before_consent-daa885d4a4b0.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_help_on_form_starts_with_form_examples",
+      "file": "tests-e2e-test_conversation.py-test_help_on_form_starts_with_form_examples-15540c5f8ec0.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_help_on_web_page_starts_with_web_reading",
+      "file": "tests-e2e-test_conversation.py-test_help_on_web_page_starts_with_web_reading-d0551d38b7cb.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_help_until_nothing_left",
+      "file": "tests-e2e-test_conversation.py-test_help_until_nothing_left-9f553362f16b.jsonl",
+      "slice": "PR8a",
+      "turns": 8
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_help_while_stopped_gets_stop_reply",
+      "file": "tests-e2e-test_conversation.py-test_help_while_stopped_gets_stop_reply-81660f80d551.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_llm_language_route",
+      "file": "tests-e2e-test_conversation.py-test_llm_language_route-04c87674ad3d.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_llm_plan_when_rules_cannot_split",
+      "file": "tests-e2e-test_conversation.py-test_llm_plan_when_rules_cannot_split-02f97039f76c.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_main_screen_opens_site_home",
+      "file": "tests-e2e-test_conversation.py-test_main_screen_opens_site_home-7462564fe4a4.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_multiple_questions",
+      "file": "tests-e2e-test_conversation.py-test_multiple_questions-b919671e1927.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_no_consecutive_clarify",
+      "file": "tests-e2e-test_conversation.py-test_no_consecutive_clarify-4207666112dd.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_not_understood_points_to_help",
+      "file": "tests-e2e-test_conversation.py-test_not_understood_points_to_help-cf391391d394.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence",
+      "file": "tests-e2e-test_conversation.py-test_open_fill_next_in_one_sentence-0eb394c7a761.jsonl",
+      "slice": "PR8b",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_plan_stops_on_clarification",
+      "file": "tests-e2e-test_conversation.py-test_plan_stops_on_clarification-aa4710bacfc7.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[FOLLOW_LINK]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-9acfed344177.jsonl",
+      "slice": "PR8a",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[LIST_LINKS]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-6a09b8b8661a.jsonl",
+      "slice": "PR8a",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[READ_MAIN]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-a25022f0b7b1.jsonl",
+      "slice": "PR8a",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[REPHRASE]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-1895d4829a0b.jsonl",
+      "slice": "PR8a",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[SEARCH]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-0e694e055952.jsonl",
+      "slice": "PR8a",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[SERVICE_DETAIL]",
+      "file": "tests-e2e-test_conversation.py-test_planner_understands_what_rules_miss-8b6fe67624e2.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_real_site_login_moves_explains_asks_then_clicks",
+      "file": "tests-e2e-test_conversation.py-test_real_site_login_moves_explains_asks_then_clicks-235908f7f628.jsonl",
+      "slice": "PR8c",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_real_site_login_rejected_clicks_nothing",
+      "file": "tests-e2e-test_conversation.py-test_real_site_login_rejected_clicks_nothing-4be72d01da02.jsonl",
+      "slice": "PR8c",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_realtime_question_searches_and_grounds",
+      "file": "tests-e2e-test_conversation.py-test_realtime_question_searches_and_grounds-5e4adfa07e25.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_rephrase_that_changes_a_number_repeats_the_original",
+      "file": "tests-e2e-test_conversation.py-test_rephrase_that_changes_a_number_repeats_the_original-e2f8e2109d3e.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_rephrase_with_llm",
+      "file": "tests-e2e-test_conversation.py-test_rephrase_with_llm-566b4b619771.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_rephrase_without_llm",
+      "file": "tests-e2e-test_conversation.py-test_rephrase_without_llm-535f757061fb.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_short_replies_not_values",
+      "file": "tests-e2e-test_conversation.py-test_short_replies_not_values-bd9873a9c204.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_summary_with_unknown_number_dropped",
+      "file": "tests-e2e-test_conversation.py-test_summary_with_unknown_number_dropped-018d413592df.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_vague_requests_ask_back[\\uac80\\uc0c9\\ud574\\uc918-\\ubb34\\uc5c7\\uc744 \\uac80\\uc0c9\\ud560\\uae4c\\uc694]",
+      "file": "tests-e2e-test_conversation.py-test_vague_requests_ask_back-65ce7c405fbe.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_vague_requests_ask_back[\\uadf8\\uac70 \\ud574\\uc918-\\ubb34\\uc5c7\\uc744 \\ud560\\uae4c\\uc694]",
+      "file": "tests-e2e-test_conversation.py-test_vague_requests_ask_back-d2a0800aba3d.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_vague_requests_ask_back[\\uc54c\\ub824\\uc918-\\ubb34\\uc5c7\\uc744 \\uc54c\\ub824\\ub4dc\\ub9b4\\uae4c\\uc694]",
+      "file": "tests-e2e-test_conversation.py-test_vague_requests_ask_back-a0c51ed3fe93.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_vague_requests_ask_back[\\uc5f4\\uc5b4\\uc918-\\uc5b4\\ub290 \\uc0ac\\uc774\\ud2b8\\ub97c \\uc5f4\\uae4c\\uc694]",
+      "file": "tests-e2e-test_conversation.py-test_vague_requests_ask_back-36c2cef2ff9e.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_verifier_blocks_ungrounded_search_answer",
+      "file": "tests-e2e-test_conversation.py-test_verifier_blocks_ungrounded_search_answer-bd7bddff0755.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_welfare_question_not_in_official_data",
+      "file": "tests-e2e-test_conversation.py-test_welfare_question_not_in_official_data-bf3bfbd87a61.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_conversation.py::test_welfare_question_without_context_asks_service",
+      "file": "tests-e2e-test_conversation.py-test_welfare_question_without_context_asks_service-ac1d912fafee.jsonl",
+      "slice": "PR8b",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_about_practice_site",
+      "file": "tests-e2e-test_multilingual.py-test_about_practice_site-f5595f4ccd74.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_about_unknown_site",
+      "file": "tests-e2e-test_multilingual.py-test_about_unknown_site-056efaaaabc8.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_auto_switch_by_script",
+      "file": "tests-e2e-test_multilingual.py-test_auto_switch_by_script-dabae5f5f960.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_changed_numbers_fall_back_to_korean",
+      "file": "tests-e2e-test_multilingual.py-test_changed_numbers_fall_back_to_korean-3e63994a1681.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_foreign_secret_blocked_before_translation",
+      "file": "tests-e2e-test_multilingual.py-test_foreign_secret_blocked_before_translation-9973aa261353.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_no_llm_no_switch",
+      "file": "tests-e2e-test_multilingual.py-test_no_llm_no_switch-0bd65311e8ef.jsonl",
+      "slice": "PR8d",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_only_rule_words_approve",
+      "file": "tests-e2e-test_multilingual.py-test_only_rule_words_approve-339929e80297.jsonl",
+      "slice": "PR8d",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_stop_without_translation",
+      "file": "tests-e2e-test_multilingual.py-test_stop_without_translation-2664134b36e0.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_multilingual.py::test_switch_to_english_then_translate",
+      "file": "tests-e2e-test_multilingual.py-test_switch_to_english_then_translate-44dda0b29ea7.jsonl",
+      "slice": "PR8d",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_navigation.py::test_login_button_waits_for_the_go_word",
+      "file": "tests-e2e-test_navigation.py-test_login_button_waits_for_the_go_word-4c4de6b9e152.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_navigation.py::test_voice_click_without_effect_says_so",
+      "file": "tests-e2e-test_navigation.py-test_voice_click_without_effect_says_so-dbc4f89fdd2f.jsonl",
+      "slice": "PR8a",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_bare_password_on_login_page_not_sent_or_stored",
+      "file": "tests-e2e-test_safety.py-test_bare_password_on_login_page_not_sent_or_stored-6a6f75083f2f.jsonl",
+      "slice": "PR8c",
+      "turns": 6
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_bare_word_after_password_mention",
+      "file": "tests-e2e-test_safety.py-test_bare_word_after_password_mention-561891f8b694.jsonl",
+      "slice": "PR8c",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_cancel_drops_a_pending_vault_save_and_says_so",
+      "file": "tests-e2e-test_safety.py-test_cancel_drops_a_pending_vault_save_and_says_so-a8263f7b1ba2.jsonl",
+      "slice": "PR8d",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions",
+      "file": "tests-e2e-test_safety.py-test_describe_screen_reads_everything_and_ignores_instructions-da556a4330f2.jsonl",
+      "slice": "PR8b",
+      "turns": 7
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_edit_waiting_then_new_value",
+      "file": "tests-e2e-test_safety.py-test_edit_waiting_then_new_value-4dbb10baabce.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_guided_dialogue_value_only",
+      "file": "tests-e2e-test_safety.py-test_guided_dialogue_value_only-c9024e029b28.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_info_popup_closed_and_announced",
+      "file": "tests-e2e-test_safety.py-test_info_popup_closed_and_announced-891af520d80d.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_mock_submit_receipt",
+      "file": "tests-e2e-test_safety.py-test_mock_submit_receipt-e0182a34a472.jsonl",
+      "slice": "PR8b",
+      "turns": 7
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_multi_field_fill_verified_in_dom",
+      "file": "tests-e2e-test_safety.py-test_multi_field_fill_verified_in_dom-304bd99c7815.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_multi_question_turn_blocked_while_stopped",
+      "file": "tests-e2e-test_safety.py-test_multi_question_turn_blocked_while_stopped-3ce300b299f4.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_multi_question_turn_waits_for_consent",
+      "file": "tests-e2e-test_safety.py-test_multi_question_turn_waits_for_consent-55b85b14980e.jsonl",
+      "slice": "PR8a",
+      "turns": 1
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_ordinary_words_pass_outside_login",
+      "file": "tests-e2e-test_safety.py-test_ordinary_words_pass_outside_login-cc3e720393ce.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_password_never_stored_spoken_or_entered",
+      "file": "tests-e2e-test_safety.py-test_password_never_stored_spoken_or_entered-b1e459b8da12.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_picking_discovered_service_waits_for_consent",
+      "file": "tests-e2e-test_safety.py-test_picking_discovered_service_waits_for_consent-3d2d99b334ef.jsonl",
+      "slice": "PR8b",
+      "turns": 6
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval",
+      "file": "tests-e2e-test_safety.py-test_prompt_injection_ignored_and_no_submit_before_approval-a2b6eedcdd12.jsonl",
+      "slice": "PR8b",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_question_mid_form_then_resume",
+      "file": "tests-e2e-test_safety.py-test_question_mid_form_then_resume-1a3f5d6f1a0e.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_resume_plan_runs_its_later_steps",
+      "file": "tests-e2e-test_safety.py-test_resume_plan_runs_its_later_steps-7c6cb41330d1.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_two_address_fields_asks_before_fill",
+      "file": "tests-e2e-test_safety.py-test_two_address_fields_asks_before_fill-2b64feca71ad.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_vault_and_records_wait_for_consent",
+      "file": "tests-e2e-test_safety.py-test_vault_and_records_wait_for_consent-549dac21930e.jsonl",
+      "slice": "PR8d",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_vault_and_records_wait_while_stopped",
+      "file": "tests-e2e-test_safety.py-test_vault_and_records_wait_while_stopped-8740987e4df0.jsonl",
+      "slice": "PR8d",
+      "turns": 5
+    },
+    {
+      "case": "tests/e2e/test_safety.py::test_vault_values_hidden_in_history",
+      "file": "tests-e2e-test_safety.py-test_vault_values_hidden_in_history-5bf514642d09.jsonl",
+      "slice": "PR8d",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]",
+      "file": "tests-e2e-test_scenarios.py-test_demo_scenario-6eceb9104ab9.jsonl",
+      "slice": "PR8b",
+      "turns": 9
+    },
+    {
+      "case": "tests/e2e/test_scenarios.py::test_demo_scenario[S2-field-validation]",
+      "file": "tests-e2e-test_scenarios.py-test_demo_scenario-b86f3de8fd96.jsonl",
+      "slice": "PR8b",
+      "turns": 4
+    },
+    {
+      "case": "tests/e2e/test_scenarios.py::test_demo_scenario[S3-sensitive-auth-handoff]",
+      "file": "tests-e2e-test_scenarios.py-test_demo_scenario-fe39a5d27c6d.jsonl",
+      "slice": "PR8c",
+      "turns": 2
+    },
+    {
+      "case": "tests/e2e/test_scenarios.py::test_demo_scenario[S4-stop-cancel]",
+      "file": "tests-e2e-test_scenarios.py-test_demo_scenario-6fb3eb27ab15.jsonl",
+      "slice": "PR8b",
+      "turns": 3
+    },
+    {
+      "case": "tests/e2e/test_scenarios.py::test_demo_scenario[S5-agent-collaboration]",
+      "file": "tests-e2e-test_scenarios.py-test_demo_scenario-b2a2779fb956.jsonl",
+      "slice": "PR8b",
+      "turns": 2
+    }
+  ],
+  "exclusions": {
+    "probe/guided_answer_exc": "patch",
+    "probe/guided_start_exc": "patch",
+    "probe/personal_exc": "patch",
+    "tests/e2e/test_api.py::test_bad_requests_and_unsupported_voice": "HTTP",
+    "tests/e2e/test_api.py::test_empty_transcript_tts_health": "HTTP",
+    "tests/e2e/test_api.py::test_progress_endpoint_reports_code_built_steps": "HTTP",
+    "tests/e2e/test_api.py::test_session_turn_state_cancel": "HTTP",
+    "tests/e2e/test_api.py::test_spoken_password_never_returned": "HTTP",
+    "tests/e2e/test_api.py::test_voice_turn_reaches_screen": "HTTP",
+    "tests/e2e/test_api.py::test_while_busy_a_progress_question_is_answered": "HTTP",
+    "tests/e2e/test_api.py::test_while_busy_only_a_stop_word_is_acted_on": "HTTP",
+    "tests/e2e/test_autopilot.py::test_progress_question_mid_goal_names_the_current_step": "timing",
+    "tests/e2e/test_autopilot.py::test_stop_still_interrupts_a_goal": "timing",
+    "tests/e2e/test_browsing.py::test_assist_fill_dropped_when_the_field_changed": "adapter",
+    "tests/e2e/test_conversation.py::test_auth_done_speaks_title_and_resumes_pending_form": "adapter",
+    "tests/e2e/test_conversation.py::test_other_service_context_does_not_open_disability_form": "patch",
+    "tests/e2e/test_conversation.py::test_real_site_mode": "patch",
+    "tests/e2e/test_history_safety.py::test_back_between_two_form_results_sends_neither_again": "adapter",
+    "tests/e2e/test_history_safety.py::test_back_onto_a_form_result_does_not_send_the_form_again": "adapter",
+    "tests/e2e/test_history_safety.py::test_back_still_works_after_a_failed_load": "adapter",
+    "tests/e2e/test_history_safety.py::test_back_through_ordinary_pages_still_works": "adapter",
+    "tests/e2e/test_history_safety.py::test_failed_load_after_a_form_result_does_not_send_the_form_again": "adapter",
+    "tests/e2e/test_history_safety.py::test_failed_reload_of_the_current_page_does_not_jump_further_back": "adapter",
+    "tests/e2e/test_history_safety.py::test_footer_text_is_the_site_footer_not_article_footers": "adapter",
+    "tests/e2e/test_navigation.py::test_changed_element_is_not_clicked": "adapter",
+    "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt-over-title]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[role-link-without-href]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[roleless-clickable]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_cloned_elements_get_their_own_ref": "adapter",
+    "tests/e2e/test_navigation.py::test_content_that_arrived_late_does_not_hide_the_next_click": "timing",
+    "tests/e2e/test_navigation.py::test_elements_are_classified_for_the_guard": "adapter",
+    "tests/e2e/test_navigation.py::test_expander_opens_in_place": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_find_moves_the_text_window": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_link_acting_as_tab_finishes_quickly": "timing",
+    "tests/e2e/test_navigation.py::test_link_inside_popup_can_be_pressed": "timing",
+    "tests/e2e/test_navigation.py::test_login_click_is_dropped_when_the_button_changed": "adapter",
+    "tests/e2e/test_navigation.py::test_menu_buttons_reach_the_model": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_nothing_changed_is_reported": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_rotating_notice_does_not_cancel_an_approval": "timing",
+    "tests/e2e/test_navigation.py::test_rotating_notice_is_not_read_as_the_click_effect": "timing",
+    "tests/e2e/test_navigation.py::test_safe_mode_allows_information_tabs_only": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_slow_tab_panel_is_read_after_it_loads": "timing",
+    "tests/e2e/test_navigation.py::test_tab_reveals_its_panel[button-role-tab]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_tab_reveals_its_panel[li-role-tab]": "portal2-autopilot",
+    "tests/e2e/test_navigation.py::test_voice_tab_click_reads_revealed_text_quickly": "timing",
+    "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again": "patch",
+    "tests/e2e/test_safety.py::test_stop_interrupts_inflight_and_blocks_later": "timing",
+    "tests/e2e/test_safety.py::test_timed_out_low_risk_click_is_retried_once": "patch",
+    "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again": "patch",
+    "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt": "patch",
+    "tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit": "adapter",
+    "tests/e2e/test_safety.py::test_web_answer_hides_resident_number_from_llm": "patch",
+    "tests/e2e/test_shared_browser.py::test_closing_one_of_two_shared_sessions_closes_only_its_tab": "adapter",
+    "tests/e2e/test_shared_browser.py::test_closing_the_last_shared_tab_leaves_a_tab_for_the_next_session": "adapter",
+    "tests/e2e/test_shared_browser.py::test_two_shared_sessions_closing_at_once_leave_a_tab": "adapter",
+    "tests/e2e/test_slow_pages.py::test_a_page_that_answers_but_builds_slowly_counts_as_opened": "timing",
+    "tests/e2e/test_slow_pages.py::test_failed_load_returns_to_a_slow_previous_page_not_a_blank_one": "timing",
+    "tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once": "UI",
+    "tests/e2e/test_web_ui.py::test_consent_then_text_command": "UI",
+    "tests/e2e/test_web_ui.py::test_decline_and_high_contrast": "UI",
+    "tests/e2e/test_web_ui.py::test_earcon_always_resolves": "UI",
+    "tests/e2e/test_web_ui.py::test_progress_cues_never_play_over_speech": "UI",
+    "tests/e2e/test_web_ui.py::test_sound_cues_stay_under_mic_detector_limits": "UI",
+    "tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off": "UI",
+    "tests/e2e/test_web_ui.py::test_transition_cue_only_on_state_change": "UI"
+  }
+}
