@@ -61,7 +61,7 @@ class OrchestratorDeps:
     personal: PersonalStore | None = None
     # 암호화된 조작 기록(없으면 '오늘 한 일'은 비어 있다고 답함)
     action_log: Any = None
-    # 승인을 물은 뒤 지난 시간을 재는 시계(초). 테스트가 세션을 만든 뒤 바꾸므로 부를 때마다 읽는다.
+    # 승인 후 경과 시간과 관찰 사이의 간격을 재는 시계(초). 세션을 만든 뒤에도 바꿀 수 있다.
     clock: Callable[[], float] = time.monotonic
 
 
@@ -101,7 +101,12 @@ class SessionOrchestrator:
         self.deps = deps
         self.narrator = Narrator(deps)
         self.id = uuid()
-        self.dialogue = DialogueState("AWAITING_CONSENT" if deps.require_consent else "IDLE", clock=lambda: deps.clock())
+
+        def clock() -> float:
+            return deps.clock()
+
+        deps.web.clock = clock
+        self.dialogue = DialogueState("AWAITING_CONSENT" if deps.require_consent else "IDLE", clock=clock)
         self.progress = Progress()
         self.form = FormSkill(deps.web, self.dialogue, self.narrator)
         self.browse = BrowseSkill(
