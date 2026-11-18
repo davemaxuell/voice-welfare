@@ -420,6 +420,11 @@ export class SessionOrchestrator {
     const refused = this.#refused(consentRefusal([intent.type], this.#consent));
     if (refused !== undefined) return refused;
     switch (intent.type) {
+      case "GOAL": return this.browse.runGoal(intent.goal, ctx);
+      case "LOGIN": return this.browse.login(turn.text, ctx);
+      case "CLEAR_LOGIN": return this.browse.clearLogin(ctx);
+      case "READ_DOWNLOAD": return this.browse.readDownload(intent, ctx);
+      case "AUTH_DONE": return this.browse.authDone(ctx);
       case "START_APPLICATION": return this.application.start(turn);
       case "FILL": return this.form.fill(intent.fills, ctx);
       case "READ_FIELD": return this.form.readField(intent.fieldMention, ctx);
