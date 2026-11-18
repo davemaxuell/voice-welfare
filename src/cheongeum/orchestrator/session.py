@@ -581,7 +581,7 @@ class SessionOrchestrator:
             name = type(e).__name__
             return self._finish(
                 turn,
-                draft("RECOVERING", "none", f"처리 중 문제가 생겨 실행을 멈췄습니다({name}). 모의 사이트가 열려 있는지 확인한 뒤 다시 말씀해 주세요."),
+                draft("RECOVERING", "none", f"처리 중 문제가 생겨 실행을 멈췄습니다({name}). 다시 말씀해 주세요."),
             )
 
     def _finish(self, turn: Turn, draft: dict) -> dict:
