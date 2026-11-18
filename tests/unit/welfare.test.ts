@@ -395,3 +395,19 @@ it("cancelling a model reply stops the general-answer fallback", async () => {
   await expect(answer).rejects.toBe(controller.signal.reason);
   expect(llm.calls.map(c => c.schemaName)).toEqual(["grounded_answer"]);
 });
+
+it("test_precheck_empty_ref_uses_current_service", async () => {
+  const agent = new WelfareInformationAgent(fixtures);
+  await agent.applicationContext();
+  const r = await agent.precheck("", { age: 30 });
+  expect(r.speech).toContain("장애인연금 자격을 미리 살펴봤어요");
+  expect(r.grounded).toBe(true);
+});
+
+it("test_prepare_empty_ref_uses_current_service", async () => {
+  const agent = new WelfareInformationAgent(fixtures);
+  await agent.applicationContext();
+  const r = await agent.prepare("");
+  expect(r.speech).toContain("장애인연금 신청은");
+  expect(r.grounded).toBe(true);
+});
