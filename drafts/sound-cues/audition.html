@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>청음 신호음 후보 듣기</title>
+<style>
+  body { font: 15px/1.5 system-ui, "Malgun Gothic", sans-serif; margin: 24px auto; max-width: 1180px; padding: 0 16px; color: #1d1d1f; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.lead { color: #555; margin-top: 0; }
+  .bar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-top: 1px solid #e3e3e8; padding: 8px 6px; vertical-align: top; text-align: left; }
+  th { font-size: 13px; color: #555; font-weight: 600; }
+  td.state b { display: block; }
+  td.state small { color: #666; }
+  button { font: inherit; border: 1px solid #c7c7cc; background: #fff; border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; min-width: 120px; }
+  button:hover { background: #f2f2f7; }
+  button:focus-visible { outline: 3px solid #0a84ff; outline-offset: 1px; }
+  button .meta { display: block; font-size: 12px; color: #666; }
+  .warn { display: inline-block; font-size: 11px; background: #fff1e6; color: #a34700; border-radius: 4px; padding: 0 4px; margin-top: 2px; }
+  .none { color: #aaa; font-size: 13px; }
+  .scen button { min-width: 0; }
+  #now { min-height: 1.5em; color: #0a5; font-weight: 600; }
+  footer { margin-top: 28px; font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+<h1>청음 신호음 후보</h1>
+<p class="lead">상태마다 후보를 눌러 들어 보세요. 아래 "한 턴 들어보기"는 고른 묶음으로 실제 대화 순서대로 이어서 들려줍니다.
+  주황 표시는 <code>mic.js</code>의 감지기와 부딪힐 수 있는 소리입니다(설명은 맨 아래).</p>
+
+<div class="bar">
+  <label>음량 <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8"></label>
+  <span id="now" aria-live="polite"></span>
+</div>
+
+<div class="bar scen" id="scenarios"></div>
+
+<table>
+  <thead><tr><th>언제</th><th>지금</th><th>합성안 (코드로 만든 소리)</th><th>SND01 "sine"</th><th>Kenney ①</th><th>Kenney ②</th></tr></thead>
+  <tbody id="grid"></tbody>
+</table>
+
+<footer>
+  <p><b>주황 표시 뜻</b> — "박수로 오인": 10ms 창의 봉우리/RMS가 4를 넘는다. 대화 중 내내 켜져 있는 박수 두 번 감지기가 이런 소리 두 개를 0.15~0.8초 간격으로 들으면
+    '지금 말하기'를 누른 것으로 본다(일하는 중이면 작업을 멈춤, 안내 중이면 안내를 끊음). "말로 오인": 마이크가 열려 있는 순간(멈춤을 듣는 중)에 큰 소리가 200ms 이상 이어진다.
+    스피커 소리가 마이크로 새어 들면 말 시작으로 잡힐 수 있다.</p>
+  <p><b>출처·라이선스</b> — SND01 "sine": Yasuhiro Tsuchiya, <a href="https://snd.dev/">snd.dev</a>(電通). 상업·비상업 무료, 가공 없이 소리 파일만 따로 재배포·판매 금지, 출처 표기는 권장.
+    Kenney Interface Sounds: <a href="https://kenney.nl/assets/interface-sounds">kenney.nl</a>, CC0(퍼블릭 도메인). 합성안: 이 폴더의 <code>synth.js</code>.</p>
+</footer>
+
+<script src="manifest.js"></script>
+<script src="synth.js"></script>
+<script>
+const STATES = [
+  { key: 'start', ko: '대화 시작', when: "'대화 시작'으로 마이크가 켜질 때 (지금은 소리 없음)" },
+  { key: 'listen', ko: '이제 말하세요 — 띵', when: '매 턴, 듣기 시작 직전', now: 'listen' },
+  { key: 'heard', ko: '다 들었어요 — beep', when: '매 턴, 말이 끝났다고 판단한 순간', now: 'heard', mic: true },
+  { key: 'thinking', ko: '생각 중 — bloop', when: "'다 들었어요' 뒤 1초 안에 답이 안 오면 한 번 (박수 두 번 간격 0.8초를 피함)", mic: true },
+  { key: 'working', ko: '아직 일하는 중', when: '3초 넘게 걸리면 2.5초마다 작게 (목표 수행은 최대 75초)', mic: true },
+  { key: 'approve', ko: '승인이 필요해요', when: '결과가 승인 대기로 바뀔 때', state: 'WAITING_FOR_USER_CONFIRMATION' },
+  { key: 'handoff', ko: '직접 해 주세요', when: '로그인·본인인증 인계로 바뀔 때', state: 'AUTH_HANDOFF' },
+  { key: 'success', ko: '모의접수 완료', when: '모의접수 완료로 바뀔 때 한 번', state: 'MOCK_SUBMITTED' },
+  { key: 'problem', ko: '문제가 생겼어요', when: '오류 복구·입력 오류·못 알아들음·마이크 문제', state: 'RECOVERING · VALIDATION_ERROR' },
+  { key: 'stopped', ko: '멈췄어요', when: "'멈춰'·단축키·멈춤 버튼을 받은 즉시", state: 'STOPPED', mic: true },
+  { key: 'end', ko: '대화 끝', when: '마이크가 꺼질 때 (지금은 소리 없음)' },
+  { key: 'reminder', ko: '기한 알림', when: "데스크톱 앱 '알림이에요' 앞" },
+];
+
+const SCENARIOS = [
+  { name: '신청: 승인 묻기까지', steps: [['start', 0.9], ['listen', 1.6], ['heard', 1.0], ['thinking', 2.5], ['working', 2.5], ['working', 1.2], ['approve', 0]] },
+  { name: '모의접수 완료', steps: [['listen', 1.4], ['heard', 1.0], ['thinking', 1.4], ['success', 0]] },
+  { name: '멈춤', steps: [['listen', 1.4], ['heard', 1.0], ['thinking', 1.6], ['stopped', 1.2], ['end', 0]] },
+  { name: '못 알아들음', steps: [['listen', 1.4], ['heard', 1.0], ['thinking', 1.2], ['problem', 1.4], ['listen', 0]] },
+];
+
+const COLUMNS = ['now', 'synth', 'snd', 'kenney0', 'kenney1'];
+const COLUMN_LABEL = { now: '지금', synth: '합성안', snd: 'SND01', kenney0: 'Kenney ①', kenney1: 'Kenney ②' };
+
+let ctx;
+let master;
+function audio() {
+  if (!ctx) {
+    ctx = new AudioContext();
+    master = ctx.createGain();
+    master.connect(ctx.destination);
+  }
+  master.gain.value = Number(document.getElementById('vol').value);
+  return ctx;
+}
+
+// build.py의 measure()와 같은 계산(50ms 큰 구간, 512샘플 창 봉우리/RMS)
+function measure(x, sr) {
+  let last = x.length - 1;
+  while (last > 0 && Math.abs(x[last]) < 1e-4) last--;
+  x = x.subarray(0, last + 1);
+  let peak = 0;
+  for (const v of x) peak = Math.max(peak, Math.abs(v));
+  const frame = sr / 20;
+  const rms = [];
+  for (let i = 0; i < x.length; i += frame) {
+    const f = x.subarray(i, i + frame);
+    let s = 0;
+    for (const v of f) s += v * v;
+    rms.push(Math.sqrt(s / f.length));
+  }
+  const maxRms = Math.max(...rms);
+  const loudMs = rms.filter((r) => r > maxRms * 10 ** (-30 / 20)).length * 50;
+  let crest = 0;
+  for (let i = 0; i < Math.max(1, x.length - 512); i += 256) {
+    const w = x.subarray(i, i + 512);
+    let p = 0, s = 0;
+    for (const v of w) { p = Math.max(p, Math.abs(v)); s += v * v; }
+    if (p < peak * 0.25) continue;
+    crest = Math.max(crest, p / Math.max(Math.sqrt(s / w.length), 1e-6));
+  }
+  return { ms: Math.round((x.length / sr) * 1000), loudMs, crest: Math.round(crest * 100) / 100 };
+}
+
+async function measureSynth(fn) {
+  const sr = 48000;
+  const off = new OfflineAudioContext(1, sr * 3, sr);
+  fn(off, off.destination, 0);
+  const buf = await off.startRendering();
+  return measure(buf.getChannelData(0), sr);
+}
+
+function candidate(col, st) {
+  if (col === 'now') return st.now ? { name: `earcon('${st.now === 'heard' ? 'done' : 'listen'}')`, synth: CUE_SYNTH.current[st.now] } : undefined;
+  if (col === 'synth') return { name: st.key, synth: CUE_SYNTH.cues[st.key] };
+  if (col === 'snd') return CANDIDATES.snd[st.key]?.[0];
+  return CANDIDATES.kenney[st.key]?.[col === 'kenney0' ? 0 : 1];
+}
+
+/** 한 후보를 재생하고, 끝날 때 resolve */
+function play(c) {
+  if (!c) return Promise.resolve();
+  if (c.synth) {
+    const a = audio();
+    if (a.state === 'suspended') a.resume();
+    const t = a.currentTime + 0.02;
+    const end = c.synth(a, master, t);
+    return new Promise((r) => setTimeout(r, (end - t) * 1000 + 40));
+  }
+  const el = new Audio(c.src);
+  el.volume = Number(document.getElementById('vol').value);
+  return new Promise((r) => {
+    el.onended = r;
+    el.onerror = r;
+    el.play().catch(r);
+  });
+}
+
+function warnings(st, m) {
+  const out = [];
+  if (m.crest > 4) out.push('박수로 오인');
+  if (st.mic && m.loudMs >= 200) out.push('말로 오인');
+  return out;
+}
+
+function cell(st, col, m) {
+  const td = document.createElement('td');
+  const c = candidate(col, st);
+  if (!c) {
+    td.innerHTML = '<span class="none">없음</span>';
+    return td;
+  }
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = c.name;
+  const meta = document.createElement('span');
+  meta.className = 'meta';
+  meta.textContent = `${m.ms}ms · 큰 구간 ${m.loudMs}ms · 날카로움 ${m.crest}`;
+  b.append(meta);
+  for (const w of warnings(st, m)) {
+    const s = document.createElement('span');
+    s.className = 'warn';
+    s.textContent = w;
+    b.append(document.createElement('br'), s);
+  }
+  b.addEventListener('click', () => {
+    document.getElementById('now').textContent = `▶ ${st.ko} — ${COLUMN_LABEL[col]} ${c.name}`;
+    void play(c);
+  });
+  td.append(b);
+  return td;
+}
+
+async function build() {
+  const grid = document.getElementById('grid');
+  for (const st of STATES) {
+    const tr = document.createElement('tr');
+    const head = document.createElement('td');
+    head.className = 'state';
+    head.innerHTML = `<b>${st.ko}</b><small>${st.when}${st.state ? ` · <code>${st.state}</code>` : ''}${st.mic ? ' · 마이크 열림' : ''}</small>`;
+    tr.append(head);
+    for (const col of COLUMNS) {
+      const c = candidate(col, st);
+      const m = c ? (c.synth ? await measureSynth(c.synth) : c) : null;
+      tr.append(cell(st, col, m));
+    }
+    grid.append(tr);
+  }
+
+  const scen = document.getElementById('scenarios');
+  const pick = document.createElement('select');
+  pick.setAttribute('aria-label', '들어볼 묶음');
+  for (const col of COLUMNS) pick.append(new Option(COLUMN_LABEL[col], col, col === 'synth', col === 'synth'));
+  scen.append('한 턴 들어보기: ', pick);
+  let running = 0;
+  for (const s of SCENARIOS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.name;
+    b.addEventListener('click', async () => {
+      const token = ++running;
+      for (const [key, pause] of s.steps) {
+        if (token !== running) return;
+        const st = STATES.find((x) => x.key === key);
+        const c = candidate(pick.value, st);
+        document.getElementById('now').textContent = `▶ ${s.name}: ${st.ko}${c ? '' : ' (소리 없음)'}`;
+        await play(c);
+        await new Promise((r) => setTimeout(r, pause * 1000));
+      }
+    });
+    scen.append(b);
+  }
+}
+
+void build();
+</script>
+</body>
+</html>
