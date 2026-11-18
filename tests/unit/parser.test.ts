@@ -5,6 +5,11 @@ import { stripAddress } from "../../src/understanding/filters.ts";
 import { practiceVocabulary } from "./understanding-rules-regex.ts";
 
 const parser = new RuleBasedIntentProvider(practiceVocabulary);
+it("주소로 읽는 글자는 Python의 대소문자 접기 규칙을 따른다", () => {
+  expect(resolveSite("ı.zz")).toBeUndefined();
+  expect(resolveSite("a.ıx")).toBeUndefined();
+  expect(resolveSite("İ.zz")?.url).toBe("https://İ.zz");
+});
 function parse(text: string, state = "APPLICATION_OPEN", awaitingFieldId?: string) {
   return parser.parseSync(text, { state, awaitingFieldId });
 }

@@ -128,6 +128,48 @@
       ],
       "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
       "partial": true
+    },
+    "src/safety/privacy.ts": {
+      "python": [
+        "src/cheongeum/safety/privacy.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/safety/pii_model.ts": {
+      "python": [
+        "src/cheongeum/safety/pii_model.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/safety/gates.ts": {
+      "python": [
+        "src/cheongeum/safety/gates.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/safety/guard.ts": {
+      "python": [
+        "src/cheongeum/safety/guard.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/safety/verify.ts": {
+      "python": [
+        "src/cheongeum/safety/verify.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/language/i18n.ts": {
+      "python": [
+        "src/cheongeum/language/i18n.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/speech/phrasing.ts": {
+      "python": [
+        "src/cheongeum/speech/phrasing.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
     }
   }
 }

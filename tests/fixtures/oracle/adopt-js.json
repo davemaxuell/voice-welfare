@@ -1,1 +1,15 @@
-[]
+[
+  {
+    "kind": "pii-tokenizer",
+    "model": "atonlee/koelectra-ko-pii-ner",
+    "package": "@huggingface/tokenizers@0.2.0",
+    "comparison": {
+      "inputs": 1613,
+      "idDifferences": 0,
+      "offsetDifferences": 1613,
+      "missingOffsets": 1613
+    },
+    "runtime": "python-sidecar",
+    "reason": "The JS encoder returns the same token IDs as the native tokenizer, but omits original-text offsets. Redaction needs those code-point offsets for unknown and normalized tokens. Run node scripts/check-pii-tokenizer.mjs to repeat the comparison."
+  }
+]
