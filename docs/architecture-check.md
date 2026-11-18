@@ -6,7 +6,7 @@
 |---|---|---|---|
 | ① 입력 | 음성 입력(주) | ✅ | 핸즈프리 VAD 루프·끼어들기·전역 단축키 (`web/static/mic.js`, `apps/desktop`) |
 | | 텍스트 입력(선택) | ✅ | 웹 UI 입력란 |
-| | STT | ✅ | OpenAI `gpt-4o-mini-transcribe` 또는 로컬 오픈소스(`STT_PROVIDER=local`) |
+| | STT | ✅ | OpenAI `gpt-4o-mini-transcribe`, 또는 `STT_PROVIDER=local`: 한국어는 이 컴퓨터 안(faster-whisper + `whisper-small-komixv2`, `voice/stt_local.py`)·다른 언어는 OpenAI. 평가 `scripts/eval_stt.py` |
 | | 현재 웹페이지 맥락(DOM·접근성 트리·URL) | ✅ | 관찰 스크립트 `observe.js` (`agents/web/browser/`) |
 | ② 의도 이해 | LLM 의도 분석(의도·과업 추출·대화 맥락) | ✅ | 규칙 파서 먼저 → LLM(`gpt-5-mini`) 보조, 직전 안내·최근 8발화 맥락 (`understanding/rules.py`, `llm_planner.py`) |
 | ③ AI 오케스트레이터 | 복합 요청 분해 | ✅ | 여러 명령 계획(`_run_plan`), 여러 질문 나누기(`_answer_many`) (`orchestrator/session.py`) |
