@@ -120,15 +120,15 @@ export function parseServiceCatalog(body: string, provider: 'central' | 'local')
 /** Agent B가 사용하는 복지 데이터 경계. 정책 데이터는 화면 상태·사용자 입력과 섞지 않는다. */
 export interface WelfareDataProvider {
   /** 맞춤 찾기용 전체 목록(중앙부처 + 지정한 시·도의 지자체 서비스) */
-  catalog(ctpv?: string): Promise<ServiceSummary[]>;
+  catalog(ctpv?: string, signal?: AbortSignal): Promise<ServiceSummary[]>;
   /** 지자체 서비스 상세(선정기준 포함). 없으면 undefined */
   getLocalService?(servId: string, detailUrl?: string): Promise<WelfareService | undefined>;
   readonly mode: 'fixture' | 'official-api';
   readonly lastError?: string;
-  listServices(query?: string): Promise<WelfareService[]>;
-  getService(servId: string): Promise<WelfareService | undefined>;
+  listServices(query?: string, signal?: AbortSignal): Promise<WelfareService[]>;
+  getService(servId: string, signal?: AbortSignal): Promise<WelfareService | undefined>;
   /** 서비스명으로 찾아 상세까지 채워 돌려준다(예: "장애인연금"). */
-  findService(name: string): Promise<WelfareService | undefined>;
+  findService(name: string, signal?: AbortSignal): Promise<WelfareService | undefined>;
   getFieldGlossary(fieldId: string): Promise<FieldGlossaryEntry | undefined>;
 }
 
@@ -376,7 +376,12 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
     this.opts = opts; this.fallback = fallback; this.fetchImpl = fetchImpl;
   }
 
-  async fetchRaw(params: { callTp: 'L' | 'D'; servId?: string; extra?: Record<string, string> }): Promise<RawApiResponse> {
+  private requestSignal(signal?: AbortSignal) {
+    const timeout = AbortSignal.timeout(this.opts.timeoutMs ?? 10_000);
+    return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+  }
+
+  async fetchRaw(params: { callTp: 'L' | 'D'; servId?: string; extra?: Record<string, string> }, signal?: AbortSignal): Promise<RawApiResponse> {
     // 오퍼레이션별 경로(실제 호출로 확인): 목록 /NationalWelfarelistV001, 상세 /NationalWelfaredetailedV001
     const operation = params.callTp === 'L' ? 'NationalWelfarelistV001' : 'NationalWelfaredetailedV001';
     const url = new URL(`${this.opts.baseUrl.replace(/\/+$/u, '')}/${operation}`);
@@ -392,7 +397,7 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
     url.searchParams.delete('serviceKey');
     const requestUrl = url.toString();
     url.searchParams.set('serviceKey', this.opts.apiKey);
-    const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(this.opts.timeoutMs ?? 10_000) });
+    const res = await this.fetchImpl(url, { signal: this.requestSignal(signal) });
     return { status: res.status, body: await res.text(), requestUrl, requestedAt: new Date().toISOString() };
   }
 
@@ -404,12 +409,15 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
     return value;
   }
 
-  private async withFallback<T>(work: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+  private async withFallback<T>(work: () => Promise<T>, fallback: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
     try {
       const v = await work();
+      signal?.throwIfAborted();
       this.lastError = undefined;
       return v;
     } catch (e) {
+      signal?.throwIfAborted();
       const message = e instanceof Error ? e.message : 'unknown';
       const key = this.opts.apiKey;
       const encodedKey = new URLSearchParams({ serviceKey: key }).toString().slice('serviceKey='.length);
@@ -424,11 +432,11 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
     return this.opts.baseUrl.replace(dataPatterns.localBase, 'LocalGovernmentWelfareInformations');
   }
 
-  async catalog(ctpv?: string): Promise<ServiceSummary[]> {
+  async catalog(ctpv?: string, signal?: AbortSignal): Promise<ServiceSummary[]> {
     return this.withFallback(
       async () => {
         const central = await this.cached('C:central', async () => {
-          const res = await this.fetchRaw({ callTp: 'L', extra: { numOfRows: '500' } });
+          const res = await this.fetchRaw({ callTp: 'L', extra: { numOfRows: '500' } }, signal);
           if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(res.body), res.status);
           return parseServiceCatalog(res.body, 'central');
         });
@@ -437,52 +445,52 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
           const url = new URL(`${this.localBaseUrl()}/LcgvWelfarelist`);
           for (const [k, v] of Object.entries({ pageNo: '1', numOfRows: '500', srchKeyCode: '001', ctpvNm: ctpv })) url.searchParams.set(k, v);
           url.searchParams.set('serviceKey', this.opts.apiKey);
-          const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(this.opts.timeoutMs ?? 10_000) });
+          const res = await this.fetchImpl(url, { signal: this.requestSignal(signal) });
           const body = await res.text();
           if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(body), res.status);
           return parseServiceCatalog(body, 'local');
         });
         return [...central, ...local];
       },
-      async () => fixtureCatalog(ctpv),
+      async () => fixtureCatalog(ctpv), signal,
     );
   }
 
-  private async list(query: string): Promise<WelfareService[]> {
+  private async list(query: string, signal?: AbortSignal): Promise<WelfareService[]> {
     return this.cached(`L:${query}`, async () => {
-      const res = await this.fetchRaw({ callTp: 'L', extra: query.length > 0 ? { searchWrd: query } : {} });
+      const res = await this.fetchRaw({ callTp: 'L', extra: query.length > 0 ? { searchWrd: query } : {} }, signal);
       if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(res.body), res.status);
       return parseWelfareList(res.body);
     });
   }
 
-  private async detail(servId: string, detailUrl: string): Promise<WelfareService> {
+  private async detail(servId: string, detailUrl: string, signal?: AbortSignal): Promise<WelfareService> {
     return this.cached(`D:${servId}`, async () => {
-      const res = await this.fetchRaw({ callTp: 'D', servId });
+      const res = await this.fetchRaw({ callTp: 'D', servId }, signal);
       if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(res.body), res.status);
       return parseWelfareDetail(res.body, detailUrl);
     });
   }
 
-  listServices(query = ''): Promise<WelfareService[]> {
-    return this.withFallback(() => this.list(query), () => this.fallback.listServices(query));
+  listServices(query = '', signal?: AbortSignal): Promise<WelfareService[]> {
+    return this.withFallback(() => this.list(query, signal), () => this.fallback.listServices(query, signal), signal);
   }
 
-  getService(servId: string): Promise<WelfareService | undefined> {
+  getService(servId: string, signal?: AbortSignal): Promise<WelfareService | undefined> {
     return this.withFallback(
-      () => this.detail(servId, ''),
-      () => this.fallback.getService(servId),
+      () => this.detail(servId, '', signal),
+      () => this.fallback.getService(servId, signal), signal,
     );
   }
 
-  findService(name: string): Promise<WelfareService | undefined> {
+  findService(name: string, signal?: AbortSignal): Promise<WelfareService | undefined> {
     return this.withFallback(
       async () => {
-        const hit = (await this.list(name)).find((s) => normalize(s.servNm) === normalize(name));
+        const hit = (await this.list(name, signal)).find((s) => normalize(s.servNm) === normalize(name));
         if (!hit) throw new WelfareApiError(`'${name}' 서비스를 찾지 못함`);
-        return this.detail(hit.servId, hit.source.url);
+        return this.detail(hit.servId, hit.source.url, signal);
       },
-      () => this.fallback.findService(name),
+      () => this.fallback.findService(name, signal), signal,
     );
   }
 
@@ -491,7 +499,7 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
       const url = new URL(`${this.localBaseUrl()}/LcgvWelfaredetailed`);
       url.searchParams.set('servId', servId);
       url.searchParams.set('serviceKey', this.opts.apiKey);
-      const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(this.opts.timeoutMs ?? 10_000) });
+      const res = await this.fetchImpl(url, { signal: this.requestSignal() });
       const body = await res.text();
       if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(body), res.status);
       const s = parseWelfareDetail(body, detailUrl);
