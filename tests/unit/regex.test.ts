@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it } from "vitest";
 import { z } from "zod";
+import { portedSources as ported } from "../../scripts/port-manifest.ts";
 import { regexPorts } from "./regex-ports.ts";
 
 const span = z.tuple([z.int().nonnegative(), z.int().nonnegative()]);
@@ -20,7 +21,6 @@ const adoption = z.object({
   spans: z.array(span),
   reason: z.string().trim().min(1),
 });
-const manifest = z.object({ modules: z.record(z.string(), z.object({ python: z.array(z.string()) })) });
 
 function read(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -29,8 +29,6 @@ function read(path: string): string {
 const corpus = z.array(z.string()).nonempty().parse(JSON.parse(read("../fixtures/regex/corpus.json")));
 const patterns = read("../fixtures/regex/patterns.jsonl").trimEnd().split("\n")
   .map(line => pattern.parse(JSON.parse(line)));
-const ported = new Set(Object.values(manifest.parse(JSON.parse(read("../../port-manifest.json"))).modules)
-  .flatMap(entry => entry.python));
 const exceptions = z.array(z.object({ kind: z.string() }).passthrough())
   .parse(JSON.parse(read("../fixtures/oracle/adopt-js.json")))
   .filter(entry => entry.kind === "regex").map(entry => adoption.parse(entry));
