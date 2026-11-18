@@ -1,8 +1,7 @@
 import { Hono, type Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { REPO_ROOT, webStatic } from "../core/assets.ts";
+import { REPO_ROOT } from "../core/assets.ts";
 import { strip } from "../core/text.ts";
 import { LangSchema, LANGS } from "../core/turn.ts";
 import type { SessionOrchestrator } from "../orchestrator/session.ts";
@@ -354,9 +353,7 @@ export function makeApp<S extends HttpSession>(
     }),
   );
   if (options.web === true) {
-    const built = join(REPO_ROOT, "dist/web");
-    const root = existsSync(join(built, "index.html")) ? built : webStatic;
-    const files = staticFiles(root);
+    const files = staticFiles(join(REPO_ROOT, "dist/web"));
     app.use("*", async (c, next) => {
       if (c.req.path.startsWith("/api/")) return next();
       return files(c, next);
