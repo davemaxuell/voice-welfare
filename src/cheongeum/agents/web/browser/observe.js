@@ -118,7 +118,10 @@
       .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 20000);
   }
   // 꼬리말 글: 대표번호·주소 같은 연락처는 흔히 여기에만 있다. 본문(mainText)에서는 빼므로 따로 담고, 메뉴 링크 글자는 뺀다.
-  const footerEls = Array.from(document.querySelectorAll('footer, [role="contentinfo"]')).filter((el) => isVisible(el) && !inDialog(el));
+  // 사이트 꼬리말만: 기사·카드 안의 <footer>(작성일·조회수)는 제외한다.
+  const footerEls = Array.from(document.querySelectorAll('footer, [role="contentinfo"]'))
+    .filter((el) => isVisible(el) && !inDialog(el))
+    .filter((el) => el.getAttribute('role') === 'contentinfo' || !(el.parentElement && el.parentElement.closest('article, aside, main, nav, section')));
   const footerText = footerEls
     .filter((el) => !footerEls.some((o) => o !== el && o.contains(el)))
     .map((el) => {

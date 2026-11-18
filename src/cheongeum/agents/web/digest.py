@@ -255,5 +255,5 @@ def digest_for_llm(d: PageDigest, offset: int = 0, main_chars: int = 1500, max_l
         "dialogs": [redact_text(x) for x in d.dialogs],
         "mainText": redact_text(flat[offset : offset + main_chars]),
         "moreText": len(flat) > offset + main_chars,
-        "footer": redact_text(d.footer[:400]),
+        "footer": redact_text(d.footer)[:400],
     }
