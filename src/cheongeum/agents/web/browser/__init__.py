@@ -86,6 +86,31 @@ async def launch_chrome_profile(user_data_dir: str, slow_mo_ms: int = 0) -> Brow
 # 공유 컨텍스트에 라우팅·탭 추적을 한 번만 설치하기 위한 표시
 _prepared_contexts: "WeakSet[BrowserContext]" = WeakSet()
 _claimed_pages: "WeakSet[Page]" = WeakSet()
+# 공유 크롬에서 '마지막 탭인가'를 보고 닫기까지를 한 세션씩(둘이 동시에 닫으면 둘 다 남은 탭이 있다고 본다)
+_shared_close_lock = asyncio.Lock()
+
+
+async def _error_page_settled(page: Page) -> None:
+    """막히거나 실패한 이동은 크롬 오류 화면으로 끝나고, 그 화면은 조금 늦게 들어선다. 들어서기 전에는 다음 이동이 끊긴다."""
+    try:
+        await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _step_and_settle(page: Page, step: Any) -> None:
+    """
+    기록 이동 하나(step: 인자 없이 부르면 이동을 시작하는 함수)를 하고 그 결과(새 화면이든, 막혀서 생긴 오류 화면이든)가 들어설 때까지 기다린다.
+    이미 오류 화면에 있을 때도 다음 화면을 기다려야 하므로 주소가 아니라 이동 사건을 본다.
+    """
+    try:
+        async with page.expect_event("framenavigated", predicate=lambda f: f == page.main_frame, timeout=3000):
+            try:
+                await step()
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _css_escape(v: str) -> str:
@@ -121,6 +146,8 @@ class PlaywrightExecutionAdapter:
         # 다운로드 저장소(DownloadStore). 경로에 받아 두고 이름을 말한다.
         self.downloads = None
         self._last_download: dict | None = None
+        # 지금 화면을 가져온 이동의 방식(양식 결과면 POST). 되돌아갈 때 양식을 다시 보내지 않으려고 본다.
+        self._doc_method = "GET"
 
     async def start(self) -> None:
         # 테스트용 Chromium: 세션마다 별도 컨텍스트(쿠키·저장소 분리). 실제 크롬: 공유 영구 프로필.
@@ -192,6 +219,12 @@ class PlaywrightExecutionAdapter:
 
     def _attach(self, page: Page) -> None:
         self.page = page
+
+        def on_request(req) -> None:
+            if req.is_navigation_request() and req.frame == page.main_frame:
+                self._doc_method = req.method
+
+        page.on("request", on_request)
 
         def on_dialog(d) -> None:
             self._native_dialogs.append(d.message[:200])
@@ -279,17 +312,27 @@ class PlaywrightExecutionAdapter:
                 return done(errorCode="NAVIGATION_FAILED")
             return done(errorCode="UNKNOWN")
 
-    async def _return_to(self, page: Page, prev: str) -> None:
+    async def _return_to(self, page: Page, prev: str, failed: str, prev_was_form: bool) -> None:
         """
         불러오지 못한 주소는 크롬 오류 화면(chrome-error://)을 남긴다. 사용자는 '열지 못했다'는 말만 듣고
-        원래 화면에 있다고 여기므로 그 주소를 다시 연다. 뒤로 가기는 쓰지 않는다: 그 화면이 양식을 보낸 결과면
-        양식을 다시 보내고, 실패한 주소가 지금 화면이었으면 기록 하나를 더 거슬러 간다.
+        원래 화면에 있다고 여기므로 그 화면으로 돌아간다. 기록에서 한 칸 뒤로 가야 그 뒤의 '뒤로 가줘'도 맞다
+        (주소를 다시 열면 오류 칸이 기록에 남아 다음 뒤로 가기가 그 칸에 걸린다). 다만 그 화면이 양식 결과(POST)였거나,
+        실패한 주소가 지금 화면이었으면(크롬이 그 칸을 오류 화면으로 바꿨다) 주소를 GET으로 다시 연다.
         """
         try:
-            await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
+            await _error_page_settled(page)
             if not prev.startswith(("http://", "https://")):
                 await page.goto("about:blank")
                 return
+            if not prev_was_form and prev.rstrip("/") != failed.rstrip("/"):
+                async with self._no_form_resend(page) as blocked:
+                    await _step_and_settle(page, lambda: page.go_back(wait_until="commit", timeout=self.navigation_timeout))
+                if not blocked and page.url == prev:
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=self.navigation_timeout)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    return
             try:
                 await self._open(page, prev)
             except Exception as e:  # noqa: BLE001
@@ -339,13 +382,13 @@ class PlaywrightExecutionAdapter:
             url = action.get("url")
             if not url:
                 raise AdapterError("NAVIGATION_FAILED")
-            prev = page.url
+            prev, prev_was_form = page.url, self._doc_method != "GET"
             try:
                 await self._open(page, url)
             except Exception as e:
                 # 내려받기 등으로 이동이 취소된 것(ERR_ABORTED)은 오류 화면을 남기지 않는다
                 if "net::ERR_" in str(e) and "ERR_ABORTED" not in str(e):
-                    await self._return_to(page, prev)
+                    await self._return_to(page, prev, url, prev_was_form)
                 raise
             # 실제 사이트는 내용을 늦게 그리는 경우가 많아 잠깐(최대 3초) 네트워크가 잠잠해지길 기다린다.
             # 지원 사이트(로컬 모의 사이트)는 바로 그려지므로 기다리지 않는다(응답 속도).
@@ -365,11 +408,14 @@ class PlaywrightExecutionAdapter:
                         raise
                 if blocked:
                     # 막은 이동은 크롬 오류 화면으로 끝나고, 그 화면이 들어서기 전에는 앞으로 갈 수 없다.
-                    try:
-                        await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
-                        await page.go_forward(wait_until="domcontentloaded", timeout=self.navigation_timeout)
-                    except Exception:  # noqa: BLE001
-                        await page.goto(here, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+                    # 있던 화면도 양식 결과면 앞으로 가기도 막히므로, 그때는 그 주소를 GET으로 다시 연다.
+                    await _error_page_settled(page)
+                    await _step_and_settle(page, lambda: page.go_forward(wait_until="commit", timeout=self.navigation_timeout))
+                    if page.url != here:
+                        try:
+                            await self._open(page, here)
+                        except Exception:  # noqa: BLE001
+                            pass
                     raise AdapterError("RESUBMIT_BLOCKED")
             return {"ok": True, "verified": res is not None}
         if kind == "scroll":
@@ -625,10 +671,11 @@ class PlaywrightExecutionAdapter:
                 if self.page is not None:
                     # 공유 크롬의 마지막 탭을 닫으면 크롬이 꺼지기 시작해, 곧바로 만든 다음 세션(화면 새로고침)이
                     # 탭을 열지 못한다. 빈 탭을 먼저 열어 두면 다음 세션이 그 탭을 쓴다.
-                    ctx = self.context
-                    if ctx is not None and all(p is self.page for p in ctx.pages):
-                        await ctx.new_page()
-                    await self.page.close()
+                    async with _shared_close_lock:
+                        ctx = self.context
+                        if ctx is not None and all(p is self.page for p in ctx.pages):
+                            await ctx.new_page()
+                        await self.page.close()
             elif self.context is not None:
                 await self.context.close()
         except Exception:  # noqa: BLE001
