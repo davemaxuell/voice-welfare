@@ -9,7 +9,6 @@ import { INTENT_JSON_SCHEMA } from "../../src/understanding/llm_planner.ts";
 import { RuleBasedIntentProvider } from "../../src/understanding/rules.ts";
 import { FakeLlm, fieldValue, PORTAL, withLlm } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
-import { openSlice } from "./transcripts.ts";
 
 const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
@@ -264,7 +263,7 @@ it("test_summary_with_unknown_number_dropped", async () => {
   expect(result.speech).toContain("내용은 \"");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_real_site_login_moves_explains_asks_then_clicks", async () => {
+it("test_real_site_login_moves_explains_asks_then_clicks", async () => {
   const session = await newSession();
   await session.handleTurn(PORTAL + " 열어줘");
   const ask = await session.handleTurn("로그인하고 싶어");
@@ -287,7 +286,7 @@ it.runIf(openSlice.has("PR8c"))("test_real_site_login_moves_explains_asks_then_c
   expect([ask, opened, submit, done].flatMap(r => r.actions).filter(a => ["fill", "select", "check"].includes(a.action.type))).toEqual([]);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_real_site_login_rejected_clicks_nothing", async () => {
+it("test_real_site_login_rejected_clicks_nothing", async () => {
   const session = await newSession();
   await session.handleTurn(PORTAL + " 열어줘");
   await session.handleTurn("로그인 화면 열어줘");
@@ -296,7 +295,7 @@ it.runIf(openSlice.has("PR8c"))("test_real_site_login_rejected_clicks_nothing", 
   expect(result.observation?.url).not.toContain("/login.html");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_auth_done_stays_while_login_page_unchanged", async () => {
+it("test_auth_done_stays_while_login_page_unchanged", async () => {
   const session = await newSession();
   const handed = await session.handleTurn("로그인하고 싶어");
   expect(handed.state).toBe("AUTH_HANDOFF");
@@ -310,7 +309,7 @@ it.runIf(openSlice.has("PR8c"))("test_auth_done_stays_while_login_page_unchanged
   expect(still.speech.includes("로그인") || still.speech.includes("인증")).toBe(true);
 });
 
-it.runIf(openSlice.has("PR8c"))("test_auth_done_speaks_title_and_resumes_pending_form", async () => {
+it("test_auth_done_speaks_title_and_resumes_pending_form", async () => {
   const { session, page } = await runtime.createBrowserSession();
   const opened = await session.handleTurn("장애인연금 신청 도와줘");
   expect(opened.state).toBe("APPLICATION_OPEN");
