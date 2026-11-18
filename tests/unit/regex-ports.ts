@@ -1,4 +1,5 @@
 import { personalRegexPorts } from "./personal-regex.ts";
+import { welfareRegexPorts } from "./welfare-regex.ts";
 import { documentPatterns } from "../../src/agents/web/docs.ts";
 import { browserRegexPorts } from "./browser-regex.ts";
 import { webAgentRegexPorts } from "./web-agent-regex.ts";
@@ -14,4 +15,4 @@ import { ruleRegexPorts } from "./understanding-rules-regex.ts";
 const documentRegexPorts = new Map([["src/cheongeum/agents/web/docs.py", new Map([
   ["ccb516f0c08a9a300999", documentPatterns.lineEnd], ["4e7d97ccd5d741ffc4a5", documentPatterns.spaces],
 ])]]);
-export const regexPorts: ReadonlyMap<string, ReadonlyMap<string, RegExp>> = new Map([...ruleRegexPorts, ...plannerRegexPorts, ...privacyRegexPorts, ...policyRegexPorts, ...speechRegexPorts, ...webViewRegexPorts, ...webPolicyRegexPorts, ...browserRegexPorts, ...webAgentRegexPorts, ...documentRegexPorts, ...personalRegexPorts]);
+export const regexPorts: ReadonlyMap<string, ReadonlyMap<string, RegExp>> = new Map([...ruleRegexPorts, ...plannerRegexPorts, ...privacyRegexPorts, ...policyRegexPorts, ...speechRegexPorts, ...webViewRegexPorts, ...webPolicyRegexPorts, ...browserRegexPorts, ...webAgentRegexPorts, ...documentRegexPorts, ...welfareRegexPorts, ...personalRegexPorts]);
