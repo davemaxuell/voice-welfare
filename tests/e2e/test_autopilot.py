@@ -34,6 +34,16 @@ async def test_answers_a_contact_number_from_the_footer(new_session):
     assert r["speech"] == "대표번호는 국번없이 1234예요."
 
 
+async def test_footer_numbers_do_not_back_an_answer_that_quotes_elsewhere(new_session):
+    # 꼬리말의 번호·연도는 꼬리말을 근거로 든 답에서만 근거가 된다(지어낸 숫자를 꼬리말 숫자로 통과시키지 않음).
+    s = await new_session()
+    made_up = "올해 기초급여 기준액은 1234원으로 조정되었어요."
+    scripted(s, [step("open_url", PORTAL), step("answer", None, made_up, ["올해 장애인연금 기초급여 기준액이 조정되었습니다"])])
+    r = await s.handle_turn("127.0.0.1:5174/external.html에서 기초급여 기준액 알려줘")
+    assert r["speech"] != made_up
+    assert "확실한 답을 확인하지 못했어요" in r["speech"]
+
+
 async def test_uses_search_box(new_session):
     s = await new_session()
     scripted(s, [step("open_url", PORTAL), step("search", "기초연금"), step("answer", None, "첫 결과는 기초연금 신청 방법이에요.", ["기초연금 신청 방법"])])
