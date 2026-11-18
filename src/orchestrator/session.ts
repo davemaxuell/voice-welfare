@@ -20,7 +20,7 @@ import { omitAbsent } from "../core/schema.ts";
 import { strip } from "../core/text.ts";
 import { AGENT_IDS, draft, parseTurnResult, type Draft, type Lang, type SemanticAction, type SessionState,
   type SourceCitation, type TraceEntry, type TurnResult } from "../core/turn.ts";
-import { FIXED, detectLangSwitch } from "../language/i18n.ts";
+import { FIXED, detectLangSwitch, detectScriptLang, foreignConfirmation, translateIn, translateOut } from "../language/i18n.ts";
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalStore, VAULT_LABELS, type VaultKey } from "../personal/store.ts";
@@ -67,9 +67,6 @@ export const sessionPatterns = {
   applyMatch: /(신청|도와|하고\p{White_Space}*싶)/u,
   sentences: /(?<=[.!?。]|요\.|다\.)\p{White_Space}+/u,
 };
-export class NotPorted extends Error {
-  constructor(route: string) { super(route); this.name = "NotPorted"; }
-}
 
 export class SessionOrchestrator {
   readonly id = randomUUID();
@@ -240,10 +237,46 @@ export class SessionOrchestrator {
   }
 
   async #process(text: Redacted, sensitive: Detection, forced?: Intent): Promise<TurnResult> {
-    const to = forced === undefined && !sensitive.hasSecretValue ? detectLangSwitch(text) : undefined;
+    const signal = this.#controller.signal;
+    if (forced !== undefined || sensitive.hasSecretValue) return this.#localize(await this.#korean(text,sensitive,forced), signal);
+    const to = detectLangSwitch(text);
     if (to !== undefined) return this.#switch(text, to);
+    const script = detectScriptLang(text);
+    const llm = this.deps.llm;
+    if (script !== undefined && (script === "ko" || llm !== undefined)) this.lang = script;
+    const lang = this.lang;
+    if (lang === "ko" || script === "ko" || llm === undefined) return this.#korean(text, sensitive);
+    const awaiting = this.dialogue.expectsConfirmation;
+    const confirmation = foreignConfirmation(text, lang);
+    let translated;
+    if (awaiting && confirmation !== undefined) translated = confirmation === "approve" ? "승인" : "거절";
+    else {
+      translated = await translateIn(llm, text, lang, signal);
+      if (signal.aborted) return this.#voided();
+      if (translated === undefined || translated.length === 0) return this.#fixed(text, FIXED.retry[lang], lang);
+      if (awaiting && this.rules.parseSync(translated, {state:this.state}).type === "APPROVE") {
+        return this.#fixed(text, FIXED.approveHint[lang], lang);
+      }
+    }
+    return this.#localize(await this.#korean(redactText(translated), sensitive, undefined, text), signal);
+  }
+  async #localize(result: TurnResult, signal: AbortSignal): Promise<TurnResult> {
+    const lang = this.lang, llm = this.deps.llm;
+    if (lang === "ko" || result.lang === lang || llm === undefined || signal.aborted) return result;
+    const started = performance.now();
+    let speech;
+    try { speech = await translateOut(llm, this.#historySpeech(result.speech), lang, signal); }
+    catch { /* 응답을 옮기지 못하면 원문을 들려준다. */ }
+    const spoken = speech ?? "";
+    const ok = spoken.length > 0;
+    return { ...result, speech: ok ? spoken : FIXED.translateFail[lang] + " " + result.speech, lang: ok ? lang : "ko",
+      trace: [...result.trace, { phase: "SPEAKING", agent: AGENT_IDS.orchestrator, atMs: (result.trace.at(-1)?.atMs ?? 0) + Math.floor(performance.now()-started),
+        note: ok ? "응답 번역 ko→" + lang : "응답 번역 실패(숫자 불일치 등) → 한국어 원문" }] };
+  }
+  async #korean(text: Redacted, sensitive: Detection, forced?: Intent, original?: Redacted): Promise<TurnResult> {
     const turn = this.#begin(text);
-    turn.ctx.trace("TRANSCRIBED", AGENT_IDS.orchestrator);
+    turn.original = original;
+    turn.ctx.trace("TRANSCRIBED", AGENT_IDS.orchestrator, original === undefined ? undefined : "번역 " + this.lang + "→ko");
     try {
       const hint = this.#secretHint;
       this.#secretHint = forced === undefined && !sensitive.hasSecretValue && sensitive.kinds.some(k => k === "password" || k === "otp");
@@ -254,7 +287,7 @@ export class SessionOrchestrator {
           disclosureNotice(sensitive.kinds, this.web.currentView?.pageId === "mock-login"), { secretDetected: true }));
       }
       if (forced === undefined) {
-        if (this.#maybeSpokenSecret(text, hint)) {
+        if (original === undefined && this.#maybeSpokenSecret(text, hint)) {
           turn.intentType = "SECRET_DISCLOSURE";
           turn.text = redactText(REDACTED);
           return this.#finish(turn, draft(this.state, "auth-handoff",
@@ -276,6 +309,11 @@ export class SessionOrchestrator {
           }
           this.dialogue.profileDone();
         }
+        if (this.dialogue.vaultConfirm !== undefined) {
+          turn.intentType = "VAULT_CONFIRM";
+          const confirmed = this.personalDialogue.confirm(text);
+          if (confirmed !== undefined) return this.#finish(turn, confirmed);
+        }
         if (this.guided.active() && this.dialogue.approval === undefined) {
           turn.intentType = "GUIDED_FILL";
           const next = await this.guided.answer(text, turn.ctx);
@@ -285,6 +323,15 @@ export class SessionOrchestrator {
           turn.intentType = "GUIDED_FILL";
           const refused = this.#refused(gateRefusal(["GUIDED_FILL"], this.#consent, this.state));
           return this.#finish(turn, refused ?? await this.guided.start(turn.ctx));
+        }
+        const personal = parsePersonalCommand(text, this.today);
+        if (personal !== undefined) {
+          const type = ("PERSONAL_" + personal.kind.toUpperCase().replace("-", "_")) as `PERSONAL_${string}`;
+          turn.intentType = type;
+          const refused = this.#refused(gateRefusal([type], this.#consent, this.state));
+          if (refused !== undefined) return this.#finish(turn, refused);
+          const response = this.personalDialogue.run(personal);
+          if (response !== undefined) return this.#finish(turn, response);
         }
         const short = this.#shortReply(text);
         if (short !== undefined) { turn.intentType = "ACK"; return this.#finish(turn, short); }
@@ -303,7 +350,6 @@ export class SessionOrchestrator {
       const refused = this.#refused(gateRefusal([first.type, ...rest.map(i => i.type)], this.#consent, this.state));
       return this.#finish(turn, refused ?? (rest.length > 0 ? await this.#plan(understood.intents, turn) : await this.#route(first, turn)));
     } catch (error) {
-      if (error instanceof NotPorted) throw error;
       const name = error instanceof Error ? error.name : "Error";
       return this.#finish(turn, draft("RECOVERING", "none", "처리 중 문제가 생겨 실행을 멈췄습니다(" + name + "). 다시 말씀해 주세요."));
     }
@@ -419,8 +465,7 @@ export class SessionOrchestrator {
     }
     const refused = this.#refused(consentRefusal([intent.type], this.#consent));
     if (refused !== undefined) return refused;
-    const type = intent.type;
-    switch (type) {
+    switch (intent.type) {
       case "GOAL": return this.browse.runGoal(intent.goal, ctx);
       case "LOGIN": return this.browse.login(turn.text, ctx);
       case "CLEAR_LOGIN": return this.browse.clearLogin(ctx);
@@ -458,7 +503,6 @@ export class SessionOrchestrator {
       case "PROGRESS": return this.#progress(false);
       case "STOP": return draft("STOPPED", "stop", "멈췄습니다.");
       case "UNKNOWN": return this.replies.unknown(redactText(intent.text ?? turn.text), turn);
-      default: throw new NotPorted(type);
     }
   }
   explain(mention: string | undefined, turn: Turn) { return this.application.explain(mention, turn); }
