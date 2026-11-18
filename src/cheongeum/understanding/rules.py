@@ -99,6 +99,21 @@ _WHAT_CAN_I_SAY = rx(
 # 지난 안내에 이어서: "다른 말도 알려줘", "도움말 더"
 _HELP_MORE = rx(r"^다른|(?:^|\s)(?:더|또)(?:\s|$)")
 _GO_THERE = r"(에서|가서|들어가서|열고|열어서|접속해서)"
+# 사이트 이름·주소 바로 뒤에 붙은 '에서·가서·열어서'만 '그 사이트에 가서'로 본다('화면에서'는 아니다)
+_BEFORE_GO_THERE = rx(r"(\S+?)\s*(?:에서|들어가서|가서|열고|열어서|접속해서)")
+# 지금 화면·사이트를 가리키는 말
+_HERE = rx(r"(?:^|\s)(?:이|여기|지금|현재|이곳)(?=\s|$)")
+
+
+def goes_to_another_site(text: str) -> bool:
+    """
+    '복지로 가서 첫 화면에 뭐가 있는지 알려줘'처럼 다른 사이트에 가서 볼 일인지. 지금 화면 질문 규칙보다 먼저 본다.
+    사이트 목록에는 '기초연금'처럼 복지 낱말도 있으므로 이름이 '에서·가서' 바로 앞에 올 때만, 그리고
+    '이·여기·지금'으로 지금 화면을 가리키지 않을 때만 그렇다고 본다.
+    """
+    if _HERE.search(text):
+        return False
+    return any(mentions_known_site(m.group(1)) for m in _BEFORE_GO_THERE.finditer(text))
 
 
 class RuleBasedIntentProvider:
@@ -189,7 +204,7 @@ class RuleBasedIntentProvider:
         if _WHAT_CAN_I_SAY.search(text):
             return {"type": "WHAT_CAN_I_SAY", "more": bool(_HELP_MORE.search(text))}
         # "복지로 가서 첫 화면에 뭐가 있는지 알려줘"는 지금 화면이 아니라 그 사이트에 가서 볼 일(아래 목표 규칙)
-        elsewhere = mentions_known_site(text) and has(_GO_THERE)
+        elsewhere = goes_to_another_site(text)
         if not elsewhere and has(
             r"(이|여기|지금|이곳)\s*(사이트|홈페이지|누리집|웹사이트|곳)\S*\s*(뭐|무슨|어떤|뭘|뭐\s*하는)|(무슨|어떤|뭐\s*하는)\s*(사이트|홈페이지|누리집|곳)(이야|야|인가요|예요|이에요|인지)"
         ):
@@ -230,7 +245,7 @@ class RuleBasedIntentProvider:
         if has(r"^(크롬|chrome|브라우저|인터넷)\s*(창\s*)?(좀\s*)?(켜|열어|띄워|실행|시작)", I) and not mentions_known_site(text):
             return {"type": "OPEN_BROWSER"}
         # 목표(사이트 + 찾기/알려줘)는 복지 질문 규칙보다 먼저: "네이버에서 오늘 뉴스 알려줘", "복지로 가서 기초연금 신청 방법 찾아줘" → 여러 단계를 알아서
-        if elsewhere and has(r"(알려|찾아|읽어|확인|보여|있는지|뭐\s*있|정리)"):
+        if mentions_known_site(text) and has(_GO_THERE) and has(r"(알려|찾아|읽어|확인|보여|있는지|뭐\s*있|정리)"):
             return {"type": "GOAL", "goal": text}
 
         # "쉽게 말해줘", "무슨 말이야?" → 직전 안내를 쉬운 말로 다시(항목 이름이 없을 때만)
