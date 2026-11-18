@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import { REPO_ROOT } from "../core/assets.ts";
+import { pythonCommand, pythonProject } from "../core/python.ts";
 import { privacyPatterns, type SecretSpan, type SensitiveKind } from "./privacy.ts";
 
 const tier1 = new Map<string, SensitiveKind>([
@@ -54,13 +55,8 @@ export interface PiiBatchModel {
 }
 
 function openWorker(directory: string) {
-  const local = join(REPO_ROOT, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-  const configured = process.env.CHEONGEUM_PYTHON;
-  const python = configured !== undefined && configured !== "" ? configured
-    : statSync(local, { throwIfNoEntry: false })?.isFile() === true ? local : undefined;
-  const script = join(REPO_ROOT, "python", "cheongeum_stt", "pii.py");
-  const args = [...(python === undefined ? ["run", "python"] : []), "-u", script, directory];
-  const child = childProcess.spawn(python ?? "uv", args, { stdio: ["pipe", "pipe", "ignore"], cwd: REPO_ROOT, windowsHide: true });
+  const [command, ...args] = pythonCommand("-u", join(pythonProject, "cheongeum_stt", "pii.py"), directory);
+  const child = childProcess.spawn(command, args, { stdio: ["pipe", "pipe", "ignore"], cwd: REPO_ROOT, windowsHide: true });
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
   const responses = lines[Symbol.asyncIterator]();
   child.on("error", () => lines.close());
