@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { pythonCommand } from "../src/core/python.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,10 @@ import { Tokenizer } from "@huggingface/tokenizers";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const corpusPath = join(root, "tests/fixtures/regex/corpus.json");
 const model = resolve(process.env.PII_MODEL ?? join(root, "models/koelectra-ko-pii-ner"), "tokenizer.json");
+if (!existsSync(model)) {
+  console.error(`PII 모델 토크나이저가 없어요(${model}). npm run setup-models로 받거나 PII_MODEL에 모델 폴더를 지정하세요.`);
+  process.exit(1);
+}
 const corpus = JSON.parse(readFileSync(corpusPath, "utf8"));
 const [command, ...args] = pythonCommand("-c", `
 import json, sys

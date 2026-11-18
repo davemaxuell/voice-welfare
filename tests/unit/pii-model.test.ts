@@ -1,5 +1,7 @@
 import childProcess from "node:child_process";
 import { once } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { models } from "../../src/core/assets.ts";
@@ -75,4 +77,22 @@ describe.skipIf(!PiiModel.available(directory))("로컬 Koelectra ONNX", () => {
       spawn.mockRestore();
     }
   });
+});
+
+it("test_tokenizer_check_without_model_says_how_to_get_it", () => {
+  const empty = mkdtempSync(join(tmpdir(), "cheongeum-pii-"));
+  try {
+    const run = childProcess.spawnSync(process.execPath, [join(import.meta.dirname, "../../scripts/check-pii-tokenizer.mjs")], {
+      encoding: "utf8", env: { ...process.env, PII_MODEL: empty },
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe("");
+    const lines = run.stderr.trim().split(/\r?\n/u);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(join(empty, "tokenizer.json"));
+    expect(lines[0]).toContain("npm run setup-models");
+    expect(lines[0]).toContain("PII_MODEL");
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
 });
