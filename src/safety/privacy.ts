@@ -5,7 +5,7 @@ export const SENSITIVE_LABELS_KO = {
   card: "카드번호", idnum: "신분증 번호", health: "건강정보",
 };
 export type SensitiveKind = keyof typeof SENSITIVE_LABELS_KO;
-// All offsets refer to Unicode code points in the original text.
+// 위치는 원문의 유니코드 코드 포인트 기준이다.
 export type SecretSpan = readonly [kind: SensitiveKind, start: number, end: number];
 export const REDACTED = "[비공개]";
 
@@ -107,30 +107,76 @@ export function detectSensitive(text: string, modelSpans: readonly SecretSpan[] 
   return { kinds: [...kinds], hasSecretValue };
 }
 
-export function redactText(text: string, modelSpans: readonly SecretSpan[] = []): Redacted {
+interface TextWindow { start: number; end: number }
+
+// 가려진 값이 원문 범위와 겹치면 마스킹 문구 전체를 보여 준다. 경계만 맞닿으면 제외한다.
+function projectMask(window: TextWindow | undefined, start: number, end: number, length: number): void {
+  if (window === undefined) return;
+  const delta = length - (end - start);
+  if (window.start >= end) window.start += delta;
+  else if (window.start > start) window.start = start;
+  if (window.end >= end) window.end += delta;
+  else if (window.end > start) window.end = start + length;
+}
+
+function redact(text: string, modelSpans: readonly SecretSpan[], window?: TextWindow): Redacted {
   const spans: Array<[number, number]> = modelSpans.map(([, start, end]) => [start, end]);
   for (const [start, end, number] of spokenDigitSpans(text)) {
     if (spokenValueKind(number) !== undefined) spans.push([start, end]);
   }
   let out = text;
   if (spans.length > 0) {
-    const points = Array.from(text), parts: string[] = [];
-    let cursor = -1;
+    const merged: Array<[number, number]> = [];
     for (const [start, end] of spans.sort(([a], [b]) => a - b)) {
-      if (start > cursor) parts.push(points.slice(Math.max(cursor, 0), start).join(""), REDACTED);
-      cursor = Math.max(cursor, end);
+      const last = merged.at(-1);
+      if (last !== undefined && start <= last[1]) last[1] = Math.max(last[1], end);
+      else merged.push([start, end]);
+    }
+    const points = Array.from(text), parts: string[] = [];
+    let cursor = 0, units = 0;
+    for (const [start, end] of merged) {
+      const plain = points.slice(cursor, start).join("");
+      units += plain.length;
+      if (window !== undefined) projectMask(window, units, units + points.slice(start, end).join("").length, REDACTED.length);
+      parts.push(plain, REDACTED);
+      units += REDACTED.length;
+      cursor = end;
     }
     parts.push(points.slice(cursor).join(""));
     out = parts.join("");
   }
-  for (const [, pattern] of valuePatterns) out = out.replace(new RegExp(pattern, "gu"), REDACTED);
+  for (const [, pattern] of valuePatterns) {
+    let delta = 0;
+    out = out.replace(new RegExp(pattern, "gu"), (match: string, rawIndex: number) => {
+      const index = rawIndex + delta;
+      projectMask(window, index, index + match.length, REDACTED.length);
+      delta += REDACTED.length - match.length;
+      return REDACTED;
+    });
+  }
   for (const [kind, pattern, strict] of keywords) {
     const match = pattern.exec(out);
     if (match === null) continue;
     const end = match.index + match[0].length;
-    if (hasValueAfter(kind, out.slice(end), strict)) out = out.slice(0, end) + " " + REDACTED;
+    if (hasValueAfter(kind, out.slice(end), strict)) {
+      projectMask(window, end, out.length, 1 + REDACTED.length);
+      out = out.slice(0, end) + " " + REDACTED;
+    }
   }
-  return out as Redacted;
+  return (window === undefined ? out : out.slice(window.start, window.end)) as Redacted;
+}
+
+export function redactText(text: string, modelSpans: readonly SecretSpan[] = []): Redacted {
+  return redact(text, modelSpans);
+}
+
+/** 앞선 마스킹으로 글이 짧아져도 위치와 길이는 원문 코드 포인트로 센다. */
+export function redactTextWindow(text: string, offset: number, length: number, modelSpans: readonly SecretSpan[] = []): Redacted {
+  const points = Array.from(text);
+  const start = points.slice(0, offset).join("").length;
+  const end = points.slice(0, offset + length).join("").length;
+  if (end <= start) return redactText("");
+  return redact(text, modelSpans, { start, end });
 }
 
 export function maskValue(value: string): string {
