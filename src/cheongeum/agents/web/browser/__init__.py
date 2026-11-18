@@ -278,6 +278,18 @@ class PlaywrightExecutionAdapter:
                 return done(errorCode="NAVIGATION_FAILED")
             return done(errorCode="UNKNOWN")
 
+    async def _leave_error_page(self, page: Page) -> None:
+        """
+        불러오지 못한 주소는 크롬 오류 화면(chrome-error://)을 남긴다. 사용자는 '열지 못했다'는 말만 듣고
+        원래 화면에 있다고 여기므로 그 화면으로 되돌아간다. 오류 화면은 조금 늦게 들어선다.
+        """
+        try:
+            await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
+            if await page.go_back(wait_until="domcontentloaded", timeout=self.navigation_timeout) is None:
+                await page.goto("about:blank")
+        except Exception:  # noqa: BLE001
+            pass  # 되돌리지 못해도 '열지 못함'은 그대로 알린다
+
     async def _perform(self, page: Page, action: dict) -> dict:
         kind = action["type"]
         target = action.get("target")
@@ -285,7 +297,13 @@ class PlaywrightExecutionAdapter:
             url = action.get("url")
             if not url:
                 raise AdapterError("NAVIGATION_FAILED")
-            await page.goto(url, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+            except Exception as e:
+                # 내려받기 등으로 이동이 취소된 것(ERR_ABORTED)은 오류 화면을 남기지 않는다
+                if "net::ERR_" in str(e) and "ERR_ABORTED" not in str(e):
+                    await self._leave_error_page(page)
+                raise
             # 실제 사이트는 내용을 늦게 그리는 경우가 많아 잠깐(최대 3초) 네트워크가 잠잠해지길 기다린다.
             # 지원 사이트(로컬 모의 사이트)는 바로 그려지므로 기다리지 않는다(응답 속도).
             if parse_url(url).origin not in self.allowed_origins:
