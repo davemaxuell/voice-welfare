@@ -1,0 +1,38 @@
+appId: kr.cheongeum.app
+productName: 청음
+copyright: Copyright © 청음
+directories:
+  output: dist
+  buildResources: build
+files:
+  - main.cjs
+  - preload.cjs
+  - package.json
+  - "!**/*.map"
+extraResources:
+  - from: ../../docs/install.md
+    to: install.md
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: 청음-Setup-${version}.${ext}
+  # 서명 없음(주인 결정). SmartScreen 경고는 docs/install.md 참고.
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: 청음
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  artifactName: 청음-${version}-${arch}.${ext}
+  # 서명·공증 없음. Gatekeeper는 docs/install.md 참고.
+  identity: null
+  category: public.app-category.utilities
+dmg:
+  title: 청음
+electronVersion: 45.3.3
