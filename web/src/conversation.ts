@@ -12,7 +12,7 @@ interface Message { role: 'user' | 'assistant' | 'system'; text: string }
 /** 화면 낭독기에 알릴 글. 같은 글이어도 id가 새로우면 다시 읽힌다. */
 interface Notice { text: string; id: number }
 export interface UiState {
-  sessionId?: string; state: SessionState; last?: TurnResult; lang: Lang; busy: boolean;
+  sessionId?: string; state: SessionState; last?: TurnResult; lang: Lang; pendingLang?: Lang; busy: boolean;
   listening: boolean; voiceMode: VoiceMode; tts: boolean; contrast: boolean; error?: Notice;
   phase: keyof typeof PHASE_LABELS; consent: Consent; mics: {id: string; label: string}[];
   micId?: string; messages: (Message & { id: number })[]; announcement?: Notice;
@@ -776,11 +776,18 @@ export function selectMic(id: string) {
 }
 export async function selectLanguage(lang: Lang) {
   if (ui.sessionId === undefined) return;
+  set({ pendingLang: lang });
+  // 그 사이 다른 언어를 골랐으면 그 선택을 화면에 남긴다.
+  const settle = () => { if (ui.pendingLang === lang) set({ pendingLang: undefined }); };
   try {
     const r = await api.language(ui.sessionId, lang);
+    settle();
     await applyResult(r, loop === undefined);
     if (loop !== undefined) await speakAndWait(r.speech);
-  } catch (error) { setError(errorMessage(error)); }
+  } catch (error) {
+    settle();
+    setError(errorMessage(error));
+  }
 }
 function bind() {
   // 데스크톱 앱: 전역 단축키(Cmd/Ctrl+Shift+Space)로 '지금 말하기'

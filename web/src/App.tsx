@@ -51,7 +51,7 @@ function ConversationPanel({ui}: {ui: UiState}) {
         </select>
       </label>
       <label className="mic-select">대화 언어 Language
-        <select id="lang-select" value={ui.lang} onChange={e => void selectLanguage(LangSchema.parse(e.currentTarget.value))}>
+        <select id="lang-select" value={ui.pendingLang ?? ui.lang} onChange={e => void selectLanguage(LangSchema.parse(e.currentTarget.value))}>
           {LANGS.map(lang => <option key={lang} value={lang}>{LANG_NAMES[lang]}</option>)}
         </select>
       </label>
