@@ -14,7 +14,7 @@ from cheongeum.agents.web.digest import digest_for_llm, digest_page, text_offset
 from cheongeum.agents.web.effect import click_note
 from cheongeum.core.jsutil import I, jdumps, rx
 from cheongeum.core.turn import AGENT_IDS
-from cheongeum.safety import check_grounding
+from cheongeum.safety import check_grounding, quote_in_source
 
 
 @dataclass
@@ -77,7 +77,7 @@ def _evidence_text(view: dict) -> str:
     """검증용 원문: 그 화면에서 LLM이 볼 수 있었던 글 전부"""
     d = digest_page(view)
     labels = [f["label"] for f in view.get("fields", []) if f.get("visible")]
-    return "\n".join([d.title, *d.headings, d.main, *d.contentLinks, *d.menu, *d.buttons, *labels, *d.dialogs, d.footer])
+    return "\n".join([d.title, *d.headings, d.main, *d.contentLinks, *d.menu, *d.buttons, *labels, *d.dialogs])
 
 
 _TERMINAL = ("answer", "ask_user", "fail")
@@ -111,12 +111,15 @@ class Autopilot:
         # 목표에 특정 사이트가 있으면 그 사이트를 한 번이라도 연 뒤에만 답을 받는다(지어내기 방지).
         needs_visit = bool(self.resolve_site and self.resolve_site(goal)) or bool(_NEEDS_VISIT.search(goal))
         rejected = 0
-        # 이번 목표 수행 중 본 화면들의 글(검증 담당이 답과 대조)
+        # 이번 목표 수행 중 본 화면들의 글(검증 담당이 답과 대조). 꼬리말은 따로: 우편번호·전화·연도가 많아
+        # 답이 꼬리말을 근거로 들었을 때만 근거로 쓴다(그렇지 않으면 지어낸 숫자를 꼬리말 숫자가 받쳐 준다).
         seen_text: dict[str, str] = {}
+        seen_footer: dict[str, str] = {}
 
         def remember(v: dict | None) -> None:
             if v and v.get("pageId") != "blank":
                 seen_text[v["url"]] = _evidence_text(v)
+                seen_footer[v["url"]] = digest_page(v).footer
 
         steps: list[dict] = []
         actions: list[dict] = []
@@ -201,7 +204,8 @@ class Autopilot:
             if action == "answer":
                 # 검증 담당: 근거 문장이 실제로 본 화면에 있고, 답의 숫자가 화면(또는 목표 문장)에 있는지 확인한다.
                 evidence = raw.get("evidence") if isinstance(raw.get("evidence"), list) else None
-                check = check_grounding(answer=text, quotes=evidence, sources=list(seen_text.values()), allowed=[goal])
+                quoted = [f for f in seen_footer.values() if f and any(isinstance(q, str) and quote_in_source(q, f) for q in evidence or [])]
+                check = check_grounding(answer=text, quotes=evidence, sources=[*seen_text.values(), *quoted], allowed=[goal])
                 if check.ok:
                     note = f'근거 확인: "{(check.matchedQuotes[0] if check.matchedQuotes else "")[:40]}"'
                 else:
