@@ -11,10 +11,10 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-from ieum.agents.web import create_mock_welfare_profile, field_vocabulary
-from ieum.core.jsutil import jdumps, rx
-from ieum.core.llm import OPENAI_BASE_URL, LlmConfig
-from ieum.understanding import IntentContext, create_intent_provider
+from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
+from cheongeum.core.jsutil import jdumps, rx
+from cheongeum.core.llm import OPENAI_BASE_URL, LlmConfig
+from cheongeum.understanding import IntentContext, create_intent_provider
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -4,9 +4,9 @@ from dataclasses import dataclass
 import httpx
 import pytest_asyncio
 
-from ieum.core.jsutil import jdumps
-from ieum.core.turn import TurnResult
-from ieum.server import close_all, create_app
+from cheongeum.core.jsutil import jdumps
+from cheongeum.core.turn import TurnResult
+from cheongeum.server import close_all, create_app
 
 
 @pytest_asyncio.fixture(scope="module")

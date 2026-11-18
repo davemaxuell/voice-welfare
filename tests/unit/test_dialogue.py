@@ -1,6 +1,6 @@
 import pytest
 
-from ieum.core.dialogue import DialogueState
+from cheongeum.core.dialogue import DialogueState
 
 APPROVAL = {"action": {"id": "submit-1"}, "confirmation": {"actionId": "submit-1"}}
 

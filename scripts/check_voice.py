@@ -10,9 +10,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ieum.core.jsutil import rx
-from ieum.server.runtime import load_config
-from ieum.voice import create_voice_providers
+from cheongeum.core.jsutil import rx
+from cheongeum.server.runtime import load_config
+from cheongeum.voice import create_voice_providers
 
 ROOT = Path(__file__).resolve().parents[1]
 

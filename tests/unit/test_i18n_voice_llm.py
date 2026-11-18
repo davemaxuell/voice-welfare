@@ -4,11 +4,11 @@ import httpx
 import pytest
 from conftest import FakeLlm
 
-from ieum.agents.web import create_mock_welfare_profile, field_vocabulary
-from ieum.core.llm import LlmConfig
-from ieum.language import detect_lang_switch, detect_script_lang, foreign_confirmation, translate_out, untranslated_korean
-from ieum.safety import unsupported_numbers
-from ieum.understanding import (
+from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
+from cheongeum.core.llm import LlmConfig
+from cheongeum.language import detect_lang_switch, detect_script_lang, foreign_confirmation, translate_out, untranslated_korean
+from cheongeum.safety import unsupported_numbers
+from cheongeum.understanding import (
     INTENT_JSON_SCHEMA,
     IntentContext,
     OpenAICompatibleIntentProvider,
@@ -17,7 +17,7 @@ from ieum.understanding import (
     flat_to_intent,
     is_stop_utterance,
 )
-from ieum.voice import OpenAISttProvider, OpenAITtsProvider, VoiceConfig, VoiceProviderError, audio_extension, create_voice_providers, is_prompt_echo
+from cheongeum.voice import OpenAISttProvider, OpenAITtsProvider, VoiceConfig, VoiceProviderError, audio_extension, create_voice_providers, is_prompt_echo
 
 # ---------------------------------------------------------------- 다국어
 

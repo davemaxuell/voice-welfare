@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2] / "src"
 
 # 단계 → 가져와도 되는 단계(자기 자신 제외)
 ALLOWED = {
-    "ieum": set(),
+    "cheongeum": set(),
     "agents": set(),
     "core": set(),
     "safety": {"core"},
@@ -50,7 +50,7 @@ def layer(module: str) -> str:
     if parts[:1] == ["speech"]:
         # speech/__init__은 phrasing만 다시 내보낸다
         return "speech.screen" if parts[1:2] == ["screen"] else "speech.phrasing"
-    return parts[0] if parts else "ieum"
+    return parts[0] if parts else "cheongeum"
 
 
 def module_of(path: Path) -> str:
@@ -67,16 +67,16 @@ def runtime_imports(tree: ast.Module) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if id(node) in skip:
             continue
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("ieum"):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("cheongeum"):
             found.append((node.lineno, node.module))
         elif isinstance(node, ast.Import):
-            found += [(node.lineno, a.name) for a in node.names if a.name.startswith("ieum")]
+            found += [(node.lineno, a.name) for a in node.names if a.name.startswith("cheongeum")]
     return found
 
 
 def test_imports_follow_pipeline_layers():
     wrong = []
-    for path in sorted((ROOT / "ieum").rglob("*.py")):
+    for path in sorted((ROOT / "cheongeum").rglob("*.py")):
         source = layer(module_of(path))
         assert source in ALLOWED, f"{path.relative_to(ROOT)}: 새 단계 '{source}'를 ALLOWED 표에 넣어 주세요"
         for line, target in runtime_imports(ast.parse(path.read_text(encoding="utf-8"))):

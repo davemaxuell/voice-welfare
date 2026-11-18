@@ -5,10 +5,10 @@ from datetime import date
 
 from conftest import FIXTURES
 
-from ieum.agents.welfare import match_services, next_profile_slot, parse_profile_answer
-from ieum.agents.welfare.data import FixtureWelfareDataProvider, parse_service_catalog, parse_welfare_detail
-from ieum.core.jsutil import compact
-from ieum.personal import PersonalStore, due_reminder, parse_date, parse_personal_command, parse_vault_values, vault_key_for_label
+from cheongeum.agents.welfare import match_services, next_profile_slot, parse_profile_answer
+from cheongeum.agents.welfare.data import FixtureWelfareDataProvider, parse_service_catalog, parse_welfare_detail
+from cheongeum.core.jsutil import compact
+from cheongeum.personal import PersonalStore, due_reminder, parse_date, parse_personal_command, parse_vault_values, vault_key_for_label
 
 # ---------------------------------------------------------------- 맞춤 복지 찾기
 

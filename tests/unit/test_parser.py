@@ -1,8 +1,8 @@
 import pytest
 
-from ieum.agents.web import create_mock_welfare_profile, field_vocabulary
-from ieum.safety import PolicyConfig, PolicyContext, PolicyGuard
-from ieum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_stop_utterance, resolve_site
+from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
+from cheongeum.safety import PolicyConfig, PolicyContext, PolicyGuard
+from cheongeum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_stop_utterance, resolve_site
 
 parser = RuleBasedIntentProvider(field_vocabulary(create_mock_welfare_profile("http://localhost:5174")))
 

@@ -1,6 +1,6 @@
 import pytest
 
-from ieum.evaluation import DEMO_SCENARIO_PATH, is_active_pc, load_scenario_file, run_scenario
+from cheongeum.evaluation import DEMO_SCENARIO_PATH, is_active_pc, load_scenario_file, run_scenario
 
 FILE = load_scenario_file(DEMO_SCENARIO_PATH)
 # 시나리오 파일에는 planned로 남아 있지만 Phase 2에서 구현한 PC 시나리오(파일은 원본 문서라 수정하지 않음)

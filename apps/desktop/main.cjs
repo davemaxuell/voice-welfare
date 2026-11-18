@@ -1,10 +1,10 @@
 /**
- * 이음 데스크톱 앱(Electron 메인 프로세스).
- * - 서버·모의 사이트는 자식 프로세스(Python: python -m ieum.server --desktop)로 띄운다.
- *   파이썬은 IEUM_PYTHON → 저장소의 .venv → uv run 순서로 찾는다. 앱을 끄면 stdin을 닫아 서버가 스스로 정리하게 한다.
+ * 청음 데스크톱 앱(Electron 메인 프로세스).
+ * - 서버·모의 사이트는 자식 프로세스(Python: python -m cheongeum.server --desktop)로 띄운다.
+ *   파이썬은 CHEONGEUM_PYTHON → 저장소의 .venv → uv run 순서로 찾는다. 앱을 끄면 stdin을 닫아 서버가 스스로 정리하게 한다.
  * - 마이크 권한과 소리 자동재생을 미리 허용해, 앱을 켜면 클릭 없이 바로 안내를 듣고 Enter로 동의할 수 있다.
  * - 전역 단축키 Cmd/Ctrl+Shift+Space = '지금 말하기'(크롬 창을 보고 있어도 동작). 동의 안내 중에는 '동의'.
- * - 기본은 백그라운드 실행: 창 없이 메뉴 막대(트레이)에만 '이음'이 있고 음성으로만 쓴다. IEUM_SHOW_WINDOW=1이면 창을 띄운다.
+ * - 기본은 백그라운드 실행: 창 없이 메뉴 막대(트레이)에만 '청음'이 있고 음성으로만 쓴다. CHEONGEUM_SHOW_WINDOW=1이면 창을 띄운다.
  */
 const { app, BrowserWindow, globalShortcut, session, systemPreferences, dialog, Tray, Menu, nativeImage } = require('electron');
 const { spawn } = require('node:child_process');
@@ -18,13 +18,13 @@ const TALK_KEY = 'CommandOrControl+Shift+Space';
 // 소리 재생에 사용자 클릭이 필요 없게(시각장애인이 화면에서 버튼을 찾지 않아도 되도록)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const BACKGROUND = process.env.IEUM_SHOW_WINDOW !== '1';
+const BACKGROUND = process.env.CHEONGEUM_SHOW_WINDOW !== '1';
 
 let services;
 let win;
 let tray;
 
-/** 트레이 아이콘: 이미지 파일 없이 16×16 동그라미를 직접 그린다(macOS는 글자 '이음'도 함께). */
+/** 트레이 아이콘: 이미지 파일 없이 16×16 동그라미를 직접 그린다(macOS는 글자 '청음'도 함께). */
 function trayIcon() {
   const size = 16;
   const buf = Buffer.alloc(size * size * 4);
@@ -46,22 +46,22 @@ function trayIcon() {
 
 function createTray() {
   tray = new Tray(trayIcon());
-  if (process.platform === 'darwin') tray.setTitle('이음');
-  tray.setToolTip('이음 — 음성 도우미 (Cmd/Ctrl+Shift+Space: 지금 말하기)');
+  if (process.platform === 'darwin') tray.setTitle('청음');
+  tray.setToolTip('청음 — 음성 도우미 (Cmd/Ctrl+Shift+Space: 지금 말하기)');
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: '지금 말하기 (Cmd/Ctrl+Shift+Space)', click: () => win?.webContents.send('ieum:talk') },
+      { label: '지금 말하기 (Cmd/Ctrl+Shift+Space)', click: () => win?.webContents.send('cheongeum:talk') },
       { label: '창 보기', click: () => (win?.show(), win?.focus()) },
       { type: 'separator' },
-      { label: '이음 종료', click: () => app.quit() },
+      { label: '청음 종료', click: () => app.quit() },
     ]),
   );
 }
 
-/** 서버를 띄울 파이썬: IEUM_PYTHON → .venv → uv run */
+/** 서버를 띄울 파이썬: CHEONGEUM_PYTHON → .venv → uv run */
 function pythonCommand() {
-  const args = ['-m', 'ieum.server', '--desktop', '--port', String(PORT)];
-  if (process.env.IEUM_PYTHON) return { cmd: process.env.IEUM_PYTHON, args };
+  const args = ['-m', 'cheongeum.server', '--desktop', '--port', String(PORT)];
+  if (process.env.CHEONGEUM_PYTHON) return { cmd: process.env.CHEONGEUM_PYTHON, args };
   const venv = process.platform === 'win32' ? path.join(ROOT, '.venv', 'Scripts', 'python.exe') : path.join(ROOT, '.venv', 'bin', 'python');
   if (require('node:fs').existsSync(venv)) return { cmd: venv, args };
   return { cmd: 'uv', args: ['run', 'python', ...args] };
@@ -71,13 +71,13 @@ function startServices() {
   const { cmd, args } = pythonCommand();
   services = spawn(cmd, args, {
     cwd: ROOT,
-    env: { ...process.env, DESKTOP_PORT: String(PORT), PYTHONIOENCODING: 'utf-8', IEUM_PARENT_PIPE: '1' },
+    env: { ...process.env, DESKTOP_PORT: String(PORT), PYTHONIOENCODING: 'utf-8', CHEONGEUM_PARENT_PIPE: '1' },
     // stdin은 파이프로 열어 둔다: 이 앱이 꺼지면(비정상 종료 포함) 파이프가 닫히고 서버가 스스로 정리한다.
     stdio: ['pipe', 'inherit', 'inherit'],
   });
   services.on('exit', (code) => {
     if (!app.isQuitting) {
-      dialog.showErrorBox('이음', `서버가 종료되었습니다(코드 ${code}). 터미널 로그를 확인하세요.`);
+      dialog.showErrorBox('청음', `서버가 종료되었습니다(코드 ${code}). 터미널 로그를 확인하세요.`);
       app.quit();
     }
   });
@@ -111,7 +111,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 960,
     height: 860,
-    title: '이음',
+    title: '청음',
     // 백그라운드 실행이면 창을 띄우지 않는다(음성·전역 단축키로만 사용, 메뉴 막대에서 '창 보기' 가능)
     show: !BACKGROUND,
     backgroundColor: '#ffffff',
@@ -132,7 +132,7 @@ async function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!ours(url)) e.preventDefault();
   });
-  // 백그라운드 실행에서는 창을 닫아도 앱은 계속(숨기기). 끝내려면 메뉴 막대의 '이음 종료'.
+  // 백그라운드 실행에서는 창을 닫아도 앱은 계속(숨기기). 끝내려면 메뉴 막대의 '청음 종료'.
   win.on('close', (e) => {
     if (BACKGROUND && !app.isQuitting) {
       e.preventDefault();
@@ -146,13 +146,13 @@ app.whenReady().then(async () => {
   if (BACKGROUND && process.platform === 'darwin') app.dock?.hide();
   startServices();
   if (!(await waitReady())) {
-    dialog.showErrorBox('이음', '서버를 시작하지 못했습니다. .env와 터미널 로그를 확인하세요.');
+    dialog.showErrorBox('청음', '서버를 시작하지 못했습니다. .env와 터미널 로그를 확인하세요.');
     app.quit();
     return;
   }
   await createWindow();
   if (BACKGROUND) createTray();
-  globalShortcut.register(TALK_KEY, () => win?.webContents.send('ieum:talk'));
+  globalShortcut.register(TALK_KEY, () => win?.webContents.send('cheongeum:talk'));
 });
 
 app.on('before-quit', () => {

@@ -1,7 +1,7 @@
 
-from ieum.agents.web import digest_for_llm, digest_page
-from ieum.core.jsutil import jdumps, now_iso
-from ieum.safety import check_grounding, extract_numbers, quote_in_source, unsupported_numbers
+from cheongeum.agents.web import digest_for_llm, digest_page
+from cheongeum.core.jsutil import jdumps, now_iso
+from cheongeum.safety import check_grounding, extract_numbers, quote_in_source, unsupported_numbers
 
 
 def test_quote_tolerates_spacing_punctuation_endings():
