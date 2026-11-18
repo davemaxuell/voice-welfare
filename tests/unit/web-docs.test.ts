@@ -32,6 +32,10 @@ it("test_read_hwpx_decodes_character_references", async () => {
   expect(await readDocument(hwpx("<hp:t>신청 기한: 3월&#160;31일 &#8226; 문의 &#44032;&#xAC00; &amp;#44032; &lt;끝&gt;</hp:t><hp:t><![CDATA[ &#44032;]]></hp:t>")))
     .toMatchObject({ok:true,kind:"hwpx",text:"신청 기한: 3월 31일 • 문의 가가 &#44032; <끝> &#44032;"});
 });
+it("test_read_hwpx_joins_text_and_cdata_in_one_run", async () => {
+  expect(await readDocument(hwpx("<hp:t>문의 <![CDATA[129]]>번<hp:x/>뒤</hp:t>")))
+    .toMatchObject({ok:true,kind:"hwpx",text:"문의 129번"});
+});
 it("test_read_pdf_kind", async () => {
   // 간단한 한 쪽 PDF. 본문을 근거 확인에도 그대로 사용한다.
   const stream = "BT /F1 12 Tf 25 200 Td (Welfare office 129) Tj ET";

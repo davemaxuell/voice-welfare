@@ -29,8 +29,14 @@ function words(bytes: Uint8Array, fallback: boolean) {
   function visit(nodes: XmlNode[]) {
     for (const node of nodes) for (const [tag, children] of Object.entries(node)) {
       if (!Array.isArray(children) || tag.startsWith("?")) continue;
-      const text = children[0]?.["#text"];
-      if (typeof text === "string" && (fallback ? strip(text).length > 0 && (tag.length <= 3 || ["t","text","char"].includes(tag.toLowerCase())) :
+      // ElementTree의 el.text처럼 첫 하위 요소 앞의 글(CDATA 포함)을 모두 잇는다.
+      let text = "";
+      for (const child of children) {
+        const part = child["#text"];
+        if (typeof part !== "string") break;
+        text += part;
+      }
+      if (text.length > 0 && (fallback ? strip(text).length > 0 && (tag.length <= 3 || ["t","text","char"].includes(tag.toLowerCase())) :
           ["t","T","char","Char"].includes(tag))) result.push(text);
       visit(children);
     }
