@@ -5,9 +5,13 @@
   "description": "청음 PC 데스크톱 앱(Electron 셸): Python 서버(python -m cheongeum.server --desktop)를 띄우고 앱 창·전역 단축키로 음성 대화",
   "main": "main.cjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --config electron-builder.yml",
+    "dist:win": "electron-builder --config electron-builder.yml --win",
+    "dist:mac": "electron-builder --config electron-builder.yml --mac"
   },
   "devDependencies": {
-    "electron": "^45.3.3"
+    "electron": "^45.3.3",
+    "electron-builder": "^26.0.12"
   }
 }
