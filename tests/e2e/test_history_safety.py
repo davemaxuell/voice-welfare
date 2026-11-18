@@ -37,7 +37,8 @@ class FormSite:
             def do_POST(self) -> None:
                 site.posts += 1
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
-                return self._page("보냄")
+                # 결과 화면에 다음 양식이 또 있다(공공 누리집은 form.submit()으로 화면을 넘기곤 한다)
+                return self._page("보냄", '<form method="post" action="/submit2"><input name="r" value="y"><button id="go2">다음</button></form>')
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_port}"
@@ -105,6 +106,29 @@ async def test_failed_reload_of_the_current_page_does_not_jump_further_back(site
     r = await adapter.execute(act("navigate", url=f"{other.url}/x"))
     assert r["errorCode"] == "NAVIGATION_FAILED"
     assert adapter.page.url != f"{site.url}/a"
+
+
+async def test_back_still_works_after_a_failed_load(site_and_adapter):
+    site, adapter = site_and_adapter
+    await adapter.execute(act("navigate", url=f"{site.url}/a"))
+    await adapter.execute(act("navigate", url=f"{site.url}/b"))
+    await adapter.execute(act("navigate", url=DEAD))
+    assert adapter.page.url == f"{site.url}/b"
+    r = await adapter.execute(act("back"))
+    assert r["ok"], r
+    assert adapter.page.url == f"{site.url}/a"
+
+
+async def test_back_between_two_form_results_sends_neither_again(site_and_adapter):
+    site, adapter = site_and_adapter
+    await submit_form(site, adapter)
+    await adapter.page.click("#go2")
+    await adapter.page.wait_for_url("**/submit2")
+    assert site.posts == 2
+    r = await adapter.execute(act("back"))
+    assert site.posts == 2
+    assert r["errorCode"] == "RESUBMIT_BLOCKED"
+    assert not adapter.page.url.startswith("chrome-error://")
 
 
 async def test_footer_text_is_the_site_footer_not_article_footers(site_and_adapter):

@@ -22,6 +22,22 @@ async def test_closing_the_last_shared_tab_leaves_a_tab_for_the_next_session(tmp
         await ctx.close()
 
 
+async def test_two_shared_sessions_closing_at_once_leave_a_tab(tmp_path):
+    # 화면 두 개가 동시에 닫히거나(새로고침 두 번) 오래된 세션을 비우는 사이 다른 세션이 닫힐 때
+    import asyncio
+
+    ctx = await (await _pw()).chromium.launch_persistent_context(str(tmp_path), headless=True)
+    try:
+        a = PlaywrightExecutionAdapter(context=ctx, allowed_origins=[], read_only_web=True)
+        await a.start()
+        b = PlaywrightExecutionAdapter(context=ctx, allowed_origins=[], read_only_web=True)
+        await b.start()
+        await asyncio.gather(a.close(), b.close())
+        assert len(ctx.pages) >= 1
+    finally:
+        await ctx.close()
+
+
 async def test_closing_one_of_two_shared_sessions_closes_only_its_tab(tmp_path):
     ctx = await (await _pw()).chromium.launch_persistent_context(str(tmp_path), headless=True)
     try:

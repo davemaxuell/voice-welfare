@@ -105,3 +105,22 @@ def test_grounding_still_passes_on_unredacted_page_copy():
     answer = "대상은 만 65세 이상입니다."
     check = check_grounding(answer=answer, quotes=[answer], sources=[raw], allowed=["나이 조건이 뭐야?"])
     assert check.ok
+
+
+def test_goal_history_lines_hide_personal_data():
+    # 단계 기록의 메모에는 화면 제목·드러난 글이 들어간다(예: "'홍길동님 … 마이페이지' 열림"). 다음 단계 LLM에 그대로 간다.
+    from cheongeum.agents.web.autopilot import _history_line
+
+    line = _history_line({"n": 1, "action": "open_url", "ok": True, "note": f"'홍길동님 {RRN} 마이페이지' 열림"})
+    assert RRN not in line
+    assert "900101" not in line
+    assert "마이페이지" in line
+
+
+def test_page_text_for_llm_hides_personal_data_before_cutting():
+    from cheongeum.agents.web.digest import page_text_for_llm
+
+    d = digest_page(view(outline={**OUTLINE, "mainText": "가" * 2992 + " " + RRN + " 끝"}))
+    raw, safe = page_text_for_llm(d)
+    assert "900101" not in safe
+    assert len(safe) <= 3000 and len(raw) <= 3000

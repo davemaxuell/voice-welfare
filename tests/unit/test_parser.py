@@ -39,6 +39,11 @@ def parse(t: str, state: str = "APPLICATION_OPEN", awaiting: str | None = None) 
         # 다른 사이트로 가서 보라는 말은 지금 화면 질문이 아니라 목표
         ("127.0.0.1:5174/portal2.html에서 복지지도 메뉴를 열어서 무슨 화면인지 알려줘", "GOAL"),
         ("복지로 가서 첫 화면에 뭐가 있는지 알려줘", "GOAL"),
+        # 지금 화면을 가리키는 말(이·여기·지금)이나 '화면에서'는 다른 사이트가 아니다. 기초연금 같은 복지 낱말은 사이트 이름과 겹친다.
+        ("이 화면에서 기초연금 신청 방법 읽어줘", "DESCRIBE_SCREEN"),
+        ("지금 복지로에서 어느 단계야?", "CURRENT_STEP"),
+        ("네이버에서 지금 화면 설명해줘", "DESCRIBE_SCREEN"),
+        ("이 사이트 뭐 하는 곳이야? 네이버에서 들어왔어", "ABOUT_SITE"),
         ("장애인연금 지원대상과 신청 절차 알려줘", "POLICY_QUESTION"),
         ("장애인연금 지금 신청할 수 있어?", "POLICY_QUESTION"),
         ("지금 신청할 수 있어?", "POLICY_QUESTION"),
