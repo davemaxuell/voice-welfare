@@ -63,6 +63,17 @@ async def test_links_by_number_and_back(new_session):
     assert "외부 포털" in back["observation"]["title"]
 
 
+async def test_site_that_fails_to_load_leaves_the_user_where_they_were(new_session):
+    s, _ = await open_portal(new_session)
+    failed = await s.handle_turn("127.0.0.1:9 열어줘")
+    assert "열지 못했" in failed["speech"]
+    assert "모의 사이트" not in failed["speech"]
+    assert "외부 포털" in failed["observation"]["title"]
+    read = await s.handle_turn("본문 읽어줘")
+    assert read["semanticAction"] == "read-main"
+    assert "외부 포털" in read["observation"]["title"]
+
+
 async def test_ambiguous_link_asks_then_number(new_session):
     s, _ = await open_portal(new_session)
     ask = await s.handle_turn("안내 링크 눌러줘")
