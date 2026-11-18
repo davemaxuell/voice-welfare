@@ -17,9 +17,17 @@
     "dev:web": "vite",
     "build:web": "vite build",
     "start": "node --env-file-if-exists=.env src/server/main.ts",
-    "eval": "uv run python scripts/run_scenarios.py",
+    "eval": "node scripts/run-scenarios.ts",
     "record:observations": "uv run python scripts/record_observations.py",
-    "prestart": "npm run build:web"
+    "prestart": "npm run build:web",
+    "eval-agent": "node scripts/eval-agent.ts",
+    "eval-stt": "node scripts/eval-stt.ts",
+    "check-llm": "node scripts/check-llm.ts",
+    "check-voice": "node scripts/check-voice.ts",
+    "check-welfare": "node scripts/check-welfare.ts",
+    "setup-models": "node scripts/setup-models.ts",
+    "mock": "node scripts/mock-site.ts",
+    "preeval": "npm run build:web"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
