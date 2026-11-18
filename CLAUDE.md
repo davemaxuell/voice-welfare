@@ -26,7 +26,7 @@ npm start
 | `npm run eval-stt` | `docs/stt-eval/sentences.csv`와 `recordings/`로 받아쓰기 평가 |
 | `npm run check-llm`, `npm run check-voice`, `npm run check-welfare` | `.env`의 실제 공급자 연결 확인 |
 
-로컬 모델을 쓰려면 `uv sync --project python`으로 Python 환경을 만든 뒤 `npm run setup-models`를 실행한다. 받아쓰기 프로세스는 `python/cheongeum_stt/`, CT2 변환기는 `python/convert_whisper_ct2.py`에 있다. 데스크톱은 루트에서 `npm run build:web`을 실행한 다음 `npm --prefix apps/desktop ci`와 `npm --prefix apps/desktop start`로 시작한다. [설치 및 모델 설정](README.md)
+로컬 모델을 쓰려면 `uv sync --project python`으로 Python 환경을 만든 뒤 `npm run setup-models`를 실행한다. 받아쓰기 프로세스는 `python/cheongeum_stt/`, CT2 변환기는 `python/convert_whisper_ct2.py`에 있다. 데스크톱은 루트에서 `npm --prefix apps/desktop ci`와 `npm --prefix apps/desktop start`로 시작한다. [설치 및 모델 설정](README.md)
 
 ### 회귀 기준과 테스트
 
