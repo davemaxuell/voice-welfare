@@ -37,3 +37,18 @@ it("필수 항목과 보안 입력란을 안내하고 페이지에서 AI에게 �
   expect(speech).not.toContain("보안값");
   expect(speech.match(/지시를 따르지 않습니다/gu)).toHaveLength(1);
 });
+
+it("화면 기록은 안내 뒤에 붙은 값과 본문 경계의 번호를 숨긴다", () => {
+  const narrator = new Narrator({web});
+  const warning = "모의 인증 · 실제 인증 아님 (MOCK) — 실제 아이디/비밀번호를 입력하지 마세요.";
+  const view: WebObservation = {title:"모의 인증", pageId:"mock-login", fields:[
+    {type:"password", label:"비밀번호", sensitive:true, visible:true, filled:true, value:"neverRead9"},
+  ], outline:{ notices:[{label:"",text:warning}], mainText:"가".repeat(197) + " 900101-1234567"}};
+  const clean = narrator.historyScreen(view, "");
+  expect(clean).toContain(warning);
+  expect(clean).toContain("비밀번호, 보안 입력란, 선택, 직접 입력해야 하는 칸.");
+  expect(clean).not.toContain("neverRead9");
+  expect(clean).not.toContain("90");
+  const dirty = {...view, outline:{notices:[{label:"",text:warning + " 비밀번호는 testPass5"}]}};
+  expect(narrator.historyScreen(dirty, "다음 번호 900101-1234567")).not.toMatch(/testPass5|900101/u);
+});

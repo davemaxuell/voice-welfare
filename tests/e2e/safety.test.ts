@@ -220,7 +220,7 @@ it("test_resume_plan_runs_its_later_steps", async () => {
   expect(result.speech).not.toContain("중단 상태");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_password_never_stored_spoken_or_entered", async () => {
+it("test_password_never_stored_spoken_or_entered", async () => {
   const session = await newSession();
   await session.handleTurn("로그인하고 싶어");
   const result = await session.handleTurn("내 비밀번호는 hunter2pass야");
@@ -233,7 +233,7 @@ it.runIf(openSlice.has("PR8c"))("test_password_never_stored_spoken_or_entered", 
   expect(JSON.stringify(events.all())).not.toContain("hunter2pass");
 });
 
-it.runIf(openSlice.has("PR8c"))("test_bare_password_on_login_page_not_sent_or_stored", async () => {
+it("test_bare_password_on_login_page_not_sent_or_stored", async () => {
   const session = await newSession();
   const model = new FakeLlm();
   withLlm(session, model);

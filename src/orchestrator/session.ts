@@ -26,7 +26,7 @@ import { dueReminder, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalStore, VAULT_LABELS, type VaultKey } from "../personal/store.ts";
 import { consentRefusal, gateRefusal, type Consent, type GateRefusal } from "../safety/gates.ts";
 import type { PiiScanner } from "../safety/pii_model.ts";
-import { REDACTED, SENSITIVE_LABELS_KO, detectSensitive, maskValue, redactText, redactTextWindow } from "../safety/privacy.ts";
+import { POSSIBLE_SECRET_NOTICE, REDACTED, detectSensitive, disclosureNotice, historyLine, maskValue, redactText } from "../safety/privacy.ts";
 import { josa, speakLabel } from "../speech/phrasing.ts";
 import { Narrator } from "../speech/screen.ts";
 import { isQuestionLike, shortReplyKind, splitQuestions, stripAddress, stripFiller, vagueQuestion } from "../understanding/filters.ts";
@@ -249,19 +249,16 @@ export class SessionOrchestrator {
       this.#secretHint = forced === undefined && !sensitive.hasSecretValue && sensitive.kinds.some(k => k === "password" || k === "otp");
       if (sensitive.hasSecretValue) {
         turn.intentType = "SECRET_DISCLOSURE";
-        const names = sensitive.kinds.map(k => SENSITIVE_LABELS_KO[k]).join(", ");
         const auth = this.state === "AUTH_HANDOFF" || sensitive.kinds.some(k => k === "password" || k === "otp");
-        const instruction = this.web.currentView?.pageId === "mock-login" ? "인증 화면의 입력란에 키보드로 직접 입력해 주세요." :
-          "인증이 필요하면 '로그인하고 싶어'라고 말씀하시고, 열린 화면에 직접 입력해 주세요.";
         return this.#finish(turn, draft(auth ? "AUTH_HANDOFF" : this.state, "auth-handoff",
-          "보안을 위해 " + (names.length > 0 ? names : "민감 정보") + "는 저에게 말하지 마세요. 방금 말씀하신 값은 저장하거나 화면에 입력하지 않았습니다. " + instruction, { secretDetected: true }));
+          disclosureNotice(sensitive.kinds, this.web.currentView?.pageId === "mock-login"), { secretDetected: true }));
       }
       if (forced === undefined) {
         if (this.#maybeSpokenSecret(text, hint)) {
           turn.intentType = "SECRET_DISCLOSURE";
           turn.text = redactText(REDACTED);
           return this.#finish(turn, draft(this.state, "auth-handoff",
-            "혹시 비밀번호나 인증번호라면 저에게 말하지 말고 화면의 입력란에 직접 입력해 주세요. 명령이었다면 한 번 더 말씀해 주세요.", { secretDetected: true }));
+            POSSIBLE_SECRET_NOTICE, { secretDetected: true }));
         }
         const asked = this.dialogue.profileQuestion as ProfileSlot | undefined;
         if (asked !== undefined) {
@@ -361,17 +358,20 @@ export class SessionOrchestrator {
   #refused(refusal: GateRefusal | undefined) {
     return refusal === undefined ? undefined : draft(refusal.state ?? this.state, refusal.semanticAction, refusal.speech);
   }
-  #historySpeech(speech: string) {
+  #historySpeech(speech: string, prepared?: Redacted) {
     const secrets = new Set(Object.values(this.personal.vault()));
     const pending = this.dialogue.vaultConfirm;
     if (pending?.kind === "vault-save") for (const value of Object.values(pending.values)) secrets.add(value);
-    for (const value of [...secrets].sort((a,b) => Array.from(b).length - Array.from(a).length)) {
-      if (value.length > 0) speech = speech.replaceAll(value, REDACTED);
+    for (const value of [...secrets].sort((a,b) => b.length - a.length)) {
+      if (value.length > 0 && speech.includes(value)) {
+        speech = speech.replaceAll(value, REDACTED);
+        prepared = undefined;
+      }
     }
-    return redactText(speech);
+    return prepared ?? redactText(speech);
   }
   recentDialogue(n = 6) {
-    return this.#history.slice(-n).map(row => redactText((row.role === "user" ? "사용자: " : "청음: ") + redactTextWindow(row.text, 0, 400)));
+    return this.#history.slice(-n).map(row => historyLine(row.role, row.text));
   }
   #understand(text: Redacted, turn: Turn) {
     const field = this.dialogue.awaiting;
@@ -419,7 +419,13 @@ export class SessionOrchestrator {
     }
     const refused = this.#refused(consentRefusal([intent.type], this.#consent));
     if (refused !== undefined) return refused;
-    switch (intent.type) {
+    const type = intent.type;
+    switch (type) {
+      case "GOAL": return this.browse.runGoal(intent.goal, ctx);
+      case "LOGIN": return this.browse.login(turn.text, ctx);
+      case "CLEAR_LOGIN": return this.browse.clearLogin(ctx);
+      case "READ_DOWNLOAD": return this.browse.readDownload(intent, ctx);
+      case "AUTH_DONE": return this.browse.authDone(ctx);
       case "START_APPLICATION": return this.application.start(turn);
       case "FILL": return this.form.fill(intent.fills, ctx);
       case "READ_FIELD": return this.form.readField(intent.fieldMention, ctx);
@@ -452,7 +458,7 @@ export class SessionOrchestrator {
       case "PROGRESS": return this.#progress(false);
       case "STOP": return draft("STOPPED", "stop", "멈췄습니다.");
       case "UNKNOWN": return this.replies.unknown(redactText(intent.text ?? turn.text), turn);
-      default: throw new NotPorted(intent.type);
+      default: throw new NotPorted(type);
     }
   }
   explain(mention: string | undefined, turn: Turn) { return this.application.explain(mention, turn); }
@@ -475,7 +481,7 @@ export class SessionOrchestrator {
     const view = out.view as PageView | undefined ?? this.web.currentView;
     const at = new Date().toISOString();
     this.#history.push({ turnId: turn.id, role: "user", text: turn.text, at, state },
-      { turnId: turn.id, role: "assistant", text: this.#historySpeech(speech), at, state });
+      { turnId: turn.id, role: "assistant", text: this.#historySpeech(speech, speech === out.speech ? out.historySpeech : undefined), at, state });
     const actions = (out.actions ?? []).map(a => {
       const r = a.result;
       this.deps.events?.record(omitAbsent({ sessionId: this.id, turnId: turn.id, actionType: a.action.type, success: r?.ok ?? false,
