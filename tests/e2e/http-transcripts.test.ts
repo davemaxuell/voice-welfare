@@ -62,8 +62,7 @@ const open = openBrowserTranscript(runtime, async (session) => {
   };
 });
 for (const entry of index.cases) {
-  const test = entry.excluded === undefined ? it : it.skip;
-  test("HTTP " + entry.slice + " " + entry.case, async () => {
+  it("HTTP " + entry.slice + " " + entry.case, async () => {
     const tape = loadTranscript(base, entry);
     vi.stubEnv("TZ", "Asia/Seoul");
     vi.setSystemTime(new Date(tape.session.calendarDay + "T03:00:00.000Z"));

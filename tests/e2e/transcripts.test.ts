@@ -9,17 +9,13 @@ const catalog = fixtureIndex.parse(JSON.parse(readFileSync(new URL("index.json",
 afterAll(closeTranscriptRuntime);
 for (const entry of catalog.cases) {
   const tape = loadTranscript(directory, entry);
-  if (entry.excluded !== undefined) {
-    it.skip(`${entry.slice} ${entry.case} (${entry.excluded})`);
-  } else {
-    it(`${entry.slice} ${entry.case}`, async () => {
-      // Only the Node wall clock is fixed. Chromium, actionability and performance timers run normally.
-      vi.stubEnv("TZ", "Asia/Seoul");
-      vi.setSystemTime(new Date(tape.session.calendarDay + "T03:00:00.000Z"));
-      try { await replayTranscript(tape, openRecordedSession); }
-      finally { vi.useRealTimers(); vi.unstubAllEnvs(); }
-    });
-  }
+  it(`${entry.slice} ${entry.case}`, async () => {
+    // Node의 달력만 고정한다. Chromium과 동작 대기는 실제 시간을 사용한다.
+    vi.stubEnv("TZ", "Asia/Seoul");
+    vi.setSystemTime(new Date(tape.session.calendarDay + "T03:00:00.000Z"));
+    try { await replayTranscript(tape, openRecordedSession); }
+    finally { vi.useRealTimers(); vi.unstubAllEnvs(); }
+  });
 }
 
 it("checks model inputs, turn output and session effects during replay", async () => {
