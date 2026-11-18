@@ -41,3 +41,6 @@ it("test_grounding_still_passes_on_unredacted_page_copy", () => {
   const answer = "대상은 만 65세 이상입니다.";
   expect(checkGrounding({ answer, quotes: [answer], sources: [raw], allowed: ["나이 조건이 뭐야?"] }).ok).toBe(true);
 });
+it.each([["5 MİLLİON", "5백만 원"], ["3 thouſand", "3천 원"], ["2 bİllion", "20억 원"]])("test_lookalike_unit_letters_read_as_plain_unit %s", (source, answer) => {
+  expect(unsupportedNumbers(`지원금은 ${answer}이에요`, [source])).toEqual([]);
+});

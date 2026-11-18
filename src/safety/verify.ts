@@ -101,7 +101,8 @@ export function extractNumbers(text: string): Numbers {
     const gap = rest.slice(lastEnd, match.index);
     if (chain === "" || !verifyPatterns.blank.test(gap) || unit === undefined) flush();
     if (unit !== undefined) {
-      const multiplier = multipliers.get(unit.toLowerCase());
+      // 단위 정규식은 İ·ſ도 i·s로 받지만 toLowerCase()는 "i̇"·"ſ"를 내므로 보이는 ASCII 글자로 바꿔 찾는다.
+      const multiplier = multipliers.get(unit.replaceAll("İ", "i").replaceAll("ſ", "s").toLowerCase());
       if (multiplier === undefined) throw new RangeError(`숫자 단위를 읽을 수 없습니다: ${unit}`);
       total += amount * multiplier;
       values.add(amount);
