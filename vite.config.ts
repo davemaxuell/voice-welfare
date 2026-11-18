@@ -5,7 +5,7 @@ import { REPO_ROOT, soundCues } from "./src/core/assets.ts";
 
 export default defineConfig({
   root: resolve(REPO_ROOT, "web"),
-  server: { fs: { allow: [REPO_ROOT] }, proxy: { "/api": "http://127.0.0.1:8787" } },
+  server: { fs: { allow: [REPO_ROOT] }, proxy: { "/api": "http://localhost:8787" } },
   plugins: [{
     name: "cheongeum-cues",
     configureServer(server) {

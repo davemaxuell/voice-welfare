@@ -128,6 +128,55 @@
       ],
       "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8",
       "partial": true
+    },
+    "web/index.html": {
+      "python": [
+        "src/cheongeum/web/static/index.html"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/App.tsx": {
+      "python": [
+        "src/cheongeum/web/static/index.html",
+        "src/cheongeum/web/static/app.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/api.ts": {
+      "python": [
+        "src/cheongeum/web/static/api.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/audio.ts": {
+      "python": [
+        "src/cheongeum/web/static/audio.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/conversation.ts": {
+      "python": [
+        "src/cheongeum/web/static/app.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/mic.ts": {
+      "python": [
+        "src/cheongeum/web/static/mic.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/speaker.ts": {
+      "python": [
+        "src/cheongeum/web/static/speaker.js"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "web/src/styles.css": {
+      "python": [
+        "src/cheongeum/web/static/styles.css"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
     }
   }
 }
