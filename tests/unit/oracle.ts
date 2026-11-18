@@ -1,3 +1,4 @@
+import { welfareImplementations } from "./welfare-oracle.ts";
 import { parsePersonalCommand } from "../../src/personal/commands.ts";
 import { webViewImplementations } from "./web-view-oracle.ts";
 import { webPolicyImplementations } from "./web-policy-oracle.ts";
@@ -21,7 +22,7 @@ type OracleGroup = { module: string; cases: OracleCase[] };
 type Implementation = (args: OracleCase["args"]) => unknown;
 
 // 각 이식 PR에서 Python 호출 이름과 TypeScript 함수를 연결한다.
-export const implementations = new Map<string, Implementation>([...ruleImplementations, ...plannerImplementations, ...privacyImplementations, ...policyImplementations, ...speechImplementations, ...webViewImplementations, ...webPolicyImplementations,
+export const implementations = new Map<string, Implementation>([...welfareImplementations, ...ruleImplementations, ...plannerImplementations, ...privacyImplementations, ...policyImplementations, ...speechImplementations, ...webViewImplementations, ...webPolicyImplementations,
   ["personal.commands.parse_personal_command", args => {
     const { text, today } = z.object({ text: z.string(), today: z.string() }).parse(args);
     const cmd = parsePersonalCommand(text, today);
