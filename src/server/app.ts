@@ -306,17 +306,16 @@ export function makeApp<S extends HttpSession>(
     } catch (e) {
       return voiceError(e);
     }
-    const utterance = Array.from(text).slice(0, 500).join("");
     if (busy) {
       const spans = (await runtime.scanner?.scan([text]))?.[0];
       const safe = redactText(text, spans);
-      if (isStopUtterance(safe)) return Response.json({ stopped: true, result: await session.handleTurn(utterance) });
+      if (isStopUtterance(safe)) return Response.json({ stopped: true, result: await session.handleTurn(text, 500) });
       if (isProgressQuestion(safe))
-        return Response.json({ stopped: false, result: await session.handleTurn(utterance) });
+        return Response.json({ stopped: false, result: await session.handleTurn(text, 500) });
       return Response.json({ stopped: false });
     }
     if (text.length === 0) return error(422, "EMPTY_TRANSCRIPT", "말씀을 알아듣지 못했습니다. 다시 말씀해 주세요.");
-    return Response.json(await session.handleTurn(utterance));
+    return Response.json(await session.handleTurn(text, 500));
   }
   app.post("/api/audio/turn", (c) => voiceTurn(c, false));
   app.post("/api/audio/stop", (c) => voiceTurn(c, true));
