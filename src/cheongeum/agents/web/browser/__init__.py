@@ -610,6 +610,11 @@ class PlaywrightExecutionAdapter:
         try:
             if self.shared:
                 if self.page is not None:
+                    # 공유 크롬의 마지막 탭을 닫으면 크롬이 꺼지기 시작해, 곧바로 만든 다음 세션(화면 새로고침)이
+                    # 탭을 열지 못한다. 빈 탭을 먼저 열어 두면 다음 세션이 그 탭을 쓴다.
+                    ctx = self.context
+                    if ctx is not None and all(p is self.page for p in ctx.pages):
+                        await ctx.new_page()
                     await self.page.close()
             elif self.context is not None:
                 await self.context.close()
