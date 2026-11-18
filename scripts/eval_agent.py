@@ -17,6 +17,7 @@ from typing import Callable
 from dotenv import load_dotenv
 
 from cheongeum.agents.web import page_for_llm
+from cheongeum.agents.web.autopilot import is_korean_text
 from cheongeum.agents.web.browser import stop_playwright
 from cheongeum.core.jsutil import jdumps, now_iso, uniq
 from cheongeum.practice_site import ensure_mock_site
@@ -120,8 +121,9 @@ async def main() -> int:
             finally:
                 await s.close()
             steps = len([t for t in r["trace"] if (t.get("note") or "").startswith("자율") and re.search(r"[✓✗]", t["note"])])
-            # 공통 기준: 한국어 답이어야 하고(한자·영어 위주면 실패), 실제 사이트 과제는 사이트를 한 번 이상 열어 봐야 한다.
-            korean = not re.search(r"[一-鿿]", r["speech"])
+            # 공통 기준: 한국어 답이어야 하고(제품과 같은 규칙: 한자 문장·영어 위주면 실패, 뉴스 제목의 尹·與는 허용),
+            # 실제 사이트 과제는 사이트를 한 번 이상 열어 봐야 한다.
+            korean = is_korean_text(r["speech"])
             visited = task.kind == "local" or steps > 0 or "차단" in r["speech"]
             row = {
                 "model": m["label"],
