@@ -142,3 +142,11 @@ def test_readable_body():
     assert "신청하기" not in d.body
     assert "지원대상\n만 65세" in d.body
     assert "만족도" not in d.body
+
+
+def test_korean_answer_rule_allows_hanja_in_news_titles():
+    from cheongeum.agents.web.autopilot import is_korean_text
+
+    assert is_korean_text("오늘 주요 뉴스는 ‘尹 정치인 체포 지시 없었다’와 ‘당정, 수능 부정행위 응시 제한’입니다.")
+    assert not is_korean_text("今天的主要新闻是政府宣布新的福利政策。")
+    assert not is_korean_text("The main news today is about the new welfare policy.")
