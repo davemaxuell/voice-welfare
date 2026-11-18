@@ -1,5 +1,9 @@
+import { z } from "zod";
 import { join } from "node:path";
 import { REPO_ROOT } from "../src/core/assets.ts";
+
+export const PORTAL = "127.0.0.1:5174/external.html";
+export const PORTAL2 = "127.0.0.1:5174/portal2.html";
 
 export interface LlmRequest {
   system: string;
@@ -45,9 +49,9 @@ export class FakeLlm implements TestLlm {
   private readonly answers: Record<string, unknown>;
   private readonly reply?: (request: LlmRequest) => unknown;
 
-  constructor(answers: Record<string, unknown> = {}, reply?: (request: LlmRequest) => unknown) {
-    this.answers = answers;
-    this.reply = reply;
+  constructor(answers: Record<string, unknown> | ((request: LlmRequest) => unknown) = {}, reply?: (request: LlmRequest) => unknown) {
+    this.answers = typeof answers === "function" ? {} : answers;
+    this.reply = typeof answers === "function" ? answers : reply;
   }
 
   async generate(request: LlmRequest) {
@@ -67,11 +71,16 @@ export function step(action: string, target: string | null = null, answer: strin
 
 type Steps = [ReturnType<typeof step>, ...ReturnType<typeof step>[]];
 
+const BrowseRequest = z.looseObject({
+  page: z.looseObject({ mainText: z.string(), items: z.array(z.looseObject({
+    name: z.string(), kind: z.string(), expanded: z.boolean().optional(),
+  })) }).nullable(),
+});
 export function scripted(session: SessionWithLlm, steps: Steps) {
-  const seen: unknown[] = [];
+  const seen: z.infer<typeof BrowseRequest>[] = [];
   session.deps.llm = new FakeLlm({}, ({ schemaName, user }) => {
     if (schemaName !== "browse_step") return undefined;
-    seen.push(JSON.parse(user));
+    seen.push(BrowseRequest.parse(JSON.parse(user)));
     return steps[Math.min(seen.length, steps.length) - 1];
   });
   return seen;
