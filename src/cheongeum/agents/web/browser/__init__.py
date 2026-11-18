@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import asynccontextmanager
 from importlib import resources
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, AsyncIterator, Sequence
 from weakref import WeakSet
 
 from playwright.async_api import Browser, BrowserContext, Locator, Page, Playwright, async_playwright
@@ -278,17 +279,45 @@ class PlaywrightExecutionAdapter:
                 return done(errorCode="NAVIGATION_FAILED")
             return done(errorCode="UNKNOWN")
 
-    async def _leave_error_page(self, page: Page) -> None:
+    async def _return_to(self, page: Page, prev: str) -> None:
         """
         불러오지 못한 주소는 크롬 오류 화면(chrome-error://)을 남긴다. 사용자는 '열지 못했다'는 말만 듣고
-        원래 화면에 있다고 여기므로 그 화면으로 되돌아간다. 오류 화면은 조금 늦게 들어선다.
+        원래 화면에 있다고 여기므로 그 주소를 다시 연다. 뒤로 가기는 쓰지 않는다: 그 화면이 양식을 보낸 결과면
+        양식을 다시 보내고, 실패한 주소가 지금 화면이었으면 기록 하나를 더 거슬러 간다.
         """
         try:
             await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
-            if await page.go_back(wait_until="domcontentloaded", timeout=self.navigation_timeout) is None:
+            if not prev.startswith(("http://", "https://")):
+                await page.goto("about:blank")
+                return
+            try:
+                await page.goto(prev, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+            except Exception:  # noqa: BLE001
                 await page.goto("about:blank")
         except Exception:  # noqa: BLE001
             pass  # 되돌리지 못해도 '열지 못함'은 그대로 알린다
+
+    @asynccontextmanager
+    async def _no_form_resend(self, page: Page) -> AsyncIterator[list[str]]:
+        """
+        기록 이동이 양식(POST)을 다시 보내지 않게 한다. 자동화된 크롬은 '양식 다시 제출 확인' 없이 그냥 다시 보낸다.
+        다른 요청은 컨텍스트의 출처 검사로 넘긴다(공유 프로필에서는 그 검사가 세션 사이에 함께 쓰여 여기에 둔다).
+        """
+        blocked: list[str] = []
+
+        async def guard(route) -> None:
+            req = route.request
+            if req.is_navigation_request() and req.method != "GET":
+                blocked.append(req.url)
+                await route.abort("blockedbyclient")
+            else:
+                await route.fallback()
+
+        await page.route("**/*", guard)
+        try:
+            yield blocked
+        finally:
+            await page.unroute("**/*", guard)
 
     async def _perform(self, page: Page, action: dict) -> dict:
         kind = action["type"]
@@ -297,12 +326,13 @@ class PlaywrightExecutionAdapter:
             url = action.get("url")
             if not url:
                 raise AdapterError("NAVIGATION_FAILED")
+            prev = page.url
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=self.navigation_timeout)
             except Exception as e:
                 # 내려받기 등으로 이동이 취소된 것(ERR_ABORTED)은 오류 화면을 남기지 않는다
                 if "net::ERR_" in str(e) and "ERR_ABORTED" not in str(e):
-                    await self._leave_error_page(page)
+                    await self._return_to(page, prev)
                 raise
             # 실제 사이트는 내용을 늦게 그리는 경우가 많아 잠깐(최대 3초) 네트워크가 잠잠해지길 기다린다.
             # 지원 사이트(로컬 모의 사이트)는 바로 그려지므로 기다리지 않는다(응답 속도).
@@ -313,7 +343,21 @@ class PlaywrightExecutionAdapter:
                     pass
             return {"ok": True, "verified": parse_url(page.url).origin == parse_url(url).origin}
         if kind == "back":
-            res = await page.go_back(wait_until="domcontentloaded", timeout=self.navigation_timeout)
+            here = page.url
+            async with self._no_form_resend(page) as blocked:
+                try:
+                    res = await page.go_back(wait_until="domcontentloaded", timeout=self.navigation_timeout)
+                except Exception:
+                    if not blocked:
+                        raise
+                if blocked:
+                    # 막은 이동은 크롬 오류 화면으로 끝나고, 그 화면이 들어서기 전에는 앞으로 갈 수 없다.
+                    try:
+                        await page.wait_for_url(lambda u: u.startswith("chrome-error://"), wait_until="commit", timeout=3000)
+                        await page.go_forward(wait_until="domcontentloaded", timeout=self.navigation_timeout)
+                    except Exception:  # noqa: BLE001
+                        await page.goto(here, wait_until="domcontentloaded", timeout=self.navigation_timeout)
+                    raise AdapterError("RESUBMIT_BLOCKED")
             return {"ok": True, "verified": res is not None}
         if kind == "scroll":
             if target:
