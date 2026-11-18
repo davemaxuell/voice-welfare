@@ -1,5 +1,4 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { buffer } from "node:stream/consumers";
@@ -56,9 +55,8 @@ async function startApi(voice: boolean, cleanup: Cleanup[]) {
   const port = await listen(reservation);
   await closeServer(reservation);
   const tsMain = join(REPO_ROOT, "src/server/main.ts");
-  const ts = existsSync(tsMain);
   const flags = ["--host", host, "--port", String(port), "--no-mock"];
-  const child = spawn(ts ? process.execPath : "uv", ts ? [tsMain, ...flags] : ["run", "cheongeum-server", ...flags], {
+  const child = spawn(process.execPath, [tsMain, ...flags], {
     cwd: REPO_ROOT, stdio: "inherit", windowsHide: true, detached: process.platform !== "win32",
     env: {
       ...process.env, HEADLESS: "true", REQUIRE_CONSENT: "true", PRACTICE_MODE: "true", BROWSER_MODE: "chromium",
