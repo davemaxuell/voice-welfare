@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deepStrictEqual } from "node:assert/strict";
 import { z } from "zod";
+import { plannerImplementations } from "./planner-oracle.ts";
+import { ruleImplementations } from "./understanding-rules-oracle.ts";
 
 const rowSchema = z.object({
   fn: z.string().min(1),
@@ -13,7 +15,7 @@ type OracleGroup = { module: string; cases: OracleCase[] };
 type Implementation = (args: OracleCase["args"]) => unknown;
 
 // 각 이식 PR에서 Python 호출 이름과 TypeScript 함수를 연결한다.
-export const implementations = new Map<string, Implementation>();
+export const implementations = new Map<string, Implementation>([...ruleImplementations, ...plannerImplementations]);
 
 function readFixture(path: string): string {
   try {
