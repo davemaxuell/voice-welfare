@@ -32,6 +32,15 @@ def test_digest_for_llm_redacts_resident_number_in_main_text():
     assert "만 65세 이상" in page["mainText"]
 
 
+def test_digest_for_llm_gives_the_footer_with_personal_data_hidden():
+    # 대표번호·주소 같은 연락처는 꼬리말에 있다. 본문 읽기에서는 빼도 목표 수행 모델은 봐야 한다.
+    footer = f"대표번호 국번없이 1355(평일 09시~18시) 담당 {RRN}"
+    page = digest_for_llm(digest_page(view(outline={**OUTLINE, "mainText": "본문만", "footerText": footer})))
+    assert "대표번호 국번없이 1355" in page["footer"]
+    assert RRN not in page["footer"]
+    assert "1355" not in page["mainText"]
+
+
 def test_digest_for_llm_redacts_title_heading_and_dialog():
     page = digest_for_llm(
         digest_page(

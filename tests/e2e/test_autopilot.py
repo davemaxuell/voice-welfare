@@ -26,6 +26,14 @@ async def test_open_click_answer(new_session):
     assert len([t for t in r["trace"] if (t.get("note") or "").startswith("자율")]) >= 3
 
 
+async def test_answers_a_contact_number_from_the_footer(new_session):
+    s = await new_session()
+    seen = scripted(s, [step("open_url", PORTAL), step("answer", None, "대표번호는 국번없이 1234예요.", ["대표번호 국번없이 1234"])])
+    r = await s.handle_turn("127.0.0.1:5174/external.html에서 고객센터 전화번호 찾아줘")
+    assert "대표번호 국번없이 1234" in seen[1]["page"]["footer"]
+    assert r["speech"] == "대표번호는 국번없이 1234예요."
+
+
 async def test_uses_search_box(new_session):
     s = await new_session()
     scripted(s, [step("open_url", PORTAL), step("search", "기초연금"), step("answer", None, "첫 결과는 기초연금 신청 방법이에요.", ["기초연금 신청 방법"])])
