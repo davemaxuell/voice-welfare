@@ -170,6 +170,50 @@
         "src/cheongeum/speech/phrasing.py"
       ],
       "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/agents/web/digest.ts": {
+      "python": [
+        "src/cheongeum/agents/web/digest.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/effect.ts": {
+      "python": [
+        "src/cheongeum/agents/web/effect.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/approval.ts": {
+      "python": [
+        "src/cheongeum/agents/web/approval.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/profile.ts": {
+      "python": [
+        "src/cheongeum/agents/web/profile.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/auth_page.ts": {
+      "python": [
+        "src/cheongeum/agents/web/auth_page.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/playbook.ts": {
+      "python": [
+        "src/cheongeum/agents/web/playbook.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "tests/unit/web-observations.test.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/observe.js",
+        "src/cheongeum/practice_site/site"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48",
+      "partial": true
     }
   }
 }

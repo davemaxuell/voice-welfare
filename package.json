@@ -17,7 +17,8 @@
     "dev:web": "vite",
     "build:web": "vite build",
     "start": "uv run cheongeum-server",
-    "eval": "uv run python scripts/run_scenarios.py"
+    "eval": "uv run python scripts/run_scenarios.py",
+    "record:observations": "uv run python scripts/record_observations.py"
   },
   "devDependencies": {
     "@huggingface/tokenizers": "0.2.0",
