@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -8,6 +9,7 @@ from cheongeum.agents.web import INCOME_OPTIONS, create_mock_welfare_profile, ma
 from cheongeum.agents.welfare import WelfareInformationAgent, chunk_service
 from cheongeum.agents.welfare.data import FixtureWelfareDataProvider, OfficialCentralWelfareApiProvider, clean_api_text, parse_welfare_detail, parse_welfare_list
 from cheongeum.core.actions import parse_action
+from cheongeum.core import jsutil
 from cheongeum.core.turn import AGENT_IDS, AgentHandoff, parse_intent
 from cheongeum.evaluation import DEMO_SCENARIO_PATH, ScenarioStep, check_expectations, evaluate_retrieval, is_active_pc, load_rag_qa, load_scenario_file
 
@@ -341,6 +343,18 @@ async def test_deadline_closed_from_enforcement_dates():
     a = await WelfareInformationAgent(FakeProvider(find=lambda n: s)).answer_question("시험지원금 지금 신청할 수 있어?", today="2026-11-18")
     assert a.grounded
     assert "신청할 수 없어요" in a.speech
+
+
+async def test_deadline_uses_korean_date_at_0830_kst(monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 17, 23, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(jsutil, "datetime", FixedDatetime)
+    service = _svc(enfcBgngYmd="20261118", enfcEndYmd="20261118")
+    answer = await WelfareInformationAgent(FakeProvider(find=lambda n: service)).answer_question("시험지원금 지금 신청할 수 있어?")
+    assert "신청할 수 있어요" in answer.speech
 
 
 async def test_deadline_open_from_year_round_text():
