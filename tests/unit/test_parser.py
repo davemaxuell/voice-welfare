@@ -36,6 +36,9 @@ def parse(t: str, state: str = "APPLICATION_OPEN", awaiting: str | None = None) 
         ("화면 설명해줘", "DESCRIBE_SCREEN"),
         ("지금 화면에 뭐가 있어?", "DESCRIBE_SCREEN"),
         ("장애인연금 신청 화면 설명해줘", "DESCRIBE_SCREEN"),
+        # 다른 사이트로 가서 보라는 말은 지금 화면 질문이 아니라 목표
+        ("127.0.0.1:5174/portal2.html에서 복지지도 메뉴를 열어서 무슨 화면인지 알려줘", "GOAL"),
+        ("복지로 가서 첫 화면에 뭐가 있는지 알려줘", "GOAL"),
         ("장애인연금 지원대상과 신청 절차 알려줘", "POLICY_QUESTION"),
         ("장애인연금 지금 신청할 수 있어?", "POLICY_QUESTION"),
         ("지금 신청할 수 있어?", "POLICY_QUESTION"),
