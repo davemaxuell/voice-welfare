@@ -6,16 +6,28 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import hashlib
+import os
 import socket
+import sys
 import threading
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
+from typing import Literal
 
 import httpx
 
 SITE_DIR = Path(str(resources.files(__package__).joinpath("site")))
+CHECKOUT_HEADER = "X-Ieum-Checkout"
+CHECKOUT_ID = hashlib.sha1(str(SITE_DIR.resolve()).encode()).hexdigest()[:12]
+PortState = Literal["free", "ours", "other"]
+# 다른 체크아웃의 서버가 포트를 놓을 때까지 기다리는 시간(초). MOCK_SITE_WAIT_S로 바꾼다.
+DEFAULT_WAIT_S = 120
+_IN_USE = {errno.EADDRINUSE, errno.EACCES, 10048, 10013}  # 10048·10013: 윈도 WSAEADDRINUSE·WSAEACCES
 
 
 class _Handler(SimpleHTTPRequestHandler):
@@ -31,13 +43,24 @@ class _Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
+        self.send_header(CHECKOUT_HEADER, CHECKOUT_ID)
         super().end_headers()
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002 — 요청 로그는 남기지 않는다(검색어 등 포함 가능)
         return
 
 
-class _V6Server(ThreadingHTTPServer):
+class _Server(ThreadingHTTPServer):
+    # 윈도의 SO_REUSEADDR는 다른 프로세스가 듣고 있는 포트에도 붙어 버린다(두 서버가 5174를 나눠 가짐). 윈도에서는 독점으로 묶는다.
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+class _V6Server(_Server):
     address_family = socket.AF_INET6
 
 
@@ -49,11 +72,14 @@ class MockSite:
 
     def start(self) -> "MockSite":
         handler = partial(_Handler, directory=str(SITE_DIR))
-        self._servers.append(ThreadingHTTPServer(("127.0.0.1", self.port), handler))
+        self._servers.append(_Server(("127.0.0.1", self.port), handler))
         try:
             self._servers.append(_V6Server(("::1", self.port), handler))
-        except OSError:
-            pass  # IPv6 없음
+        except OSError as e:
+            if e.errno in _IN_USE:  # ::1은 다른 서버 차지 → localhost가 그쪽으로 갈 수 있다
+                self._servers.pop().server_close()
+                raise
+            # IPv6 없음
         for srv in self._servers:
             srv.daemon_threads = True
             t = threading.Thread(target=srv.serve_forever, name=f"mock-site-{srv.server_address[0]}", daemon=True)
@@ -78,6 +104,44 @@ def is_reachable(url: str, timeout: float = 1.5) -> bool:
         return httpx.get(url, timeout=timeout).is_success
     except httpx.HTTPError:
         return False
+
+
+def port_state(port: int) -> PortState:
+    try:
+        # trust_env=False: 시스템 프록시가 127.0.0.1 요청을 대신 받으면 남의 서버로 보인다
+        r = httpx.get(f"http://127.0.0.1:{port}/", timeout=1.5, trust_env=False)
+    except httpx.HTTPError:
+        return "free"
+    return "ours" if r.headers.get(CHECKOUT_HEADER) == CHECKOUT_ID else "other"
+
+
+def ensure_mock_site(port: int = 5174, wait_s: float | None = None) -> MockSite | None:
+    """
+    테스트·평가 스크립트용: 이 체크아웃의 모의 사이트가 이미 떠 있으면 그대로 쓰고(None), 포트가 비어 있으면 띄운다.
+    다른 체크아웃의 서버가 포트를 쓰고 있으면 끝날 때까지 기다린다.
+    """
+    wait_s = float(os.environ.get("MOCK_SITE_WAIT_S") or DEFAULT_WAIT_S) if wait_s is None else wait_s
+    deadline = time.monotonic() + wait_s
+    told = False
+    while True:
+        state = port_state(port)
+        if state == "ours":
+            return None
+        if state == "free":
+            try:
+                return start_mock_site(port)
+            except OSError as e:
+                if e.errno not in _IN_USE:
+                    raise
+        elif not told:
+            print(f"[mock] 포트 {port}를 다른 작업 트리의 모의 사이트가 쓰고 있어 끝날 때까지 기다립니다(최대 {int(wait_s)}초).", file=sys.stderr, flush=True)
+            told = True
+        if time.monotonic() > deadline:
+            raise RuntimeError(
+                f"포트 {port}를 다른 작업 트리의 모의 사이트가 쓰고 있습니다. 그쪽 테스트·cheongeum-server·데스크톱 앱을 끝내거나, "
+                "MOCK_SITE_WAIT_S(초)로 더 기다리게 하세요."
+            )
+        time.sleep(2)
 
 
 def main() -> None:

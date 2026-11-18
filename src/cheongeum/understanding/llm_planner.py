@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Any, Sequence
 
+from cheongeum.core.intents import INTENTS
 from cheongeum.core.jsutil import jdumps
 from cheongeum.core.llm import OPENAI_BASE_URL, LlmConfig, message_content, post_json
 from cheongeum.core.turn import parse_intent
@@ -16,34 +17,8 @@ from cheongeum.understanding.rules import IntentContext, RuleBasedIntentProvider
 log = logging.getLogger("cheongeum.llm")
 
 
-# 안전 관련 의도(승인·중단)는 LLM이 만들 수 없다. 규칙으로만 판정한다.
-LLM_INTENT_TYPES = [
-    "START_APPLICATION",
-    "LOGIN",
-    "AUTH_DONE",
-    "FILL",
-    "READ_FIELD",
-    "EDIT_FIELD",
-    "NEXT",
-    "PREV",
-    "REVIEW",
-    "EXPLAIN",
-    "PREPARE_SUBMIT",
-    "REJECT",
-    "RESUME",
-    "CURRENT_STEP",
-    "DESCRIBE_SCREEN",
-    "ABOUT_SITE",
-    "OPEN_SITE",
-    "GOAL",
-    "OPEN_BROWSER",
-    "DISCOVER",
-    "PRECHECK",
-    "PREPARE_APPLY",
-    "POLICY_QUESTION",
-    "HELP_HUMAN",
-    "UNKNOWN",
-]
+# 안전 관련 의도(승인·중단)와 턴 대기열 앞에서 답하는 진행 상황 물음은 LLM이 만들 수 없다(의도 표의 llm=False). 규칙으로만 판정한다.
+LLM_INTENT_TYPES = tuple(i.type for i in INTENTS if i.llm)
 
 # OpenAI Structured Outputs(strict)용 평탄화 스키마. strict 모드는 모든 속성을 required로 요구하므로
 # 쓰지 않는 칸은 null로 받고, 받은 뒤 IntentSchema로 다시 검증한다.
@@ -53,9 +28,9 @@ INTENT_JSON_SCHEMA = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["type", "fills", "fieldMention", "topic", "text"],
+        "required": ["type", "fills", "fieldMention", "topic", "text", "more", "site", "list"],
         "properties": {
-            "type": {"type": "string", "enum": LLM_INTENT_TYPES},
+            "type": {"type": "string", "enum": list(LLM_INTENT_TYPES)},
             "fills": {
                 "type": ["array", "null"],
                 "items": {
@@ -68,6 +43,9 @@ INTENT_JSON_SCHEMA = {
             "fieldMention": {"type": ["string", "null"]},
             "topic": {"type": ["string", "null"]},
             "text": {"type": ["string", "null"]},
+            "more": {"type": ["boolean", "null"]},
+            "site": {"type": ["string", "null"]},
+            "list": {"type": ["boolean", "null"]},
         },
     },
 }
@@ -97,7 +75,17 @@ def flat_to_intent(flat: Any, utterance: str) -> dict | None:
         candidate["goal"] = topic if topic is not None else utterance
     if t == "OPEN_SITE":
         candidate["target"] = topic if topic is not None else utterance
-    if t in ("PRECHECK", "PREPARE_APPLY") and topic:
+    if t == "FOLLOW_LINK":
+        candidate["name"] = topic
+    if t == "SEARCH":
+        candidate["query"] = topic
+        if flat.get("site"):
+            candidate["site"] = flat["site"]
+    if t in ("READ_MAIN", "LIST_LINKS", "WHAT_CAN_I_SAY"):
+        candidate["more"] = flat.get("more") is True
+    if t == "READ_DOWNLOAD":
+        candidate["list"] = flat.get("list") is True
+    if t in ("SERVICE_DETAIL", "PRECHECK", "PREPARE_APPLY") and topic:
         candidate["service"] = topic
     if t == "UNKNOWN":
         candidate["text"] = utterance
@@ -105,11 +93,10 @@ def flat_to_intent(flat: Any, utterance: str) -> dict | None:
 
 
 def system_prompt(vocabulary: Sequence[str]) -> str:
+    kinds = "\n".join(f"- {i.type}: {i.describe}" for i in INTENTS if i.llm)
     return f"""너는 한국어 복지 신청 도우미의 의도 분류기다. 사용자 발화 하나를 지정된 JSON 스키마로 분류한다.
-type 의미: START_APPLICATION(장애인연금 신청 시작), LOGIN(로그인/본인인증), AUTH_DONE(인증 마침), FILL(입력란에 값 입력),
-READ_FIELD(항목 값 다시 읽기), EDIT_FIELD(항목 수정 의사, 값 없음), NEXT(다음 단계), PREV(이전 단계), REVIEW(입력 내용 전체 읽기),
-EXPLAIN(항목 뜻 설명), PREPARE_SUBMIT(제출/접수 준비), REJECT(접수 거절), RESUME(다시 시작), CURRENT_STEP(현재 단계 안내), DESCRIBE_SCREEN(화면 전체 설명), ABOUT_SITE(지금 연 사이트가 어떤 곳인지), OPEN_SITE(특정 사이트 열기: topic에 사이트 이름이나 주소, 예 "Naver 열어줘"→네이버), GOAL(웹에서 여러 단계를 거쳐야 하는 목표: topic에 목표 문장), OPEN_BROWSER(사이트 이름 없이 크롬·브라우저만 켜기), DISCOVER(나에게 맞는 복지 찾기), PRECHECK(특정 제도 자격 미리 점검: topic에 제도명), PREPARE_APPLY(신청 준비·서류: topic에 제도명),
-POLICY_QUESTION(제도 대상·절차 질문), HELP_HUMAN(사람 도움 요청), UNKNOWN(그 외/불확실).
+type 의미:
+{kinds}
 fieldMention은 반드시 다음 항목명 중 하나를 그대로 쓴다: {', '.join(vocabulary)}.
 규칙: 확실하지 않으면 UNKNOWN. 사용자가 말하지 않은 값을 추측·보완하지 마라. 비밀번호·주민등록번호·계좌번호는 절대 FILL로 만들지 마라.
 쓰지 않는 칸은 null로 둔다."""

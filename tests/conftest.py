@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -16,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from cheongeum.agents.web.browser import stop_playwright  # noqa: E402
-from cheongeum.practice_site import is_reachable, start_mock_site  # noqa: E402
+from cheongeum.practice_site import ensure_mock_site  # noqa: E402
 from cheongeum.server.runtime import AgentRuntime, load_config  # noqa: E402
 
 MOCK_URL = "http://localhost:5174"
@@ -35,6 +37,7 @@ def create_test_runtime(env: dict | None = None) -> AgentRuntime:
                 "LLM_PROVIDER": "mock",
                 "REQUIRE_CONSENT": "false",
                 "READ_ONLY_WEB": "true",
+                "READ_ONLY_CLICKS": "safe",
                 "VISUAL_CURSOR": "false",
                 # 테스트는 인터넷 없이: 검색은 로컬 합성 포털의 검색으로
                 "WEB_SEARCH_URL": "http://127.0.0.1:5174/external.html?q={q}",
@@ -45,9 +48,14 @@ def create_test_runtime(env: dict | None = None) -> AgentRuntime:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mock_site():
-    """모의 사이트가 이미 떠 있으면 재사용하고, 아니면 테스트 동안 띄운다."""
-    site = None if is_reachable(MOCK_URL) else start_mock_site(5174)
+def mock_site(request):
+    """e2e 테스트가 있을 때만 이 체크아웃의 모의 사이트를 쓴다(단위 테스트만 돌리면 포트 5174를 건드리지 않음)."""
+    if not any(Path(str(item.fspath)).parent.name == "e2e" for item in request.session.items):
+        yield
+        return
+    # 다른 작업 트리를 기다린다는 안내가 출력 가로채기에 묻히지 않게
+    with request.config.pluginmanager.getplugin("capturemanager").global_and_fixture_disabled():
+        site = ensure_mock_site(5174)
     yield
     if site:
         site.close()
@@ -108,6 +116,48 @@ def with_llm(session, llm) -> None:
     """세션에 가짜 LLM을 붙인다(오케스트레이터와 Agent B 모두)."""
     session.deps.llm = llm
     session.deps.welfare.llm = llm
+
+
+def scripted(s, steps: list[dict]) -> list[dict]:
+    seen: list[dict] = []
+    state = {"i": 0}
+
+    def fn(*, system, user, schemaName, schema):
+        if schemaName != "browse_step":
+            return None
+        seen.append(json.loads(user))
+        out = steps[min(state["i"], len(steps) - 1)]
+        state["i"] += 1
+        return out
+
+    s.deps.llm = FakeLlm(fn=fn)
+    return seen
+
+
+def step(action, target=None, answer=None, evidence=None) -> dict:
+    return {"thought": "", "action": action, "target": target, "answer": answer, "evidence": evidence}
+
+
+class Gate:
+    """목표 수행 결정을 steps에서 차례로 내놓되, at번째 결정 앞에서 release가 될 때까지 세워 두는 가짜 LLM(도는 중에 말을 끼워 넣는 테스트용)."""
+
+    name = "gated"
+
+    def __init__(self, steps: list[dict], at: int) -> None:
+        self.steps = steps
+        self.at = at
+        self.calls = 0
+        self.reached = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def generate(self, *, system, user, schemaName, schema, signal=None):  # noqa: N803
+        if schemaName != "browse_step":
+            return None
+        self.calls += 1
+        if self.calls == self.at:
+            self.reached.set()
+            await self.release.wait()
+        return self.steps[min(self.calls - 1, len(self.steps) - 1)]
 
 
 @pytest.fixture

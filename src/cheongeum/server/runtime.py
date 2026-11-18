@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Literal, Mapping
 
 from playwright.async_api import Browser, BrowserContext
 
@@ -15,12 +16,15 @@ from cheongeum.agents.welfare import WelfareInformationAgent
 from cheongeum.agents.welfare.data import create_welfare_data_provider
 from cheongeum.core.events import InMemoryEventLog
 from cheongeum.core.jsutil import parse_url
-from cheongeum.core.llm import LlmConfig, create_structured_llm
+from cheongeum.core.llm import LlmConfig, create_structured_llm, overlay_llm
 from cheongeum.orchestrator import OrchestratorDeps, SessionOrchestrator
 from cheongeum.personal import PersonalStore
-from cheongeum.safety import PolicyConfig, PolicyGuard
+from cheongeum.safety import PolicyConfig, PolicyGuard, set_pii_model
+from cheongeum.safety.pii_model import PiiModel
 from cheongeum.understanding import create_intent_provider
 from cheongeum.voice import VoiceConfig, create_voice_providers
+
+log = logging.getLogger("cheongeum.runtime")
 
 
 @dataclass
@@ -35,6 +39,7 @@ class RuntimeConfig:
     practiceMode: bool
     # 지원 사이트 외 모든 웹사이트를 읽기 전용으로 열 수 있음
     readOnlyWeb: bool
+    readOnlyClicks: Literal["any", "safe"]
     # 시연용 가상 커서
     visualCursor: bool
     # chromium = 테스트용 Chromium(세션마다 격리), chrome = 설치된 Google Chrome + 영구 프로필(로그인 유지)
@@ -48,6 +53,17 @@ class RuntimeConfig:
     dataDir: str | None = None
     # 웹 검색 주소 틀({q})
     searchUrlTemplate: str | None = None
+    # 로컬 개인정보 인식 모델 폴더(없으면 규칙만)와 판정 기준 확률
+    piiModel: str | None = None
+    piiThreshold: float = 0.5
+    # 역할별 덮어쓰기(없으면 llm과 같음). 모델 ID는 .env에만.
+    llmUnderstand: LlmConfig | None = None  # 의도 계획·대화 분류
+    llmGoal: LlmConfig | None = None  # 목표 수행(browse_step)
+    llmWeb: LlmConfig | None = None  # 검색 답·화면 요약
+
+
+# 저장소 루트(src/cheongeum/server/runtime.py → 세 단계 위). 모델 폴더 같은 상대 경로의 기준.
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _blank(v: str | None) -> str | None:
@@ -61,6 +77,35 @@ def _float(v: str | None) -> float | None:
         return None
 
 
+def _int(v: str | None, default: int) -> int:
+    try:
+        return int(float(v)) if v not in (None, "") else default
+    except ValueError:
+        return default
+
+
+def _path(v: str | None) -> str | None:
+    """상대 경로는 저장소 루트 기준(서버를 어디서 띄우든 같은 폴더)."""
+    p = _blank(v)
+    if not p:
+        return None
+    path = Path(p).expanduser()
+    return str(path if path.is_absolute() else ROOT / path)
+
+
+def _llm_role(env: Mapping[str, str], role: str, base: LlmConfig) -> LlmConfig:
+    """LLM_{ROLE}_PROVIDER|MODEL|BASE_URL|API_KEY|REASONING_EFFORT. 비면 base."""
+    prefix = f"LLM_{role}_"
+    return overlay_llm(
+        base,
+        provider=_blank(env.get(f"{prefix}PROVIDER")),
+        model=_blank(env.get(f"{prefix}MODEL")),
+        base_url=_blank(env.get(f"{prefix}BASE_URL")),
+        api_key=_blank(env.get(f"{prefix}API_KEY")),
+        reasoning_effort=_blank(env.get(f"{prefix}REASONING_EFFORT")),
+    )
+
+
 def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
     env = dict(os.environ if env is None else env)
     headless = env.get("HEADLESS") in ("true", "1")
@@ -70,6 +115,13 @@ def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
         slow_mo = int(float(env.get("BROWSER_SLOWMO_MS") or 0))
     except ValueError:
         slow_mo = 0
+    llm = LlmConfig(
+        provider=env.get("LLM_PROVIDER") or "mock",
+        model=_blank(env.get("LLM_MODEL")),
+        baseUrl=_blank(env.get("LLM_BASE_URL")),
+        apiKey=_blank(env.get("LLM_API_KEY")),
+        reasoningEffort=_blank(env.get("LLM_REASONING_EFFORT")),
+    )
     return RuntimeConfig(
         mockSiteUrl=env.get("MOCK_SITE_URL") or "http://localhost:5174",
         extraAllowedOrigins=extra,
@@ -81,15 +133,14 @@ def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
         browserMode="chrome" if env.get("BROWSER_MODE") == "chrome" else "chromium",
         chromeProfileDir=_blank(env.get("CHROME_PROFILE_DIR")) or str(Path.home() / ".cheongeum" / "chrome-profile"),
         readOnlyWeb=env.get("READ_ONLY_WEB") != "false",
+        # 없으면 any(개발 중 기본), 알 수 없는 값이면 닫힌 쪽(safe)
+        readOnlyClicks="any" if (env.get("READ_ONLY_CLICKS") or "any").strip().lower() == "any" else "safe",
         searchUrlTemplate=_blank(env.get("WEB_SEARCH_URL")),
         visualCursor=env["VISUAL_CURSOR"] == "true" if env.get("VISUAL_CURSOR") else not headless,
-        llm=LlmConfig(
-            provider=env.get("LLM_PROVIDER") or "mock",
-            model=_blank(env.get("LLM_MODEL")),
-            baseUrl=_blank(env.get("LLM_BASE_URL")),
-            apiKey=_blank(env.get("LLM_API_KEY")),
-            reasoningEffort=_blank(env.get("LLM_REASONING_EFFORT")),
-        ),
+        llm=llm,
+        llmUnderstand=_llm_role(env, "UNDERSTAND", llm),
+        llmGoal=_llm_role(env, "GOAL", llm),
+        llmWeb=_llm_role(env, "WEB", llm),
         voice=VoiceConfig(
             stt=env.get("STT_PROVIDER") or "mock",
             tts=env.get("TTS_PROVIDER") or "mock",
@@ -98,6 +149,10 @@ def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
             baseUrl=_blank(env.get("VOICE_BASE_URL")),
             sttBaseUrl=_blank(env.get("STT_BASE_URL")),
             sttModel=_blank(env.get("STT_MODEL")),
+            sttLocalModel=_path(env.get("STT_LOCAL_MODEL")),
+            sttLocalThreads=_int(env.get("STT_LOCAL_THREADS"), 0),
+            sttLocalBeam=_int(env.get("STT_LOCAL_BEAM"), 1),
+            sttLocalPrompt=env.get("STT_LOCAL_PROMPT") in ("true", "1"),
             ttsModel=_blank(env.get("TTS_MODEL")),
             ttsVoice=_blank(env.get("TTS_VOICE")),
             ttsInstructions=_blank(env.get("TTS_INSTRUCTIONS")),
@@ -105,7 +160,29 @@ def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
         ),
         welfareApiKey=_blank(env.get("WELFARE_API_KEY")) if env.get("WELFARE_DATA_MODE") == "official-api" else None,
         welfareApiBaseUrl=_blank(env.get("WELFARE_API_BASE_URL")),
+        piiModel=_path(env.get("PII_MODEL")),
+        piiThreshold=_float(env.get("PII_THRESHOLD")) or 0.5,
     )
+
+
+def _load_pii_model(config: RuntimeConfig) -> PiiModel | None:
+    """PII_MODEL이 있으면 개인정보 인식 모델을 켠다(민감정보 판정 = 규칙 ∪ 모델). 없거나 실패하면 규칙만."""
+    if not config.piiModel:
+        set_pii_model(None)
+        return None
+    if not PiiModel.available(config.piiModel):
+        log.error("[privacy] PII_MODEL=%s 에 모델이 없습니다. uv run python scripts/setup_local_models.py 를 실행하세요 → 규칙만 사용", config.piiModel)
+        set_pii_model(None)
+        return None
+    model = PiiModel(config.piiModel, threshold=config.piiThreshold)
+    try:
+        model.load()
+    except Exception as e:  # noqa: BLE001
+        log.error("[privacy] 개인정보 인식 모델을 불러오지 못했습니다(%s) → 규칙만 사용", type(e).__name__)
+        set_pii_model(None)
+        return None
+    set_pii_model(model)
+    return model
 
 
 class AgentRuntime:
@@ -115,15 +192,35 @@ class AgentRuntime:
         self.config = config
         self.profile = create_mock_welfare_profile(config.mockSiteUrl)
         self.welfare_provider = create_welfare_data_provider(api_key=config.welfareApiKey, api_base_url=config.welfareApiBaseUrl)
-        self.intent_provider = create_intent_provider(config.llm, field_vocabulary(self.profile))
-        # 근거 기반 답변 생성용(없으면 주제 규칙 답변)
-        self.answer_llm = create_structured_llm(config.llm)
+        understand_cfg = config.llmUnderstand or config.llm
+        self.intent_provider = create_intent_provider(understand_cfg, field_vocabulary(self.profile))
+        # 근거 기반 답변·검색 요약(없으면 주제 규칙 답변). 목표 수행은 goal_llm.
+        self.answer_llm = create_structured_llm(config.llmWeb or config.llm)
+        self.understand_llm = create_structured_llm(understand_cfg)
+        self.goal_llm = create_structured_llm(config.llmGoal or config.llm)
         self.events = InMemoryEventLog()
         self.stt, self.tts = create_voice_providers(config.voice)
-        # 한 사용자의 컴퓨터용 앱이라 금고·신청 기록은 세션끼리 같은 것을 쓴다
+        self.pii_model = _load_pii_model(config)
+        # 한 사용자의 컴퓨터용 앱이라 금고·신청 기록·조작 기록은 세션끼리 같은 것을 쓴다
         self._personal: PersonalStore | None = None
+        self._action_log = None
+        self._seal = None
         self._browser: asyncio.Task[Browser] | None = None
         self._chrome: asyncio.Task[BrowserContext] | None = None
+
+    def llm_roles(self) -> dict:
+        """역할별 공급자 이름(동의 안내·/api/health)."""
+
+        def name(llm, fallback: str) -> str:
+            return llm.name if llm else fallback
+
+        base = name(create_structured_llm(self.config.llm), self.intent_provider.name)
+        return {
+            "default": name(create_structured_llm(self.config.llm), "rules"),
+            "understand": name(self.understand_llm, self.intent_provider.name),
+            "goal": name(self.goal_llm, base),
+            "web": name(self.answer_llm, base),
+        }
 
     @property
     def allowed_origins(self) -> list[str]:
@@ -168,21 +265,40 @@ class AgentRuntime:
                 allowedFieldIds=[f.field_id for f in fields if f.sensitivity != "secret"],
                 secretFieldIds=[f.field_id for f in fields if f.sensitivity == "secret"],
                 maxActionsPerTurn=12,
+                safeButtons=[self.profile.buttons.next, self.profile.buttons.prev, *self.profile.buttons.dismiss_dialog],
                 readOnlyWeb=self.config.readOnlyWeb,
+                readOnlyClicks=self.config.readOnlyClicks,
             )
         )
         if self._personal is None:
-            self._personal = PersonalStore(str(Path(self.config.dataDir) / "personal.json") if self.config.dataDir else None)
+            data = Path(self.config.dataDir) if self.config.dataDir else None
+            if data:
+                from cheongeum.personal.action_log import ActionLog
+                from cheongeum.personal.seal import Seal
+
+                # dataDir이 있으면 반드시 봉인한다. keyring 실패 때 평문으로 떨어지지 않는다(주인 결정).
+                self._seal = Seal()
+                self._personal = PersonalStore(str(data / "personal.json"), seal=self._seal)
+                self._action_log = ActionLog(str(data / "actions.sealed"), seal=self._seal)
+            else:
+                self._personal = PersonalStore()
+        from cheongeum.agents.web.downloads import DownloadStore
+
+        downloads = DownloadStore(str(Path(self.config.dataDir) / "downloads") if self.config.dataDir else None)
+        adapter.downloads = downloads
         session = SessionOrchestrator(
             OrchestratorDeps(
                 intent_provider=self.intent_provider,
-                web=WebExecutionAgent(adapter, guard, self.profile),
+                web=WebExecutionAgent(adapter, guard, self.profile, action_log=self._action_log),
                 welfare=WelfareInformationAgent(self.welfare_provider, self.answer_llm),
                 events=self.events,
                 require_consent=self.config.requireConsent,
                 practice_mode=self.config.practiceMode,
                 personal=self._personal,
-                llm=self.answer_llm,
+                action_log=self._action_log,
+                llm=self.understand_llm or self.answer_llm,
+                goal_llm=self.goal_llm or self.answer_llm,
+                web_llm=self.answer_llm,
                 search_url_template=self.config.searchUrlTemplate,
             )
         )

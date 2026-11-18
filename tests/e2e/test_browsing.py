@@ -172,6 +172,16 @@ async def test_assist_no_means_no(new_session):
     assert opinion_name(r) == ""
 
 
+async def test_assist_fill_dropped_when_the_field_changed(new_session):
+    s, _ = await open_portal(new_session)
+    await s.handle_turn("이름 칸에 김하늘 써줘")
+    await s.web.adapter.page.fill("#opinionName", "홍길동")
+    r = await s.handle_turn("응")
+    assert r["speech"].startswith("이름 칸 값이 바뀌었어요. 그래서 넣지 않았어요.")
+    assert opinion_name(r) == "홍길동"
+    assert r["actions"] == []
+
+
 async def test_submit_button_left_to_user(new_session):
     s, _ = await open_portal(new_session)
     r = await s.handle_turn("보내기 버튼 눌러줘")
@@ -192,7 +202,12 @@ async def test_guided_fill_with_vault(new_session):
     assert "이름 김하늘" in save["speech"]
     await s.handle_turn("응")
     start = await s.handle_turn("입력 칸 하나씩 채워줘")
-    assert "저장된 '김하늘'을 넣을까요" in start["speech"]
+    # 출처마다 처음엔 금고 값 사용 허용을 묻는다
+    assert "저장된 내 정보를 쓸까요" in start["speech"]
+    offer = await s.handle_turn("응")
+    assert "저장된 '김하늘'을 넣을까요" in offer["speech"]
+    ask = await s.handle_turn("응")
+    assert ask["state"] == "WAITING_FOR_USER_CONFIRMATION"
     done = await s.handle_turn("응")
     assert opinion_name(done) == "김하늘"
     assert "모두 지나왔어요" in done["speech"]
@@ -202,5 +217,7 @@ async def test_guided_fill_with_vault(new_session):
 async def test_guided_fill_with_spoken_value(new_session):
     s, _ = await open_portal(new_session)
     await s.handle_turn("입력 칸 하나씩 채워줘")
-    filled = await s.handle_turn("홍길동")
+    ask = await s.handle_turn("홍길동")
+    assert ask["state"] == "WAITING_FOR_USER_CONFIRMATION"
+    filled = await s.handle_turn("응")
     assert opinion_name(filled) == "홍길동"

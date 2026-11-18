@@ -9,8 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-# 동의 전에도 할 수 있는 것: 화면·브라우저를 쓰지 않는 복지 제도 질문과 도움 안내
-ALLOWED_WITHOUT_CONSENT = frozenset({"POLICY_QUESTION", "HELP_HUMAN", "STOP", "DISCOVER", "SERVICE_DETAIL", "PRECHECK", "PREPARE_APPLY"})
+from cheongeum.core.intents import INTENTS
+
+# 동의 전에도 할 수 있는 것: 화면·브라우저를 쓰지 않는 복지 제도 질문과 도움 안내(의도 표의 before_consent)
+ALLOWED_WITHOUT_CONSENT = frozenset(i.type for i in INTENTS if i.before_consent)
 
 
 @dataclass(frozen=True)

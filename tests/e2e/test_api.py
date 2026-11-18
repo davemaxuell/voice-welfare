@@ -1,8 +1,10 @@
 """공통 REST API·음성 API (가짜 STT/TTS + 실제 브라우저). 서버는 ASGI로 직접 부른다(포트 없음)."""
+import asyncio
 from dataclasses import dataclass
 
 import httpx
 import pytest_asyncio
+from conftest import PORTAL, Gate, step
 
 from cheongeum.core.jsutil import jdumps
 from cheongeum.core.turn import TurnResult
@@ -80,6 +82,28 @@ async def test_session_turn_state_cancel(api):
     assert cancelled.json()["state"] == "STOPPED"
 
 
+async def test_progress_endpoint_reports_code_built_steps(runtime):
+    app, sessions = create_app(runtime)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        sid = (await client.post("/api/session")).json()["sessionId"]
+        url = f"/api/session/{sid}/progress"
+        assert (await client.get(url)).json() == {"running": False, "seq": 0, "latest": None, "spoken": True}
+        gate = Gate(
+            [step("open_url", f"http://{PORTAL}"), step("click", "장애인연금 안내"), step("answer", None, "안내 기사예요.", ["두 번째 페이지입니다"])],
+            at=3,
+        )
+        sessions.get(sid).deps.llm = gate
+        turn = asyncio.create_task(client.post("/api/turn", json={"sessionId": sid, "text": f"{PORTAL}에서 장애인연금 안내 기사 내용 알려줘"}))
+        await asyncio.wait_for(gate.reached.wait(), 30)
+        running = (await client.get(url)).json()
+        assert running == {"running": True, "seq": 2, "latest": "127.0.0.1에서 '장애인연금 안내'를 눌렀어요.", "spoken": True}
+        gate.release.set()
+        await turn
+        assert (await client.get(url)).json()["running"] is False
+        assert (await client.get("/api/session/nope/progress")).status_code == 404
+    await close_all(sessions)
+
+
 async def test_bad_requests_and_unsupported_voice(api):
     assert (await api.post("/api/turn", json={"sessionId": "x"})).status_code == 400
     assert (await api.post("/api/turn", json={"sessionId": "nope", "text": "안녕"})).status_code == 404
@@ -98,6 +122,34 @@ async def test_voice_turn_reaches_screen(voice_api):
     _, filled = await say(voice_api, sid, "이름은 김하늘")
     assert filled["field"] == "applicantName"
     assert filled["value"] == "김하늘"
+
+
+async def test_while_busy_only_a_stop_word_is_acted_on(voice_api):
+    sid = (await voice_api.post("/api/session")).json()["sessionId"]
+    await say(voice_api, sid, "장애인연금 신청 도와줘")
+
+    async def heard_while_busy(transcript: str) -> dict:
+        FakeStt.next_transcript = transcript
+        res = await voice_api.post(f"/api/audio/stop?sessionId={sid}", content=AUDIO, headers={"Content-Type": "audio/webm"})
+        assert res.status_code == 200
+        return res.json()
+
+    assert await heard_while_busy("이름은 김하늘") == {"stopped": False}
+    state = (await voice_api.get(f"/api/session/{sid}/state")).json()
+    assert state["state"] == "APPLICATION_OPEN"
+    assert not any("김하늘" in h["text"] for h in state["history"])
+    stopped = await heard_while_busy("멈춰")
+    assert stopped["stopped"] is True
+    assert stopped["result"]["state"] == "STOPPED"
+
+
+async def test_while_busy_a_progress_question_is_answered(voice_api):
+    sid = (await voice_api.post("/api/session")).json()["sessionId"]
+    FakeStt.next_transcript = "청음아, 지금 어디까지 했어?"
+    res = (await voice_api.post(f"/api/audio/stop?sessionId={sid}", content=AUDIO, headers={"Content-Type": "audio/webm"})).json()
+    assert res["stopped"] is False
+    assert res["result"]["intentType"] == "PROGRESS"
+    assert res["result"]["speech"] == "지금 하고 있는 일은 없어요."
 
 
 async def test_spoken_password_never_returned(voice_api):
@@ -120,4 +172,5 @@ async def test_empty_transcript_tts_health(voice_api):
     speak = await voice_api.post("/api/audio/speak", json={"text": "안녕하세요"})
     assert "audio/mpeg" in speak.headers["content-type"]
     health = (await voice_api.get("/api/health")).json()
-    assert health["stt"] == {"provider": "fake", "supported": True}
+    # localLanguages: 음성이 이 컴퓨터 밖으로 나가지 않는 언어(가짜 STT는 외부로 보는 셈)
+    assert health["stt"] == {"provider": "fake", "supported": True, "localLanguages": []}

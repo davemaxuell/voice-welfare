@@ -29,7 +29,7 @@ from cheongeum.evaluation import (
     load_scenario_file,
     run_scenario,
 )
-from cheongeum.practice_site import is_reachable, start_mock_site
+from cheongeum.practice_site import ensure_mock_site
 from cheongeum.server import AgentRuntime, close_all, create_app, load_config
 from cheongeum.server.app import mount_web_ui
 
@@ -48,16 +48,20 @@ def free_port() -> int:
 async def main() -> int:
     demo = load_scenario_file(DEMO_SCENARIO_PATH)
     synthetic = load_scenario_file(SYNTHETIC_SCENARIO_PATH)
-    mock = None if is_reachable(demo.baseUrl) else start_mock_site(int(parse_url(demo.baseUrl).port or 80))
+    mock = ensure_mock_site(int(parse_url(demo.baseUrl).port or 80))
     env = {
         "MOCK_SITE_URL": demo.baseUrl,
         "HEADLESS": "false" if os.environ.get("HEADED") == "1" else "true",
         "LLM_PROVIDER": "mock",
         "REQUIRE_CONSENT": "false",
         "READ_ONLY_WEB": "true",
+        "READ_ONLY_CLICKS": "safe",
         "VISUAL_CURSOR": "false",
         "WEB_SEARCH_URL": "http://127.0.0.1:5174/external.html?q={q}",
     }
+    # 개인정보 인식 모델을 켠 채로도 시나리오가 그대로 통과하는지(오탐으로 막히지 않는지) 볼 때: PII_MODEL=models/koelectra-ko-pii-ner
+    if os.environ.get("PII_MODEL"):
+        env["PII_MODEL"] = os.environ["PII_MODEL"]
     runtime = AgentRuntime(load_config(env))
 
     # ------------------------------------------------------------ 1) 시나리오

@@ -1,5 +1,7 @@
 from conftest import PORTAL, FakeLlm, with_llm
 
+from cheongeum.core.jsutil import jdumps
+
 
 def with_translator(s, table: dict, out_override=None) -> FakeLlm:
     """
@@ -44,6 +46,18 @@ async def test_stop_without_translation(new_session):
     assert r["intentType"] == "STOP"
     assert r["lang"] == "zh"
     assert "已全部停止" in r["speech"]
+    assert [c for c in llm.calls if c["schemaName"] == "translate_in"] == []
+
+
+async def test_foreign_secret_blocked_before_translation(new_session):
+    # 외국어로 말한 비밀번호는 번역(외부 LLM)에 넘기기 전에 막는다
+    s = await new_session()
+    llm = with_translator(s, {})
+    await s.handle_turn("영어로 말해줘")
+    r = await s.handle_turn("my password is 4821")
+    assert r["semanticAction"] == "auth-handoff"
+    assert "4821" not in jdumps(r)
+    assert all("4821" not in c["user"] for c in llm.calls)
     assert [c for c in llm.calls if c["schemaName"] == "translate_in"] == []
 
 

@@ -2,7 +2,9 @@ import pytest
 
 from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
 from cheongeum.safety import PolicyConfig, PolicyContext, PolicyGuard
-from cheongeum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_stop_utterance, resolve_site
+from cheongeum.safety.guard import is_action_name
+from cheongeum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_progress_question, is_stop_utterance, resolve_site
+from cheongeum.understanding.filters import strip_address
 
 parser = RuleBasedIntentProvider(field_vocabulary(create_mock_welfare_profile("http://localhost:5174")))
 
@@ -35,6 +37,8 @@ def parse(t: str, state: str = "APPLICATION_OPEN", awaiting: str | None = None) 
         ("지금 화면에 뭐가 있어?", "DESCRIBE_SCREEN"),
         ("장애인연금 신청 화면 설명해줘", "DESCRIBE_SCREEN"),
         ("장애인연금 지원대상과 신청 절차 알려줘", "POLICY_QUESTION"),
+        ("장애인연금 지금 신청할 수 있어?", "POLICY_QUESTION"),
+        ("지금 신청할 수 있어?", "POLICY_QUESTION"),
         ("상담원 연결해줘", "HELP_HUMAN"),
         ("오늘 날씨 어때", "UNKNOWN"),
     ],
@@ -79,6 +83,17 @@ def test_stop_is_rule_based():
     assert not is_stop_utterance("멈추지 마")
 
 
+@pytest.mark.parametrize("said", ["지금 어디까지 했어?", "청음아, 어디까지 됐어?", "얼마나 남았어?", "아직 멀었어?", "지금 뭐 하고 있어?"])
+def test_progress_question_is_rule_based(said):
+    assert is_progress_question(said)
+    assert parse(said, "BROWSING") == {"type": "PROGRESS"}
+
+
+@pytest.mark.parametrize("said", ["신청 기한 얼마나 남았어?", "지금 어느 단계야?", "본문 어디까지 읽었어?", "지금 어디까지 했어 그리고 네이버 열어줘"])
+def test_not_a_progress_question(said):
+    assert not is_progress_question(said)
+
+
 def test_clean_value():
     assert clean_value('"김하늘"이라고 써줘') == "김하늘"
     assert clean_value("3명으로 해줘") == "3명"
@@ -102,6 +117,47 @@ def test_rephrase():
     assert parse("주소 다시 말해줘")["type"] == "READ_FIELD"
 
 
+@pytest.mark.parametrize(
+    "text,more",
+    [
+        ("뭐라고 말하면 돼?", False),
+        ("뭐라고 해야 돼?", False),
+        ("뭘 할 수 있어?", False),
+        ("넌 뭘 할 수 있어?", False),
+        ("무슨 말 할 수 있어?", False),
+        ("도움말", False),
+        ("사용법 알려줘", False),
+        ("명령어 알려줘", False),
+        ("명령어 뭐가 있어?", False),
+        ("다른 말도 알려줘", True),
+        ("다른 명령어도 알려줘", True),
+        ("도움말 더", True),
+    ],
+)
+def test_what_can_i_say(text, more):
+    assert parse(text) == {"type": "WHAT_CAN_I_SAY", "more": more}
+
+
+@pytest.mark.parametrize(
+    "text,type_",
+    [
+        ("다른 거 알려줘", "UNKNOWN"),  # 맞춤 찾기 결과 더 듣기(_unknown)
+        ("이 사이트에서 뭘 할 수 있어?", "ABOUT_SITE"),
+        ("도움 요청할래", "HELP_HUMAN"),
+        ("어떻게 해야 돼?", "UNKNOWN"),
+    ],
+)
+def test_not_help(text, type_):
+    assert parse(text, "BROWSING")["type"] == type_
+    assert parse("다른 말로 해줘")["type"] != "WHAT_CAN_I_SAY"
+
+
+def test_listed_service_is_not_field_explanation():
+    # 찾기 결과의 "두 번째 제도"는 항목 설명이 아니다. 규칙은 모르는 말로 두고 찾기 결과·LLM 계획이 받는다.
+    assert parse("두 번째 제도 설명해줘", "IDLE")["type"] == "UNKNOWN"
+    assert parse("가구원 수가 무슨 뜻이야?") == {"type": "EXPLAIN", "fieldMention": "가구원 수"}
+
+
 # ---------------------------------------------------------------- 웹 읽기 명령(browsing-rules)
 
 
@@ -122,6 +178,8 @@ def bparse(t: str) -> dict:
         ("링크 더 알려줘", {"type": "LIST_LINKS", "more": True}),
         ("장애인연금 안내 링크 눌러줘", {"type": "FOLLOW_LINK", "name": "장애인연금 안내"}),
         ("'자세히 보기' 눌러줘", {"type": "FOLLOW_LINK", "name": "자세히 보기"}),
+        ("신청방법 탭 눌러줘", {"type": "FOLLOW_LINK", "name": "신청방법"}),
+        ("지원대상 눌러줘", {"type": "FOLLOW_LINK", "name": "지원대상"}),
         ("뒤로 가줘", {"type": "PREV"}),
         ("장애인연금 검색해줘", {"type": "SEARCH", "query": "장애인연금"}),
         ("복지로에서 기초연금 검색해줘", {"type": "SEARCH", "query": "기초연금", "site": "복지로"}),
@@ -137,6 +195,8 @@ def test_browsing_does_not_clash():
     assert bparse("장애인연금 신청 도와줘")["type"] == "START_APPLICATION"
     assert bparse("신청 페이지를 열어줘")["type"] == "START_APPLICATION"
     assert bparse("로그인 페이지 열어줘")["type"] == "LOGIN"
+    assert bparse("로그아웃해줘")["type"] == "CLEAR_LOGIN"
+    assert bparse("로그인 기록 지워줘")["type"] == "CLEAR_LOGIN"
 
 
 def test_resolve_site():
@@ -191,6 +251,20 @@ def test_tiers():
         ("검색창 입력", a(type="fill", target={"role": "searchbox", "fieldId": "q"}, value="장애인연금"), "ALLOWED_READ_ONLY"),
         ("검색 실행", a(type="press", target={"role": "searchbox", "fieldId": "q"}, value="Enter"), "ALLOWED_READ_ONLY"),
         ("버튼 클릭", a(target={"role": "button", "name": "보내기"}), "DENIED_READ_ONLY"),
+        ("로그인 버튼은 묻고 누른다", a(target={"role": "button", "name": "로그인"}), "NEEDS_CONFIRMATION"),
+        ("로그인 링크도 묻고 누른다", a(target={"role": "link", "name": "로그인"}), "NEEDS_CONFIRMATION"),
+        ("초점 옮기기", a(type="focus", target={"role": "button", "name": "로그인"}), "ALLOWED_READ_ONLY"),
+        ("로그아웃은 막는다", a(target={"role": "button", "name": "로그아웃"}), "DENIED_READ_ONLY"),
+        ("실제 신청은 막는다", a(target={"role": "button", "name": "신청하기"}), "DENIED_READ_ONLY"),
+        ("정보 이름 탭(safe)", a(target={"role": "tab", "name": "신청방법"}), "ALLOWED_READ_ONLY"),
+        ("동작 이름 탭(safe)", a(target={"role": "tab", "name": "온라인 신청하기"}), "DENIED_READ_ONLY"),
+        ("정보 이름 스크립트 링크(safe)", a(target={"ref": "r2", "role": "scriptlink", "name": "신청방법"}), "ALLOWED_READ_ONLY"),
+        ("동작 이름 스크립트 링크(safe)", a(target={"ref": "r3", "role": "scriptlink", "name": "회원 탈퇴"}), "DENIED_READ_ONLY"),
+        ("주소 있는 링크는 이름과 상관없이(safe)", a(target={"role": "link", "name": "회원 탈퇴 안내"}), "ALLOWED_READ_ONLY"),
+        ("메뉴 항목(safe)", a(target={"role": "menuitem", "name": "복지서비스"}), "ALLOWED_READ_ONLY"),
+        ("동작 메뉴 항목(safe)", a(target={"role": "menuitem", "name": "신청"}), "DENIED_READ_ONLY"),
+        ("역할 없는 요소(safe)", a(target={"ref": "r1", "role": "generic", "name": "체험관 둘러보기"}), "DENIED_READ_ONLY"),
+        ("이름 없는 ref", a(target={"ref": "r1"}), "DENIED_SCHEMA"),
         ("일반 입력란", a(type="fill", target={"label": "이름", "fieldId": "n"}, value="김하늘"), "DENIED_READ_ONLY"),
         ("선택", a(type="select", target={"fieldId": "s"}, value="1"), "DENIED_READ_ONLY"),
         ("Enter 외 키", a(type="press", target={"role": "searchbox", "fieldId": "q"}, value="Tab"), "DENIED_READ_ONLY"),
@@ -201,6 +275,38 @@ def test_tiers():
 )
 def test_read_only_policy(name, action, code):
     assert ro_guard.check(action, RO_CTX)["code"] == code
+
+
+def test_read_only_login_click_runs_after_approval():
+    approved = PolicyContext(currentUrl="https://example.org/", stopped=False, approvals={"x"}, actionsThisTurn=0)
+    assert ro_guard.check(a(target={"role": "button", "name": "로그인"}), approved)["code"] == "APPROVED"
+
+
+@pytest.mark.parametrize(
+    "name,action",
+    [
+        ("신청방법", False), ("신청 안내", False), ("제출서류", False), ("지원대상", False), ("서비스 내용", False), ("신청 자격", False),
+        ("신청하기", True), ("온라인 신청하기", True), ("신청", True), ("회원 탈퇴", True), ("결제 정보", True), ("로그인", True),
+        ("신청하기 새창", True), ("신청하기 >", True), ("신청서 제출", True), ("임시 저장", True), ("전체 동의", True),
+        ("본인 인증", True), ("가입", True), ("Send", True), ("Confirm", True), ("Sign in", True),
+    ],
+)  # fmt: skip
+def test_action_names(name, action):
+    assert is_action_name(name) is action
+
+
+def test_read_only_any_clicks_allows_every_click_but_not_input():
+    any_guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": "any"}))
+    for target in ({"role": "tab", "name": "신청방법"}, {"ref": "r1", "role": "generic", "name": "체험관"}, {"role": "button", "name": "보내기"}):
+        assert any_guard.check(a(target=target), RO_CTX)["code"] == "ALLOWED_READ_ONLY"
+    assert any_guard.check(a(type="fill", target={"label": "이름", "fieldId": "n"}, value="김하늘"), RO_CTX)["code"] == "DENIED_READ_ONLY"
+    assert any_guard.check(a(target={"role": "link", "name": "x"}, risk="consequential", requiresConfirmation=True), RO_CTX)["code"] == "DENIED_READ_ONLY"
+
+
+def test_read_only_any_clicks_still_asks_before_login():
+    any_guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": "any"}))
+    for role in ("button", "link"):
+        assert any_guard.check(a(target={"role": role, "name": "로그인"}), RO_CTX)["code"] == "NEEDS_CONFIRMATION"
 
 
 def test_read_only_off_means_supported_sites_only():
@@ -245,3 +351,21 @@ def test_assist_secret_always_denied():
 
 def test_assist_low_risk_input_denied():
     assert assist_guard.check({**BASE, "risk": "low", "requiresConfirmation": False}, actx(True))["code"] == "DENIED_READ_ONLY"
+
+
+@pytest.mark.parametrize(
+    ("said", "rest"),
+    [
+        ("청음아, 화면 설명해줘", "화면 설명해줘"),
+        ("청음아 멈춰", "멈춰"),
+        ("청음이야 다음으로", "다음으로"),
+        ("청음, 뒤로 가줘", "뒤로 가줘"),
+        ("청음이! 이름은 김하늘", "이름은 김하늘"),
+        ("청음아.", ""),
+        ("청음이 뭐야?", "청음이 뭐야?"),
+        ("청음", "청음"),
+        ("화면 설명해줘", "화면 설명해줘"),
+    ],
+)
+def test_strip_address(said, rest):
+    assert strip_address(said) == rest

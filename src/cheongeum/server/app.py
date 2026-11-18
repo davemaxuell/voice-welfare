@@ -19,6 +19,7 @@ from cheongeum.core.turn import LANGS
 from cheongeum.orchestrator import SessionOrchestrator
 from cheongeum.safety import detect_sensitive, redact_text
 from cheongeum.server.runtime import AgentRuntime
+from cheongeum.understanding.rules import is_progress_question, is_stop_utterance
 from cheongeum.voice import VoiceNotSupportedError
 
 log = logging.getLogger("cheongeum.server")
@@ -34,6 +35,16 @@ AUDIO_LIMIT = 10 * 1024 * 1024
 
 def _err(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"error": code, "message": message}, status_code=status)
+
+
+def _local_languages(stt: Any) -> list[str]:
+    """음성이 이 컴퓨터 밖으로 나가지 않는 언어(동의·도움말 문구용). 로컬 OpenAI 호환 서버면 모든 언어."""
+    if not stt.supported:
+        return []
+    langs = getattr(stt, "localLanguages", None)
+    if langs is not None:
+        return list(langs)
+    return list(LANGS) if str(stt.name).startswith("local(") else []
 
 
 async def _json_body(request: Request) -> dict | None:
@@ -115,11 +126,13 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None) -
 
     @app.get("/api/health")
     async def health() -> dict:
+        roles = runtime.llm_roles()
         return {
             "ok": True,
             "llmProvider": runtime.intent_provider.name,
+            "llmRoles": roles,
             "welfareData": runtime.welfare_provider.mode,
-            "stt": {"provider": stt.name, "supported": stt.supported},
+            "stt": {"provider": stt.name, "supported": stt.supported, "localLanguages": _local_languages(stt)},
             "tts": {"provider": tts.name, "supported": tts.supported},
             "mockOnly": True,
         }
@@ -141,6 +154,7 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None) -
             "llmProvider": runtime.intent_provider.name,
             "mockOnly": True,
             "consentRequired": s.consent_status != "granted",
+            "speechPrefs": s.snapshot().get("speechPrefs"),
         }
 
     @app.post("/api/turn")
@@ -196,6 +210,15 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None) -
             return not_found()
         return {"text": s.reminders() if s.consent_status == "granted" else None}
 
+    @app.get("/api/session/{sid}/progress")
+    async def progress(sid: str) -> Any:
+        """
+        목표 수행 진행 상황. 화면은 일하는 동안 몇 초마다 물어 새 단계(seq가 커짐)를 소리로 알린다.
+        latest는 코드가 행동·대상 이름·사이트로 만든 문장뿐이다(화면 글·모델 글 아님). spoken = 묻지 않아도 알릴지.
+        """
+        s = sessions.get(sid)
+        return s.progress.snapshot() if s else not_found()
+
     @app.post("/api/session/{sid}/language")
     async def language(sid: str, request: Request) -> Any:
         """대화 언어 바꾸기(ko/en/zh/ja). 음성 "영어로 말해줘"와 같은 경로."""
@@ -242,6 +265,28 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None) -
         if not text:
             return _err(422, "EMPTY_TRANSCRIPT", "말씀을 알아듣지 못했습니다. 다시 말씀해 주세요.")
         return await s.handle_turn(text[:500])
+
+    @app.post("/api/audio/stop")
+    async def audio_stop(request: Request, sessionId: str = "") -> Any:  # noqa: N803
+        """
+        일하는 동안 들은 말: 멈춤 말과 진행 상황 물음('지금 어디까지 했어?')만 받는다. 둘 다 턴 대기열을 거치지 않는다.
+        그 밖의 말은 받아쓴 뒤 버린다. 기록에도 남기지 않는다.
+        """
+        s = sessions.get(sessionId)
+        if not s:
+            return _err(404, "SESSION_NOT_FOUND", "세션이 없습니다.")
+        if s.consent_status != "granted":
+            return _err(403, "CONSENT_REQUIRED", "먼저 시작 안내에 동의해 주세요.")
+        try:
+            text = await transcribe(request, s.lang)
+        except Exception as e:  # noqa: BLE001
+            return voice_error(e)
+        said = redact_text(text) if text else ""
+        if is_stop_utterance(said):
+            return {"stopped": True, "result": await s.handle_turn(text[:500])}
+        if is_progress_question(said):
+            return {"stopped": False, "result": await s.handle_turn(text[:500])}
+        return {"stopped": False}
 
     @app.post("/api/audio/transcribe")
     async def audio_transcribe(request: Request) -> Any:

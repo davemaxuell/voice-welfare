@@ -26,6 +26,14 @@ def short_reply_kind(text: str) -> Literal["ack", "no"] | None:
     return "no" if no else "ack"
 
 
+_ADDRESS = rx(r"^(청음(아|이야)|청음이?(?=\s*[,!.~?]))[\s,!.~?]*")
+
+
+def strip_address(text: str) -> str:
+    """맨 앞의 부름말을 뗀다("청음아, 화면 설명해줘" → "화면 설명해줘", 부름말만 했으면 ""). "청음이 뭐야?"처럼 이름을 말한 질문은 그대로."""
+    return _ADDRESS.sub("", text, count=1).strip()
+
+
 def strip_filler(text: str) -> str:
     """앞의 맞장구·군말을 뗀 말("알았고 다음으로 가줘" → "다음으로 가줘"). 떼고 남은 말이 두 글자보다 짧거나 뗄 게 없으면 그대로."""
     rest = rx(r"^((알았어|알았고|알겠어|알겠고|그래|그래서|좋아|오케이|음+|어+|아니\s*근데|아니|근데)[요,.\s]+)+").sub("", text, count=1).strip()

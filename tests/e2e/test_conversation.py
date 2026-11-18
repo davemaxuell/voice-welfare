@@ -1,7 +1,14 @@
+import json
 import re
 
 import pytest
-from conftest import PORTAL, FakeLlm, field_value, with_llm
+from conftest import PORTAL, FakeLlm, create_test_runtime, field_value, with_llm
+
+from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
+from cheongeum.core.intents import INTENTS
+from cheongeum.orchestrator.session import HELP_POINTER
+from cheongeum.safety.gates import ALLOWED_WITHOUT_CONSENT
+from cheongeum.understanding import INTENT_JSON_SCHEMA, IntentContext, RuleBasedIntentProvider
 
 # ---------------------------------------------------------------- 여러 명령 한 번에
 
@@ -63,6 +70,25 @@ async def test_rephrase_with_llm(new_session):
     await s.handle_turn("장애인연금 신청 도와줘")
     r = await s.handle_turn("이해가 안 돼")
     assert "연습용 신청서를 열었어요. 이름부터 말해 주세요." in r["speech"]
+
+
+async def test_rephrase_that_changes_a_number_repeats_the_original(new_session):
+    s = await new_session()
+    with_llm(
+        s,
+        FakeLlm(
+            {
+                "chat_route": {"route": "general", "reply": "1년은 보통 365일이에요.", "searchQuery": None},
+                "simple": {"text": "1년은 366일이에요."},
+            }
+        ),
+    )
+    await s.handle_turn("1년은 며칠이야")
+    r = await s.handle_turn("쉽게 말해줘")
+    assert r["semanticAction"] == "rephrase"
+    assert "366" not in r["speech"]
+    assert "천천히 다시 말씀드릴게요. 1년은 보통 365일이에요." in r["speech"]
+    assert any(t["agent"] == "answer-verifier" and "366" in (t.get("note") or "") for t in r["trace"])
 
 
 async def test_general_question_then_resume(new_session):
@@ -263,15 +289,85 @@ async def test_summary_with_unknown_number_dropped(new_session):
     assert '내용은 "' in r["speech"]
 
 
-async def test_login_link_only_then_handoff(new_session):
+async def test_real_site_login_moves_explains_asks_then_clicks(new_session):
+    """주인 결정(2026-11-18): 실제 사이트 로그인도 버튼으로 옮겨 가서 무엇을 왜 하는지 말하고, '눌러'를 들은 뒤 누른다."""
     s = await new_session()
     await s.handle_turn(f"{PORTAL} 열어줘")
     ask = await s.handle_turn("로그인하고 싶어")
-    assert ask["actions"] == []
-    r = await s.handle_turn("로그인 눌러줘. 그 뒤로는 내가 할게")
-    assert r["state"] == "AUTH_HANDOFF"
-    assert "/login.html" in r["observation"]["url"]
-    assert "직접 해 주세요" in r["speech"]
+    assert ask["state"] == "WAITING_FOR_USER_CONFIRMATION"
+    assert "'로그인하고 싶어'라고 하셔서" in ask["speech"] and "이동했어요" in ask["speech"] and "'눌러'" in ask["speech"]
+    assert [a["action"]["type"] for a in ask["actions"]] == ["focus"]
+    assert "/login.html" not in ask["observation"]["url"]
+
+    opened = await s.handle_turn("눌러")
+    assert opened["state"] == "AUTH_HANDOFF"
+    assert "/login.html" in opened["observation"]["url"]
+    assert "비밀번호" in opened["speech"] and "직접" in opened["speech"] and "다 입력했어" in opened["speech"]
+    # 인계 직후 사용자가 채울 첫 칸(아이디)에 초점을 옮긴다
+    assert any(
+        a["action"]["type"] == "focus" and (a["action"].get("target") or {}).get("fieldId") == "loginId" and (a.get("result") or {}).get("ok")
+        for a in opened["actions"]
+    )
+
+    submit = await s.handle_turn("다 입력했어")
+    assert submit["state"] == "WAITING_FOR_USER_CONFIRMATION"
+    assert "'모의 로그인'" in submit["speech"]
+    done = await s.handle_turn("눌러")
+    clicks = [a for a in done["actions"] if a["action"]["type"] == "click"]
+    assert clicks and clicks[-1]["policy"]["code"] == "APPROVED" and clicks[-1]["result"]["ok"]
+    every = [a for r in (ask, opened, submit, done) for a in r["actions"]]
+    assert not [a for a in every if a["action"]["type"] in ("fill", "select", "check")]
+
+
+async def test_real_site_login_rejected_clicks_nothing(new_session):
+    s = await new_session()
+    await s.handle_turn(f"{PORTAL} 열어줘")
+    await s.handle_turn("로그인 화면 열어줘")
+    r = await s.handle_turn("거절")
+    assert "누르지 않았어요" in r["speech"]
+    assert "/login.html" not in r["observation"]["url"]
+
+
+async def test_auth_done_stays_while_login_page_unchanged(new_session):
+    """'다 했어'여도 아직 로그인·인증 화면이면 인계를 유지하고 다시 기다린다."""
+    s = await new_session()
+    handed = await s.handle_turn("로그인하고 싶어")
+    assert handed["state"] == "AUTH_HANDOFF"
+    assert "/login.html" in handed["observation"]["url"]
+    assert any(
+        a["action"]["type"] == "focus" and (a["action"].get("target") or {}).get("fieldId") == "loginId" and (a.get("result") or {}).get("ok")
+        for a in handed["actions"]
+    )
+    still = await s.handle_turn("다 했어")
+    assert still["intentType"] == "AUTH_DONE"
+    assert still["state"] == "AUTH_HANDOFF"
+    assert "/login.html" in still["observation"]["url"]
+    assert "아직" in still["speech"] and ("로그인" in still["speech"] or "인증" in still["speech"])
+
+
+async def test_auth_done_speaks_title_and_resumes_pending_form(new_session):
+    """연습 로그인 인계 뒤, 화면이 바뀐 다음에만 '인증 끝났어'로 제목을 말하고 신청서 작업을 이어 간다."""
+    s = await new_session()
+    opened = await s.handle_turn("장애인연금 신청 도와줘")
+    assert opened["state"] == "APPLICATION_OPEN"
+    handed = await s.handle_turn("로그인하고 싶어")
+    assert handed["state"] == "AUTH_HANDOFF"
+    assert "/login.html" in handed["observation"]["url"]
+    assert s.dialogue.auth_resume == {"kind": "form"}
+    # 화면이 그대로면 이어가지 않는다
+    still = await s.handle_turn("다 했어")
+    assert still["state"] == "AUTH_HANDOFF"
+    assert s.dialogue.auth_resume == {"kind": "form"}
+    assert "아직" in still["speech"]
+    # 연습 사이트는 제출해도 주소가 안 바뀌므로, 관찰 가능한 이동(신청서)으로 바뀐 뒤 재개한다
+    await s.web.adapter.page.goto("http://localhost:5174/apply.html", wait_until="domcontentloaded")
+    done = await s.handle_turn("인증 끝났어")
+    assert done["intentType"] == "AUTH_DONE"
+    assert done["state"] == "APPLICATION_OPEN"
+    assert "화면으로 바뀌었어요" in done["speech"]
+    assert "모의" in done["speech"] or "신청" in done["speech"]
+    assert s.dialogue.auth_resume is None
+    assert s.dialogue.awaiting == "applicantName"
 
 
 async def test_main_screen_opens_site_home(new_session):
@@ -305,6 +401,19 @@ async def test_short_replies_not_values(new_session):
     assert field_value(name, "applicantName") == "김하늘"
 
 
+async def test_called_by_name(new_session):
+    s = await new_session()
+    opened = await s.handle_turn("청음아, 장애인연금 신청 도와줘")
+    assert "성명을 말씀해 주세요" in opened["speech"]
+    called = await s.handle_turn("청음아")
+    assert called["speech"] == "네, 말씀하세요."
+    assert field_value(called, "applicantName") == ""
+    name = await s.handle_turn("청음아 이름은 김하늘")
+    assert field_value(name, "applicantName") == "김하늘"
+    stopped = await s.handle_turn("청음아 멈춰")
+    assert stopped["state"] == "STOPPED"
+
+
 async def test_multiple_questions(new_session):
     s = await new_session()
     with_llm(
@@ -329,3 +438,140 @@ async def test_real_site_mode(new_session):
     assert real["semanticAction"] == "agent-handoff"
     practice = await s.handle_turn("장애인연금 연습 신청 도와줘")
     assert practice["observation"]["step"]["index"] == 1
+
+
+# ---------------------------------------------------------------- LLM 계획이 받는 말(규칙이 놓친 일상 표현)
+
+# drafts/research results/probes/phrasings.py의 19개. 규칙이 놓치면 LLM 계획이 이 평탄화 답을 낸다.
+PLANNED = {
+    "READ_MAIN": [
+        ("이 페이지 내용 좀 들려줄래", {"more": False}),
+        ("기사 마저 읽어", {"more": True}),
+        ("본문 읽어줘", {"more": False}),
+        ("그 다음 내용은?", {"more": True}),
+    ],
+    "LIST_LINKS": [
+        ("여기 누를 수 있는 거 뭐 있어", {"more": False}),
+        ("어떤 메뉴가 있어", {"more": False}),
+        ("링크 목록 알려줘", {"more": False}),
+    ],
+    "SEARCH": [
+        ("기초연금으로 검색해 볼래", {"topic": "기초연금"}),
+        ("검색창에 기초연금 쳐줘", {"topic": "기초연금"}),
+        ("기초연금 검색해줘", {"topic": "기초연금"}),
+    ],
+    "FOLLOW_LINK": [
+        ("공지사항으로 가자", {"topic": "공지사항"}),
+        ("공지사항 들어가 볼래", {"topic": "공지사항"}),
+        ("공지사항 눌러줘", {"topic": "공지사항"}),
+    ],
+    "REPHRASE": [("무슨 소리야", {}), ("좀 더 쉽게", {}), ("쉽게 말해줘", {})],
+    "SERVICE_DETAIL": [
+        ("첫 번째 거 자세히 알려줘", {"topic": "1번"}),
+        ("두 번째 제도 설명해줘", {"topic": "2번"}),
+        ("2번 자세히 알려줘", {"topic": "2번"}),
+    ],
+}
+
+
+@pytest.mark.parametrize("want", list(PLANNED))
+async def test_planner_understands_what_rules_miss(new_session, want):
+    steps = {said: {**dict.fromkeys(INTENT_JSON_SCHEMA["schema"]["required"]), "type": want, **slots} for said, slots in PLANNED[want]}
+
+    def fn(*, system, user, schemaName, schema):
+        return {"steps": [steps[json.loads(user)["utterance"]]]} if schemaName == "intent_plan" else None
+
+    s = await new_session()
+    await s.handle_turn(f"{PORTAL} 열어줘")
+    with_llm(s, FakeLlm(fn=fn))
+    for said in steps:
+        r = await s.handle_turn(said)
+        assert r["intentType"] == want, said
+
+
+# ---------------------------------------------------------------- 도움말("뭐라고 말하면 돼?")
+
+rules = RuleBasedIntentProvider(field_vocabulary(create_mock_welfare_profile("http://localhost:5174")))
+EXAMPLE_TYPE = {e.text: i.type for i in INTENTS for e in i.examples}
+
+
+def spoken(r: dict) -> list[str]:
+    """도움말이 따옴표로 읽어 준 말(맨 끝의 '다른 말도 알려줘'·'도움말' 안내 제외)"""
+    return re.findall(r"'([^']+)'", r["speech"])[:-1]
+
+
+def assert_each_understood(r: dict) -> None:
+    said = spoken(r)
+    assert said
+    for text in said:
+        assert rules.parse_sync(text, IntentContext(state=r["state"]))["type"] == EXAMPLE_TYPE[text], text
+    tail = re.findall(r"'([^']+)'", r["speech"])[-1]
+    assert rules.parse_sync(tail, IntentContext(state=r["state"]))["type"] == "WHAT_CAN_I_SAY"
+
+
+async def test_help_on_form_starts_with_form_examples(new_session):
+    s = await new_session()
+    await s.handle_turn("장애인연금 신청 도와줘")
+    first = await s.handle_turn("뭐라고 말하면 돼?")
+    assert first["intentType"] == "WHAT_CAN_I_SAY"
+    assert first["semanticAction"] == "help-list"
+    assert first["state"] == "APPLICATION_OPEN"
+    assert first["speech"].startswith("이렇게 말해 보세요. 신청서: ")
+    assert first["actions"] == []
+    assert_each_understood(first)
+    more = await s.handle_turn("다른 말도 알려줘")
+    assert more["speech"].startswith("이어서 알려 드릴게요. 신청서: ")
+    assert_each_understood(more)
+    assert not set(spoken(first)) & set(spoken(more))
+    again = await s.handle_turn("도움말")
+    assert spoken(again) == spoken(first)
+
+
+async def test_help_on_web_page_starts_with_web_reading(new_session):
+    s = await new_session()
+    await s.handle_turn(f"{PORTAL} 열어줘")
+    r = await s.handle_turn("뭘 할 수 있어?")
+    assert r["speech"].startswith("이렇게 말해 보세요. 웹 읽기: ")
+    assert_each_understood(r)
+
+
+async def test_help_until_nothing_left(new_session):
+    s = await new_session()
+    r = await s.handle_turn("도움말")
+    heard = set(spoken(r))
+    while "다른 말도 알려줘" in r["speech"]:
+        r = await s.handle_turn("다른 말도 알려줘")
+        assert not heard & set(spoken(r))
+        heard |= set(spoken(r))
+    assert heard == {i.examples[0].text for i in INTENTS if i.help}
+    done = await s.handle_turn("다른 말도 알려줘")
+    assert "더 알려 드릴 말은 없어요" in done["speech"]
+
+
+async def test_help_before_consent():
+    rt = create_test_runtime({"REQUIRE_CONSENT": "true"})
+    s = await rt.create_session()
+    try:
+        r = await s.handle_turn("뭐라고 말하면 돼?")
+        assert r["semanticAction"] == "help-list"
+        assert "동의하시면" in r["speech"]
+        assert_each_understood(r)
+        assert {EXAMPLE_TYPE[t] for t in spoken(r)} <= ALLOWED_WITHOUT_CONSENT
+    finally:
+        await s.close()
+        await rt.close()
+
+
+async def test_help_while_stopped_gets_stop_reply(new_session):
+    s = await new_session()
+    await s.handle_turn("멈춰")
+    r = await s.handle_turn("뭐라고 말하면 돼?")
+    assert r["state"] == "STOPPED"
+    assert "중단 상태" in r["speech"]
+    assert r["semanticAction"] != "help-list"
+
+
+async def test_not_understood_points_to_help(new_session):
+    s = await new_session()
+    r = await s.handle_turn("블라블라")
+    assert r["speech"].endswith(HELP_POINTER)

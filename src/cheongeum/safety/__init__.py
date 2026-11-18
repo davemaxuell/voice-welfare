@@ -2,7 +2,17 @@
 
 from cheongeum.safety.gates import ALLOWED_WITHOUT_CONSENT, GateRefusal, gate_refusal
 from cheongeum.safety.guard import RISKY_BUTTON, AccessTier, PolicyConfig, PolicyContext, PolicyGuard
-from cheongeum.safety.privacy import REDACTED, SENSITIVE_LABELS_KO, SensitiveDetection, detect_sensitive, mask_value, redact_text
+from cheongeum.safety.privacy import (
+    REDACTED,
+    SENSITIVE_LABELS_KO,
+    SecretFinder,
+    SensitiveDetection,
+    detect_sensitive,
+    mask_value,
+    redact_text,
+    set_pii_model,
+    spoken_digit_spans,
+)
 from cheongeum.safety.verify import GroundingCheck, check_grounding, extract_numbers, normalize_for_match, quote_in_source, unsupported_numbers
 
 __all__ = [
@@ -16,6 +26,7 @@ __all__ = [
     "REDACTED",
     "RISKY_BUTTON",
     "SENSITIVE_LABELS_KO",
+    "SecretFinder",
     "SensitiveDetection",
     "check_grounding",
     "detect_sensitive",
@@ -25,5 +36,7 @@ __all__ = [
     "normalize_for_match",
     "quote_in_source",
     "redact_text",
+    "set_pii_model",
+    "spoken_digit_spans",
     "unsupported_numbers",
 ]

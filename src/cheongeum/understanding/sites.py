@@ -1,6 +1,6 @@
 """
 사이트 이름 → 주소. 목록에 없는 이름은 추측하지 않고 사용자에게 주소를 묻는다.
-(주소를 직접 말하면 그대로 연다: "gov.kr 열어줘")
+(주소를 직접 말하면 그대로 연다: "gov.kr 열어줘") 거꾸로 주소 → 말할 사이트 이름은 site_label.
 """
 from __future__ import annotations
 
@@ -130,6 +130,23 @@ def near_site(text: str, extra: Sequence[KnownSite] = ()) -> KnownSite | None:
             if any(w != name and len(w) == len(name) and _one_edit_apart(w, name) for w in tokens):
                 return s
     return None
+
+
+def _bare_host(url: str) -> str:
+    u = try_url(url)
+    return rx(r"^www\.").sub("", u.hostname) if u else ""
+
+
+def site_label(url: str, extra: Sequence[KnownSite] = ()) -> str:
+    """주소 → 말할 사이트 이름: 알려진 사이트(하위 도메인 포함)면 그 이름, 아니면 www를 뗀 호스트. 주소를 못 읽으면 ""."""
+    here = _bare_host(url)
+    if not here:
+        return ""
+    for s in [*extra, *KNOWN_SITES]:
+        known = _bare_host(s.url)
+        if here == known or here.endswith(f".{known}"):
+            return s.label
+    return here
 
 
 def resolve_site(target: str, extra: Sequence[KnownSite] = ()) -> dict | None:

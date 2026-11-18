@@ -77,6 +77,9 @@ class WelfareServiceModel(_M):
     ministry: Optional[str] = None
     criteriaYear: Optional[str] = None
     onlineApply: Optional[bool] = None
+    # 지자체 상세(LcgvWelfaredetailed)만 주는 시행(신청) 기간 YYYYMMDD. 중앙 상세에는 없음.
+    enfcBgngYmd: Optional[str] = None
+    enfcEndYmd: Optional[str] = None
 
 
 class FieldGlossaryEntry(_M):
@@ -288,6 +291,9 @@ def parse_welfare_detail(body: str, detail_url: str, checked_at: str | None = No
         for f in items(r.get("basfrmList"))
     ]
     laws = [x for x in (clean_api_text(_first(law, "servSeDetailNm", "wlfareInfoReldNm")) for law in items(r.get("baslawList"))) if x]
+    # 지자체 상세만 시행 시작·종료일(enfcBgngYmd·enfcEndYmd, YYYYMMDD)을 준다. 중앙에는 없음.
+    enfc_bgng = clean_api_text(r.get("enfcBgngYmd")) or None
+    enfc_end = clean_api_text(r.get("enfcEndYmd")) or None
     return {
         "servId": clean_api_text(r.get("servId")),
         "servNm": serv_nm,
@@ -302,6 +308,8 @@ def parse_welfare_detail(body: str, detail_url: str, checked_at: str | None = No
         "laws": laws,
         "ministry": clean_api_text(r.get("jurMnofNm") if r.get("jurMnofNm") is not None else (r.get("bizChrDeptNm") if local else None)),
         "criteriaYear": criteria_year,
+        "enfcBgngYmd": enfc_bgng,
+        "enfcEndYmd": enfc_end,
         "source": _official_source(serv_nm, detail_url, checked_at, criteria_year),
         "dataOrigin": "official-api",
     }

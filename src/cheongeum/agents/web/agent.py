@@ -10,11 +10,28 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field as dc_field, replace
 from typing import Any, Callable, Iterator, Literal
 
+from cheongeum.agents.web.effect import Churn, Effect, diff_views, item_changed, looks_loading, opened_dialog, unconfirmed_message
 from cheongeum.agents.web.profile import FieldProfile, SiteProfile, normalize_term
+from cheongeum.core.actions import LINK_ROLES
 from cheongeum.core.jsutil import AbortSignal, I, nz, rx, try_url, uniq, uuid
 from cheongeum.core.turn import AGENT_IDS
-from cheongeum.safety import PolicyContext, PolicyGuard
+from cheongeum.safety import PolicyContext, PolicyGuard, redact_text
 from cheongeum.speech.phrasing import speak_label
+
+
+def _action_label(action: dict) -> str:
+    """코드가 만든 짧은 조작 이름(화면 글·모델 글 없음). 기록용."""
+    reason = (action.get("reason") or "").strip()
+    if reason:
+        return redact_text(reason)[:80]
+    target = action.get("target") or {}
+    name = target.get("name") or target.get("fieldId") or ""
+    return f"{action.get('type') or 'action'} {name}".strip()[:80]
+
+
+def _host_of(url: str | None) -> str:
+    u = try_url(url)
+    return u.hostname if u else ""
 
 
 @dataclass
@@ -42,7 +59,8 @@ class FieldResolution:
     candidates: list[FieldProfile] = dc_field(default_factory=list)
 
 
-OutcomeStatus = Literal["ok", "needs-clarification", "validation-error", "policy-denied", "failed", "aborted"]
+# unconfirmed: 승인받은 조작이 시간 안에 답하지 않았고 다시 봐도 됐는지 모른다(저절로 다시 하지 않는다)
+OutcomeStatus = Literal["ok", "needs-clarification", "needs-approval", "validation-error", "policy-denied", "failed", "aborted", "unconfirmed"]
 
 
 @dataclass
@@ -61,9 +79,24 @@ class WebOutcome:
     receipt: str | None = None
     # 링크 이름이 여러 개 맞거나 못 찾았을 때 후보
     candidates: list[str] | None = None
+    # needs-approval: 사용자에게 묻고 승인받으면 그대로 실행할 액션
+    pending: dict | None = None
+    # point_at: 키보드 초점을 대상에 옮겼는지
+    focused: bool = False
+    effect: Effect | None = None
+    revealed: str | None = None
 
 
 MAX_TIMEOUT_RETRIES = 1
+# 사용자를 기다린 틈으로 볼 최소 간격(기다림 반복 관찰은 poll=True로 따로 빠진다)
+IDLE_GAP_S = 1.0
+# 같은 화면에서 바뀐 뒤 새 글이 자리 잡기를 기다리는 한도·간격, 같아야 하는 연속 횟수(새 글 있음/없음)
+REVEAL_MAX_S = 3.0
+REVEAL_POLL_S = 0.3
+REVEAL_STABLE_WITH_TEXT = 1
+REVEAL_STABLE_WITHOUT_TEXT = 2
+# 기다리는 동안 관찰이 이만큼 연달아 실패하면(페이지가 닫힘 등) 그만 기다린다
+MAX_OBSERVE_FAILURES = 3
 MAX_STEPS = 6
 
 _SYNONYMS: dict[str, list[str]] = {
@@ -78,8 +111,10 @@ _ASSIST_SECRET = rx(r"(비밀\s*번호|password|인증\s*번호|otp|주민|계�
 _FAIL_MESSAGES = {
     "TARGET_NOT_FOUND": "화면에서 조작할 대상을 찾지 못했습니다.",
     "AMBIGUOUS_TARGET": "같은 이름의 대상이 여러 개라서 실행하지 않았습니다.",
+    "VERIFY_FAILED": "누르려던 대상이 그사이 화면에서 바뀌어 누르지 않았습니다.",
     "TIMEOUT": "화면이 제때 응답하지 않았습니다.",
     "NAVIGATION_FAILED": "페이지를 열지 못했습니다. 모의 사이트가 실행 중인지 확인해 주세요.",
+    "LOG_FAILED": "조작 기록을 남기지 못해 승인된 조작을 실행하지 않았습니다.",
 }
 
 
@@ -87,14 +122,33 @@ def _outline(v: dict) -> dict:
     return v.get("outline") or {}
 
 
+def _item_target(item: dict) -> dict:
+    return {"ref": item["ref"], "role": item["role"], "name": item["name"]}
+
+
+def _timed_out(result: dict | None) -> bool:
+    return bool(result) and result.get("errorCode") == "TIMEOUT"
+
+
+def _field_value(view: dict, action: dict) -> str | None:
+    fid = (action.get("target") or {}).get("fieldId")
+    f = next((f for f in view["fields"] if f["fieldId"] == fid), None)
+    return f["value"] if f else None
+
+
 class WebExecutionAgent:
     id = AGENT_IDS.web
 
-    def __init__(self, adapter: Any, guard: PolicyGuard, profile: SiteProfile) -> None:
+    def __init__(self, adapter: Any, guard: PolicyGuard, profile: SiteProfile, action_log: Any = None) -> None:
         self.adapter = adapter
         self.guard = guard
         self.profile = profile
+        # 조작 직전·직후 암호화 기록(없으면 안 씀). 승인 필요 조작은 쓰기 실패 시 실행하지 않는다.
+        self.action_log = action_log
         self._last_view: dict | None = None
+        self._last_view_at = 0.0
+        self._acted_since_observe = False
+        self._churn = Churn()
 
     @property
     def current_view(self) -> dict | None:
@@ -105,6 +159,13 @@ class WebExecutionAgent:
         fn = getattr(self.adapter, "bring_to_front", None)
         if fn:
             await fn()
+
+    async def clear_login(self, *, current_only: bool = True) -> list[str]:
+        """지금 사이트(또는 전부)의 로그인 쿠키·저장소를 지운다. 지운 호스트 목록."""
+        fn = getattr(self.adapter, "clear_site_login", None)
+        if not fn:
+            return []
+        return await fn(current_only=current_only)
 
     def access_mode(self, view: dict | None = ..., ) -> str:  # type: ignore[assignment]
         """현재(또는 주어진) 화면의 접근 등급: full=지원 사이트, read-only=그 외 웹사이트"""
@@ -125,47 +186,152 @@ class WebExecutionAgent:
         view = await self._observe_until(ctx, lambda v: v["url"] != "about:blank" and self._has_content(v), 6000)
         return WebOutcome(status="ok", actions=log, view=await self._settle(ctx, view))
 
-    async def follow_link(self, name: str, ctx: ExecContext) -> WebOutcome:
-        """링크 이름(일부만 말해도 됨)으로 찾아 누른다. 여러 개가 맞으면 누르지 않고 후보를 돌려준다."""
+    async def follow_link(self, name: str, ctx: ExecContext, links_only: bool = False) -> WebOutcome:
+        """
+        누를 수 있는 요소를 이름(일부만 말해도 됨)으로 찾아 누른다: 링크 우선, 없으면 버튼·탭·메뉴 항목·역할 없는 클릭 요소.
+        여러 개가 맞으면 누르지 않고 후보를 돌려준다. 누른 뒤에는 화면이 어떻게 바뀌었는지(effect)를 함께 돌려준다.
+        """
         log: list[dict] = []
         view = await self.observe(ctx)
-        links = _outline(view).get("links") or []
-        # 복지로처럼 메뉴를 버튼으로 만든 사이트가 많아 버튼 이름도 함께 찾는다(링크 우선).
-        buttons = [b["name"] for b in (_outline(view).get("buttons") or []) if not b.get("disabled")]
+        item, hits = self._locate(view, name, links_only=links_only)
+        if item is None:
+            return self._not_located(name, hits, view, log)
+        r = await self._run(self._action(type="click", target=_item_target(item), reason=f"'{item['name']}' 누르기({item['role']})"), ctx, log)
+        if not r or not r.get("ok"):
+            return self._failed(log, r, view)
+        ctx.trace("VERIFYING", self.id, "화면 변화 확인")
+        after, effect, revealed = await self._await_effect(ctx, view, item)
+        if effect == "moved":
+            after = await self._settle(ctx, after)
+        return WebOutcome(status="ok", actions=log, view=after, readValue=item["name"], effect=effect, revealed=revealed or None)
+
+    @staticmethod
+    def _locate(view: dict, name: str, prefer_button: bool = False, links_only: bool = False) -> tuple[dict | None, list[str]]:
+        """
+        이름으로 누를 관찰 항목을 찾는다: (항목, 맞은 이름들). 하나만 맞을 때만 항목이 있다.
+        보통 링크(스크립트 링크 포함) 우선, 없으면 버튼·탭·메뉴 항목. 로그인 화면의 '로그인'처럼 prefer_button이면 그 반대.
+        links_only: 주소로 가는 진짜 링크만(스크립트 링크는 javascript:로 무언가를 보낼 수 있다).
+        """
+        items = [it for it in _outline(view).get("items") or [] if not it.get("disabled")]
         m = normalize_term(name)
 
         def match(names: list[str]) -> list[str]:
             exact = [x for x in names if normalize_term(x) == m]
             return uniq(exact if exact else [x for x in names if m in normalize_term(x) and len(m) >= 2])
 
-        link_hits = match(links)
-        button_hits = [] if link_hits else match(buttons)
-        role = "link" if link_hits else "button"
-        pool = links if role == "link" else buttons
-        distinct = link_hits or button_hits
-        if not distinct:
+        def is_link(it: dict) -> bool:
+            return it["role"] == "link" if links_only else it["role"] in LINK_ROLES
+
+        links = [it for it in items if is_link(it)]
+        others = [] if links_only else [it for it in items if not is_link(it)]
+        for pool in (others, links) if prefer_button else (links, others):
+            hits = match([it["name"] for it in pool])
+            if not hits:
+                continue
+            if len(hits) > 1:
+                return None, hits
+            return next(it for it in pool if it["name"] == hits[0]), hits
+        return None, []
+
+    @staticmethod
+    def _not_located(name: str, hits: list[str], view: dict, log: list[dict]) -> WebOutcome:
+        if not hits:
             return WebOutcome(status="needs-clarification", actions=log, view=view, message=f"'{name}' 링크를 이 화면에서 찾지 못했습니다.", candidates=[])
-        if len(distinct) > 1:
-            return WebOutcome(
-                status="needs-clarification",
-                actions=log,
-                view=view,
-                message=f"'{name}'에 맞는 링크가 {len(distinct)}개입니다.",
-                candidates=distinct[:5],
-            )
-        target = distinct[0]
-        before = {"url": view["url"], "title": view["title"]}
-        tgt: dict = {"role": role, "name": target}
-        if len([x for x in pool if x == target]) > 1:
-            tgt["nth"] = 0
-        r = await self._run(self._action(type="click", target=tgt, reason=f"'{target}' {'링크' if role == 'link' else '버튼'} 열기"), ctx, log)
-        if not r or not r.get("ok"):
-            return self._failed(log, r, view)
-        ctx.trace("VERIFYING", self.id, "이동 확인")
-        after = await self._observe_until(
-            ctx, lambda v: (v["url"] != before["url"] or v["title"] != before["title"]) and self._has_content(v), 6000
+        return WebOutcome(status="needs-clarification", actions=log, view=view, message=f"'{name}'에 맞는 링크가 {len(hits)}개입니다.", candidates=hits[:5])
+
+    async def point_at(self, name: str, ctx: ExecContext, prefer_button: bool = False) -> WebOutcome:
+        """
+        누를 대상으로 키보드 초점(과 화면 커서)을 옮기고, 사용자가 승인하면 누를 클릭 액션을 pending으로 돌려준다. 누르지는 않는다.
+        초점을 못 옮겨도 대상은 찾았으니 묻는 것은 계속한다(focused=False).
+        """
+        log: list[dict] = []
+        view = await self.observe(ctx)
+        item, hits = self._locate(view, name, prefer_button)
+        if item is None:
+            return self._not_located(name, hits, view, log)
+        tgt = _item_target(item)
+        r = await self._run(self._action(type="focus", target=dict(tgt), reason=f"'{item['name']}'(으)로 이동"), ctx, log)
+        click = self._action(type="click", target=dict(tgt), reason=f"사용자 확인 후 '{item['name']}' 누르기")
+        return WebOutcome(status="needs-approval", actions=log, view=view, pending=click, focused=bool(r and r.get("ok")))
+
+    async def focus_field(self, field: dict, ctx: ExecContext, log: list[dict] | None = None) -> WebOutcome:
+        """입력 칸으로 키보드 초점을 옮긴다(값은 넣지 않는다). 본인인증 인계 때 화면 낭독기가 첫 칸을 읽게 한다."""
+        actions = log if log is not None else []
+        fid = field.get("fieldId")
+        if not fid:
+            return WebOutcome(status="failed", actions=actions, view=self._last_view)
+        target: dict = {"fieldId": fid}
+        if field.get("label"):
+            target["label"] = field["label"]
+        label = field.get("label") or fid
+        r = await self._run(self._action(type="focus", target=target, reason=f"'{label}' 칸으로 이동"), ctx, actions)
+        return WebOutcome(
+            status="ok" if r and r.get("ok") else "failed",
+            actions=actions,
+            view=self._last_view,
+            focused=bool(r and r.get("ok")),
         )
-        return WebOutcome(status="ok", actions=log, view=await self._settle(ctx, after), readValue=target)
+
+    async def click_approved(self, action: dict, ctx: ExecContext) -> WebOutcome:
+        """
+        사용자가 승인한 클릭을 그대로 실행한다. 물어본 뒤 화면·대상이 그대로인지는 승인 문(SessionOrchestrator._approve)이 지문으로 봤고,
+        누르기 직전에는 어댑터가 그 ref의 역할·이름을 다시 읽는다. 시간이 넘으면 다시 누르지 않고 화면이 바뀌었는지만 본다.
+        """
+        log: list[dict] = []
+        view = await self.observe(ctx)
+        target = action["target"]
+        item = next((it for it in _outline(view).get("items") or [] if it["ref"] == target.get("ref")), target)
+        r = await self._run(action, ctx, log)
+        if not r or not (r.get("ok") or _timed_out(r)):
+            return self._failed(log, r, view)
+        ctx.trace("VERIFYING", self.id, "누른 뒤 화면 확인")
+        after, effect, revealed = await self._await_effect(ctx, view, item)
+        if _timed_out(r) and effect == "none":
+            return WebOutcome(status="unconfirmed", actions=log, view=after, message=unconfirmed_message("눌렸는지"))
+        if effect == "moved":
+            after = await self._settle(ctx, after)
+        return WebOutcome(status="ok", actions=log, view=after, readValue=item["name"], effect=effect, revealed=revealed or None)
+
+    async def _await_effect(self, ctx: ExecContext, before: dict, item: dict) -> tuple[dict, Effect, str]:
+        """
+        다른 페이지가 열리거나, 팝업이 새로 뜨거나, 누른 요소 자신의 선택·펼침이 바뀌면 끝낸다. 본문 변화만으로는 끝내지 않는다:
+        실제 사이트는 배너·속보가 저절로 바뀌어, 누른 효과로 잘못 알고 이동 전의 화면을 돌려줄 수 있다.
+        복지로 상세의 '신청방법'은 링크지만 누르면 그 링크가 '선택됨'이 되어 바로 끝난다.
+        """
+        quick = item["role"] == "tab" or item.get("expanded") is not None
+
+        def done(v: dict) -> bool:
+            effect, _ = diff_views(before, v, item["ref"])
+            if effect == "moved":
+                return self._has_content(v)
+            return opened_dialog(before, v) or item_changed(before, v, item["ref"])
+
+        after = await self._observe_until(ctx, done, 1500 if quick else 6000)
+        effect, revealed = diff_views(before, after, item["ref"], self._churn.volatile())
+        if effect == "changed":
+            return await self._await_revealed(ctx, before, after, item["ref"])
+        return after, effect, revealed
+
+    async def _await_revealed(self, ctx: ExecContext, before: dict, after: dict, ref: str) -> tuple[dict, Effect, str]:
+        volatile = self._churn.volatile()
+        effect, revealed = diff_views(before, after, ref, volatile)
+        deadline = time.monotonic() + REVEAL_MAX_S
+        same = failures = 0
+        while time.monotonic() < deadline and not ctx.signal.aborted and failures < MAX_OBSERVE_FAILURES:
+            await asyncio.sleep(REVEAL_POLL_S)
+            try:
+                nxt = await self.observe(ctx, poll=True)
+            except Exception:  # noqa: BLE001
+                failures += 1
+                continue
+            failures = 0
+            nxt_effect, nxt_revealed = diff_views(before, nxt, ref, volatile)
+            same = same + 1 if nxt_revealed == revealed else 0
+            after, effect, revealed = nxt, nxt_effect, nxt_revealed
+            stable = same >= (REVEAL_STABLE_WITH_TEXT if revealed else REVEAL_STABLE_WITHOUT_TEXT)
+            if effect == "moved" or (stable and not looks_loading(revealed)):
+                break
+        return after, effect, revealed
 
     async def back(self, ctx: ExecContext) -> WebOutcome:
         log: list[dict] = []
@@ -242,17 +408,18 @@ class WebExecutionAgent:
         await self.observe(ctx)
         for action in actions:
             r = await self._run(action, ctx, log)
+            if _timed_out(r):
+                # 다시 넣지 않는다: 화면에 그 값이 보이면 들어간 것이고, 아니면 들어갔는지 모른다
+                seen = await self.observe(ctx)
+                if action["type"] == "fill" and _field_value(seen, action) == action.get("value"):
+                    continue
+                name = (action.get("target") or {}).get("name")
+                return WebOutcome(status="unconfirmed", actions=log, view=seen, message=unconfirmed_message(f"'{name}' 칸에 들어갔는지"))
             if not r or not r.get("ok"):
                 return self._failed(log, r, self._last_view)
         ctx.trace("VERIFYING", self.id, "입력값 재확인")
         view = await self.observe(ctx)
-
-        def observed(a: dict) -> str | None:
-            fid = (a.get("target") or {}).get("fieldId")
-            f = next((f for f in view["fields"] if f["fieldId"] == fid), None)
-            return f["value"] if f else None
-
-        mismatch = next((a for a in actions if a["type"] == "fill" and observed(a) != a.get("value")), None)
+        mismatch = next((a for a in actions if a["type"] == "fill" and _field_value(view, a) != a.get("value")), None)
         if mismatch:
             return WebOutcome(
                 status="failed",
@@ -272,18 +439,23 @@ class WebExecutionAgent:
     async def close(self) -> None:
         await self.adapter.close()
 
-    async def observe(self, ctx: ExecContext | None = None) -> dict:
+    async def observe(self, ctx: ExecContext | None = None, poll: bool = False) -> dict:
+        """poll=True는 무언가를 기다리며 반복해 보는 관찰: 저절로 바뀌는 자리를 배우는 데 쓰지 않는다."""
         if ctx is not None:
             ctx.trace("OBSERVING", self.id)
         obs = await self.adapter.observe()
-        self._last_view = {**obs, "pageId": self.profile.classify(obs["url"])}
-        return self._last_view
+        view = {**obs, "pageId": self.profile.classify(obs["url"])}
+        now = time.monotonic()
+        idle = not poll and not self._acted_since_observe and now - self._last_view_at >= IDLE_GAP_S
+        self._churn.observe(view, self._last_view if idle else None)
+        self._last_view, self._last_view_at, self._acted_since_observe = view, now, False
+        return view
 
     async def _observe_until(self, ctx: ExecContext, done: Callable[[dict], bool], timeout_ms: int = 5000) -> dict:
         deadline = time.monotonic() + timeout_ms / 1000
         while True:
             try:
-                v = await self.observe(ctx)
+                v = await self.observe(ctx, poll=True)
                 if done(v) or time.monotonic() > deadline:
                     return v
             except Exception:
@@ -291,19 +463,22 @@ class WebExecutionAgent:
                 if time.monotonic() > deadline:
                     raise
             if ctx.signal.aborted:
-                return await self.observe(ctx)
+                return await self.observe(ctx, poll=True)
             await asyncio.sleep(0.1)
 
     async def _settle(self, ctx: ExecContext, view: dict, max_ms: int = 6000) -> dict:
         """늦게 채워지는 내용(검색 결과 등)이 더 이상 바뀌지 않을 때까지 잠깐 기다린다(최대 max_ms)."""
         deadline = time.monotonic() + max_ms / 1000
         prev = view
-        while time.monotonic() < deadline and not ctx.signal.aborted:
+        failures = 0
+        while time.monotonic() < deadline and not ctx.signal.aborted and failures < MAX_OBSERVE_FAILURES:
             await asyncio.sleep(0.7)
             try:
-                nxt = await self.observe(ctx)
+                nxt = await self.observe(ctx, poll=True)
             except Exception:  # noqa: BLE001
-                nxt = prev
+                failures += 1
+                continue  # 이동 중(실행 컨텍스트가 사라짐)은 '그대로'가 아니다
+            failures = 0
             same = (_outline(nxt).get("mainText") or "") == (_outline(prev).get("mainText") or "") and nxt["url"] == prev["url"]
             prev = nxt
             if same:
@@ -321,7 +496,10 @@ class WebExecutionAgent:
         return {"id": uuid(), "risk": "low", "requiresConfirmation": False, **partial}
 
     async def _run(self, action: dict, ctx: ExecContext, log: list[dict]) -> dict | None:
-        """PolicyGuard 검사 후에만 어댑터를 호출한다. TIMEOUT만 제한적으로 재시도."""
+        """
+        PolicyGuard 검사 후에만 어댑터를 호출한다. 저위험이고 승인이 필요 없던 조작만 TIMEOUT을 한 번 다시 한다.
+        중요한 조작은 이미 됐을 수 있어 다시 하지 않는다(부르는 쪽이 화면을 다시 보고 알린다).
+        """
         ctx.trace("POLICY_CHECK", self.id, action["type"])
         policy = self.guard.check(
             action,
@@ -336,19 +514,54 @@ class WebExecutionAgent:
         log.append(entry)
         if not policy["allowed"]:
             return None
+        if self.action_log is not None:
+            try:
+                self.action_log.append(
+                    {
+                        "host": _host_of((self._last_view or {}).get("url")),
+                        "pageKind": (self._last_view or {}).get("pageId") or "",
+                        "actionType": action["type"],
+                        "label": _action_label(action),
+                        "approvalId": action.get("id") if action.get("requiresConfirmation") else None,
+                        "phase": "before",
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                if action.get("requiresConfirmation") or policy["code"] == "APPROVED":
+                    entry["result"] = {"ok": False, "errorCode": "LOG_FAILED", "latencyMs": 0}
+                    return entry["result"]
         ctx.counter["actions"] += 1
+        self._acted_since_observe = True
         ctx.trace("EXECUTING", self.id, action["type"])
         result = await self.adapter.execute(action, ctx.signal)
+        retries = MAX_TIMEOUT_RETRIES if action["risk"] == "low" and policy["code"] != "APPROVED" else 0
         i = 0
-        while i < MAX_TIMEOUT_RETRIES and not result["ok"] and result.get("errorCode") == "TIMEOUT" and not ctx.signal.aborted:
+        while i < retries and not result["ok"] and result.get("errorCode") == "TIMEOUT" and not ctx.signal.aborted:
             result = await self.adapter.execute(action, ctx.signal)
             i += 1
         entry["result"] = result
+        if self.action_log is not None:
+            try:
+                self.action_log.append(
+                    {
+                        "host": _host_of((self._last_view or {}).get("url")),
+                        "pageKind": (self._last_view or {}).get("pageId") or "",
+                        "actionType": action["type"],
+                        "label": _action_label(action),
+                        "approvalId": action.get("id") if action.get("requiresConfirmation") else None,
+                        "phase": "after",
+                        "ok": bool(result.get("ok")),
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                pass  # 이미 실행된 뒤라 결과만 못 적음
         return result
 
     @staticmethod
     def _failed(log: list[dict], result: dict | None, view: dict | None = None) -> WebOutcome:
         last = log[-1] if log else None
+        if not result and last and last["policy"]["code"] == "NEEDS_CONFIRMATION":
+            return WebOutcome(status="needs-approval", actions=log, view=view, message=last["policy"]["reason"], pending=last["action"])
         if not result:
             return WebOutcome(status="policy-denied", actions=log, view=view, message=last["policy"]["reason"] if last else None)
         if result.get("errorCode") == "ABORTED":
@@ -612,13 +825,16 @@ class WebExecutionAgent:
         if before["pageId"] != "mock-welfare" or not step or step["index"] != step["total"]:
             return WebOutcome(status="failed", actions=log, view=before, message="검토 단계가 아니어서 모의접수를 실행하지 않았습니다.")
         r = await self._run(action, ctx, log)
-        if not r or not r.get("ok"):
+        # 시간이 넘었어도 다시 누르지 않는다: 이미 접수됐을 수 있으니 접수번호가 보이는지만 본다
+        if not r or not (r.get("ok") or _timed_out(r)):
             return self._failed(log, r, before)
         ctx.trace("VERIFYING", self.id, "모의 접수번호 확인")
         pattern = self.profile.receipt_pattern
         after = await self._observe_until(ctx, lambda v: bool(v.get("status")) and bool(pattern.search(v["status"])), 3000)
         m = pattern.search(after.get("status") or "")
         receipt = m.group(1) if m else None
+        if not receipt and _timed_out(r):
+            return WebOutcome(status="unconfirmed", actions=log, view=after, message=unconfirmed_message("접수됐는지"))
         if not receipt:
             return WebOutcome(status="failed", actions=log, view=after, message="모의 접수번호를 확인하지 못했습니다.")
         return WebOutcome(status="ok", actions=log, view=after, receipt=receipt)

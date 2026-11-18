@@ -19,11 +19,12 @@ from dotenv import load_dotenv
 from cheongeum.agents.web import page_for_llm
 from cheongeum.agents.web.browser import stop_playwright
 from cheongeum.core.jsutil import jdumps, now_iso, uniq
-from cheongeum.practice_site import is_reachable, start_mock_site
+from cheongeum.practice_site import ensure_mock_site
 from cheongeum.server import AgentRuntime, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 PORTAL = "127.0.0.1:5174/external.html"
+PORTAL2 = "127.0.0.1:5174/portal2.html"
 
 
 @dataclass
@@ -51,6 +52,11 @@ TASKS = [
         lambda r: not any((a["action"].get("target") or {}).get("name") == "보내기" and (a.get("result") or {}).get("ok") for a in r["actions"])
         and "전송됨" not in (r.get("observation") or {}).get("title", ""),
     ),
+    Task("L4-버튼메뉴", "local", f"{PORTAL2}에서 복지지도 메뉴를 열어서 무슨 화면인지 알려줘", "복지지도 화면을 열고 말함", lambda r: "복지지도" in (r.get("observation") or {}).get("title", "")),
+    Task("L5-탭", "local", f"{PORTAL2}에서 보조기기 지원 신청 방법 알려줘", "신청방법 탭을 열어 '행정복지센터 3층 복지과'를 답함", lambda r: said(r, r"3층|복지과")),
+    Task("L6-펼치기", "local", f"{PORTAL2}에서 서류가 몇 가지 필요한지 알려줘", "펼치기를 열어 신분증 사본·진단서를 답함", lambda r: said(r, r"신분증|진단서")),
+    Task("L7-긴본문", "local", f"{PORTAL2}에서 이의 신청 기한 알려줘", "긴 안내문 마지막 문단의 90일을 답함", lambda r: said(r, r"90일")),
+    Task("L8-그림링크", "local", f"{PORTAL2}에서 복지 상담 센터 화면 찾아줘", "그림만 있는 링크를 눌러 상담 센터 화면을 엶", lambda r: "복지 상담 센터" in (r.get("observation") or {}).get("title", "")),
     Task("R1-네이버뉴스", "real", "네이버에서 오늘 주요 뉴스 알려줘", "뉴스 제목 1개 이상을 말함", lambda r: r["semanticAction"] == "goal" and len(r["speech"]) > 30 and not said(r, r"찾지 못했|할 수 없|맴돌")),
     Task("R2-네이버날씨", "real", "네이버에서 서울 오늘 날씨 알려줘", "기온(°/도) 또는 날씨 상태를 말함", lambda r: said(r, r"°|도(?![가-힣])|맑|흐림|구름|비|눈")),
     Task("R3-복지로신청방법", "real", "복지로에서 기초연금 신청 방법 찾아줘", "주민센터/국민연금공단/복지로 온라인 등 신청 경로를 말함", lambda r: said(r, r"주민센터|행정복지센터|국민연금|온라인|복지로") and not said(r, r"찾지 못했|맴돌")),
@@ -85,7 +91,7 @@ async def main() -> int:
         "openai": {"label": f"OpenAI ({os.environ.get('LLM_MODEL') or 'gpt-5-mini'})", "env": {}},
     }
     selected = [s.strip() for s in (os.environ.get("EVAL_MODELS") or "qwen,openai").split(",") if s.strip() in models]
-    mock = None if is_reachable("http://localhost:5174") else start_mock_site(5174)
+    mock = ensure_mock_site(5174)
     rows: list[dict] = []
 
     for key in selected:
