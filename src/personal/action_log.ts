@@ -26,15 +26,12 @@ export class ActionLog {
     this.#seal = seal;
     this.#now = now;
     if (path === undefined) return;
-    try {
-      const existing = readPrivateFile(path, seal);
-      if (existing === undefined) return;
-      const { rows } = z.object({ rows: z.array(RowSchema) }).parse(existing.data);
-      const cutoff = new Date(now());
-      cutoff.setDate(cutoff.getDate() - 30);
-      const firstDay = localDay(cutoff);
-      this.#rows = rows.filter(row => row.day >= firstDay);
-    } catch { /* 손상된 기록은 다음 조작 전까지 원본 그대로 둔다. */ }
+    const existing = readPrivateFile(path, seal, data => z.object({ rows: z.array(RowSchema) }).parse(data));
+    if (existing === undefined) return;
+    const cutoff = new Date(now());
+    cutoff.setDate(cutoff.getDate() - 30);
+    const firstDay = localDay(cutoff);
+    this.#rows = existing.data.rows.filter(row => row.day >= firstDay);
   }
   append(entry: AuditEntry): Row {
     const now = this.#now();
