@@ -18,7 +18,8 @@
     "build:web": "vite build",
     "start": "node --env-file-if-exists=.env src/server/main.ts",
     "eval": "uv run python scripts/run_scenarios.py",
-    "record:observations": "uv run python scripts/record_observations.py"
+    "record:observations": "uv run python scripts/record_observations.py",
+    "prestart": "npm run build:web"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
