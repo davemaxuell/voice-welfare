@@ -62,7 +62,7 @@ export class SessionReplies {
     if (llm !== undefined) {
       const raw = await raceAbort(signal => llm.generate({
         system: "시각장애인 사용자가 방금 들은 안내를 이해하지 못했다. 같은 내용을 더 쉬운 말로, 짧은 문장 2~4개로 다시 말해라. 새 정보를 지어내지 말고, 숫자·금액·출처는 그대로 유지. 존댓말.",
-        user: redactText(last), schemaName: "simple", schema: SIMPLE_TEXT_SCHEMA, signal,
+        user: last, schemaName: "simple", schema: SIMPLE_TEXT_SCHEMA, signal,
       }), turn.ctx.signal);
       const text = simpleReply.safeParse(raw).data?.text ?? "";
       const changed = unsupportedNumbers(text, [last]);
@@ -84,7 +84,7 @@ export class SessionReplies {
     const utterance = redactText(text);
     const out = llm === undefined ? {} : await raceAbort(signal => chatRoute(llm, utterance, {
       page: view?.title === undefined ? undefined : redactText(view.title),
-      lastAssistant: last === undefined ? undefined : redactText(last),
+      lastAssistant: last,
       recent: s.recentDialogue(8), askedJustNow: s.lastSemantic === "clarify",
     }, signal), turn.ctx.signal);
     const resume = view !== undefined && isFormOpen(s.web.currentView) ? s.form.askNext(view) : "";

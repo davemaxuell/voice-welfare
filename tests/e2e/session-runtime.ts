@@ -19,6 +19,7 @@ import type { OpenTranscript, TranscriptSession } from "./transcripts.ts";
 export interface SessionOptions {
   mockSiteUrl?: string;
   searchUrlTemplate?: string;
+  navigationTimeoutMs?: number;
   readOnlyWeb?: boolean;
   readOnlyClicks?: "safe" | "any";
   requireConsent?: boolean;
@@ -39,7 +40,8 @@ export function createTestRuntime(defaults: SessionOptions = {}) {
     const allowedOrigins = [profile.origin];
     const readOnlyWeb = opts.readOnlyWeb ?? true;
     const downloads = new DownloadStore();
-    const adapter = new PlaywrightExecutionAdapter({ browser: await browser, allowedOrigins, readOnlyWeb, downloads });
+    const adapter = new PlaywrightExecutionAdapter({ browser: await browser, allowedOrigins, readOnlyWeb, downloads,
+      navigationTimeoutMs: opts.navigationTimeoutMs });
     try {
       await adapter.start();
       const guard = new PolicyGuard({ allowedOrigins, readOnlyWeb, readOnlyClicks: opts.readOnlyClicks ?? "safe",

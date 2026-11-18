@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { mergeBio, PiiScanner } from "../../src/safety/pii_model.ts";
-import { detectSensitive, maskValue, redactText, spokenDigitSpans, type SecretSpan } from "../../src/safety/privacy.ts";
+import { disclosureNotice, POSSIBLE_SECRET_NOTICE, historyLine, detectSensitive, maskValue, redactText, spokenDigitSpans, type SecretSpan } from "../../src/safety/privacy.ts";
 
 const positive = [
   "비밀번호는 123456이야", "주민번호 900101-1234567", "9001011234567", "OTP 482913", "계좌번호는 110-123-456789",
@@ -86,4 +86,14 @@ it("test_merge_bio", () => {
 it("test_mask_phone", () => {
   expect(maskValue("010-1234-5678")).toBe("010-****-5678");
   expect(maskValue("😀한😀")).toBe("😀*😀");
+});
+
+it("고정 안내 전체만 유지하고 덧붙인 값과 모델이 찾은 값은 가린다", () => {
+  for (const notice of [POSSIBLE_SECRET_NOTICE, disclosureNotice(["password","otp"], false), disclosureNotice(["password"], true)]) {
+    expect(redactText(notice)).toBe(notice);
+    expect(historyLine("assistant", redactText(notice))).toBe("청음: " + notice);
+    expect(redactText(notice + " 900101-1234567")).not.toContain("900101");
+    expect(redactText(notice + " 비밀번호는 blue44")).not.toContain("blue44");
+    expect(redactText(notice, [["password", 0, 2]])).toContain("[비공개]");
+  }
 });
