@@ -104,7 +104,8 @@ it("정규식 예제·등록·예외가 현재 기록에 있는지 확인한다"
 
 const files = new Set(patterns.flatMap(row => row.sites.map(([file]) => file)));
 for (const file of files) {
-  it.skipIf(!ported.has(file) && !regexPorts.has(file))(`정규식 일치 구간 · ${file}`, () => {
+  it(`정규식 일치 구간 · ${file}`, () => {
+    expect(ported.has(file) || regexPorts.has(file), file).toBe(true);
     for (const row of patterns.filter(row => row.sites.some(([owner]) => owner === file))) {
       if (ported.has(file) || regexPorts.get(file)?.has(row.id) === true) compare(row, portedExpression(file, row.id), exceptions);
     }
