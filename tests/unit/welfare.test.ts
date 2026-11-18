@@ -104,6 +104,13 @@ it("test_official_error_falls_back", async () => {
   expect(p.lastError).toContain("SERVICE_KEY_IS_NOT_REGISTERED_ERROR");
 });
 
+it.each([
+  ["list", () => parseWelfareList("<wantedList><resultCode>99</resultCode><resultMessage></resultMessage></wantedList>")],
+  ["detail", () => parseWelfareDetail("<wantedDtl><resultCode>99</resultCode><resultMessage></resultMessage></wantedDtl>", "https://www.bokjiro.go.kr/x")],
+])("test_empty_result_message_names_result_code (%s)", (_name, parse) => {
+  expect(parse).toThrow(expect.objectContaining({ reason: "resultCode != 0" }));
+});
+
 it("keeps the API credential out of recorded request URLs and fallback diagnostics", async () => {
   const key = "test+key/with=symbols";
   const fetchImpl = fakeFetch(listOrDetail);

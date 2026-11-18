@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { welfareData } from '../../../core/assets.ts';
 import { optional, omitAbsent } from '../../../core/schema.ts';
-import { strip, asciiDecimalDigits } from '../../../core/text.ts';
+import { strip, asciiDecimalDigits, hasText } from '../../../core/text.ts';
 import { todayIso } from '../../../core/time.ts';
 import { tryUrl } from '../../../core/url.ts';
 import { decodeHTML } from 'entities';
@@ -279,6 +279,10 @@ export function parseXml(body: string): Row {
     return {};
   }
 }
+function resultError(root: Row) {
+  const message = String(root.resultMessage ?? '');
+  return new WelfareApiError(hasText(message) ? message : 'resultCode != 0');
+}
 function rootOf(body: string, tag: string) {
   const value = parseXml(body)[tag];
   return isRow(value) ? value : undefined;
@@ -288,7 +292,7 @@ function rootOf(body: string, tag: string) {
 export function parseWelfareList(body: string, checkedAt = todayIso()): WelfareService[] {
   const root = rootOf(body, "wantedList");
   if (!root) throw new WelfareApiError(apiErrorMessage(body));
-  if (String(root.resultCode ?? '0') !== '0') throw new WelfareApiError(String(root.resultMessage ?? 'resultCode != 0'));
+  if (String(root.resultCode ?? '0') !== '0') throw resultError(root);
   return items(root.servList).map((r) => {
     const servNm = cleanApiText(r.servNm);
     return {
@@ -309,7 +313,7 @@ export function parseWelfareList(body: string, checkedAt = todayIso()): WelfareS
 export function parseWelfareDetail(body: string, detailUrl: string, checkedAt = todayIso()): WelfareService {
   const r = rootOf(body, "wantedDtl");
   if (!r) throw new WelfareApiError(apiErrorMessage(body));
-  if (String(r.resultCode ?? '0') !== '0') throw new WelfareApiError(String(r.resultMessage ?? 'resultCode != 0'));
+  if (String(r.resultCode ?? '0') !== '0') throw resultError(r);
   const servNm = cleanApiText(r.servNm);
   const applySteps = items(r.applmetList).map((a) => ({
     step: strip(cleanApiText(a.servSeDetailNm).replace(dataPatterns.contactList, '')),
