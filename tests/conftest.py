@@ -15,9 +15,9 @@ import pytest_asyncio
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ieum.agents.web.browser import stop_playwright  # noqa: E402
-from ieum.practice_site import is_reachable, start_mock_site  # noqa: E402
-from ieum.server.runtime import AgentRuntime, load_config  # noqa: E402
+from cheongeum.agents.web.browser import stop_playwright  # noqa: E402
+from cheongeum.practice_site import is_reachable, start_mock_site  # noqa: E402
+from cheongeum.server.runtime import AgentRuntime, load_config  # noqa: E402
 
 MOCK_URL = "http://localhost:5174"
 PORTAL = "127.0.0.1:5174/external.html"

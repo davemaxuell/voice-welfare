@@ -9,9 +9,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ieum.agents.welfare import WelfareInformationAgent
-from ieum.agents.welfare.data import OfficialCentralWelfareApiProvider, create_welfare_data_provider
-from ieum.server.runtime import load_config
+from cheongeum.agents.welfare import WelfareInformationAgent
+from cheongeum.agents.welfare.data import OfficialCentralWelfareApiProvider, create_welfare_data_provider
+from cheongeum.server.runtime import load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 

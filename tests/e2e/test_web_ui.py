@@ -7,9 +7,9 @@ import uvicorn
 from conftest import create_test_runtime
 from playwright.async_api import expect
 
-from ieum.agents.web.browser import launch_browser
-from ieum.server import close_all, create_app
-from ieum.server.app import mount_web_ui
+from cheongeum.agents.web.browser import launch_browser
+from cheongeum.server import close_all, create_app
+from cheongeum.server.app import mount_web_ui
 
 
 def free_port() -> int:

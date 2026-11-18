@@ -1,6 +1,6 @@
 import pytest
 
-from ieum.safety import PolicyConfig, PolicyContext, PolicyGuard, detect_sensitive, mask_value, redact_text
+from cheongeum.safety import PolicyConfig, PolicyContext, PolicyGuard, detect_sensitive, mask_value, redact_text
 
 ORIGIN = "http://localhost:5174"
 guard = PolicyGuard(

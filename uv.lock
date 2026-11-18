@@ -192,7 +192,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ieum-voice-welfare-agent"
+name = "cheongeum-voice-welfare-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

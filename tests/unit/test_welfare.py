@@ -4,12 +4,12 @@ import httpx
 import pytest
 from conftest import FIXTURES, FakeLlm
 
-from ieum.agents.web import INCOME_OPTIONS, create_mock_welfare_profile, match_option, validate_address, validate_name
-from ieum.agents.welfare import WelfareInformationAgent, chunk_service
-from ieum.agents.welfare.data import FixtureWelfareDataProvider, OfficialCentralWelfareApiProvider, clean_api_text, parse_welfare_detail, parse_welfare_list
-from ieum.core.actions import parse_action
-from ieum.core.turn import AGENT_IDS, AgentHandoff, parse_intent
-from ieum.evaluation import DEMO_SCENARIO_PATH, ScenarioStep, check_expectations, evaluate_retrieval, is_active_pc, load_rag_qa, load_scenario_file
+from cheongeum.agents.web import INCOME_OPTIONS, create_mock_welfare_profile, match_option, validate_address, validate_name
+from cheongeum.agents.welfare import WelfareInformationAgent, chunk_service
+from cheongeum.agents.welfare.data import FixtureWelfareDataProvider, OfficialCentralWelfareApiProvider, clean_api_text, parse_welfare_detail, parse_welfare_list
+from cheongeum.core.actions import parse_action
+from cheongeum.core.turn import AGENT_IDS, AgentHandoff, parse_intent
+from cheongeum.evaluation import DEMO_SCENARIO_PATH, ScenarioStep, check_expectations, evaluate_retrieval, is_active_pc, load_rag_qa, load_scenario_file
 
 LIST = (FIXTURES / "welfare-list-disability-pension.xml").read_text(encoding="utf-8")
 DETAIL = (FIXTURES / "welfare-detail-WLF00003249.xml").read_text(encoding="utf-8")

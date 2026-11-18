@@ -16,11 +16,11 @@ from typing import Callable
 
 from dotenv import load_dotenv
 
-from ieum.agents.web import page_for_llm
-from ieum.agents.web.browser import stop_playwright
-from ieum.core.jsutil import jdumps, now_iso, uniq
-from ieum.practice_site import is_reachable, start_mock_site
-from ieum.server import AgentRuntime, load_config
+from cheongeum.agents.web import page_for_llm
+from cheongeum.agents.web.browser import stop_playwright
+from cheongeum.core.jsutil import jdumps, now_iso, uniq
+from cheongeum.practice_site import is_reachable, start_mock_site
+from cheongeum.server import AgentRuntime, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 PORTAL = "127.0.0.1:5174/external.html"

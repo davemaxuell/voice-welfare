@@ -1,4 +1,4 @@
-# 이음 — 시각장애인 공공서비스 신청 완주 음성 에이전트 (Python)
+# 청음 — 시각장애인 공공서비스 신청 완주 음성 에이전트 (Python)
 
 시각장애인이 **말로** 웹을 읽고 찾고, 복지로 같은 공공 사이트에서 **신청을 끝까지 하도록** 돕는 PC 음성 에이전트입니다.
 신청을 몰래 대신 해 주는 것이 아니라, 화면과 사람 사이를 통역하고 **중요한 동작은 확인받고, 제출·로그인·본인인증은 사람에게 넘깁니다.**
@@ -38,20 +38,20 @@ cd voice-welfare
 uv sync                                   # 의존성 + 프로젝트(편집 가능 설치)
 uv run playwright install chromium        # Playwright용 Chromium
 # 프로젝트 루트에 .env (키·설정, 커밋 금지)
-uv run ieum-server                        # http://localhost:8787 : 웹 UI + API (+ 모의 사이트 :5174 자동)
+uv run cheongeum-server                        # http://localhost:8787 : 웹 UI + API (+ 모의 사이트 :5174 자동)
 ```
 
-- 웹 UI는 빌드 없이 같은 포트에서 바로 서빙됩니다(`src/ieum/web/static`). 편집 후 새로고침만 하면 됩니다.
-- 모의 사이트만: `uv run ieum-mock` (http://localhost:5174, 외부 포털 테스트는 http://127.0.0.1:5174/external.html)
+- 웹 UI는 빌드 없이 같은 포트에서 바로 서빙됩니다(`src/cheongeum/web/static`). 편집 후 새로고침만 하면 됩니다.
+- 모의 사이트만: `uv run cheongeum-mock` (http://localhost:5174, 외부 포털 테스트는 http://127.0.0.1:5174/external.html)
 
-**데스크톱 앱(Electron)** — 기본 백그라운드(창 없이 트레이 '이음', Cmd/Ctrl+Shift+Space = 말하기·동의)
+**데스크톱 앱(Electron)** — 기본 백그라운드(창 없이 트레이 '청음', Cmd/Ctrl+Shift+Space = 말하기·동의)
 
 ```bash
 npm --prefix apps/desktop install         # 처음 한 번(Electron)
-npm --prefix apps/desktop start           # 실제 사이트 모드. IEUM_SHOW_WINDOW=1이면 창, PRACTICE_MODE=true면 연습 사이트 기본
+npm --prefix apps/desktop start           # 실제 사이트 모드. CHEONGEUM_SHOW_WINDOW=1이면 창, PRACTICE_MODE=true면 연습 사이트 기본
 ```
 
-Electron은 `.venv`의 파이썬(없으면 `uv run`, 또는 `IEUM_PYTHON`)으로 `python -m ieum.server --desktop`을 띄우고, 끌 때 stdin을 닫아 서버가 브라우저·세션을 정리하게 합니다.
+Electron은 `.venv`의 파이썬(없으면 `uv run`, 또는 `CHEONGEUM_PYTHON`)으로 `python -m cheongeum.server --desktop`을 띄우고, 끌 때 stdin을 닫아 서버가 브라우저·세션을 정리하게 합니다.
 
 <details>
 <summary>그 밖의 설정(.env)</summary>
@@ -63,9 +63,9 @@ Electron은 `.venv`의 파이썬(없으면 `uv run`, 또는 `IEUM_PYTHON`)으로
 | `TTS_PROVIDER`, `TTS_MODEL`, `TTS_VOICE`, `TTS_SPEED`, `TTS_INSTRUCTIONS` | `mock` | `openai` 또는 `browser`(무료 OS 음성) |
 | `WELFARE_DATA_MODE`, `WELFARE_API_KEY`, `WELFARE_API_BASE_URL` | fixture | `official-api`면 공식 API(실패 시 fixture) |
 | `PRACTICE_MODE` | 서버 `true` / 데스크톱 `false` | `false` = 실제 사이트 모드 |
-| `IEUM_DATA_DIR` | 데스크톱 `~/.ieum` | 금고·신청 기록(`personal.json`, 권한 600) |
+| `CHEONGEUM_DATA_DIR` | 데스크톱 `~/.cheongeum` | 금고·신청 기록(`personal.json`, 권한 600) |
 | `REQUIRE_CONSENT` | `true` | 동의 전에는 화면·음성을 쓰지 않음 |
-| `BROWSER_MODE`, `CHROME_PROFILE_DIR` | `chromium`, `~/.ieum/chrome-profile` | `chrome` = 설치된 크롬 + 영구 프로필 |
+| `BROWSER_MODE`, `CHROME_PROFILE_DIR` | `chromium`, `~/.cheongeum/chrome-profile` | `chrome` = 설치된 크롬 + 영구 프로필 |
 | `HEADLESS`, `VISUAL_CURSOR`, `BROWSER_SLOWMO_MS` | 창 보임, 창이 보이면 켬, `0` | 시연용 |
 | `READ_ONLY_WEB`, `WEB_SEARCH_URL` | `true`, 네이버 | 지원 사이트 밖은 읽기 전용, 검색 주소 틀(`{q}`) |
 | `PORT`, `DESKTOP_PORT` | `8787`, `8790` | 서버 포트 |
@@ -78,7 +78,7 @@ Electron은 `.venv`의 파이썬(없으면 `uv run`, 또는 `IEUM_PYTHON`)으로
 ①~⑥은 `docs/architecture.png`의 상자 번호입니다.
 
 ```text
-src/ieum/
+src/cheongeum/
   voice/             ①⑥ 서버 STT(stt.py)·TTS(tts.py) 공급자, 고르기(config.py)
   understanding/     ②  의도 이해: 규칙 파서(rules.py, 먼저), LLM 의도 계획(llm_planner.py, 보조), 둘을 묻는 순서(understand.py),
                          이해 전 거르기(filters.py: 맞장구·군말·두루뭉술한 요청·여러 질문), 자유 대화 분류(chat.py), 사이트 이름(sites.py)
@@ -94,7 +94,7 @@ src/ieum/
   personal/              개인 정보 금고·신청 기록(store.py) + 명령 이해·기한 알림(commands.py) + 확인·명령 실행(dialogue.py)
   core/                  공통: Action/Observation 계약(actions.py), 의도·TurnResult 스키마(turn.py), 대화 상태(dialogue.py), LLM 호출(llm.py),
                          비식별 이벤트(events.py), JS 동작 맞춤 도우미(jsutil.py: ASCII \b 정규식, JSON.stringify, URL, AbortController)
-  server/                FastAPI REST(app.py) + 런타임 조립(runtime.py), `python -m ieum.server`
+  server/                FastAPI REST(app.py) + 런타임 조립(runtime.py), `python -m cheongeum.server`
   web/static/        ①⑥ 접근성 웹 UI(바닐라 JS: app.js, mic.js 듣기, speaker.js 말하기, audio.js 공용, api.js), 빌드 없음
   practice_site/         모의 신청 사이트(site/, 바닐라 JS) + 정적 서버(serve.py). 서버가 기본으로 띄운다
   evaluation/            시나리오 평가·지표·RAG 정확도, data/(demo_scenarios.json 등, 수정 금지)

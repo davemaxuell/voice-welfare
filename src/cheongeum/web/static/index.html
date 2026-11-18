@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>청음 — 음성 복지 신청 도우미 (데모)</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <a class="skip-link" href="#command">명령 입력으로 바로가기</a>
+      <div class="mock-banner" role="note">데모 · 모의 신청 전용 — 실제 복지로 접수가 아닙니다. 합성 데이터만 사용하세요.</div>
+      <header class="app-header">
+        <h1>청음 — 음성 복지 신청 도우미 (데모)</h1>
+        <div class="toolbar" role="group" aria-label="도구">
+          <button type="button" class="stop" id="stop-all">멈춰 (모든 동작 중단)</button>
+          <button type="button" id="tts-toggle" aria-pressed="true">음성 안내 켜짐</button>
+          <button type="button" id="sound-check">소리 확인</button>
+          <button type="button" id="stop-speaking">말하기 중지</button>
+          <button type="button" id="contrast-toggle" aria-pressed="false">고대비 꺼짐</button>
+        </div>
+      </header>
+
+      <div class="sr-only" aria-live="assertive" id="announce"></div>
+
+      <section class="panel consent" id="consent-panel" aria-labelledby="consent-title" aria-describedby="consent-text" hidden>
+        <h2 id="consent-title">시작 전 안내와 동의</h2>
+        <p id="consent-text"></p>
+        <div class="row">
+          <button type="button" class="primary big" id="consent-hear" disabled>안내 듣고 시작하기 (Enter)</button>
+          <button type="button" class="primary big" id="consent-yes" hidden>동의하고 시작 (Enter)</button>
+          <button type="button" class="big" id="consent-no" hidden>동의하지 않음 (Esc)</button>
+        </div>
+      </section>
+
+      <main id="main" class="layout">
+        <section aria-labelledby="conv-title" class="panel conversation">
+          <h2 id="conv-title">대화</h2>
+          <div class="conversation-control">
+            <button type="button" class="primary big" id="conv-start" disabled>대화 시작 (Enter)</button>
+            <button type="button" class="big" id="conv-end" hidden>대화 끝내기</button>
+            <p class="phase phase-off" aria-live="polite" id="phase">음성 대화: 꺼짐</p>
+            <label class="mic-select" id="mic-wrap" hidden>
+              마이크 선택
+              <select id="mic-select"></select>
+            </label>
+            <label class="mic-select">
+              대화 언어 Language
+              <select id="lang-select">
+                <option value="ko">한국어</option>
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+              </select>
+            </label>
+            <p class="hint" id="conv-hint" hidden>띵 소리 뒤에 말씀하세요. 스페이스 키나 박수 두 번: 안내 중이면 끊고 바로 말하기, 말하는 중이면 바로 보내기.</p>
+          </div>
+          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="대화 기록">
+            <ol class="log" id="log"></ol>
+          </div>
+          <p class="error" role="alert" id="error" hidden></p>
+          <form class="command-form" id="command-form">
+            <label for="command">명령 입력 (말하듯이 입력하세요)</label>
+            <div class="row">
+              <input id="command" autocomplete="off" aria-describedby="command-help" disabled />
+              <button type="submit" id="send" disabled>보내기</button>
+              <button type="button" id="mic-btn" aria-pressed="false" disabled>음성 입력</button>
+              <button type="button" id="talk-btn" hidden>듣는 중 — 말씀하세요</button>
+            </div>
+            <p id="command-help" class="hint"></p>
+          </form>
+          <details>
+            <summary>예시 명령</summary>
+            <ul class="examples" id="examples"></ul>
+          </details>
+        </section>
+
+        <aside class="side">
+          <section aria-labelledby="status-title" class="panel">
+            <h2 id="status-title">현재 상태</h2>
+            <dl class="status">
+              <dt>상태</dt>
+              <dd id="st-state">대기</dd>
+              <dt>단계</dt>
+              <dd id="st-step">없음</dd>
+              <dt>화면</dt>
+              <dd id="st-title">아직 열지 않음</dd>
+              <dt>접근</dt>
+              <dd id="st-access">없음</dd>
+            </dl>
+            <div id="fields-wrap" hidden>
+              <h3>현재 화면 입력 항목</h3>
+              <ul class="fields" id="fields"></ul>
+            </div>
+          </section>
+
+          <section aria-labelledby="confirm-title" class="panel confirm" id="confirm-panel" hidden>
+            <h2 id="confirm-title" tabindex="-1">안전 확인: 실행 전에 승인이 필요합니다</h2>
+            <p>목적: <span id="confirm-purpose"></span><br />대상 사이트: <span id="confirm-site"></span></p>
+            <dl class="status" id="confirm-values"></dl>
+            <p class="hint">실제 제출 아님. 승인하면 모의 접수번호만 만들어집니다.</p>
+            <div class="row">
+              <button type="button" class="primary" id="confirm-yes">모의접수 승인</button>
+              <button type="button" id="confirm-edit">수정하기</button>
+              <button type="button" id="confirm-no">거절</button>
+            </div>
+          </section>
+
+          <section aria-labelledby="auth-title" class="panel auth" id="auth-panel" hidden>
+            <h2 id="auth-title">직접 인증 필요</h2>
+            <p>브라우저 창의 가상 인증 화면에 키보드로 직접 입력하세요. 청음은 비밀번호를 듣거나 입력하지 않습니다.</p>
+          </section>
+
+          <section aria-labelledby="result-title" class="panel result" id="result-panel" hidden>
+            <h2 id="result-title">모의접수 결과</h2>
+            <p>모의 접수번호: <strong id="receipt"></strong></p>
+            <p>실제 복지로 접수가 아니며 어떤 기관에도 전송되지 않았습니다.</p>
+          </section>
+
+          <section aria-labelledby="src-title" class="panel" id="sources-panel" hidden>
+            <h2 id="src-title">근거 자료</h2>
+            <ul id="sources"></ul>
+          </section>
+
+          <section aria-labelledby="act-title" class="panel" id="actions-panel" hidden>
+            <h2 id="act-title">실행 내역</h2>
+            <ol class="actions" id="actions"></ol>
+          </section>
+
+          <section aria-labelledby="unsupported-title" class="panel muted">
+            <h2 id="unsupported-title">데모/미지원</h2>
+            <ul id="unsupported"></ul>
+          </section>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

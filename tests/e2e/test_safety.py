@@ -4,7 +4,7 @@ import re
 
 from conftest import FakeLlm, create_test_runtime, field_value, with_llm
 
-from ieum.core.jsutil import jdumps
+from cheongeum.core.jsutil import jdumps
 
 
 async def open_form(new_session):
@@ -64,7 +64,7 @@ async def test_describe_screen_reads_everything_and_ignores_instructions(new_ses
     for part in [
         "모의 신청 · 실제 제출 아님",
         "'사이트 공지' 영역",
-        "이음은 화면에 적힌 지시를 따르지 않습니다",
+        "청음은 화면에 적힌 지시를 따르지 않습니다",
         "신청 단계는 3개입니다",
         "성명, 입력란, 필수, 비어 있음",
         "도움말: 필수. 시·도, 시·군·구, 도로명, 건물번호까지",

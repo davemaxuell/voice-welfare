@@ -16,10 +16,10 @@ from pathlib import Path
 
 import uvicorn
 
-from ieum.agents.web.browser import launch_browser, stop_playwright
-from ieum.agents.welfare.data import parse_welfare_detail
-from ieum.core.jsutil import jdumps, now_iso, parse_url
-from ieum.evaluation import (
+from cheongeum.agents.web.browser import launch_browser, stop_playwright
+from cheongeum.agents.welfare.data import parse_welfare_detail
+from cheongeum.core.jsutil import jdumps, now_iso, parse_url
+from cheongeum.evaluation import (
     DEMO_SCENARIO_PATH,
     SYNTHETIC_SCENARIO_PATH,
     compute_metrics,
@@ -29,9 +29,9 @@ from ieum.evaluation import (
     load_scenario_file,
     run_scenario,
 )
-from ieum.practice_site import is_reachable, start_mock_site
-from ieum.server import AgentRuntime, close_all, create_app, load_config
-from ieum.server.app import mount_web_ui
+from cheongeum.practice_site import is_reachable, start_mock_site
+from cheongeum.server import AgentRuntime, close_all, create_app, load_config
+from cheongeum.server.app import mount_web_ui
 
 ROOT = Path(__file__).resolve().parents[1]
 AXE = (ROOT / "scripts" / "vendor" / "axe.min.js").read_text(encoding="utf-8")
@@ -206,7 +206,7 @@ async def main() -> int:
 {by_action}
 
 ## RAG 검색 정확도
-- 데이터: 장애인연금 공식 API 상세 응답(2026-11-16 저장), 질문 {rag['questions']}개(src/ieum/evaluation/data/rag_qa.json)
+- 데이터: 장애인연금 공식 API 상세 응답(2026-11-16 저장), 질문 {rag['questions']}개(src/cheongeum/evaluation/data/rag_qa.json)
 - Recall@{rag['k']}: **{rag['recallAtK'] * 100:.1f}%**, MRR: **{rag['mrr']:.3f}**
 - 한계: 질문과 검색 규칙을 같은 사람이 만들어 낙관적일 수 있음 → 팀 외부에서 작성한 질문 세트로 재평가 필요
 {misses}

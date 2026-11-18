@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-이음(Voice Welfare Agent, 가칭): 시각장애인이 한국어 음성으로 웹을 읽고 탐색하고, 지원 사이트에서는 신청서를 대신 입력하는 PC 브라우저 에이전트. TypeScript 모노레포(`../voice-welfare-agent`)를 Python으로 옮긴 저장소다. 기획 요약은 `docs/기획요약.md`, 아키텍처 그림은 `docs/architecture.png`, 데모 시나리오는 `src/ieum/evaluation/data/demo_scenarios.json`(수정하지 않는다). 사용자·코드 주석·UI 문구는 한국어.
+청음(Voice Welfare Agent, 가칭): 시각장애인이 한국어 음성으로 웹을 읽고 탐색하고, 지원 사이트에서는 신청서를 대신 입력하는 PC 브라우저 에이전트. TypeScript 모노레포(`../voice-welfare-agent`)를 Python으로 옮긴 저장소다. 기획 요약은 `docs/기획요약.md`, 아키텍처 그림은 `docs/architecture.png`, 데모 시나리오는 `src/cheongeum/evaluation/data/demo_scenarios.json`(수정하지 않는다). 사용자·코드 주석·UI 문구는 한국어.
 
 ## Commands
 
 ```bash
-uv sync                                    # 의존성 + 프로젝트 편집 가능 설치(src/ieum이 비어 있을 때 설치했다면 uv sync --reinstall-package ieum-voice-welfare-agent)
+uv sync                                    # 의존성 + 프로젝트 편집 가능 설치(src/cheongeum이 비어 있을 때 설치했다면 uv sync --reinstall-package cheongeum-voice-welfare-agent)
 uv run playwright install chromium
-uv run ieum-server                         # API + 웹 UI(정적, 빌드 없음) :8787, 모의 사이트 :5174 자동(--no-mock으로 끔)
-uv run ieum-mock                           # 모의 사이트만
+uv run cheongeum-server                         # API + 웹 UI(정적, 빌드 없음) :8787, 모의 사이트 :5174 자동(--no-mock으로 끔)
+uv run cheongeum-mock                           # 모의 사이트만
 uv run pytest                              # unit + e2e(실제 Chromium, 기본 headless, HEADED=1이면 창 표시)
 uv run pytest tests/unit/test_parser.py    # 파일 하나
 uv run pytest tests/e2e/test_browsing.py -k search   # 이름으로 하나
 uv run python scripts/run_scenarios.py     # 시나리오 35개 + PRD 지표 + RAG Recall/MRR + axe → reports/evaluation-report.md
 uv run python scripts/eval_agent.py        # 목표 수행 QA: Qwen(로컬 Ollama)·OpenAI 비교, 실제 사이트 접속 → reports/agent-qa.md
 uv run python scripts/check_llm.py | check_voice.py | check_welfare.py   # .env의 실제 API 연결 확인
-npm --prefix apps/desktop install && npm --prefix apps/desktop start     # 데스크톱 앱(Electron 셸 → python -m ieum.server --desktop)
+npm --prefix apps/desktop install && npm --prefix apps/desktop start     # 데스크톱 앱(Electron 셸 → python -m cheongeum.server --desktop)
 ```
 
 - E2E는 `tests/conftest.py`가 모의 사이트(5174)를 띄운다(이미 떠 있으면 재사용). 테스트는 인터넷 없이 돈다: `create_test_runtime()`이 `LLM_PROVIDER=mock`, `REQUIRE_CONSENT=false`, `WEB_SEARCH_URL`을 로컬 포털로 고정. pytest-asyncio는 세션 하나의 이벤트 루프(`asyncio_default_*_loop_scope = session`) — Playwright 객체가 루프에 묶이기 때문.
@@ -28,7 +28,7 @@ npm --prefix apps/desktop install && npm --prefix apps/desktop start     # 데�
 
 ## Architecture
 
-`src/ieum` 패키지 하나. 하위 패키지는 파이프라인 단계별로 나눈다(①~⑥은 `docs/architecture.png`의 상자 번호). 핵심은 "발화 → 의도/계획 → 두 에이전트 → PolicyGuard → 실행 어댑터 → 재관찰 검증 → 짧은 한국어 응답" 루프다.
+`src/cheongeum` 패키지 하나. 하위 패키지는 파이프라인 단계별로 나눈다(①~⑥은 `docs/architecture.png`의 상자 번호). 핵심은 "발화 → 의도/계획 → 두 에이전트 → PolicyGuard → 실행 어댑터 → 재관찰 검증 → 짧은 한국어 응답" 루프다.
 
 - **데이터 모양**: 액션·관찰·의도·Draft·TurnResult는 JSON과 같은 **camelCase 키의 dict**. 경계에서 Pydantic으로 검증(`core.actions.parse_action`, `core.turn.parse_intent`, `core.turn.parse_turn_result`, `core.actions.parse_observation`) — 원본 Zod와 같은 자리. 모델 안의 선택 항목은 `exclude_none`으로 빠진다(JS의 undefined). 사이트 프로필·결과 객체(`FieldProfile`, `WebOutcome`, `GroundedAnswer`, `PageDigest`)는 dataclass.
 - **JS 동작 맞춤** `core/jsutil.py`: 정규식은 `regex` 모듈(`rx`, 가변 길이 lookbehind·`\p{..}` 지원). **JS의 `\b`·`\w`는 ASCII라 한글 옆에서 경계가 생기지만 Python은 아니다** → 원본 `\b` 자리에 `B`(ASCII 경계)를 쓴다. `jdumps`=JSON.stringify(한글 그대로), `parse_url`=new URL(잘못되면 ValueError), `AbortController`/`race_abort`(멈춤 신호), `js_round`(0.5 올림), `uniq`(순서 있는 Set).
@@ -44,10 +44,10 @@ npm --prefix apps/desktop install && npm --prefix apps/desktop start     # 데�
 - **⑥ `speech/`**: 말로 내보낼 문장. `phrasing.py`(조사 `josa`, 항목 이름 읽기 `speak_label`, 날짜 읽기 `speak_date`, 긴 글 나누기 `chunk_text`, 입력값 되읽기 `readback`), `screen.py`의 `Narrator`(화면·입력 칸·버튼·팝업 설명, 페이지 소개, 본문 요약, 한 번만 하는 안내 `once`). `speech/__init__`은 `phrasing`만 다시 내보낸다.
 - **`personal/`**: 개인 정보 금고·신청 기록(`store.py`, 파일 권한 600)과 명령 이해·기한 알림(`commands.py`), 금고 저장·삭제 확인과 명령 실행 `dialogue.py`(`PersonalDialogue`).
 - **`core/`**: 단계 공통. `actions.py`(Action/Observation 계약), `turn.py`(의도·TurnResult 스키마, 응답 초안 `draft()`), `dialogue.py`(`DialogueState`: 읽기 전용 속성 + 이름 붙은 동작, docstring에 호출하는 곳), `llm.py`(OpenAI 호환 strict `json_schema` 호출, 모델 ID는 `.env`로만, HTTP는 httpx, `SIMPLE_TEXT_SCHEMA`), `events.py`(비식별 이벤트), `jsutil.py`. `core/__init__`은 다시 내보내지 않는다 — 모듈에서 바로 가져온다.
-- **server/**: `runtime.py`(조립, 브라우저 1개 공유·세션마다 격리 컨텍스트), `app.py`(FastAPI, REST 경로·오류 코드는 원본과 같음), `__main__.py`(uvicorn, `--desktop`이면 CSP·실제 사이트 모드·`IEUM_PARENT_PIPE=1`일 때 stdin이 닫히면 종료).
+- **server/**: `runtime.py`(조립, 브라우저 1개 공유·세션마다 격리 컨텍스트), `app.py`(FastAPI, REST 경로·오류 코드는 원본과 같음), `__main__.py`(uvicorn, `--desktop`이면 CSP·실제 사이트 모드·`CHEONGEUM_PARENT_PIPE=1`일 때 stdin이 닫히면 종료).
 - **web/static/**: 바닐라 JS 웹 UI. `index.html`에 골격, `app.js`가 상태를 바꾸고 해당 부분만 다시 그린다(입력란·버튼을 다시 만들지 않아 포커스 유지). 음성은 `mic.js`(① 듣기: 브라우저 인식·녹음·VAD 루프·끼어들기·박수)와 `speaker.js`(⑥ 말하기: 브라우저·서버 TTS 이어 재생·신호음)로 나누고, 둘이 함께 쓰는 대화 언어와 AudioContext 하나는 `audio.js`. 이 셋과 `api.js`는 원본 TS(voice.ts·api.ts)에서 타입만 뺀 것.
 - **practice_site/**: 모의 신청 사이트(`site/`) + 합성 외부 포털 `external.html`. `127.0.0.1:5174`로 열면 출처가 달라 외부(read-only) 사이트로 취급 — 그래서 IPv4·IPv6 모두에서 듣는다. 윈도에서 `.js` MIME을 직접 정한다. 서버가 기본으로 띄우므로 런타임 패키지에 둔다.
-- **apps/desktop**: Electron 셸(빌드 없음). 파이썬은 `IEUM_PYTHON` → `.venv` → `uv run`.
+- **apps/desktop**: Electron 셸(빌드 없음). 파이썬은 `CHEONGEUM_PYTHON` → `.venv` → `uv run`.
 
 ## Conventions that matter here
 
