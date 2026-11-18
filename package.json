@@ -16,8 +16,9 @@
     "test-parity": "node scripts/test-parity.ts",
     "dev:web": "vite",
     "build:web": "vite build",
-    "start": "uv run cheongeum-server",
-    "eval": "uv run python scripts/run_scenarios.py"
+    "start": "node --env-file-if-exists=.env src/server/main.ts",
+    "eval": "uv run python scripts/run_scenarios.py",
+    "record:observations": "uv run python scripts/record_observations.py"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
@@ -28,11 +29,20 @@
     "typescript": "~6.0.0",
     "typescript-eslint": "^8.73.0",
     "vite": "^8.3.8",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "@huggingface/tokenizers": "0.2.0"
   },
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@hono/node-server": "2.1.9",
+    "@napi-rs/keyring": "2.1.2",
+    "entities": "9.0.0",
+    "fast-xml-parser": "5.12.1",
+    "fflate": "0.8.3",
+    "hono": "4.13.19",
+    "playwright": "1.65.1",
+    "unpdf": "2.2.1"
   }
 }

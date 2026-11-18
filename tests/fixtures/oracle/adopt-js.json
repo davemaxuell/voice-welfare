@@ -1,1 +1,48 @@
-[]
+[
+  {
+    "kind": "pii-tokenizer",
+    "model": "atonlee/koelectra-ko-pii-ner",
+    "package": "@huggingface/tokenizers@0.2.0",
+    "comparison": {
+      "inputs": 1613,
+      "idDifferences": 0,
+      "offsetDifferences": 1613,
+      "missingOffsets": 1613
+    },
+    "runtime": "python-sidecar",
+    "reason": "The JS encoder returns the same token IDs as the native tokenizer, but omits original-text offsets. Redaction needs those code-point offsets for unknown and normalized tokens. Run node scripts/check-pii-tokenizer.mjs to repeat the comparison."
+  },
+  {
+    "kind": "digest-main-window",
+    "fn": "agents.web.digest.digest_for_llm",
+    "input": "😀안내 900101-1234567 끝",
+    "offset": 0,
+    "mainChars": 9,
+    "python": "😀안내 90010",
+    "typescript": "😀안내 [비공개]",
+    "reason": "The Python digest cuts before scanning, which exposes part of a resident number at a page boundary. Scan and mask the whole main text before choosing a window. Keep read_more/find coordinates in original code points and show a full mask in every window intersecting a secret."
+  },
+  {
+    "kind": "application-id-collision",
+    "fn": "personal.store.PersonalStore.add_application",
+    "reason": "Two applications recorded within the same millisecond share an ID in Python. Allocate the next unused millisecond ID in TypeScript so updating a deadline or marking an application complete changes only the selected record."
+  },
+  {
+    "kind": "approval-action-count",
+    "fn": "agents.web.approval.recheck",
+    "test": "an added or removed assist action cancels the entire approval",
+    "reason": "Python compares only overlapping action positions. A changed number of proposed actions invalidates the approval before any action ID is granted. Execute the checked snapshot so later changes to the pending object cannot change what is performed."
+  },
+  {
+    "kind": "guided-auth-origin",
+    "fn": "agents.web.skills.guided.GuidedFill.resume_after_auth",
+    "test": "guided auth redirects ask the new site for vault permission",
+    "reason": "Python retains the previous origin and keeps all visible fields after authentication. TypeScript checks the redirected origin before offering saved values and rechecks which fields remain eligible for voice input."
+  },
+  {
+    "kind": "download-original-filename",
+    "fn": "agents.web.downloads.DownloadStore.read_latest",
+    "test": "reads a downloaded HWPX using its original filename in an ephemeral browser session",
+    "reason": "Chromium stores temporary downloads under extensionless UUIDs. Python selects the parser from that UUID and rejects the file. TypeScript selects the parser from the original filename and reads the bytes from Chromium's stored path."
+  }
+]
