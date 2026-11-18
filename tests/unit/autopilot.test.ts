@@ -61,6 +61,18 @@ it("잘못된 모델 응답을 한 번 다시 묻고 열 단계에서 멈춘다"
   expect(result.steps).toHaveLength(10);
 });
 
+it("test_unknown_action_uses_a_step_and_continues", async () => {
+  let calls = 0;
+  const asked = await pilot(async () => ++calls <= 2 ? { action: "scroll" } : { action: "ask_user", answer: "어느 사이트에서 찾아볼까요?" }).run("알려줘", context());
+  expect(asked).toMatchObject({ status: "asked", speech: "어느 사이트에서 찾아볼까요?", steps: [] });
+  expect(calls).toBe(3);
+
+  calls = 0;
+  const stuck = await pilot(async () => { calls++; return { action: "scroll" }; }).run("알려줘", context());
+  expect(stuck).toMatchObject({ status: "limit", steps: [] });
+  expect(calls).toBe(10);
+});
+
 it("모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 멈춘다", async () => {
   const result = await pilot(() => new Promise(() => {}), { timeBudgetMs: 30 }).run("알려줘", context());
   expect(result.status).toBe("limit");
