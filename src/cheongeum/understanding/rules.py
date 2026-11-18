@@ -7,6 +7,7 @@ from typing import Protocol, Sequence
 import regex
 
 from cheongeum.core.jsutil import B, I, rx
+from cheongeum.understanding.filters import strip_address
 from cheongeum.understanding.sites import mentions_known_site
 
 
@@ -43,6 +44,28 @@ def is_stop_utterance(text: str) -> bool:
     return bool(STOP_RE.search(text)) and not rx(r"(취소\s*(하지|안)|멈추지\s*마)").search(text)
 
 
+# 진행 상황 물음: "지금 어디까지 했어?", "얼마나 남았어?", "아직 멀었어?", "지금 뭐 하고 있어?".
+# 말 첫머리에서만 본다("신청 기한 얼마나 남았어?"는 아님).
+_PROGRESS = rx(
+    r"^(?:지금|현재|아직|그거)?\s*(?:"
+    r"어디까지\s*(?:했|됐|왔|갔|진행|하고\s*있)"
+    r"|얼마나\s*(?:남았|했|됐|걸려|더\s*걸려|진행)"
+    r"|(?:뭐|뭘|무엇을?)\s*(?:하고\s*있|하는\s*중)"
+    r"|멀었"
+    r"|언제\s*(?:끝나|다\s*돼)"
+    r")"
+)
+
+
+def is_progress_question(text: str) -> bool:
+    """
+    멈춤처럼 규칙으로만 판정한다: 일하는 중에도 턴 대기열을 거치지 않고 바로 답하기 위해. 맨 앞의 부름말은 떼고 본다.
+    다른 명령이 붙은 긴 말은 아니라고 본다(물음에만 답하고 뒤의 명령을 버리지 않게).
+    """
+    t = strip_address(text)
+    return len(t) <= 20 and bool(_PROGRESS.search(t))
+
+
 QUOTES = rx(r"""^["'“”‘’「」]+|["'“”‘’「」.,!?。]+$""")
 
 
@@ -61,6 +84,20 @@ def _short(t: str) -> bool:
 
 
 _SERVICE_REF = rx(r"([가-힣]{2,12}(?:연금|수당|급여|바우처|지원금|장려금|지원사업))")
+# 찾기 결과 목록 속 제도를 순서로 가리킴("두 번째 제도"). 입력 항목 설명(EXPLAIN)이 아니다.
+_LISTED_SERVICE = rx(r"(첫|두|세|네|다섯|\d{1,2})\s*번\s*째\s*(제도|복지|서비스|혜택)")
+
+# 할 수 있는 말 안내: "뭐라고 말하면 돼?", "뭘 할 수 있어?", "도움말", "사용법 알려줘", "명령어 알려줘", "다른 말도 알려줘".
+# 말 앞쪽에서만 본다("이 사이트에서 뭘 할 수 있어?"는 사이트 소개). "다른 말로 해줘"는 쉬운 말 다시 설명이라 뺀다.
+_WHAT_CAN_I_SAY = rx(
+    r"^(?:(?:너|넌|너는|청음|청음은|청음이는)\s*)?(?:"
+    r"(?:뭐라고|어떻게)\s*(?:말|얘기)\s*(?:하면|해야)|뭐라고\s*(?:하면|해야)"
+    r"|(?:뭐라고|무슨\s*말을?)\s*(?:말\s*)?할\s*수\s*있"
+    r"|(?:뭘|뭐|무엇을?)\s*할\s*수\s*있|할\s*수\s*있는\s*(?:말|것|거|게)"
+    r"|도움말|사용\s*법|사용\s*방법|명령어|다른\s*(?:말|명령)(?!\s*로))"
+)
+# 지난 안내에 이어서: "다른 말도 알려줘", "도움말 더"
+_HELP_MORE = rx(r"^다른|(?:^|\s)(?:더|또)(?:\s|$)")
 
 
 class RuleBasedIntentProvider:
@@ -120,17 +157,27 @@ class RuleBasedIntentProvider:
 
         if is_stop_utterance(text):
             return {"type": "STOP"}
+        if is_progress_question(text):
+            return {"type": "PROGRESS"}
         if has(r"(다시\s*시작|재개|계속\s*(해|하자|진행))"):
             return {"type": "RESUME"}
         if has(r"(거절|승인\s*안|하지\s*마|안\s*할래)") or (
             state == "WAITING_FOR_USER_CONFIRMATION" and has(r"^(아니|아뇨|아니요|아니야|틀렸어|취소)")
         ):
             return {"type": "REJECT"}
-        if has(r"승인") or (state == "WAITING_FOR_USER_CONFIRMATION" and has(r"^(네|예|응)[,\s]*(접수해|진행해|좋아)?")):
+        if has(r"승인") or (state == "WAITING_FOR_USER_CONFIRMATION" and has(r"^(네|예|응|눌러|진행)[,\s]*(접수해|진행해|좋아)?")):
             return {"type": "APPROVE"}
-        if has(r"(인증|로그인).*(끝났|완료|했어)"):
+        if has(r"(인증|로그인).*(끝났|완료|했어)") or (state == "AUTH_HANDOFF" and has(r"^다\s*했어")):
             return {"type": "AUTH_DONE"}
-        if has(r"(로그인|본인\s*인증|간편\s*인증)"):
+        # 로그아웃·로그인 기록 삭제(로그인보다 먼저: '로그아웃'에 '로그인'이 들어 있음)
+        if has(r"로그\s*아웃|로그인\s*(기록|쿠키|정보).*(지워|삭제|없애)|로그인\s*풀어"):
+            return {"type": "CLEAR_LOGIN"}
+        if has(r"(받은\s*파일|다운로드).*(읽어|들려|알려|목록|뭐\s*있)|파일\s*읽어"):
+            return {"type": "READ_DOWNLOAD", "list": bool(has(r"목록|뭐\s*있|어떤"))}
+        # 로그인 화면에서 아이디·비밀번호를 직접 넣은 뒤의 "다 입력했어": 로그인 버튼을 (확인받고) 누를 차례
+        if state == "AUTH_HANDOFF" and has(r"^(다\s*)?(입력|넣었)"):
+            return {"type": "LOGIN"}
+        if has(r"(로그인|본인\s*인증|간편\s*인증)") and not has(r"로그\s*아웃"):
             return {"type": "LOGIN"}
         if has(r"(접수|제출)") and has(r"(확인했|확인할게|최종|해\s*줘|해$|할게|하자|진행)"):
             return {"type": "PREPARE_SUBMIT"}
@@ -138,6 +185,8 @@ class RuleBasedIntentProvider:
             return {"type": "PREPARE_SUBMIT"}
         if has(r"(사람|상담원|상담사).*(도움|연결|바꿔)|도움\s*요청"):
             return {"type": "HELP_HUMAN"}
+        if _WHAT_CAN_I_SAY.search(text):
+            return {"type": "WHAT_CAN_I_SAY", "more": bool(_HELP_MORE.search(text))}
         if has(
             r"(이|여기|지금|이곳)\s*(사이트|홈페이지|누리집|웹사이트|곳)\S*\s*(뭐|무슨|어떤|뭘|뭐\s*하는)|(무슨|어떤|뭐\s*하는)\s*(사이트|홈페이지|누리집|곳)(이야|야|인가요|예요|이에요|인지)"
         ):
@@ -190,12 +239,15 @@ class RuleBasedIntentProvider:
             r"(쉽게\s*(다시\s*)?(말해|설명|얘기)|무슨\s*말(이야|인지|이에요)|이해가?\s*(안|잘\s*안)\s*(돼|가)|못\s*알아듣|다시\s*(한\s*번\s*)?말해\s*줘|천천히\s*(다시\s*)?말해)"
         ) and not self.mention(text):
             return {"type": "REPHRASE"}
-        if has(r"(무슨\s*뜻|뜻이|뜻은|의미|설명해|뭘\s*써야|뭐\s*쓰는)"):
+        if has(r"(무슨\s*뜻|뜻이|뜻은|의미|설명해|뭘\s*써야|뭐\s*쓰는)") and not _LISTED_SERVICE.search(text):
             m = self.mention(text)
             return {"type": "EXPLAIN", "fieldMention": m} if m else {"type": "EXPLAIN"}
         if has(
             r"(지원\s*대상|신청\s*(방법|절차)|선정\s*기준|소득인정액|자격|받을\s*수\s*있|누가\s*받|얼마\s*(받|나와|줘|지급)|지원\s*금액|지급액|필요한?\s*서류|서식|어디에?\s*문의)"
-        ):
+        ) and not has(r"(눌러|클릭)"):
+            return {"type": "POLICY_QUESTION", "topic": text}
+        # "지금 신청할 수 있어?"는 신청 시작이 아니라 기간 확인(START_APPLICATION보다 먼저).
+        if has(r"(지금|현재).*(신청|접수).*(할\s*수|가능|돼|되나)|(신청|접수)\s*(기간|마감|기한)") and not has(r"(눌러|클릭|열어|시작|도와)"):
             return {"type": "POLICY_QUESTION", "topic": text}
         if (has(r"장애인\s*연금") and has(r"(신청|도와)") and not has(r"검색")) or has(r"신청\s*(페이지|화면|서)?\s*(를|을)?\s*(열어|시작|도와)"):
             return {"type": "START_APPLICATION"}

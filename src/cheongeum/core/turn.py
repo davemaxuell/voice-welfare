@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal, Optional, Protocol, Union
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 from cheongeum.core.actions import Action, ActionResult, ObservedField, StepInfo
+from cheongeum.core.intents import INTENTS
 from cheongeum.core.jsutil import AbortSignal, is_valid_url
 
 # PRD §6 상태 머신. 앞쪽은 턴 처리 파이프라인 단계, 뒤쪽은 턴 사이에 유지되는 세션 상태.
@@ -108,11 +109,6 @@ class _M(BaseModel):
 # ---------------------------------------------------------------- Intent
 
 
-class Fill(_M):
-    fieldMention: str = Field(min_length=1)
-    value: str = Field(min_length=1, max_length=200)
-
-
 def _intent(intent_type: str, /, **fields: Any):
     ns: dict[str, Any] = {"__annotations__": {"type": Literal[intent_type]}}  # type: ignore[valid-type]
     for k, (ann, default) in fields.items():
@@ -121,43 +117,9 @@ def _intent(intent_type: str, /, **fields: Any):
     return type(f"Intent_{intent_type}", (_M,), ns)
 
 
-_REQ = ...
-INTENT_MODELS = [
-    _intent("START_APPLICATION"),
-    _intent("LOGIN"),
-    _intent("AUTH_DONE"),
-    _intent("FILL", fills=(Annotated[list[Fill], Field(min_length=1, max_length=5)], _REQ)),
-    _intent("READ_FIELD", fieldMention=(Annotated[str, Field(min_length=1)], _REQ)),
-    _intent("EDIT_FIELD", fieldMention=(Annotated[str, Field(min_length=1)], _REQ)),
-    _intent("NEXT"),
-    _intent("PREV"),
-    _intent("REVIEW"),
-    _intent("EXPLAIN", fieldMention=(Optional[str], None)),
-    _intent("PREPARE_SUBMIT"),
-    _intent("APPROVE"),
-    _intent("REJECT"),
-    _intent("STOP"),
-    _intent("RESUME"),
-    _intent("CURRENT_STEP"),
-    _intent("DESCRIBE_SCREEN"),
-    _intent("ABOUT_SITE"),
-    _intent("REPHRASE"),
-    _intent("OPEN_BROWSER"),
-    _intent("DISCOVER"),
-    _intent("SERVICE_DETAIL", service=(Optional[str], None)),
-    _intent("PRECHECK", service=(Optional[str], None)),
-    _intent("PREPARE_APPLY", service=(Optional[str], None)),
-    _intent("GOAL", goal=(Annotated[str, Field(min_length=2, max_length=200)], _REQ)),
-    _intent("OPEN_SITE", target=(Annotated[str, Field(min_length=1)], _REQ)),
-    _intent("FOLLOW_LINK", name=(Annotated[str, Field(min_length=1)], _REQ)),
-    _intent("READ_MAIN", more=(bool, _REQ)),
-    _intent("LIST_LINKS", more=(bool, _REQ)),
-    _intent("SEARCH", query=(Annotated[str, Field(min_length=1, max_length=100)], _REQ), site=(Optional[str], None)),
-    _intent("POLICY_QUESTION", topic=(str, _REQ)),
-    _intent("HELP_HUMAN"),
-    _intent("UNKNOWN", text=(str, _REQ)),
-]
-INTENT_TYPES = tuple(m.model_fields["type"].annotation.__args__[0] for m in INTENT_MODELS)  # type: ignore[union-attr]
+# 의도 종류와 매개변수는 의도 표(core/intents.py)에서
+INTENT_MODELS = [_intent(i.type, **i.params) for i in INTENTS]
+INTENT_TYPES = tuple(i.type for i in INTENTS)
 _IntentUnion = Annotated[Union[tuple(INTENT_MODELS)], Field(discriminator="type")]  # type: ignore[valid-type]
 _intent_adapter: TypeAdapter = TypeAdapter(_IntentUnion)
 
@@ -229,6 +191,7 @@ SEMANTIC_ACTIONS = (
     "web-answer",
     "open-site",
     "follow-link",
+    "confirm-click",
     "back",
     "read-main",
     "list-links",
@@ -239,6 +202,7 @@ SEMANTIC_ACTIONS = (
     "edit-field",
     "clarify",
     "help",
+    "help-list",
     "none",
 )
 SemanticAction = Literal[
@@ -269,6 +233,7 @@ SemanticAction = Literal[
     "web-answer",
     "open-site",
     "follow-link",
+    "confirm-click",
     "back",
     "read-main",
     "list-links",
@@ -279,6 +244,7 @@ SemanticAction = Literal[
     "edit-field",
     "clarify",
     "help",
+    "help-list",
     "none",
 ]
 
@@ -347,6 +313,15 @@ class Flags(_M):
     masked: bool
 
 
+class SpeechPrefs(_M):
+    """말하기 설정(속도·답 길이·목소리·진행 알림). UI가 브라우저 TTS에 반영한다."""
+
+    rate: float = 1.25
+    length: Literal["short", "normal", "detailed"] = "normal"
+    voice: Optional[str] = None
+    progressSpoken: bool = True
+
+
 class TurnResult(_M):
     sessionId: str
     turnId: str
@@ -375,6 +350,7 @@ class TurnResult(_M):
     realSubmission: Literal[False]
     flags: Flags
     latencyMs: int = Field(ge=0)
+    speechPrefs: Optional[SpeechPrefs] = None
 
 
 def parse_turn_result(d: dict) -> dict:

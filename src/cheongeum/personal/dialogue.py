@@ -7,14 +7,34 @@ from cheongeum.core.dialogue import DialogueState
 from cheongeum.core.jsutil import rx
 from cheongeum.core.turn import draft
 from cheongeum.personal.commands import days_until, vault_key_for_label
-from cheongeum.personal.store import VAULT_LABELS, PersonalStore
+from cheongeum.personal.store import SPEECH_LABELS, VAULT_LABELS, PersonalStore
 from cheongeum.speech.phrasing import speak_date
+
+_LENGTH_KO = {"short": "짧게", "normal": "보통", "detailed": "자세히"}
+
+
+def _speak_speech(prefs: dict) -> str:
+    """말하기 설정을 한 문장으로."""
+    rate = prefs.get("rate", 1.25)
+    if rate <= 1.0:
+        speed = "천천히"
+    elif rate >= 1.4:
+        speed = "빨리"
+    else:
+        speed = "보통"
+    length = _LENGTH_KO.get(prefs.get("length") or "normal", "보통")
+    voice = prefs.get("voice") or "기본"
+    progress = "켭니다" if prefs.get("progressSpoken", True) else "끕니다"
+    return f"{SPEECH_LABELS['rate']}는 {speed}, {SPEECH_LABELS['length']}는 {length}, {SPEECH_LABELS['voice']}는 {voice}, {SPEECH_LABELS['progressSpoken']}은 {progress}."
 
 
 class PersonalDialogue:
-    def __init__(self, store: PersonalStore, dialogue: DialogueState) -> None:
+    def __init__(self, store: PersonalStore, dialogue: DialogueState, on_speech=None, action_log=None) -> None:
         self._store = store
         self.dialogue = dialogue
+        # 말하기 설정이 바뀌면 오케스트레이터가 Progress.spoken 등을 맞춘다
+        self._on_speech = on_speech
+        self._action_log = action_log
 
     def saved_for(self, label: str) -> str | None:
         """입력 칸 이름에 맞는 금고 값(없으면 None)"""
@@ -116,4 +136,28 @@ class PersonalDialogue:
                 return draft(self.dialogue.state, "clarify", "어떤 신청이 끝났는지 제도 이름을 말씀해 주세요.")
             self._store.update_application(target["id"], {"done": True})
             return draft(self.dialogue.state, "none", f"{target['service']} 신청을 끝난 것으로 표시했어요. 수고하셨어요.")
+        if kind == "speech-read":
+            return draft(self.dialogue.state, "none", _speak_speech(self._store.speech()))
+        if kind == "speech-clear":
+            prefs = self._store.clear_speech()
+            if self._on_speech:
+                self._on_speech(prefs)
+            return draft(self.dialogue.state, "none", f"말하기 설정을 기본값으로 돌렸어요. {_speak_speech(prefs)}")
+        if kind == "speech-set":
+            prefs = self._store.save_speech(cmd.get("values") or {})
+            if self._on_speech:
+                self._on_speech(prefs)
+            return draft(self.dialogue.state, "none", f"알겠어요. {_speak_speech(prefs)}")
+        if kind == "action-log-read":
+            if self._action_log is None:
+                return draft(self.dialogue.state, "none", "조작 기록을 이 세션에서는 쓰지 않아요.")
+            return draft(self.dialogue.state, "none", self._action_log.speak_recent(5))
+        if kind == "site-allow-read":
+            sites = self._store.allowed_sites()
+            if not sites:
+                return draft(self.dialogue.state, "none", "저장된 정보를 쓰도록 허용한 사이트가 없어요.")
+            return draft(self.dialogue.state, "none", f"허용한 사이트는 {', '.join(sites)}이에요.")
+        if kind == "site-allow-clear":
+            self._store.revoke_site()
+            return draft(self.dialogue.state, "none", "사이트별 정보 공유 허용을 모두 지웠어요.")
         return None

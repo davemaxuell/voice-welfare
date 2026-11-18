@@ -99,6 +99,36 @@ def test_digest_for_llm_is_smaller():
     assert len(jdumps(small)) < len(jdumps(v["outline"])) / 3
 
 
+def test_digest_ranks_menu_buttons_over_screen_tools():
+    tools = ["글자 작게", "글자 크게", "화면 인쇄", "English", "中文", "日本語", "이전 배너", "다음 배너", "공유하기", "맨 위로", "본문 바로가기"]
+    menu = ["복지서비스", "서비스 찾기", "복지지도"]
+    buttons = [{"name": n, "disabled": False} for n in [*tools, *menu]]
+    shown = [x["name"] for x in digest_for_llm(digest_page(view(outline={**OUTLINE, "buttons": buttons})))["items"]]
+    assert set(menu) <= set(shown)
+    assert not set(tools) & set(shown)
+
+
+def test_digest_gives_spare_room_to_buttons():
+    buttons = [{"name": f"메뉴 {i}", "disabled": False} for i in range(40)]
+    page = digest_for_llm(digest_page(view(outline={**OUTLINE, "links": ["가나", "다라"], "mainLinks": ["가나", "다라"], "buttons": buttons})))
+    assert len([x for x in page["items"] if x["kind"] == "button"]) == 40
+    assert len(page["items"]) <= 30 + 12 + 12
+
+
+def test_digest_lists_tabs_and_expanders_first_with_state():
+    def item(role, name, **state):
+        return {"ref": name, "role": role, "name": name, "region": "main", "disabled": False, **state}
+
+    items = [item("button", "더 보기"), item("button", "서류 안내", expanded=False), item("tab", "지원대상", selected=True), item("tab", "신청방법", selected=False)]
+    page = digest_for_llm(digest_page(view(outline={**OUTLINE, "items": items})))
+    assert page["items"] == [
+        {"kind": "tab", "name": "지원대상", "selected": True},
+        {"kind": "tab", "name": "신청방법", "selected": False},
+        {"kind": "button", "name": "서류 안내", "expanded": False},
+        {"kind": "button", "name": "더 보기"},
+    ]
+
+
 def test_readable_body():
     lines = [
         "로그아웃", "복지소식", "복지로 소개", "고객센터", "사이트맵", "복지서비스 상세(중앙)", "즐겨찾기", "찜하기",

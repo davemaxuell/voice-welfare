@@ -1,0 +1,83 @@
+id,lang,kind,text,read_as,expect
+k01,ko,command,장애인연금 신청 도와줘,,
+k02,ko,command,다음으로 가줘,,
+k03,ko,command,이전으로 가줘,,
+k04,ko,command,화면 설명해줘,,
+k05,ko,command,지금 몇 단계야,,
+k06,ko,command,지금까지 쓴 내용 읽어줘,,
+k07,ko,command,최종 확인할게,,
+k08,ko,command,모의접수 승인,,
+k09,ko,command,거절,,
+k10,ko,command,다시 시작,,
+k11,ko,command,네이버 열어줘,,
+k12,ko,command,복지로에서 기초연금 검색해줘,,
+k13,ko,command,본문 읽어줘,,
+k14,ko,command,링크 목록 알려줘,,
+k15,ko,command,두 번째 링크 열어줘,,
+k16,ko,command,장애인연금 대상이 누구야,,
+k17,ko,command,나한테 맞는 복지 찾아줘,,
+k18,ko,command,로그인하고 싶어,,
+k19,ko,command,인증 끝났어,,
+k20,ko,command,하나씩 채워줘,,
+k21,ko,command,주소 수정할게,,
+k22,ko,command,실거주지 칸이 뭐야,,
+k23,ko,command,사람 상담원 연결해줘,,
+k24,ko,command,크롬 열어줘,,
+k25,ko,command,쉬운 말로 다시 설명해줘,,
+k26,ko,stop,멈춰,,
+k27,ko,stop,그만,,
+k28,ko,stop,잠깐 멈춰 줘,,
+k29,ko,value,이름은 김하늘,,
+k30,ko,value,주소는 부산광역시 예시구 예시로 10,주소는 부산광역시 예시구 예시로 십,
+k31,ko,value,실거주지는 부산광역시 해운대구 센텀중앙로 55 101동 1203호,실거주지는 부산광역시 해운대구 센텀중앙로 오십오 백일동 천이백삼호,
+k32,ko,value,가구원 수는 세 명이야,,
+k33,ko,value,이름은 박서준이고 주소는 서울특별시 종로구 세종대로 209,이름은 박서준이고 주소는 서울특별시 종로구 세종대로 이백구,
+k34,ko,value,이메일은 haneul.kim@example.com,이메일은 하늘 점 김 골뱅이 이그잼플 닷컴,
+k35,ko,number,연락처는 010-1234-5678,연락처는 공일공 일이삼사 오육칠팔,
+k36,ko,number,전화번호 010-9876-5432로 바꿔줘,전화번호 공일공 구팔칠육 오사삼이로 바꿔줘,
+k37,ko,number,생년월일은 1958년 3월 15일,생년월일은 천구백오십팔년 삼월 십오일,
+k38,ko,number,우편번호는 48058,우편번호는 사팔공오팔,
+k39,ko,number,101동 1203호,백일동 천이백삼호,
+k40,ko,number,소득은 월 120만 원이야,소득은 월 백이십만 원이야,
+k41,ko,number,연락처 010 5555 0101,연락처 공일공 오오오오 공일공일,
+k42,ko,number,2번 링크 열어줘,이번 링크 열어줘,
+k43,ko,secret,비밀번호는 사과나무야,,secret
+k44,ko,secret,비밀번호는 1234야,비밀번호는 일이삼사야,secret
+k45,ko,secret,주민번호 900101-1234567,주민번호 구공공일공일 일이삼사오육칠,secret
+k46,ko,secret,인증번호는 482913,인증번호는 사팔이구일삼,secret
+k47,ko,secret,계좌번호는 110-123-456789,계좌번호는 일일공 일이삼 사오육칠팔구,secret
+k48,ko,secret,카드번호 1234 5678 9012 3456,카드번호 일이삼사 오육칠팔 구공일이 삼사오육,secret
+k49,ko,notsecret,비밀번호 칸이 어디야,,not-secret
+k50,ko,notsecret,비밀번호를 잊어버렸어,,not-secret
+k51,ko,notsecret,암호화폐 지원금 알려줘,,not-secret
+k52,ko,switch,영어로 말해줘,,en
+k53,ko,switch,English please,(한국어 모드에서 영어로) English please,en
+k54,ko,switch,중국어로 바꿔줘,,zh
+k55,ko,switch,일본어로 해줘,,ja
+k56,ko,command,소득 재산 신고는 어떻게 해,,
+k57,ko,command,장애인 활동지원 서비스 신청하고 싶어,,
+k58,ko,command,주민센터 운영 시간 알려줘,,
+k59,ko,command,기초생활수급자 자격 알려줘,,
+k60,ko,command,보건복지상담센터 백이십구에 전화하고 싶어,,
+e01,en,foreign,Open Naver,,
+e02,en,foreign,Read the main text,,
+e03,en,foreign,Go to the next step,,
+e04,en,foreign,What is the disability pension,,
+e05,en,stop,Stop,,
+e06,en,switch,Switch to Korean please,,ko
+z01,zh,foreign,打开Naver,,
+z02,zh,foreign,读一下正文,,
+z03,zh,foreign,下一步,,
+z04,zh,foreign,残疾人养老金是什么,,
+z05,zh,stop,停止,,
+z06,zh,switch,请说韩语,,ko
+j01,ja,foreign,ネイバーを開いて,,
+j02,ja,foreign,本文を読んで,,
+j03,ja,foreign,次へ進んで,,
+j04,ja,foreign,障害者年金とは何ですか,,
+j05,ja,stop,止まって,,
+j06,ja,switch,韓国語で話して,,ko
+s01,ko,silence,,(5초 동안 아무 말 하지 않기),
+s02,ko,silence,,(10초 동안 아무 말 하지 않기),
+s03,ko,silence,,(말없이 키보드 치는 소리 5초),
+s04,ko,silence,,(말없이 TV나 생활 소음 10초),

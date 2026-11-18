@@ -84,9 +84,51 @@ def _js_date(year: int, month: int, day: int) -> date:
 SERVICE = rx(r"([가-힣]{2,20}(?:연금|수당|급여|바우처|지원금|장려금|지원|사업|감면|할인|보험료))")
 
 
-def parse_personal_command(text: str) -> dict | None:
-    """금고·신청 기록 명령인지(규칙). 아니면 None. → {'kind': ...}"""
+def parse_speech_pref(text: str) -> dict | None:
+    """말하기 설정 명령 → {'kind': 'speech-…'} 또는 None. 확인 없이 바로 반영한다."""
     t = rx(r"\s+").sub(" ", text).strip()
+    if rx(r"(말하기\s*)?(설정|음성\s*설정)\s*(알려|읽어|뭐|확인)").search(t) or rx(r"(말하는\s*속도|답\s*길이|목소리|진행\s*상황)\s*(알려|읽어)").search(t):
+        return {"kind": "speech-read"}
+    if rx(r"(말하기\s*)?(설정|음성\s*설정)\s*(지워|초기화|기본)").search(t):
+        return {"kind": "speech-clear"}
+    if rx(r"(진행\s*상황|중간\s*보고).*(말해|알려|켜)|진행\s*상황\s*말해").search(t):
+        return {"kind": "speech-set", "values": {"progressSpoken": True}}
+    if rx(r"(진행\s*상황|중간\s*보고).*(끄|조용|그만)|조용히\s*해").search(t):
+        return {"kind": "speech-set", "values": {"progressSpoken": False}}
+    if rx(r"(천천히|느리게)\s*(말해|말해줘|읽어)").search(t) or t in ("천천히", "천천히 말해줘"):
+        return {"kind": "speech-set", "values": {"rate": 0.9}}
+    if rx(r"(빨리|빠르게)\s*(말해|말해줘|읽어)").search(t) or t in ("빨리", "빨리 말해줘"):
+        return {"kind": "speech-set", "values": {"rate": 1.5}}
+    if rx(r"(보통\s*속도|원래\s*속도|속도\s*원래)").search(t):
+        return {"kind": "speech-set", "values": {"rate": 1.25}}
+    if rx(r"(짧게|간단히|짧게만)\s*(말해|말해줘|답)").search(t) or t in ("짧게", "짧게 말해줘"):
+        return {"kind": "speech-set", "values": {"length": "short"}}
+    if rx(r"(자세히|길게|자세히만)\s*(말해|말해줘|답)").search(t) or t in ("자세히", "자세히 말해줘"):
+        return {"kind": "speech-set", "values": {"length": "detailed"}}
+    if rx(r"(보통\s*길이|답\s*길이\s*원래)").search(t):
+        return {"kind": "speech-set", "values": {"length": "normal"}}
+    vm = rx(r"목소리\s*(?:는|을|를)?\s*(.+?)(?:으로|로)?\s*(?:해\s*줘|해줘|바꿔|변경)?$").search(t)
+    if vm and not rx(r"(알려|읽어|뭐)").search(t):
+        name = vm.group(1).strip()
+        if name in ("기본", "원래", "기본값"):
+            return {"kind": "speech-set", "values": {"voice": None}}
+        if 1 < len(name) <= 40:
+            return {"kind": "speech-set", "values": {"voice": name}}
+    return None
+
+
+def parse_personal_command(text: str) -> dict | None:
+    """금고·신청 기록·말하기 설정·오늘 한 일 명령인지(규칙). 아니면 None. → {'kind': ...}"""
+    t = rx(r"\s+").sub(" ", text).strip()
+    speech = parse_speech_pref(t)
+    if speech:
+        return speech
+    if rx(r"(오늘\s*)?(한\s*일|한\s*거|조작\s*기록|행동\s*기록)\s*(들려|알려|읽어)|오늘\s*(뭐\s*했|한\s*일)").search(t):
+        return {"kind": "action-log-read"}
+    if rx(r"(정보\s*공유|사이트\s*허용|허용한\s*사이트|공유\s*허용).*(알려|읽어|뭐|목록)").search(t) or rx(r"어느\s*사이트.*(정보|허용)").search(t):
+        return {"kind": "site-allow-read"}
+    if rx(r"(정보\s*공유|사이트\s*허용|허용한\s*사이트).*(지워|삭제|취소|초기화)").search(t):
+        return {"kind": "site-allow-clear"}
     # 묻는 말("기초연금 12월 25일까지 신청해야 해?", "신청했어?")은 기록 명령이 아니다
     asking = bool(rx(r"\?$|(해야\s*(해|돼|하나|되나)|언제|되나요|했나|했어\?|했나요)").search(t))
     # 금고

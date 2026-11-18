@@ -8,7 +8,7 @@ from cheongeum.understanding.llm_planner import (
     flat_to_intent,
     plan_with_llm,
 )
-from cheongeum.understanding.rules import IntentContext, RuleBasedIntentProvider, clean_value, is_stop_utterance
+from cheongeum.understanding.rules import IntentContext, RuleBasedIntentProvider, clean_value, is_progress_question, is_stop_utterance
 from cheongeum.understanding.sites import KNOWN_SITES, KnownSite, mentions_known_site, near_site, resolve_site, site_name_from
 from cheongeum.understanding.understand import merge_fills
 
@@ -23,6 +23,7 @@ __all__ = [
     "clean_value",
     "create_intent_provider",
     "flat_to_intent",
+    "is_progress_question",
     "is_stop_utterance",
     "mentions_known_site",
     "merge_fills",

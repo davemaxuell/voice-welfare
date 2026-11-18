@@ -175,9 +175,11 @@ class Narrator:
         if view.get("pageId") == "mock-welfare" and view.get("step"):
             return self.describe_view(view)
         digest = digest_page(view)
-        # 자동 접속을 막는 사이트(봇 차단·보안문자): 우회하지 않고 사용자에게 알린다.
+        # 자동 접속을 막는 사이트(봇 차단·보안문자): 우회하지 않고, 다음 단계는 playbook.blocked_speech.
         if digest.kind == "blocked":
-            return "이 사이트는 자동으로 여는 브라우저의 접속을 막고 있어서 내용을 읽을 수 없어요. 보안 장치를 우회하지는 않아요. 평소 쓰시는 브라우저로 직접 접속하시거나, 비슷한 정보를 다른 사이트에서 찾아 드릴까요?"
+            from cheongeum.agents.web.playbook import blocked_speech
+
+            return blocked_speech(view.get("url"), self.once)
         # 핵심만: 무슨 페이지인지 + 내용 첫머리. 구성·개수 등은 '화면 설명해줘'에서.
         parts = [f"페이지 제목은 '{view['title'] or '제목 없음'}'이에요."]
         if view["dialogs"]:
@@ -228,7 +230,7 @@ class Narrator:
         본문이 무엇에 대한 것인지 2문장 요약(화면 이해 담당이 정리한 본문만 근거). 메뉴·로그인 같은 화면 구성 글은 뺀다.
         요약에 본문에 없는 숫자가 나오면 버린다(None → 호출자가 본문 첫머리를 읽음).
         """
-        llm = self.deps.llm
+        llm = getattr(self.deps, "web_llm", None) or self.deps.llm
         if not llm:
             return None
         d = digest_page(view)

@@ -33,7 +33,7 @@ def audio_extension(mime_type: str) -> str:
 
 
 # 복지 신청 용어 인식을 돕는 힌트. 사용자 발화가 아니라 고정 문구다.
-STT_PROMPT = "장애인연금 신청 대화. 성명, 주민등록 주소, 실거주지, 연락처, 소득·재산 신고, 가구원 수, 모의접수, 다음으로, 이전으로, 멈춰."
+STT_PROMPT = "장애인연금 신청 대화. 성명, 주민등록 주소, 실거주지, 연락처, 소득·재산 신고, 가구원 수, 모의접수, 다음으로, 이전으로, 멈춰, 청음아."
 PROMPT_TERMS = [t for t in (rx(r"\s+").sub("", x) for x in rx(r"[.,]\s*").split(STT_PROMPT)) if len(t) >= 2]
 # 외국어로 말하면 힌트를 영어로 옮겨 내놓기도 한다
 PROMPT_TERMS_EN = [
@@ -54,6 +54,22 @@ def is_prompt_echo(text: str) -> bool:
     """받아쓴 글이 힌트 낱말을 여러 개 그대로(또는 영어로 옮겨) 담고 있으면 힌트를 되뱉은 것으로 본다."""
     t = rx(r"\s+").sub("", text)
     return len([term for term in PROMPT_TERMS if term in t]) >= 4 or len([p for p in PROMPT_TERMS_EN if p.search(text)]) >= 3
+
+
+# Whisper 계열이 무음·잡음에서 지어내는 글(동영상 자막으로 배운 끝인사 등). 받아쓴 글 전체가 이것뿐이면 버린다.
+# "감사합니다"만 한 말은 사용자가 실제로 하기도 해서 넣지 않는다.
+_HALLUCINATION = rx(
+    r"^(시청\s*해\s*주셔서\s*감사합니다|시청\s*감사합니다|구독(과|이랑)?\s*좋아요(\s*(부탁|눌러)[^.!]*)?|좋아요(와|랑)?\s*구독(\s*(부탁|눌러)[^.!]*)?|"
+    r"다음\s*(영상|시간)에\s*(서\s*)?(만나요|뵙겠습니다|만나겠습니다)|MBC\s*뉴스\s*\S*입니다|.{0,10}\s*뉴스\s*\S{2,4}입니다|"
+    r"자막\s*(제공|by)[^.!]*|Thanks?\s*(you\s*)?for\s*watching)$",
+    I,
+)
+
+
+def is_hallucination(text: str) -> bool:
+    """받아쓴 글이 무음에서 흔히 지어내는 문장 하나뿐인지(문장부호·공백 무시)."""
+    t = rx(r"[\s.!?。~,]+$").sub("", rx(r"^[\s.!?。~,]+").sub("", text))
+    return bool(t) and bool(_HALLUCINATION.search(t))
 
 
 class OpenAISttProvider:

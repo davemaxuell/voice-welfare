@@ -36,6 +36,10 @@ def build(desktop: bool = False, env: dict | None = None):
 
     @asynccontextmanager
     async def lifespan(app):
+        # 로컬 받아쓰기 모델은 시작을 막지 않고 백그라운드 스레드에서 미리 불러온다(첫 말이 늦지 않게)
+        warm = getattr(runtime.stt, "warm", None)
+        if warm:
+            asyncio.get_running_loop().run_in_executor(None, warm)
         yield
         await close_all(app.state.sessions)
         await runtime.close()

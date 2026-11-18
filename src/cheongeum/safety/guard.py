@@ -23,6 +23,10 @@ class PolicyConfig:
     maxActionsPerTurn: int
     # 그 외 모든 웹사이트를 읽기 전용으로 허용할지. 허용하면 이동·링크·뒤로·스크롤·읽기·검색창 입력만 된다.
     readOnlyWeb: bool = False
+    # 지원 사이트에서 이름이 RISKY_BUTTON에 걸려도 그냥 누르는 버튼(사이트 프로필의 다음·이전·팝업 닫기)
+    safeButtons: Sequence[str] = ()
+    # 직접 만든 설정은 닫힌 쪽이 기본. 제품 기본값(any)은 server.runtime.load_config가 정한다.
+    readOnlyClicks: Literal["any", "safe"] = "safe"
 
 
 @dataclass
@@ -45,12 +49,31 @@ INPUT_TYPES = ("fill", "select", "check")
 READ_ONLY_TYPES = ("navigate", "back", "click", "fill", "press", "scroll", "read", "focus")
 SECRET_LABEL = rx(r"(비밀\s*번호|password|OTP|인증\s*번호|주민\s*(등록)?\s*번호|계좌|카드\s*번호)", I)
 WEB_SCHEMES = ("http:", "https:")
+# 실제 사이트에서도 사용자에게 묻고 누를 수 있는 이름(로그인 화면 열기·로그인 누르기). 로그아웃은 아니다.
+LOGIN_NAME = rx(r"(로그인|log\s*-?\s*in|sign\s*-?\s*in)", I)
 # 읽기 전용 사이트에서 버튼은 메뉴·더보기 같은 이동용만 누른다. 이름이 '행동'을 뜻하면 막는다.
 # (이름만 보는 휴리스틱이라 완벽하지 않다 — 문서에 한계로 명시)
 RISKY_BUTTON = rx(
     r"(신청|제출|접수|등록|삭제|결제|송금|이체|구매|주문|동의|승인|확인|저장|보내기|전송|발송|로그인|로그아웃|탈퇴|가입|변경|수정|취소|인증|업로드|첨부|발급|예약|투표|좋아요|구독|submit|send|pay|buy|order|delete|confirm|login|sign)",
     I,
 )
+_ACTION_ANYWHERE = rx(
+    r"하기(?![가-힣])|탈퇴|결제|송금|이체|삭제|구매|주문|로그인|로그아웃|회원\s*가입"
+    r"|(?<![a-z])(pay|buy|order|delete|submit|log\s*(in|out)|sign\s*(in|up|out))(?![a-z])",
+    I,
+)
+# 이름이 동작 낱말로 끝나면 동작(신청서 제출·본인 인증·전체 동의). 신청방법·제출서류처럼 뒤에 다른 말이 붙으면 정보.
+_ACTION_ENDING = rx(
+    r"(신청|제출|접수|등록|동의|승인|확인|저장|보내기|전송|발송|변경|수정|취소|인증|업로드|첨부|발급|예약|투표|좋아요|구독|가입|합니다|하세요"
+    r"|(?<![a-z])(send|confirm|save|apply|ok))$",
+    I,
+)
+_TRAILING_NOISE = rx(r"(\s*(새\s*창(\s*열림)?|[^\w가-힣]+))+$")
+
+
+def is_action_name(name: str) -> bool:
+    n = _TRAILING_NOISE.sub("", rx(r"\s+").sub(" ", name).strip())
+    return bool(_ACTION_ANYWHERE.search(n) or _ACTION_ENDING.search(n))
 
 
 class PolicyGuard:
@@ -107,14 +130,20 @@ class PolicyGuard:
                 return deny("DENIED_SECRET", "민감 정보 입력란은 사용자가 직접 입력해야 합니다.")
             if not field_id or field_id not in self.config.allowedFieldIds:
                 return deny("DENIED_FIELD", "허용된 입력 필드가 아닙니다.")
-            if action.get("value") and detect_sensitive(action["value"]).hasSecretValue:
+            # 규칙만(결정적으로): 사용자 말은 턴 입구에서 이미 모델까지 거쳤다
+            if action.get("value") and detect_sensitive(action["value"], model=False).hasSecretValue:
                 return deny("DENIED_SECRET", "입력값에 민감 정보로 보이는 내용이 있어 입력하지 않았습니다.")
 
-        if action["risk"] != "low" or action["requiresConfirmation"]:
+        # 위험도는 부르는 쪽이 높일 수만 있다: 동작 이름의 버튼은 낮게 적어 와도 승인을 받는다.
+        if action["risk"] != "low" or action["requiresConfirmation"] or (action["type"] == "click" and self._risky_button(target)):
             if action["id"] in ctx.approvals:
                 return decision(True, "APPROVED", "사용자가 실행 전에 승인했습니다.")
             return deny("NEEDS_CONFIRMATION", "실행 전에 사용자 승인이 필요합니다.")
         return decision(True, "ALLOWED", "허용된 저위험 조작입니다.")
+
+    def _risky_button(self, target: dict) -> bool:
+        name = target.get("name") or ""
+        return target.get("role") == "button" and bool(RISKY_BUTTON.search(name)) and name not in self.config.safeButtons
 
     def _check_read_only(self, action: dict, ctx: PolicyContext) -> dict:
         """지원하지 않는 사이트: 읽고 이동하고 검색하는 것까지만."""
@@ -128,7 +157,7 @@ class PolicyGuard:
         # 비밀번호·인증번호·주민번호 등은 승인과 무관하게 거부, 제출 같은 consequential 동작은 항상 사용자가 직접.
         if action["type"] in INPUT_TYPES and target.get("role") != "searchbox":
             label = f"{target.get('label') or ''} {target.get('name') or ''}"
-            if SECRET_LABEL.search(label) or (value and detect_sensitive(value).hasSecretValue):
+            if SECRET_LABEL.search(label) or (value and detect_sensitive(value, model=False).hasSecretValue):
                 return deny("DENIED_SECRET", "민감 정보 입력란은 사용자가 직접 입력해야 합니다.")
             if action["risk"] != "sensitive" or not action["requiresConfirmation"]:
                 return read_only("입력은 사용자 확인을 받은 경우에만 합니다.")
@@ -141,16 +170,26 @@ class PolicyGuard:
             return read_only("중요한 동작은 하지 않습니다.")
         if action["type"] == "click":
             role = target.get("role")
-            if role == "button":
-                if not target.get("name") or RISKY_BUTTON.search(target["name"]):
-                    return read_only("신청·제출·동의 같은 동작 버튼은 누르지 않습니다.")
-            elif role != "link":
-                return read_only("링크와 이동용 버튼만 누를 수 있습니다.")
+            name = target.get("name") or ""
+            # 로그인은 READ_ONLY_CLICKS와 무관하게 늘 사용자의 '눌러' 확인을 받는다.
+            if role in ("button", "link") and LOGIN_NAME.search(name):
+                if action["id"] in ctx.approvals:
+                    return decision(True, "APPROVED", "사용자가 누르라고 확인했습니다.")
+                return deny("NEEDS_CONFIRMATION", "로그인 버튼은 누르기 전에 사용자 확인이 필요합니다.")
+            if self.config.readOnlyClicks == "safe":
+                if role in ("tab", "scriptlink"):
+                    if not name or is_action_name(name):
+                        return read_only("신청하기·탈퇴 같은 동작 이름은 누르지 않습니다.")
+                elif role in ("button", "menuitem"):
+                    if not name or RISKY_BUTTON.search(name):
+                        return read_only("신청·제출·동의 같은 동작 버튼은 누르지 않습니다.")
+                elif role != "link":
+                    return read_only("링크와 이동용 버튼만 누를 수 있습니다.")
         if action["type"] in ("fill", "press"):
             if target.get("role") != "searchbox":
                 return read_only("검색창에만 입력할 수 있습니다.")
             if action["type"] == "press" and value != "Enter":
                 return read_only("검색 실행(Enter)만 할 수 있습니다.")
-            if action["type"] == "fill" and (not value or len(value) > 100 or detect_sensitive(value).hasSecretValue):
+            if action["type"] == "fill" and (not value or len(value) > 100 or detect_sensitive(value, model=False).hasSecretValue):
                 return deny("DENIED_SECRET", "검색어에 민감 정보로 보이는 내용이 있거나 너무 길어 입력하지 않았습니다.")
         return decision(True, "ALLOWED_READ_ONLY", "읽기 전용 범위의 조작입니다.")

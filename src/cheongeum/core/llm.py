@@ -28,6 +28,20 @@ class LlmConfig:
     timeoutMs: int | None = None
 
 
+def overlay_llm(base: LlmConfig, *, provider: str | None = None, model: str | None = None, base_url: str | None = None, api_key: str | None = None, reasoning_effort: str | None = None) -> LlmConfig:
+    """역할별 덮어쓰기. 비어 있는 칸은 base를 그대로 쓴다. provider·model이 둘 다 없으면 base 자체."""
+    if not provider and not model and not base_url and not api_key and not reasoning_effort:
+        return base
+    return LlmConfig(
+        provider=provider or base.provider,
+        model=model or base.model,
+        baseUrl=base_url if base_url is not None else base.baseUrl,
+        apiKey=api_key if api_key is not None else base.apiKey,
+        reasoningEffort=reasoning_effort if reasoning_effort is not None else base.reasoningEffort,
+        timeoutMs=base.timeoutMs,
+    )
+
+
 OPENAI_BASE_URL = "https://api.openai.com/v1"
 OLLAMA_BASE_URL = "http://localhost:11434/v1"
 

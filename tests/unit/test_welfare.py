@@ -178,6 +178,37 @@ async def test_rag_not_answerable():
     assert "129" in a.speech
 
 
+def general_llm(answer):
+    """공식 자료에 답이 없다고 한 뒤, '일반적으로 알려진' 답을 내는 가짜 LLM"""
+
+    def fn(*, system, user, schemaName, schema):
+        if schemaName == "general_answer":
+            return {"known": True, "answer": answer}
+        return {"answerable": False, "answer": "", "usedChunkIds": []}
+
+    return FakeLlm(fn=fn)
+
+
+async def test_general_answer_without_number_is_spoken():
+    llm = general_llm("보통 매달 정해진 날에 계좌로 들어와요.")
+    a = await WelfareInformationAgent(FakeProvider(), llm).answer_question("장애인연금 받으면 언제 돈이 들어와?")
+    assert a.method == "general-llm"
+    assert not a.grounded
+    assert "공식 자료에는 그 내용이 없어요" in a.speech
+    assert "보통 매달 정해진 날에 계좌로 들어와요." in a.speech
+
+
+@pytest.mark.parametrize("answer", ["보통 매달 20일에 계좌로 들어와요.", "교통비는 한 달에 5만 원까지 할인돼요.", "신청하고 3개월쯤 걸려요."])
+async def test_general_answer_with_number_is_not_spoken(answer):
+    a = await WelfareInformationAgent(FakeProvider(), general_llm(answer)).answer_question("장애인연금 받으면 언제 돈이 들어와?")
+    assert a.method == "rag-llm"
+    assert not a.grounded
+    assert "찾지 못했습니다" in a.speech
+    assert "일반적으로 알려진 바로는" not in a.speech
+    assert answer not in a.speech
+    assert a.verification["ok"] is False
+
+
 async def test_rag_unknown_chunk_ids_replaced():
     llm = rag_llm(lambda u: {"answerable": True, "answer": "아마 30만원쯤일 거예요.", "usedChunkIds": ["made-up#9"]})
     a = await WelfareInformationAgent(FakeProvider(), llm).answer_question("장애인연금 얼마 받아?")
@@ -277,3 +308,62 @@ def test_scenario_file_and_evaluator():
 @pytest.mark.parametrize("v,ok", [("김하늘", True), ("남궁민수", True), ("John Smith", True), ("음 그냥 좀 도와줄래", False), ("근데 이 신청하면", False), ("네", False), ("1234", False)])
 def test_validate_name(v, ok):
     assert validate_name(v).ok is ok
+
+
+# ---------------------------------------------------------------- 신청 기간("지금 신청할 수 있어?")
+
+
+def _svc(**extra):
+    return {
+        "servId": "T1",
+        "servNm": "시험지원금",
+        "summary": "요약",
+        "target": "대상",
+        "applyMethod": "방문 신청",
+        "source": {"title": "출처", "url": "https://example.com/x", "lastCheckedAt": "2026-11-18", "version": "API 실시간"},
+        "dataOrigin": "official-api",
+        "contacts": [{"name": "담당과", "value": "051-111-2222"}],
+        **extra,
+    }
+
+
+async def test_deadline_open_from_enforcement_dates():
+    s = _svc(enfcBgngYmd="20240101", enfcEndYmd="99991231")
+    a = await WelfareInformationAgent(FakeProvider(find=lambda n: s)).answer_question("시험지원금 지금 신청할 수 있어?", today="2026-11-18")
+    assert a.method == "topic-rule"
+    assert a.grounded
+    assert "신청할 수 있어요" in a.speech
+    assert "신청할 수 없어요" not in a.speech
+
+
+async def test_deadline_closed_from_enforcement_dates():
+    s = _svc(enfcBgngYmd="20240101", enfcEndYmd="20241231")
+    a = await WelfareInformationAgent(FakeProvider(find=lambda n: s)).answer_question("시험지원금 지금 신청할 수 있어?", today="2026-11-18")
+    assert a.grounded
+    assert "신청할 수 없어요" in a.speech
+
+
+async def test_deadline_open_from_year_round_text():
+    s = _svc(applyMethod="신청기간 : 연중 신청. 방문 또는 인터넷.")
+    a = await WelfareInformationAgent(FakeProvider(find=lambda n: s)).answer_question("시험지원금 지금 신청할 수 있어?", today="2026-06-01")
+    assert a.grounded
+    assert "신청할 수 있어요" in a.speech
+
+
+async def test_deadline_unknown_without_period_gives_contact():
+    """중앙 상세처럼 기간 필드·문구가 없으면 예/아니오를 단정하지 않고 문의처만 안내."""
+    a = await WelfareInformationAgent(FakeProvider()).answer_question("장애인연금 지금 신청할 수 있어?", today="2026-11-18")
+    assert "확인하지 못" in a.speech
+    assert "신청할 수 있어요" not in a.speech
+    assert "신청할 수 없어요" not in a.speech
+    assert "129" in a.speech
+
+
+async def test_deadline_question_bypasses_llm():
+    """기간 답은 LLM이 지어내지 못하게 규칙만 쓴다."""
+    s = _svc(enfcBgngYmd="20200101", enfcEndYmd="20201231")
+    llm = rag_llm(lambda u: {"answerable": True, "answer": "네, 지금 바로 신청할 수 있어요.", "usedChunkIds": [u["근거"][0]["id"]]})
+    a = await WelfareInformationAgent(FakeProvider(find=lambda n: s), llm).answer_question("시험지원금 지금 신청할 수 있어?", today="2026-11-18")
+    assert a.method == "topic-rule"
+    assert "신청할 수 없어요" in a.speech
+    assert "바로 신청할 수 있어요" not in a.speech

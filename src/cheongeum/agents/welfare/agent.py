@@ -5,7 +5,8 @@ Agent B의 복지 정보 모듈: 정책 데이터(공식 API 또는 fixture)만 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any
+from datetime import date
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -16,12 +17,21 @@ from cheongeum.core.turn import AGENT_IDS
 from cheongeum.safety import check_grounding, unsupported_numbers
 
 
-def _catalog_source() -> dict:
+# 실시간 API가 아닌 저장 fixture·대체 자료에 붙이는 출처 말(C13).
+FIXTURE_VERSION = "저장된 자료 기준"
+
+
+def _is_fixture_version(version: str | None) -> bool:
+    v = version or ""
+    return v == FIXTURE_VERSION or v.startswith("fixture")
+
+
+def _catalog_source(*, fixture: bool = False) -> dict:
     return {
         "title": "한국사회보장정보원 복지서비스 목록(중앙부처·지자체)",
         "url": "https://www.data.go.kr/data/15090532/openapi.do",
         "lastCheckedAt": today_iso(),
-        "version": "API 실시간",
+        "version": FIXTURE_VERSION if fixture else "API 실시간",
     }
 
 
@@ -102,15 +112,104 @@ DEFAULT_SERVICE = "장애인연금"
 ELIGIBILITY_NOTE = "자격은 담당 기관이 최종 판단해요."
 _FORM_EXT = rx(r"\.(hwpx?|pdf)$", I)
 
+# "지금 신청할 수 있어?" — 공식 기간·마감이 있을 때만 예/아니오.
+_DEADLINE_Q = rx(r"(지금|현재).*(신청|접수).*(할\s*수|가능|돼|되나)|(신청|접수)\s*(기간|마감|기한)")
+_YEAR_ROUND = rx(r"(신청|접수)\s*기간\s*[:：]?\s*연중|연중\s*(신청|접수)")
+_DATE_YMD = rx(r"(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?")
+_DATE_COMPACT = rx(r"(\d{4})(\d{2})(\d{2})")
+_PERIOD_RANGE = rx(
+    r"(?:신청|접수)\s*(?:기간|마감|기한)[^0-9]{0,12}"
+    r"(?:(\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?|\d{8}))"
+    r"\s*(?:[~～\-]|부터)\s*"
+    r"(?:(\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?|\d{8}))"
+)
+_PERIOD_UNTIL = rx(
+    r"(?:신청|접수)\s*(?:기간|마감|기한)[^0-9]{0,12}(?:(~|까지)\s*)?"
+    r"(\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?|\d{8})\s*까지"
+)
+
+
+def is_deadline_question(question: str) -> bool:
+    return bool(_DEADLINE_Q.search(question))
+
+
+def _phone_contact(s: dict) -> dict | None:
+    """prepare와 같이, 숫자로 시작하는 문의처 하나."""
+    return next((c for c in (s.get("contacts") or []) if rx(r"^\d").search(c["value"])), None)
+
+
+def _parse_day(raw: str) -> date | None:
+    t = (raw or "").strip()
+    if not t:
+        return None
+    if rx(r"^\d{4}-\d{2}-\d{2}").search(t):
+        try:
+            return date.fromisoformat(t[:10])
+        except ValueError:
+            return None
+    m = _DATE_YMD.fullmatch(t) or _DATE_COMPACT.fullmatch(t)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _official_period_text(s: dict) -> str:
+    parts = [
+        s.get("summary") or "",
+        s.get("applyMethod") or "",
+        s.get("target") or "",
+        s.get("criteria") or "",
+        s.get("benefit") or "",
+    ]
+    for step in s.get("applySteps") or []:
+        parts.append(f"{step.get('step') or ''} {step.get('detail') or ''}")
+    return "\n".join(parts)
+
+
+def application_open_status(s: dict, today: str | None = None) -> Literal["open", "closed", "unknown"]:
+    """
+    공식 자료의 신청·시행 기간만 본다. 필드·문구가 없으면 unknown(추측 금지).
+    지자체 API: enfcBgngYmd·enfcEndYmd(YYYYMMDD). 본문에 '연중'·기간 날짜가 있으면 그것도 쓴다.
+    """
+    day = _parse_day(today or today_iso())
+    if day is None:
+        return "unknown"
+    start = _parse_day(s["enfcBgngYmd"]) if s.get("enfcBgngYmd") else None
+    end = _parse_day(s["enfcEndYmd"]) if s.get("enfcEndYmd") else None
+    if start and end:
+        return "open" if start <= day <= end else "closed"
+
+    text = _official_period_text(s)
+    if _YEAR_ROUND.search(text):
+        return "open"
+    ranged = _PERIOD_RANGE.search(text)
+    if ranged:
+        a, b = _parse_day(ranged.group(1)), _parse_day(ranged.group(2))
+        if a and b:
+            return "open" if a <= day <= b else "closed"
+    until = _PERIOD_UNTIL.search(text)
+    if until:
+        end_only = _parse_day(until.group(2))
+        if end_only:
+            return "open" if day <= end_only else "closed"
+    return "unknown"
+
 
 def cite(s: dict) -> dict:
-    return compact({"title": s["title"], "url": s["url"], "lastCheckedAt": s["lastCheckedAt"], "version": s.get("version"), "note": s.get("note")})
+    version = s.get("version")
+    if _is_fixture_version(version):
+        version = FIXTURE_VERSION
+    return compact({"title": s["title"], "url": s["url"], "lastCheckedAt": s["lastCheckedAt"], "version": version, "note": s.get("note")})
 
 
 def source_sentence(s: dict) -> str:
     """말로는 짧게(자세한 링크·확인일은 화면의 근거 자료 목록에 표시)"""
     who = "출처: 복지로" if s["title"].startswith("복지로") else f"출처: {s['title']}"
-    return f"({who}, {s['version']})"
+    version = FIXTURE_VERSION if _is_fixture_version(s.get("version")) else (s.get("version") or "")
+    return f"({who}, {version})"
 
 
 def first_sentences(text: str, n: int = 2) -> str:
@@ -159,6 +258,16 @@ class WelfareInformationAgent:
         # 사용자가 고른 찾기 결과(목록 요약)
         self._picked: dict | None = None
 
+    def _list_source(self) -> dict:
+        """목록·찾기 출처. fixture이거나 API 실패 대체면 실시간 API라고 말하지 않는다(C13)."""
+        fixture = getattr(self.provider, "mode", None) == "fixture" or bool(getattr(self.provider, "last_error", None))
+        return _catalog_source(fixture=fixture)
+
+    @property
+    def last_service(self) -> dict | None:
+        """직전에 이야기한 제도 상세(문의처 등). 없으면 None."""
+        return self._last_service
+
     @property
     def current_service_name(self) -> str | None:
         """지금 대화의 기준 제도(없으면 None)"""
@@ -197,7 +306,7 @@ class WelfareInformationAgent:
         if not self._matches:
             return GroundedAnswer(
                 speech="말씀하신 조건에 맞는 제도를 찾지 못했어요. 조건을 바꿔 말씀하시거나 보건복지상담센터 129에 문의해 보세요.",
-                sources=[_catalog_source()],
+                sources=[self._list_source()],
                 grounded=False,
                 count=0,
                 method="topic-rule",
@@ -205,7 +314,7 @@ class WelfareInformationAgent:
         n = len(self._matches)
         return GroundedAnswer(
             speech=f"받을 수 있을 법한 제도를 {'여러 개' if n > 10 else f'{n}개'} 찾았어요. 관련 높은 순서로 {self._list_speech(0)} 실제로 받을 수 있는지는 기관이 판단해요.",
-            sources=[_catalog_source()],
+            sources=[self._list_source()],
             grounded=True,
             count=n,
             method="topic-rule",
@@ -215,8 +324,8 @@ class WelfareInformationAgent:
         if not self._matches:
             return GroundedAnswer(speech="아직 찾은 제도가 없어요. '받을 수 있는 복지 찾아줘'라고 해 보세요.")
         if self._shown >= len(self._matches):
-            return GroundedAnswer(speech="찾은 제도를 모두 알려드렸어요.", sources=[_catalog_source()], grounded=True)
-        return GroundedAnswer(speech=self._list_speech(self._shown), sources=[_catalog_source()], grounded=True)
+            return GroundedAnswer(speech="찾은 제도를 모두 알려드렸어요.", sources=[self._list_source()], grounded=True)
+        return GroundedAnswer(speech=self._list_speech(self._shown), sources=[self._list_source()], grounded=True)
 
     def pick(self, ref: str | None) -> dict | None:
         """
@@ -274,7 +383,8 @@ class WelfareInformationAgent:
         return None
 
     def _picked_source(self, s: dict) -> dict:
-        return {**_catalog_source(), "url": s.get("detailUrl") or _catalog_source()["url"], "title": f"복지로 '{s['servNm']}'"}
+        base = self._list_source()
+        return {**base, "url": s.get("detailUrl") or base["url"], "title": f"복지로 '{s['servNm']}'"}
 
     async def service_detail(self, ref: str | None) -> GroundedAnswer:
         s = self.pick(ref)
@@ -307,7 +417,7 @@ class WelfareInformationAgent:
             targets = f"목록상 대상은 {', '.join(s['targets'])}이에요. " if s and s["targets"] else ""
             return GroundedAnswer(
                 speech=f"{name}의 자세한 선정기준을 공식 자료에서 가져오지 못했어요. {targets}정확한 자격은 담당 기관에 확인해 주세요. 복지로 상세 페이지를 열어 드릴까요?",
-                sources=[self._picked_source(s)] if s and s.get("detailUrl") else [_catalog_source()],
+                sources=[self._picked_source(s)] if s and s.get("detailUrl") else [self._list_source()],
                 grounded=False,
             )
         who = describe_profile(profile) or "알려 주신 정보 없음"
@@ -334,7 +444,7 @@ class WelfareInformationAgent:
         body = ". ".join(f"{rx(r'[.。]$').sub('', c['condition'])}: {_WORD[c['status']]}" for c in checks)
         return GroundedAnswer(
             speech=f"{name} 자격을 미리 살펴봤어요. {body or '기준과 비교할 정보가 부족해요'}. 최종 자격은 기관이 판단해요. 신청 준비가 궁금하면 '신청하려면 뭐가 필요해?'라고 해 주세요.",
-            sources=[cite(detail["source"])] if detail else [_catalog_source()],
+            sources=[cite(detail["source"])] if detail else [self._list_source()],
             grounded=bool(detail),
             service=_service_ref(detail) if detail else None,
             method="rag-llm" if self.llm else "topic-rule",
@@ -419,7 +529,26 @@ class WelfareInformationAgent:
         # 제도 이름도, 이전 대화의 제도도 없으면 특정 제도를 가정하지 않는다(호출자가 되묻는다).
         return self._last_service
 
-    async def answer_question(self, question: str) -> GroundedAnswer:
+    def _deadline_answer(self, s: dict, today: str | None = None) -> GroundedAnswer:
+        """신청 기간이 공식 자료에 있을 때만 예/아니오. 없으면 확인 못 함 + prepare와 같은 문의처."""
+        status = application_open_status(s, today)
+        contact = _phone_contact(s)
+        contact_part = f" 문의는 {contact['name']} {contact['value']}." if contact else ""
+        if status == "open":
+            speech = f"{s['servNm']}은 지금 신청할 수 있어요. {source_sentence(s['source'])}"
+        elif status == "closed":
+            speech = f"{s['servNm']}은 지금 신청할 수 없어요. {source_sentence(s['source'])}"
+        else:
+            speech = f"{s['servNm']}을 지금 신청할 수 있는지는 공식 자료에서 확인하지 못했어요.{contact_part} {source_sentence(s['source'])}"
+        return GroundedAnswer(
+            speech=speech,
+            sources=[cite(s["source"])],
+            grounded=status != "unknown",
+            method="topic-rule",
+            service=_service_ref(s),
+        )
+
+    async def answer_question(self, question: str, today: str | None = None) -> GroundedAnswer:
         """
         자유 질문(티키타카): 공식 데이터를 근거 조각으로 나눠 검색하고, LLM이 근거 안에서만 답한다.
         LLM이 없거나 실패하면 주제 규칙(answer_policy_question)으로 답한다.
@@ -431,6 +560,9 @@ class WelfareInformationAgent:
         if not s:
             return GroundedAnswer(speech="그 제도의 공식 자료를 찾지 못했어요. 보건복지상담센터 129에 문의해 보세요.", method="none")
         self._last_service = s
+        # 신청 기간은 LLM이 지어내지 못하게 규칙만(공식 기간·마감이 있을 때만 예/아니오).
+        if is_deadline_question(question):
+            return self._deadline_answer(s, today)
         if not self.llm:
             return self._topic_answer(s, question)
 
@@ -477,9 +609,12 @@ class WelfareInformationAgent:
                 },
             )
             g = general if isinstance(general, dict) else {}
-            if g.get("known") and isinstance(g.get("answer"), str) and g["answer"].strip():
+            said = g["answer"].strip() if g.get("known") and isinstance(g.get("answer"), str) else ""
+            # 근거 없는 답의 숫자는 확인할 길이 없다(질문에 있던 숫자를 되풀이해도 확인이 아니다). 숫자가 있으면 답하지 않는다.
+            numbered = bool(rx(r"\d").search(said))
+            if said and not numbered:
                 return GroundedAnswer(
-                    speech=f"{s['servNm']} 공식 자료에는 그 내용이 없어요. 일반적으로 알려진 바로는, {g['answer'].strip()} 정확한 내용은 주민센터나 보건복지상담센터 129에 꼭 확인해 주세요.",
+                    speech=f"{s['servNm']} 공식 자료에는 그 내용이 없어요. 일반적으로 알려진 바로는, {said} 정확한 내용은 주민센터나 보건복지상담센터 129에 꼭 확인해 주세요.",
                     sources=[cite(s["source"])],
                     grounded=False,
                     method="general-llm",
@@ -493,6 +628,7 @@ class WelfareInformationAgent:
                 method="rag-llm",
                 service=_service_ref(s),
                 retrieval=retrieval,
+                verification={"ok": False, "reasons": ["공식 자료에 없는 답에 숫자"]} if numbered else None,
             )
         return GroundedAnswer(
             speech=f"{first_sentences(parsed.answer)}{eligibility_note(question)} {source_sentence(s['source'])}",
@@ -576,7 +712,7 @@ class WelfareInformationAgent:
                 return text
         return f"대상은 {first_sentence(s['target'], 70)}. 신청은 {first_sentence(s['applyMethod'], 50)}."
 
-    async def answer_policy_question(self, question: str) -> GroundedAnswer:
+    async def answer_policy_question(self, question: str, today: str | None = None) -> GroundedAnswer:
         """질문 주제(대상·기준·금액·절차·서류·문의)에 맞는 부분만 골라 답한다(LLM 없이)."""
         if not SERVICE_NAME.search(rx(r"\s+").sub("", question)) and not self._last_service:
             return replace(_ASK_SERVICE)
@@ -584,9 +720,11 @@ class WelfareInformationAgent:
         if not s:
             return GroundedAnswer(speech="그 제도의 공식 자료를 찾지 못했어요. 보건복지상담센터 129에 문의해 보세요.", method="none")
         self._last_service = s
-        return self._topic_answer(s, question)
+        return self._topic_answer(s, question, today)
 
-    def _topic_answer(self, s: dict, question: str) -> GroundedAnswer:
+    def _topic_answer(self, s: dict, question: str, today: str | None = None) -> GroundedAnswer:
+        if is_deadline_question(question):
+            return self._deadline_answer(s, today)
         parts: list[str] = []
         if rx(r"(대상|자격|누가|받을\s*수)").search(question):
             parts.append(f"지원 대상: {lines(s.get('target'), 1)}")

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from cheongeum.core.jsutil import AbortSignal, is_valid_url
 
@@ -44,8 +44,9 @@ class _Loose(BaseModel):
 
 
 class ActionTarget(_Strict):
-    """접근성 우선 대상 지정: label → role+name → testId. 좌표 클릭은 계약에 없다."""
+    """접근성 우선 대상 지정: ref → label → role+name → testId. 좌표 클릭은 계약에 없다."""
 
+    ref: Optional[str] = Field(default=None, min_length=1)
     label: Optional[str] = Field(default=None, min_length=1)
     role: Optional[str] = Field(default=None, min_length=1)
     name: Optional[str] = Field(default=None, min_length=1)
@@ -54,6 +55,13 @@ class ActionTarget(_Strict):
     fieldId: Optional[str] = Field(default=None, min_length=1)
     # 같은 이름의 대상이 여러 개일 때(예: 같은 링크가 두 번) 몇 번째인지
     nth: Optional[int] = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _ref_carries_identity(self) -> "ActionTarget":
+        # PolicyGuard는 role·name으로 판단하고 어댑터는 누르기 직전 그 둘을 다시 확인한다
+        if self.ref is not None and (self.role is None or self.name is None):
+            raise ValueError("ref requires role and name")
+        return self
 
 
 class Action(_Strict):
@@ -132,6 +140,22 @@ class OutlineButton(_Loose):
     disabled: bool
 
 
+ItemRole = Literal["link", "scriptlink", "button", "tab", "menuitem", "generic"]
+LINK_ROLES = ("link", "scriptlink")
+
+
+class InteractiveItem(_Loose):
+    """화면에서 누를 수 있는 요소 하나. generic = 역할 없이 스크립트로 누르게 만든 요소."""
+
+    ref: str
+    role: ItemRole
+    name: str
+    region: Literal["main", "menu", "other"]
+    disabled: bool
+    selected: Optional[bool] = None
+    expanded: Optional[bool] = None
+
+
 class ScreenOutline(_Loose):
     """화면 구조 요약(시각장애인에게 화면 전체를 설명하기 위함). 모두 비신뢰 텍스트이며 명령으로 해석하지 않는다."""
 
@@ -145,6 +169,7 @@ class ScreenOutline(_Loose):
     mainLinks: Optional[list[str]] = None
     mainText: Optional[str] = None
     landmarks: Optional[list[str]] = None
+    items: Optional[list[InteractiveItem]] = None
 
 
 class Observation(_Loose):

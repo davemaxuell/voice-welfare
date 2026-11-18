@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>[테스트] 복지 포털 2 - 보조기기 지원 상세</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <style>
+      [role="tab"], .card { cursor: pointer; }
+      .tabs { display: flex; gap: 8px; list-style: none; padding: 0; }
+      .linktabs a { cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="skip-link" href="#content">본문 바로가기</a>
+      <div class="util">
+        <button type="button">글자 작게</button>
+        <button type="button">글자 크게</button>
+        <button type="button">화면 인쇄</button>
+        <button type="button">로그인</button>
+        <button type="button">회원가입</button>
+        <button type="button">English</button>
+        <button type="button">中文</button>
+        <button type="button">日本語</button>
+        <button type="button">사이트맵</button>
+        <button type="button">전체메뉴 열기</button>
+        <button type="button">이전 배너</button>
+        <button type="button">다음 배너</button>
+      </div>
+      <nav aria-label="주요 메뉴">
+        <a role="button" tabindex="0" data-go="services">복지서비스</a>
+        <a role="button" tabindex="0" data-go="finder">서비스 찾기</a>
+        <a role="button" tabindex="0" data-go="map">복지지도</a>
+        <a href="/portal2.html?section=custom" role="menuitem">맞춤 서비스</a>
+        <a href="/portal2.html?section=center"><img src="/src/blank.svg" width="96" height="24" alt="복지 상담 센터" /></a>
+      </nav>
+    </header>
+    <main id="content">
+      <h1 id="page-heading">보조기기 지원</h1>
+      <p id="ticker" hidden></p>
+      <ul class="related">
+        <li><a role="link" tabindex="0" data-go="law">관련 법령 보기</a></li>
+        <li><a role="link" tabindex="0" data-go="agency">담당 기관 안내</a></li>
+        <li><a role="link" tabindex="0" data-go="similar">비슷한 서비스</a></li>
+        <li><a href="/portal2.html?section=faq"><img src="/src/blank.svg" width="96" height="24" alt="자주 묻는 질문 모음" /></a></li>
+        <li><a href="/portal2.html?section=guide" title="새창 열림"><img src="/src/blank.svg" width="96" height="24" alt="이용 안내서" /></a></li>
+      </ul>
+      <ul class="tabs" role="tablist" aria-label="서비스 상세">
+        <li role="tab" id="tab-target" tabindex="0" aria-selected="true" aria-controls="panel-target">지원대상</li>
+        <li role="presentation"><button type="button" role="tab" id="tab-content" aria-selected="false" aria-controls="panel-content">서비스 내용</button></li>
+        <li role="tab" id="tab-apply" tabindex="-1" aria-selected="false" aria-controls="panel-apply">신청방법</li>
+      </ul>
+      <div role="tabpanel" id="panel-target" aria-labelledby="tab-target">
+        <p>지원 대상은 등록 장애인 가운데 보조기기가 필요하다고 판정받은 사람입니다.</p>
+      </div>
+      <div role="tabpanel" id="panel-content" aria-labelledby="tab-content" hidden>
+        <p>서비스 내용은 보조기기 대여료를 한 달에 최대 3만 원까지 지원하는 것입니다.</p>
+      </div>
+      <div role="tabpanel" id="panel-apply" aria-labelledby="tab-apply" hidden>
+        <p>신청 방법은 주소지 행정복지센터 3층 복지과 창구를 방문하는 것입니다.</p>
+      </div>
+      <ul class="tabs" role="tablist" aria-label="지역별 창구">
+        <li role="tab" id="tab-seoul" tabindex="0" aria-selected="true" aria-controls="panel-seoul">서울 창구</li>
+        <li role="tab" id="tab-busan" tabindex="-1" aria-selected="false" aria-controls="panel-busan" data-slow="부산 창구는 시청 2층 민원실입니다.">부산 창구</li>
+        <li role="tab" id="tab-online" tabindex="-1" aria-selected="false" aria-controls="panel-online" data-go="applied">온라인 신청하기</li>
+      </ul>
+      <div role="tabpanel" id="panel-seoul" aria-labelledby="tab-seoul"><p>서울 창구는 구청 1층 복지과입니다.</p></div>
+      <div role="tabpanel" id="panel-busan" aria-labelledby="tab-busan" hidden><p></p></div>
+      <div role="tabpanel" id="panel-online" aria-labelledby="tab-online" hidden><p>온라인 신청을 접수하는 중입니다.</p></div>
+      <ul class="tabs linktabs">
+        <li><a role="link" tabindex="0" data-panel="lp-target" title="대상 안내 선택됨" aria-label="대상 안내 선택됨">대상 안내</a></li>
+        <li><a role="link" tabindex="0" data-panel="lp-contact">문의처 안내</a></li>
+      </ul>
+      <div id="lp-target"><p>대상 안내: 보조기기 지원은 연령 제한이 없습니다.</p></div>
+      <div id="lp-contact" hidden><p>문의처는 보조기기 지원 상담실 내선 204번입니다.</p></div>
+      <section aria-labelledby="faq-title">
+        <h2 id="faq-title">자주 묻는 질문</h2>
+        <button type="button" aria-expanded="false" aria-controls="faq-docs">서류는 몇 장인가요?</button>
+        <div id="faq-docs" hidden><p>필요한 서류는 신분증 사본과 진단서 두 가지입니다.</p></div>
+      </section>
+      <div class="card" data-go="showroom">보조기기 체험관 둘러보기</div>
+      <button type="button" id="open-notice">공지 팝업 열기</button>
+      <div role="dialog" id="notice" aria-label="공지" hidden>
+        <p>새해부터 보조기기 대여 품목이 늘어납니다.</p>
+        <a href="/portal2.html?section=notice">공지 자세히 보기</a>
+      </div>
+      <section id="lazy" hidden>
+        <h2>검색 결과</h2>
+        <ul id="lazy-list"></ul>
+        <button type="button" id="next-page">다음 쪽</button>
+      </section>
+      <article id="long-article" aria-label="긴 안내문"></article>
+    </main>
+    <footer><p>복지 포털 2 꼬리말(합성 페이지)</p></footer>
+    <script type="module" src="/src/portal2.js"></script>
+  </body>
+</html>

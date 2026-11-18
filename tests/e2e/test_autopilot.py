@@ -1,29 +1,9 @@
-import json
+import asyncio
 
-from conftest import FakeLlm
+from conftest import FakeLlm, Gate, scripted, step
 
 PORTAL = "http://127.0.0.1:5174/external.html"
-
-
-def scripted(s, steps: list[dict]) -> list[dict]:
-    """정해진 순서로 행동을 내놓는 가짜 LLM(네트워크 없음). 받은 화면 요약도 기록한다."""
-    seen: list[dict] = []
-    state = {"i": 0}
-
-    def fn(*, system, user, schemaName, schema):
-        if schemaName != "browse_step":
-            return None
-        seen.append(json.loads(user))
-        out = steps[min(state["i"], len(steps) - 1)]
-        state["i"] += 1
-        return out
-
-    s.deps.llm = FakeLlm(fn=fn)
-    return seen
-
-
-def step(action, target=None, answer=None, evidence=None) -> dict:
-    return {"thought": "", "action": action, "target": target, "answer": answer, "evidence": evidence}
+MOCK = "http://localhost:5174"
 
 
 async def test_goal_intent_by_rules(new_session):
@@ -141,6 +121,115 @@ async def test_llm_gets_digested_page(new_session):
     # 같은 이름 링크('자세히 보기' 3개)는 한 번만
     assert len([x for x in page["items"] if x["name"] == "자세히 보기"]) == 1
     assert "복지 소식" in page["mainText"]
+
+
+def goal_mode(s, steps: list[dict]) -> None:
+    """자유 대화가 목표 수행(web_task)으로 가고, 목표 수행은 정해진 행동을 내놓는 가짜 LLM."""
+    state = {"i": 0}
+
+    def fn(*, system, user, schemaName, schema):
+        if schemaName == "chat_route":
+            return {"route": "web_task", "reply": "", "searchQuery": None, "language": None}
+        if schemaName != "browse_step":
+            return None
+        out = steps[min(state["i"], len(steps) - 1)]
+        state["i"] += 1
+        return out
+
+    s.deps.llm = FakeLlm(fn=fn)
+
+
+async def fill_to_review_step(s) -> None:
+    for said in ["장애인연금 신청 도와줘", "이름은 김하늘", "주소는 부산광역시 예시구 예시로 10", "다음", "다음"]:
+        await s.handle_turn(said)
+    assert s.web.current_view["step"]["index"] == 3
+
+
+async def test_goal_mode_asks_aloud_before_mock_submit(new_session):
+    s = await new_session()
+    await fill_to_review_step(s)
+    goal_mode(s, [step("click", "모의접수"), step("fail", None, "더 할 일이 없어요.")])
+    r = await s.handle_turn("남은 거 알아서 마무리해 줘")
+    assert r["state"] == "WAITING_FOR_USER_CONFIRMATION"
+    assert "남은 거 알아서 마무리해 줘" in r["speech"] and "김하늘" in r["speech"]
+    assert "MOCK-" not in (r["observation"].get("status") or "")
+    assert not [a for a in r["actions"] if (a["action"].get("target") or {}).get("name") == "모의접수" and (a.get("result") or {}).get("ok")]
+    done = await s.handle_turn("눌러")
+    assert done["state"] == "MOCK_SUBMITTED"
+    assert "MOCK-" in done["observation"]["status"]
+
+
+async def test_goal_mode_asks_aloud_before_risky_button_and_clicks_after_go(new_session):
+    s = await new_session()
+    goal_mode(s, [step("open_url", f"{MOCK}/login.html"), step("click", "모의 로그인"), step("fail", None, "더 할 일이 없어요.")])
+    r = await s.handle_turn("남은 거 알아서 마무리해 줘")
+    assert r["state"] == "WAITING_FOR_USER_CONFIRMATION"
+    assert "'모의 로그인'" in r["speech"] and "눌러" in r["speech"]
+    assert any(a["policy"]["code"] == "NEEDS_CONFIRMATION" for a in r["actions"])
+    done = await s.handle_turn("눌러")
+    clicks = [a for a in done["actions"] if (a["action"].get("target") or {}).get("name") == "모의 로그인"]
+    assert clicks and clicks[-1]["policy"]["code"] == "APPROVED" and clicks[-1]["result"]["ok"]
+    assert done["state"] != "WAITING_FOR_USER_CONFIRMATION"
+
+
+async def test_rejecting_a_risky_click_leaves_the_page_alone(new_session):
+    s = await new_session()
+    goal_mode(s, [step("open_url", f"{MOCK}/login.html"), step("click", "모의 로그인")])
+    await s.handle_turn("남은 거 알아서 마무리해 줘")
+    r = await s.handle_turn("거절")
+    assert "누르지 않았어요" in r["speech"]
+    assert not [a for a in r["actions"] if (a.get("result") or {}).get("ok")]
+    assert s.dialogue.approval is None
+
+
+# ---------------------------------------------------------------- 진행 상황("지금 어디까지 했어?")
+
+ARTICLE_GOAL = "127.0.0.1:5174/external.html에서 장애인연금 안내 기사 내용 알려줘"
+CLICKED = "127.0.0.1에서 '장애인연금 안내'를 눌렀어요."
+
+
+def article_gate() -> Gate:
+    """포털 열기 → 링크 누르기 뒤 세 번째 결정 앞에서 선다"""
+    return Gate(
+        [step("open_url", PORTAL), step("click", "장애인연금 안내"), step("answer", None, "두 번째 페이지라는 안내 기사예요.", ["두 번째 페이지입니다"])],
+        at=3,
+    )
+
+
+async def test_progress_question_mid_goal_names_the_current_step(new_session):
+    s = await new_session()
+    idle = await s.handle_turn("지금 어디까지 했어?")
+    assert idle["intentType"] == "PROGRESS"
+    assert idle["speech"] == "지금 하고 있는 일은 없어요."
+    gate = article_gate()
+    s.deps.llm = gate
+    goal = asyncio.create_task(s.handle_turn(ARTICLE_GOAL))
+    await asyncio.wait_for(gate.reached.wait(), 30)
+    # 목표 수행이 턴 대기열을 잡고 있어도 기다리지 않고 바로 답한다
+    r = await asyncio.wait_for(s.handle_turn("청음아, 지금 어디까지 했어?"), 5)
+    assert r["speech"] == f"지금까지 2단계 했어요. 방금 {CLICKED}"
+    assert r["actions"] == []
+    gate.release.set()
+    assert (await goal)["speech"] == "두 번째 페이지라는 안내 기사예요."
+    after = await s.handle_turn("어디까지 됐어?")
+    assert after["speech"] == f"지금 하고 있는 일은 없어요. 마지막으로 {CLICKED}"
+
+
+async def test_stop_still_interrupts_a_goal(new_session):
+    s = await new_session()
+    gate = article_gate()
+    s.deps.llm = gate
+    goal = asyncio.create_task(s.handle_turn(ARTICLE_GOAL))
+    await asyncio.wait_for(gate.reached.wait(), 30)
+    await asyncio.wait_for(s.handle_turn("지금 어디까지 했어?"), 5)
+    stopped = await asyncio.wait_for(s.handle_turn("멈춰"), 5)
+    assert stopped["state"] == "STOPPED"
+    gate.release.set()
+    assert (await goal)["state"] == "STOPPED"
+    # 멈춘 뒤에도 묻는 말에는 답한다(아무것도 실행하지 않으므로)
+    r = await s.handle_turn("지금 어디까지 했어?")
+    assert r["state"] == "STOPPED"
+    assert r["speech"] == f"지금 하고 있는 일은 없어요. 마지막으로 {CLICKED}"
 
 
 async def test_no_llm_step_by_step(new_session):

@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import time
 from importlib import resources
+from pathlib import Path
 from typing import Any, Sequence
 from weakref import WeakSet
 
@@ -71,7 +72,13 @@ async def launch_chrome_profile(user_data_dir: str, slow_mo_ms: int = 0) -> Brow
     """
     pw = await _pw()
     return await pw.chromium.launch_persistent_context(
-        user_data_dir, channel="chrome", headless=False, no_viewport=True, locale="ko-KR", slow_mo=slow_mo_ms or 0
+        user_data_dir,
+        channel="chrome",
+        headless=False,
+        no_viewport=True,
+        locale="ko-KR",
+        slow_mo=slow_mo_ms or 0,
+        accept_downloads=True,
     )
 
 
@@ -110,6 +117,9 @@ class PlaywrightExecutionAdapter:
         self.shared = False
         self.page: Page | None = None
         self._native_dialogs: list[str] = []
+        # 다운로드 저장소(DownloadStore). 경로에 받아 두고 이름을 말한다.
+        self.downloads = None
+        self._last_download: dict | None = None
 
     async def start(self) -> None:
         # 테스트용 Chromium: 세션마다 별도 컨텍스트(쿠키·저장소 분리). 실제 크롬: 공유 영구 프로필.
@@ -118,7 +128,9 @@ class PlaywrightExecutionAdapter:
             self.context = self._given_context
         else:
             assert self._browser is not None
-            self.context = await self._browser.new_context(locale="ko-KR", viewport={"width": 1100, "height": 860})
+            self.context = await self._browser.new_context(
+                locale="ko-KR", viewport={"width": 1100, "height": 860}, accept_downloads=True
+            )
         if self.shared and self.context in _prepared_contexts:
             await self._open_own_page()
             return
@@ -199,6 +211,37 @@ class PlaywrightExecutionAdapter:
         page.on("dialog", on_dialog)
         page.on("close", on_close)
 
+        def on_download(d) -> None:
+            asyncio.ensure_future(self._save_download(d))
+
+        page.on("download", on_download)
+
+    async def _save_download(self, download) -> None:
+        """Playwright download → downloads 폴더. 실패해도 조작은 이미 끝난 뒤다."""
+        try:
+            suggested = download.suggested_filename or f"download-{int(time.time())}"
+            store = self.downloads
+            if store is not None and getattr(store, "folder", None):
+                dest = Path(store.folder) / suggested
+                await download.save_as(str(dest))
+                rec = store.remember(dest, suggested)
+            else:
+                path = await download.path()
+                rec = {"name": suggested, "path": str(path) if path else "", "at": time.time()}
+                if store is not None and path:
+                    rec = store.remember(path, suggested)
+            self._last_download = rec
+        except Exception:  # noqa: BLE001
+            pass
+
+    def take_download_notice(self) -> str | None:
+        """방금 받은 파일이 있으면 한 줄 안내(한 번만)."""
+        d = self._last_download
+        self._last_download = None
+        if not d:
+            return None
+        return f"'{d['name']}' 파일을 받았어요. 읽어 드리려면 '받은 파일 읽어줘'라고 하세요."
+
     def _require_page(self) -> Page:
         if self.page is None:
             raise AdapterError("NOT_SUPPORTED", "어댑터가 시작되지 않았습니다.")
@@ -262,13 +305,15 @@ class PlaywrightExecutionAdapter:
             return {"ok": True, "verified": True}
 
         t = self.action_timeout
-        if kind == "click" and target and target.get("role") == "link" and target.get("name"):
+        if kind == "click" and target and not target.get("ref") and target.get("role") == "link" and target.get("name"):
             fallback = await self._link_fallback(page, target)
             if fallback:
                 return fallback
         loc = await self._resolve(page, target)
         if self.visual_cursor and kind != "read":
             await self._show_cursor(page, loc, kind in ("click", "check", "press"))
+            if target and target.get("ref"):
+                loc = await self._resolve_ref(page, target)  # 커서를 움직이는 사이(0.65초)에 글자가 바뀌었을 수 있다
         if kind == "click":
             await loc.click(timeout=t)
             return {"ok": True, "verified": True}
@@ -365,6 +410,8 @@ class PlaywrightExecutionAdapter:
         """접근성 우선 locator. 0개면 잠시 대기, 2개 이상이면 실행하지 않는다."""
         if not target:
             raise AdapterError("TARGET_NOT_FOUND")
+        if target.get("ref"):
+            return await self._resolve_ref(page, target)
         if target.get("label"):
             loc = page.get_by_label(target["label"], exact=True)
         elif target.get("role") and target.get("name"):
@@ -392,6 +439,19 @@ class PlaywrightExecutionAdapter:
         if count == 0:
             raise AdapterError("TARGET_NOT_FOUND")
         if count > 1:
+            raise AdapterError("AMBIGUOUS_TARGET")
+        return loc
+
+    async def _resolve_ref(self, page: Page, target: dict) -> Locator:
+        ref = target["ref"]
+        raw = await page.evaluate(OBSERVE_SCRIPT)
+        now = next((it for it in (raw.get("outline") or {}).get("items") or [] if it["ref"] == ref), None)
+        if now is None:
+            raise AdapterError("TARGET_NOT_FOUND")
+        if now["role"] != target.get("role") or now["name"] != target.get("name"):
+            raise AdapterError("VERIFY_FAILED", "누르려던 요소의 이름이나 역할이 바뀌었습니다.")
+        loc = page.locator(f'[data-cheongeum-ref="{_css_escape(ref)}"]').filter(visible=True)
+        if await loc.count() != 1:
             raise AdapterError("AMBIGUOUS_TARGET")
         return loc
 
@@ -438,6 +498,51 @@ class PlaywrightExecutionAdapter:
         errors = [*raw.get("errors", []), *(f"브라우저 경고창: {m}" for m in self._native_dialogs)]
         self._native_dialogs = []
         return parse_observation({**raw, "errors": errors, "platform": "pc", "url": page.url, "capturedAt": now_iso()})
+
+    async def clear_site_login(self, *, current_only: bool = True) -> list[str]:
+        """
+        로그인 쿠키·저장소를 지운다. current_only면 지금 페이지 호스트(및 상위 도메인)만.
+        반환: 지운 호스트 이름들(말하기용).
+        """
+        if self.context is None:
+            return []
+        cookies = await self.context.cookies()
+        host = ""
+        if current_only:
+            if self.page is None:
+                return []
+            try:
+                from urllib.parse import urlparse
+
+                host = (urlparse(self.page.url).hostname or "").lower()
+            except Exception:  # noqa: BLE001
+                host = ""
+            # 호스트를 모르면 전부 지우지 않는다(about:blank·오류 페이지에서 전 쿠키 삭제 방지).
+            if not host:
+                return []
+
+        def matches(domain: str) -> bool:
+            d = domain.lstrip(".").lower()
+            if not current_only:
+                return True
+            return host == d or host.endswith(f".{d}") or d.endswith(f".{host}")
+
+        targets = [c for c in cookies if matches(c.get("domain") or "")]
+        hosts: list[str] = []
+        for c in targets:
+            d = (c.get("domain") or "").lstrip(".")
+            if d and d not in hosts:
+                hosts.append(d)
+            try:
+                await self.context.clear_cookies(name=c["name"], domain=c.get("domain"), path=c.get("path") or "/")
+            except Exception:  # noqa: BLE001
+                pass
+        if self.page is not None and (not current_only or host):
+            try:
+                await self.page.evaluate("() => { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} }")
+            except Exception:  # noqa: BLE001
+                pass
+        return hosts
 
     async def close(self) -> None:
         try:

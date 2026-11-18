@@ -4,8 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cheongeum.agents.web.agent import ExecContext, WebExecutionAgent, WebOutcome
+from cheongeum.agents.web.approval import fingerprint
 from cheongeum.agents.web.profile import FieldProfile
-from cheongeum.agents.web.skills.common import browse_state, is_form_open, not_open, outcome_failure
+from cheongeum.agents.web.skills.common import ask_again, browse_state, fill_confirmed, is_form_open, not_open, outcome_failure
 from cheongeum.core.dialogue import DialogueState
 from cheongeum.core.jsutil import nz, try_url
 from cheongeum.core.turn import AGENT_IDS, draft
@@ -95,6 +96,8 @@ class FormSkill:
             values.append({"label": speak_label(found[0]["label"]), "value": f["value"]})
         u = try_url(view["url"])
         site = u.host if u else view["url"]
+        listed = ", ".join(f'{v["label"]} 칸에 "{v["value"]}"' for v in values)
+        speech = f"{listed}, 이렇게 넣을까요? 맞으면 '응', 아니면 '아니'라고 해 주세요."
         self.dialogue.ask_approval(
             {
                 "kind": "assist",
@@ -107,15 +110,10 @@ class FormSkill:
                     "values": values,
                     "realSubmission": False,
                 },
+                "fingerprint": fingerprint(view, actions, speech),
             }
         )
-        listed = ", ".join(f'{v["label"]} 칸에 "{v["value"]}"' for v in values)
-        return draft(
-            "WAITING_FOR_USER_CONFIRMATION",
-            "prepare-submit",
-            f"{listed}, 이렇게 넣을까요? 맞으면 '응', 아니면 '아니'라고 해 주세요.",
-            view=view,
-        )
+        return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, view=view)
 
     async def fill(self, fills: list[dict], ctx: ExecContext) -> dict:
         if not is_form_open(self.web.current_view):
@@ -186,17 +184,18 @@ class FormSkill:
         value = out.readValue or ""
         shown = readback(field_, value)
         guide = self.ask_next(out.view) if out.view else ""
+        said = fill_confirmed(label, shown, guide)
         return draft(
             "APPLICATION_OPEN",
             "fill",
-            f'{label}에 "{shown}" 넣었어요. {guide}'.strip(),
+            said,
             field=field_.field_id,
             value=value,
             actions=out.actions,
             view=out.view,
             verification={"fieldValueMatches": True},
             masked=bool(field_.mask_on_readback),
-            summary=f'{label}에 "{shown}" 넣었어요.',
+            summary=fill_confirmed(label, shown),
         )
 
     async def read_field(self, mention: str, ctx: ExecContext) -> dict:
@@ -353,6 +352,11 @@ class FormSkill:
         preview = self.web.preview_policy(action, ctx)
         values = self._review_values(out.view)
         profile = self.web.profile
+        listed = ". ".join(f"{v['label']}: {v['value']}" for v in values)
+        speech = (
+            f"검토 단계입니다. 모의접수할 내용: {listed}. "
+            + "이 내용으로 모의접수할까요? 실제 복지로 접수가 아니며 어디에도 전송되지 않습니다. 승인하려면 '모의접수 승인', 그만두려면 '거절'이라고 말씀하세요. 항목을 고치려면 해당 항목을 말씀하세요."
+        )
         self.dialogue.ask_approval(
             {
                 "action": action,
@@ -363,23 +367,18 @@ class FormSkill:
                     "values": values,
                     "realSubmission": False,
                 },
+                # 읽어 준 칸만이 아니라 신청서 칸 전부: 비어 있던 칸에 값이 생겨도 읽어 주지 않은 내용이 접수된다
+                "fingerprint": fingerprint(out.view, [action], speech, [f["fieldId"] for f in out.view["fields"]]),
             }
         )
         self.dialogue.drop_value_wait()
-        listed = ". ".join(f"{v['label']}: {v['value']}" for v in values)
-        return draft(
-            "WAITING_FOR_USER_CONFIRMATION",
-            "prepare-submit",
-            f"검토 단계입니다. 모의접수할 내용: {listed}. "
-            + "이 내용으로 모의접수할까요? 실제 복지로 접수가 아니며 어디에도 전송되지 않습니다. 승인하려면 '모의접수 승인', 그만두려면 '거절'이라고 말씀하세요. 항목을 고치려면 해당 항목을 말씀하세요.",
-            actions=[*out.actions, preview],
-            view=out.view,
-            masked=True,
-        )
+        return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, actions=[*out.actions, preview], view=out.view, masked=True)
 
     async def assist_approved(self, actions: list[dict], ctx: ExecContext) -> dict:
         """승인받은 실제 사이트 입력란 채우기. 호출자가 ctx.granted로 감싼다."""
         out = await self.web.assist_fill(actions, ctx)
+        if out.status == "unconfirmed":
+            return ask_again(out, "fill", "다시 넣으려면 '응', 그만두려면 '아니'라고 해 주세요.")
         self.dialogue.clear_approval()
         if out.status != "ok" or not out.view:
             return outcome_failure(out, "BROWSING")
@@ -394,6 +393,8 @@ class FormSkill:
     async def submit_approved(self, action: dict, ctx: ExecContext) -> dict:
         """승인받은 모의접수. 호출자가 ctx.granted로 감싼다."""
         out = await self.web.submit_approved(action, ctx)
+        if out.status == "unconfirmed":
+            return ask_again(out, "submit", "다시 하려면 '승인', 그만두려면 '거절'이라고 말씀해 주세요.")
         if out.status != "ok":
             return outcome_failure(out, "WAITING_FOR_USER_CONFIRMATION")
         self.dialogue.clear_approval()
@@ -410,8 +411,11 @@ class FormSkill:
     def reject(self) -> dict:
         if not self.dialogue.approval:
             return draft(self.dialogue.state, "reject", "거절할 승인 요청이 없어요.")
-        assist = self.dialogue.approval.get("kind") == "assist"
+        kind = self.dialogue.approval.get("kind")
         self.dialogue.clear_approval()
-        if assist:
+        if kind == "assist":
             return draft("BROWSING", "reject", "넣지 않았어요. 다시 말씀해 주세요.")
+        if kind == "click":
+            view = self.web.current_view
+            return draft(browse_state(view) if view else "IDLE", "reject", "누르지 않았어요. 화면은 그대로예요.")
         return draft("APPLICATION_OPEN", "reject", "모의접수를 하지 않았어요. 입력 내용은 그대로 있어요.")

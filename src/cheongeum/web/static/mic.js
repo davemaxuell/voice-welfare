@@ -6,7 +6,11 @@ const Recognition = typeof window !== 'undefined'
     : undefined;
 export const browserStt = {
     supported: !!Recognition,
-    listen(onText, onError, onEnd) {
+    /**
+     * onText(최종 글). onPartial이 있으면 중간 결과도 넘긴다(규칙으로 미리 멈춤·승인만 본다).
+     * 말이 바뀌면 중간 결과는 버리고, 최종에서만 턴을 확정한다.
+     */
+    listen(onText, onError, onEnd, onPartial) {
         if (!Recognition) {
             onError('이 브라우저는 음성 인식을 지원하지 않습니다. 텍스트로 입력해 주세요.');
             onEnd();
@@ -14,9 +18,23 @@ export const browserStt = {
         }
         const r = new Recognition();
         r.lang = BCP47[getSpeechLang()];
-        r.interimResults = false;
+        r.interimResults = typeof onPartial === 'function';
         r.maxAlternatives = 1;
-        r.onresult = (e) => onText(e.results[0]?.[0]?.transcript ?? '');
+        r.onresult = (e) => {
+            let interim = '';
+            let final = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+                const t = e.results[i]?.[0]?.transcript ?? '';
+                if (e.results[i].isFinal)
+                    final += t;
+                else
+                    interim += t;
+            }
+            if (final)
+                onText(final);
+            else if (interim && onPartial)
+                onPartial(interim);
+        };
         r.onerror = (e) => onError(`음성 인식 오류: ${e.error}`);
         r.onend = onEnd;
         r.start();
@@ -199,6 +217,8 @@ export class VoiceLoop {
         // 사람 말로 보이지 않는 동안의 소리로 기준을 천천히 따라간다(처음 한 번만 재면 TTS가 늦게 시작할 때 틀어짐).
         let bleed = this.noiseFloor;
         let loudMs = 0;
+        // 끼어들기 직전 1초 분량의 녹음 조각을 돌려, 말 앞부분이 잘리지 않게 한다.
+        this._startPreroll();
         const timer = setInterval(() => {
             const lv = this.level();
             const threshold = Math.max(0.02, bleed * 2.2, this.noiseFloor * 4);
@@ -214,7 +234,68 @@ export class VoiceLoop {
                 onBargeIn();
             }
         }, 50);
-        return () => clearInterval(timer);
+        return () => {
+            clearInterval(timer);
+            this._stopPreroll(false);
+        };
+    }
+    /** 안내 중에 돌아가는 1초 링 버퍼(MediaRecorder 조각). */
+    _startPreroll() {
+        this._stopPreroll(false);
+        if (!this.stream)
+            return;
+        try {
+            const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+            const rec = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
+            const ring = [];
+            rec.ondataavailable = (e) => {
+                if (e.data.size > 0)
+                    ring.push({ at: Date.now(), blob: e.data });
+                const cut = Date.now() - 1000;
+                while (ring.length && ring[0].at < cut)
+                    ring.shift();
+            };
+            rec.start(200);
+            this._preroll = { rec, ring };
+        }
+        catch {
+            this._preroll = undefined;
+        }
+    }
+    _stopPreroll(keep) {
+        const p = this._preroll;
+        this._preroll = undefined;
+        if (!p)
+            return null;
+        try {
+            if (p.rec.state === 'recording')
+                p.rec.stop();
+        }
+        catch {
+            /* already stopped */
+        }
+        if (!keep)
+            return null;
+        const parts = p.ring.map((x) => x.blob);
+        return parts.length ? new Blob(parts, { type: p.rec.mimeType || 'audio/webm' }) : null;
+    }
+    /** 끼어들기 직후: 사전 녹음(있으면) + 이어서 듣기. maxMs 안에 말이 없으면 null(거짓 끼어들기). */
+    async listenAfterBarge(maxMs = 2000, onSpeechStart) {
+        const head = this._stopPreroll(true);
+        const rest = await Promise.race([
+            this.listenOnce(onSpeechStart),
+            new Promise((resolve) => setTimeout(() => {
+                this.abort?.();
+                resolve(null);
+            }, maxMs)),
+        ]);
+        if (!rest && !head)
+            return null;
+        if (!rest)
+            return head;
+        if (!head)
+            return rest;
+        return new Blob([head, rest], { type: rest.type || head.type || 'audio/webm' });
     }
     /** 사용자가 말을 마쳤다고 알림 → 바로 보낸다. 말을 시작하기 전이면 false */
     endUtterance() {

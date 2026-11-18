@@ -3,7 +3,7 @@
 import { api } from './api.js';
 import { getSpeechLang, setSpeechLang, unlockAudio } from './audio.js';
 import { browserStt, listMicrophones, preferredMicrophone, startRecording, VoiceLoop } from './mic.js';
-import { browserTts, earcon, serverTts } from './speaker.js';
+import { applySpeechPrefs, browserTts, earcon, preloadCues, progressVoice, serverTts, takeInterruptedSpeech, transitionCue } from './speaker.js';
 
 const STATE_LABELS_KO = {
   AWAITING_CONSENT: '동의 대기',
@@ -49,16 +49,51 @@ const EXAMPLES = [
 
 const BACKGROUND = new URLSearchParams(location.search).get('background') === '1';
 
+const ALL_LANGS = ['ko', 'en', 'zh', 'ja'];
+
+/** 음성이 어디로 가는지(서버 /api/health의 stt.localLanguages = 이 컴퓨터 안에서 받아쓰는 언어) */
+function voiceRouteText(local = []) {
+  if (ALL_LANGS.every((l) => local.includes(l)))
+    return '말씀하신 음성은 이 컴퓨터 안에서 글자로 바뀌며 밖으로 전송되지 않습니다. 청음은 녹음을 저장하지 않습니다.';
+  if (local.includes('ko'))
+    return '한국어 음성은 이 컴퓨터 안에서 글자로 바뀌며 밖으로 전송되지 않습니다. 영어, 중국어, 일본어 음성은 받아쓰기를 위해 외부 인공지능 서비스인 OpenAI로 전송됩니다. 청음은 녹음을 저장하지 않습니다.';
+  return '말씀하신 음성은 받아쓰기를 위해 외부 인공지능 서비스인 OpenAI로 전송되며, 청음은 녹음을 저장하지 않습니다.';
+}
+
+/** 도움말 한 줄: 음성 인식이 어디서 이루어지는지 */
+function voiceHelp(voiceMode) {
+  const local = voiceMode.localLanguages ?? [];
+  if (ALL_LANGS.every((l) => local.includes(l))) return '음성은 이 컴퓨터 안에서 받아씁니다';
+  if (local.includes('ko')) return '한국어 음성은 이 컴퓨터 안에서 받아쓰고, 다른 언어는 외부 음성 인식 서비스로 전송됩니다';
+  return '음성은 외부 음성 인식 서비스로 전송됩니다';
+}
+
+/** 역할별 LLM이 어디로 가는지(/api/health.llmRoles). rules·mock은 밖으로 안 나감. */
+function llmRouteText(roles = {}) {
+  const label = { understand: '말씀 이해', goal: '목표 수행', web: '화면·검색 요약' };
+  const external = Object.entries(roles)
+    .filter(([k, v]) => label[k] && v && !/^(rules|mock)/i.test(String(v)))
+    .map(([k, v]) => `${label[k]}은 ${v}`);
+  if (!external.length) return '글 이해는 이 컴퓨터의 규칙으로만 처리합니다.';
+  return `글 이해에 쓰는 인공지능은 역할마다 다를 수 있어요. ${external.join(', ')}.`;
+}
+
 /** 시작 동의 안내: 무엇을 하는지, 무엇이 외부로 나가는지, 무엇을 하지 않는지, 어떻게 멈추는지 */
-const CONSENT_TEXT =
-  '안녕하세요. 음성 복지 도우미 청음입니다. 시작하기 전에 안내드립니다. ' +
-  '동의하시면 청음은 별도의 브라우저 창으로 웹사이트를 열어 화면을 읽어드리고, 지원하는 연습용 신청 사이트에서는 입력을 대신합니다. ' +
-  '그 밖의 사이트는 읽기, 이동, 검색만 하고 입력이나 제출은 하지 않습니다. 실제 접수는 하지 않으며, 중요한 동작 전에는 꼭 다시 여쭤봅니다. ' +
-  '말씀하신 음성은 받아쓰기를 위해 외부 인공지능 서비스인 OpenAI로 전송되며, 청음은 녹음을 저장하지 않습니다. 비밀번호나 주민등록번호는 말하지 마세요. ' +
-  "언제든 '멈춰'라고 말하면 멈춥니다. " +
-  (BACKGROUND
-    ? `동의하시면 ${/Mac/.test(navigator.platform) ? '커맨드' : '컨트롤'}, 시프트, 스페이스 키를 함께 눌러 주세요. 동의하지 않으시면 메뉴 막대의 청음에서 종료를 고르세요.`
-    : '동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.');
+function consentText() {
+  return (
+    '안녕하세요. 음성 복지 도우미 청음입니다. 시작하기 전에 안내드립니다. ' +
+    '동의하시면 청음은 별도의 브라우저 창으로 웹사이트를 열어 화면을 읽어드리고, 지원하는 연습용 신청 사이트에서는 입력을 대신합니다. ' +
+    '그 밖의 사이트는 읽기, 이동, 검색만 하고 입력이나 제출은 하지 않습니다. 실제 접수는 하지 않으며, 중요한 동작 전에는 꼭 다시 여쭤봅니다. ' +
+    `${voiceRouteText(ui.voiceMode.localLanguages)} ${llmRouteText(ui.voiceMode.llmRoles)} 비밀번호나 주민등록번호는 말하지 마세요. ` +
+    "언제든 '멈춰'라고 말하면 멈춥니다. " +
+    (BACKGROUND
+      ? `동의하시면 ${/Mac/.test(navigator.platform) ? '커맨드' : '컨트롤'}, 시프트, 스페이스 키를 함께 눌러 주세요. 동의하지 않으시면 메뉴 막대의 청음에서 종료를 고르세요.`
+      : '동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.')
+  );
+}
+
+// 서버 음성 설정을 받아 오기 전에는 동의 안내를 읽지 않는다(어디로 전송되는지가 바뀌므로)
+let healthReady = Promise.resolve();
 
 const GREETING = '무엇을 도와드릴까요? 띵 소리가 나면 말씀하세요. 제가 말하는 중에도 말씀하시면 멈추고 들을게요.';
 
@@ -94,7 +129,7 @@ const ui = {
   lang: 'ko',
   busy: false,
   listening: false,
-  voiceMode: { stt: false, tts: false, label: '브라우저 음성' },
+  voiceMode: { stt: false, tts: false, label: '브라우저 음성', localLanguages: [], llmRoles: {} },
   tts: browserTts.supported,
   contrast: false,
   error: undefined,
@@ -111,6 +146,23 @@ let recording;
 let stopListening;
 let reminderTimer;
 let messageSeq = 0;
+// 일하는 동안: 사용자가 말하는 중 / 청음이 짧은 안내(진행 상황)를 말하는 중
+let userTalking = false;
+let busyTalking = false;
+/** 마이크 경로 신호음은 음성 안내 꺼짐과 관계없이 낸다. 결과·알림 신호음은 ui.tts를 따른다. */
+const MIC_CUES = new Set(['start', 'listen', 'done', 'thinking', 'working', 'stopped', 'end']);
+const STOP_CUE_WINDOW_MS = 5000;
+let stopCuedAt = 0;
+
+function cue(kind) {
+  if (!MIC_CUES.has(kind) && !ui.tts) return Promise.resolve();
+  return earcon(kind);
+}
+
+function cueStopped() {
+  stopCuedAt = Date.now();
+  void cue('stopped');
+}
 
 function set(patch) {
   Object.assign(ui, patch);
@@ -207,7 +259,7 @@ function render() {
   talkBtn.disabled = phase === 'starting' || phase === 'thinking';
   talkBtn.textContent = phase === 'speaking' ? '지금 말하기 (안내 끊기)' : phase === 'hearing' ? '말 끝 (바로 보내기)' : '듣는 중 — 말씀하세요';
   $('command-help').textContent =
-    `비밀번호·주민등록번호·계좌번호는 말하거나 입력하지 마세요. 음성은 외부 음성 인식 서비스로 전송됩니다(${voiceMode.label}).` +
+    `비밀번호·주민등록번호·계좌번호는 말하거나 입력하지 마세요. ${voiceHelp(voiceMode)}(${voiceMode.label}).` +
     (voiceMode.stt ? ' 음성 입력 버튼을 누르고 말한 뒤 다시 누르세요.' : !browserStt.supported ? ' 이 브라우저는 음성 인식을 지원하지 않아 텍스트 입력만 사용할 수 있습니다.' : '');
   for (const b of $('examples').querySelectorAll('button')) b.disabled = !sessionId || busy;
 
@@ -286,14 +338,22 @@ function setPhase(p) {
 
 // ---------------------------------------------------------------- 응답·음성
 
-function applyResult(r, speakIt = true) {
+async function applyResult(r, speakIt = true) {
   const prevTurn = ui.last?.turnId;
+  const prevState = ui.state;
   setSpeechLang(r.lang);
+  if (r.speechPrefs) applySpeechPrefs(r.speechPrefs);
   set({ last: r, state: r.state, lang: r.lang ?? 'ko' });
   push({ role: 'user', text: r.userUtterance });
   push({ role: 'assistant', text: r.speech });
   announce(`상태: ${STATE_LABELS_KO[r.state]}`);
-  if (ui.tts && speakIt) speak(r.speech);
+  const kind = transitionCue(prevState, r.state);
+  if (kind && !(kind === 'stopped' && Date.now() - stopCuedAt < STOP_CUE_WINDOW_MS)) await cue(kind);
+  if (ui.tts && speakIt) {
+    // 본인인증 인계: 안내 한 번만 말하고 TTS를 멈춰 화면 낭독기가 입력 칸을 읽게 한다
+    if (r.state === 'AUTH_HANDOFF') void speakAndWait(r.speech).then(() => stopSpeaking());
+    else speak(r.speech);
+  }
   if (r.state === 'WAITING_FOR_USER_CONFIRMATION' && r.turnId !== prevTurn) $('confirm-title').focus();
 }
 
@@ -316,6 +376,16 @@ function stopSpeaking() {
 }
 
 /** 말이 끝날 때까지 기다린다(대화 모드: 끝난 뒤에 다시 듣기). */
+async function speakAndWaitFrom(text, fromChunk = 0) {
+  if (!ui.tts) return;
+  if (!ui.voiceMode.tts) {
+    await browserTts.speakAndWait(text);
+    return;
+  }
+  const result = await serverTts.speak(text, (chunk) => api.speak(chunk, getSpeechLang()), fromChunk);
+  if (result === 'failed') await browserTts.speakAndWait(text);
+}
+
 async function speakAndWait(text) {
   if (!ui.tts) return;
   if (!ui.voiceMode.tts) return browserTts.speakAndWait(text);
@@ -324,7 +394,34 @@ async function speakAndWait(text) {
   if (result === 'blocked') setError('브라우저가 소리 재생을 막았습니다. 화면을 한 번 클릭해 주세요.');
 }
 
-function endConversation() {
+const THINKING_DELAY_MS = 1000;
+const WORKING_START_MS = 3000;
+const WORKING_EVERY_MS = 2500;
+
+/** 생각중·일하는중 신호음. 반환값을 부르면 타이머를 모두 지운다. */
+function progressCues() {
+  let cancelled = false;
+  let intervalId;
+  const thinkingId = setTimeout(() => {
+    if (!cancelled) void cue('thinking');
+  }, THINKING_DELAY_MS);
+  const workingId = setTimeout(() => {
+    if (cancelled) return;
+    void cue('working');
+    intervalId = setInterval(() => {
+      if (!cancelled) void cue('working');
+    }, WORKING_EVERY_MS);
+  }, WORKING_START_MS);
+  return () => {
+    cancelled = true;
+    clearTimeout(thinkingId);
+    clearTimeout(workingId);
+    if (intervalId !== undefined) clearInterval(intervalId);
+  };
+}
+
+function endConversation(withCue = true) {
+  if (withCue && conversationOn) void cue('end');
   conversationOn = false;
   loop?.stop();
   loop = undefined;
@@ -338,7 +435,7 @@ function endConversation() {
 async function startConversation() {
   if (conversationOn || !ui.sessionId) return;
   if (!ui.voiceMode.stt) {
-    setError('대화 모드는 서버 음성 인식(STT_PROVIDER=openai)이 필요합니다. 지금은 음성 입력 버튼이나 텍스트를 사용하세요.');
+    setError('대화 모드는 서버 음성 인식(STT_PROVIDER=local 또는 openai)이 필요합니다. 지금은 음성 입력 버튼이나 텍스트를 사용하세요.');
     return;
   }
   if (ui.consent === 'declined') {
@@ -346,6 +443,7 @@ async function startConversation() {
     return;
   }
   unlockAudio();
+  void preloadCues();
   set({ error: undefined });
   setPhase('starting');
   const current = new VoiceLoop();
@@ -368,7 +466,7 @@ async function startConversation() {
     setPhase('off');
     setError(micTrouble);
     announce(micTrouble);
-    void speakAndWait(micTrouble);
+    void cue('problem').then(() => speakAndWait(micTrouble));
     return;
   }
   current.onTrouble = (reason) => {
@@ -376,8 +474,8 @@ async function startConversation() {
     announce(micTrouble);
     // 잠깐 끊김(mute)은 다시 연결될 수 있으니 대화를 끝내지 않는다. 장치가 아예 사라졌을 때만 끝낸다.
     if (reason === 'ended') {
-      void speakAndWait(micTrouble);
-      endConversation();
+      endConversation(false);
+      void cue('problem').then(() => speakAndWait(micTrouble));
     }
   };
   void current.startClapDetector(() => talkNow(), ui.micId);
@@ -385,6 +483,7 @@ async function startConversation() {
   loop = current;
   conversationOn = true;
   setPhase('speaking');
+  await cue('start');
   push({ role: 'assistant', text: GREETING });
   await speakAndWait(GREETING);
 
@@ -392,36 +491,72 @@ async function startConversation() {
   while (conversationOn) {
     setPhase('listening');
     announce('듣고 있습니다. 말씀하세요.');
-    await earcon('listen');
+    await cue('listen');
     const audio = await current.listenOnce(() => setPhase('hearing'));
     if (!audio || !conversationOn) break;
-    void earcon('done');
+    void cue('done');
     setPhase('thinking');
+    const stopProgress = progressCues();
     try {
-      const r = await api.audioTurn(ui.sessionId, audio);
+      const r = await whileBusy(api.audioTurn(ui.sessionId, audio), current);
       failures = 0;
-      applyResult(r, false);
+      await applyResult(r, false);
       if (!conversationOn) break;
       setPhase('speaking');
       // 끼어들기: 안내 중에 사용자가 말하면 안내를 멈추고 바로 듣는다.
+      // 2초 안에 말이 없으면 거짓 끼어들기로 보고 멈춘 안내를 이어 말한다.
+      let barged = false;
       const stopWatch = current.watchBargeIn(() => {
+        barged = true;
         stopSpeaking();
         announce('말씀을 들을게요.');
       });
       await speakAndWait(r.speech);
       stopWatch();
+      if (barged && conversationOn) {
+        const interrupted = takeInterruptedSpeech();
+        setPhase('listening');
+        const clip = await current.listenAfterBarge(2000, () => setPhase('hearing'));
+        if (!clip) {
+          if (interrupted?.kind === 'server' && interrupted.text) {
+            setPhase('speaking');
+            await speakAndWaitFrom(interrupted.text, interrupted.fromChunk || 0);
+          }
+          continue;
+        }
+        void cue('done');
+        setPhase('thinking');
+        try {
+          const again = await whileBusy(api.audioTurn(ui.sessionId, clip), current);
+          await applyResult(again, false);
+          if (!conversationOn) break;
+          setPhase('speaking');
+          await speakAndWait(again.speech);
+        } catch (be) {
+          if (interrupted?.kind === 'server' && interrupted.text && /알아듣지 못했습니다/.test(be.message || '')) {
+            setPhase('speaking');
+            await speakAndWaitFrom(interrupted.text, interrupted.fromChunk || 0);
+          } else {
+            throw be;
+          }
+        }
+      }
     } catch (e) {
       const message = e.message;
       if (/알아듣지 못했습니다/.test(message)) {
         setPhase('speaking');
+        await cue('problem');
         await speakAndWait('잘 못 들었어요. 다시 말씀해 주세요.');
         continue;
       }
       setError(message);
       if (++failures >= 3) {
+        await cue('problem');
         await speakAndWait('문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요.');
         break;
       }
+    } finally {
+      stopProgress();
     }
     // 스피커 소리 잔향이 마이크로 들어가지 않게 잠깐 쉰다.
     await new Promise((r) => setTimeout(r, 300));
@@ -429,9 +564,85 @@ async function startConversation() {
   endConversation();
 }
 
+const PROGRESS_POLL_MS = 2000;
+
+/** 서버가 일하는 동안(work가 끝날 때까지): 목표 수행의 새 단계를 말하고, 대화 모드(voice)면 '멈춰'와 '지금 어디까지 했어?'를 듣는다. */
+async function whileBusy(work, voice) {
+  const stops = [watchProgress(voice), ...(voice ? [listenForStopWhileBusy(voice)] : [])];
+  try {
+    return await work;
+  } finally {
+    for (const stop of stops) stop();
+  }
+}
+
+/** 몇 초마다 진행 상황을 물어, 말할 단계가 있으면 한 문장 말한다(간격과 조용히 할 때는 progressVoice가 정함). 반환값을 부르면 그친다. */
+function watchProgress(voice) {
+  let on = true;
+  progressVoice.start();
+  const timer = setInterval(async () => {
+    const p = await api.progress(ui.sessionId).catch(() => undefined);
+    // 묻는 사이에 일이 끝났으면 말하지 않는다(답을 끊지 않게)
+    const text = on && p && progressVoice.pick(p, userTalking || busyTalking);
+    if (!text) return;
+    push({ role: 'assistant', text });
+    announce(text);
+    void sayWhileBusy(text, voice);
+  }, PROGRESS_POLL_MS);
+  return () => {
+    on = false;
+    clearInterval(timer);
+  };
+}
+
+/** 일하는 동안 짧게 말한다. 그동안은 멈춤 듣기를 쉰다(안내 소리를 받아쓰지 않게). */
+async function sayWhileBusy(text, voice) {
+  busyTalking = true;
+  voice?.cancelListening();
+  await speakAndWait(text);
+  busyTalking = false;
+}
+
+/**
+ * 일하는 동안에도 '멈춰'와 '지금 어디까지 했어?'는 듣는다. 서버가 그 둘만 실행하고(진행 물음은 답을 말한다) 나머지는 버린다.
+ * 반환값을 부르면 듣기를 그친다.
+ */
+function listenForStopWhileBusy(voice) {
+  let on = true;
+  void (async () => {
+    while (on && conversationOn) {
+      if (busyTalking) {
+        await new Promise((r) => setTimeout(r, 200));
+        continue;
+      }
+      const clip = await voice.listenOnce(() => (userTalking = true));
+      userTalking = false;
+      // 진행 안내를 말하려고 듣기를 끊었으면 안내가 끝난 뒤 다시 듣는다
+      if (!clip && busyTalking && on) continue;
+      if (!clip || !on) break;
+      try {
+        const r = await api.audioStop(ui.sessionId, clip);
+        if (r.stopped) {
+          cueStopped();
+          announce('멈출게요.');
+        } else if (r.result) {
+          await applyResult(r.result, false);
+          await sayWhileBusy(r.result.speech, voice);
+        }
+      } catch {
+        // 멈춤 확인이 실패해도 계속 듣는다. 일반 멈춤 버튼과 단축키는 그대로 쓸 수 있다.
+      }
+    }
+  })();
+  return () => {
+    on = false;
+    voice.cancelListening();
+  };
+}
+
 /**
  * '지금 말하기' — 버튼·스페이스·박수 두 번이 모두 같은 일을 한다.
- *  안내 중이면 끊고 바로 듣기, 말하는 중이면 말 끝으로 보고 바로 보내기, 대화가 꺼져 있으면 시작.
+ *  안내 중이면 끊고 바로 듣기, 말하는 중이면 말 끝으로 보고 바로 보내기, 일하는 중이면 멈추기, 대화가 꺼져 있으면 시작.
  */
 function talkNow() {
   // 백그라운드 데스크톱 앱: 창이 없어 Enter를 누를 수 없으므로 동의 안내 중의 단축키 = 동의
@@ -446,6 +657,11 @@ function talkNow() {
     announce('안내를 멈췄습니다. 말씀하세요.');
   } else if (ui.phase === 'hearing') {
     loop?.endUtterance();
+  } else if (ui.phase === 'thinking') {
+    // 창이 없는 데스크톱 모드에서는 단축키가 유일한 멈춤 수단이다.
+    cueStopped();
+    announce('멈출게요.');
+    void api.cancel(ui.sessionId).catch(() => undefined);
   }
 }
 
@@ -466,9 +682,12 @@ function setConsent(consent) {
 /** 1단계: 안내 듣기(이 버튼 누름으로 소리 재생이 허용된다). 2단계: Enter=동의, Esc=거부 */
 async function hearConsent() {
   unlockAudio();
+  void preloadCues();
   setConsent('ask');
-  push({ role: 'assistant', text: CONSENT_TEXT });
-  await speakAndWait(CONSENT_TEXT);
+  await healthReady;
+  const text = consentText();
+  push({ role: 'assistant', text });
+  await speakAndWait(text);
 }
 
 async function answerConsent(granted) {
@@ -477,7 +696,7 @@ async function answerConsent(granted) {
   try {
     const r = await api.consent(ui.sessionId, granted);
     setConsent(granted ? 'granted' : 'declined');
-    applyResult(r, false);
+    await applyResult(r, false);
     if (granted) {
       // 같은 키 입력 안에서 마이크를 켜야 브라우저가 허용한다.
       void startConversation();
@@ -490,28 +709,43 @@ async function answerConsent(granted) {
   }
 }
 
-/** 데스크톱 앱(백그라운드): 신청 기록의 기한이 가까우면 한 시간마다 확인해 하루 한 번 소리로 알린다(기능 5) */
+/** 신청 기록 기한 알림: 웹·데스크톱 모두. 하루 한 번, 밤(22–7시)에는 지금/아침을 먼저 묻는다. '알겠어'면 그날은 다시 안 함. */
 function startReminders() {
-  if (!desktop || !ui.sessionId || reminderTimer) return;
+  if (!ui.sessionId || reminderTimer) return;
   const check = async () => {
     const { text } = await api.reminders(ui.sessionId).catch(() => ({ text: null }));
     if (!text) return;
-    const key = `cheongeum.reminded.${new Date().toDateString()}`;
+    const day = new Date().toDateString();
+    const key = `cheongeum.reminded.${day}`;
+    const ackKey = `cheongeum.remindAck.${day}`;
     let seen = null;
+    let acked = null;
     try {
       seen = localStorage.getItem(key);
+      acked = localStorage.getItem(ackKey);
     } catch {
       seen = null;
     }
-    if (seen === text || ui.phase === 'speaking' || ui.phase === 'hearing') return;
+    if (acked === text || seen === text || ui.phase === 'speaking' || ui.phase === 'hearing') return;
+    const hour = new Date().getHours();
+    const night = hour >= 22 || hour < 7;
+    if (night && !sessionStorage.getItem(`cheongeum.remindNight.${day}`)) {
+      sessionStorage.setItem(`cheongeum.remindNight.${day}`, '1');
+      push({ role: 'assistant', text: `기한 알림이 있어요. 지금 들을까요, 아침에 들을까요?` });
+      await cue('reminder');
+      await speakAndWait('기한 알림이 있어요. 지금 들으려면 \'지금\', 아침에 들으려면 \'아침\'이라고 해 주세요.');
+      return;
+    }
     try {
       localStorage.setItem(key, text);
     } catch {
       /* 저장소를 못 쓰면 매번 알린다 */
     }
     push({ role: 'assistant', text: `알림: ${text}` });
-    void speakAndWait(`알림이에요. ${text}`);
+    await cue('reminder');
+    void speakAndWait(`알림이에요. ${text} 들으셨으면 '알겠어'라고 해 주세요.`);
   };
+  void check();
   reminderTimer = setInterval(() => void check(), 60 * 60 * 1000);
 }
 
@@ -521,9 +755,27 @@ async function send(text) {
   const t = text.trim();
   if (!t || !ui.sessionId) return;
   $('command').value = ''; // 입력창에 원문(특히 민감정보)이 남지 않게 즉시 비운다.
+  // 기한 알림: '알겠어'면 그날 같은 알림 반복 안 함. 밤 안내는 지금/아침.
+  const day = new Date().toDateString();
+  try {
+    if (/^(알겠어|알았어|알겠어요|알았어요)/.test(t)) {
+      const key = `cheongeum.reminded.${day}`;
+      const seen = localStorage.getItem(key);
+      if (seen) localStorage.setItem(`cheongeum.remindAck.${day}`, seen);
+    }
+    if (/^지금/.test(t) && sessionStorage.getItem(`cheongeum.remindNight.${day}`)) {
+      sessionStorage.removeItem(`cheongeum.remindNight.${day}`);
+      // 곧 startReminders 주기에서 다시 읽어 말함
+    }
+    if (/^아침/.test(t) && sessionStorage.getItem(`cheongeum.remindNight.${day}`)) {
+      localStorage.setItem(`cheongeum.remindAck.${day}`, localStorage.getItem(`cheongeum.reminded.${day}`) || 'morning');
+    }
+  } catch {
+    /* storage */
+  }
   set({ busy: true, error: undefined });
   try {
-    applyResult(await api.turn(ui.sessionId, t));
+    await applyResult(await whileBusy(api.turn(ui.sessionId, t)));
   } catch (e) {
     setError(e.message);
   } finally {
@@ -533,7 +785,8 @@ async function send(text) {
 }
 
 async function stopAll() {
-  endConversation();
+  cueStopped();
+  endConversation(false);
   stopSpeaking();
   stopListening?.();
   recording?.cancel();
@@ -541,7 +794,7 @@ async function stopAll() {
   set({ listening: false });
   if (!ui.sessionId) return;
   try {
-    applyResult(await api.cancel(ui.sessionId));
+    await applyResult(await api.cancel(ui.sessionId));
   } catch (e) {
     setError(e.message);
   }
@@ -551,7 +804,7 @@ async function confirm(approve) {
   if (!ui.sessionId) return;
   set({ busy: true });
   try {
-    applyResult(await api.confirm(ui.sessionId, approve));
+    await applyResult(await api.confirm(ui.sessionId, approve));
   } catch (e) {
     setError(e.message);
   } finally {
@@ -566,12 +819,25 @@ async function toggleMic() {
     return;
   }
   stopSpeaking();
+  await cue('listen');
   set({ listening: true });
   announce('듣는 중입니다. 말씀하세요.');
   stopListening = browserStt.listen(
-    (text) => void send(text),
+    (text) => {
+      void cue('done');
+      const stop = progressCues();
+      void send(text).finally(stop);
+    },
     (msg) => setError(msg),
     () => set({ listening: false }),
+    (partial) => {
+      // 중간 결과: 멈춤만 미리 반영(최종에서 확정). 서버 is_stop_utterance와 같이 부정은 빼고, 말 단위로만.
+      const t = String(partial || '').trim();
+      if (/(멈춰|멈추|멈춤|중지|중단|그만|정지|스톱)/.test(t) && !/(취소\s*(하지|안)|멈추지\s*마)/.test(t)) {
+        stopSpeaking();
+        void api.cancel(ui.sessionId).catch(() => undefined);
+      }
+    },
   );
 }
 
@@ -583,11 +849,15 @@ async function toggleServerMic() {
     recording = undefined;
     set({ listening: false, busy: true });
     announce('인식 중입니다.');
+    const audio = await rec.stop();
+    void cue('done');
+    const stopProgress = progressCues();
     try {
-      applyResult(await api.audioTurn(ui.sessionId, await rec.stop()));
+      await applyResult(await whileBusy(api.audioTurn(ui.sessionId, audio)));
     } catch (e) {
       setError(e.message);
     } finally {
+      stopProgress();
       set({ busy: false });
     }
     return;
@@ -595,6 +865,7 @@ async function toggleServerMic() {
   stopSpeaking();
   set({ error: undefined });
   try {
+    await cue('listen');
     recording = await startRecording();
     set({ listening: true });
     announce('듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요.');
@@ -606,7 +877,7 @@ async function toggleServerMic() {
 // ---------------------------------------------------------------- 이벤트 연결
 
 function bind() {
-  $('consent-text').textContent = CONSENT_TEXT;
+  $('consent-text').textContent = consentText();
   $('unsupported').replaceChildren(
     ...UNSUPPORTED.map((u) => {
       const li = document.createElement('li');
@@ -646,7 +917,7 @@ function bind() {
   $('consent-no').addEventListener('click', () => void answerConsent(false));
 
   $('conv-start').addEventListener('click', () => void startConversation());
-  $('conv-end').addEventListener('click', endConversation);
+  $('conv-end').addEventListener('click', () => endConversation());
   $('mic-select').addEventListener('change', (e) => {
     set({ micId: e.target.value });
     try {
@@ -660,7 +931,7 @@ function bind() {
     if (!ui.sessionId) return;
     try {
       const r = await api.language(ui.sessionId, e.target.value);
-      applyResult(r, !conversationOn);
+      await applyResult(r, !conversationOn);
       if (conversationOn) await speakAndWait(r.speech);
     } catch (err) {
       setError(err instanceof Error ? err.message : '언어를 바꾸지 못했습니다.');
@@ -721,7 +992,7 @@ async function start() {
   bind();
   render();
   push({ role: 'system', text: '모의 브라우저 창을 준비하는 중입니다…' });
-  api
+  healthReady = api
     .health()
     .then((h) => {
       set({
@@ -729,13 +1000,17 @@ async function start() {
           stt: h.stt.supported,
           tts: h.tts.supported,
           label: `인식: ${h.stt.supported ? h.stt.provider : '브라우저'} · 안내: ${h.tts.supported ? h.tts.provider : '브라우저'}`,
+          localLanguages: h.stt.localLanguages ?? [],
+          llmRoles: h.llmRoles ?? {},
         },
         ...(h.tts.supported ? { tts: true } : {}),
       });
+      $('consent-text').textContent = consentText();
     })
     .catch(() => undefined);
   try {
     const s = await api.createSession();
+    if (s.speechPrefs) applySpeechPrefs(s.speechPrefs);
     set({ sessionId: s.sessionId, state: s.state });
     push({
       role: 'system',

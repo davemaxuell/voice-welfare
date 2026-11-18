@@ -1,0 +1,2 @@
+﻿SND01 "sine" by Yasuhiro Tsuchiya — https://snd.dev/
+Used under snd.dev terms (free for commercial/non-commercial use; do not redistribute unprocessed files alone). Credit requested.

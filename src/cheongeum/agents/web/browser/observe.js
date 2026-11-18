@@ -75,8 +75,14 @@
     steps = sibs.map(text);
   }
   const inDialog = (el) => !!el.closest('[role="dialog"], [role="alertdialog"], dialog');
-  const linkEls = Array.from(document.querySelectorAll('a[href]')).filter((a) => isVisible(a) && !a.classList.contains('skip-link'));
-  const linkName = (a) => (text(a) || a.getAttribute('aria-label') || a.getAttribute('title') || '').slice(0, 60);
+  const linkEls = Array.from(document.querySelectorAll('a[href], [role="link"]')).filter((a) => isVisible(a) && !a.classList.contains('skip-link'));
+  const imgAlt = (el) => {
+    const img = Array.from(el.querySelectorAll('img[alt]')).find((i) => (i.getAttribute('alt') || '').trim());
+    return img ? img.getAttribute('alt').trim() : '';
+  };
+  const nameOf = (el) => (text(el) || el.getAttribute('aria-label') || imgAlt(el) || el.getAttribute('title') || (typeof el.value === 'string' ? el.value : '') || '')
+    .replace(/\s+/g, ' ').trim().slice(0, 60);
+  const linkName = nameOf;
   const uniq = (arr) => arr.filter((v, i, a) => v && a.indexOf(v) === i);
   const linkNames = linkEls.map(linkName).filter(Boolean);
   // 본문: main → article → [role=main] → body 순서. 머리말·탐색·꼬리말·스크립트 제외.
@@ -109,7 +115,79 @@
     });
     mainText = (clone.textContent || '')
       .replace(/<[^>]{0,80}>/g, ' ') // 일부 사이트는 태그 문자열을 그대로 노출한다
-      .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 4000);
+      .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 20000);
+  }
+  let refSeq = 0;
+  const usedRefs = new Set();
+  const refOf = (el) => {
+    let r = el.dataset.cheongeumRef;
+    // cloneNode로 만든 요소는 원본의 ref까지 복사해 온다
+    if (!r || usedRefs.has(r)) {
+      r = 'r' + (++refSeq) + '-' + Math.random().toString(36).slice(2, 6);
+      el.dataset.cheongeumRef = r;
+    }
+    usedRefs.add(r);
+    return r;
+  };
+  const CANDIDATE = 'a[href], button, summary, input[type="submit"], input[type="button"], [role="link"], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+  const INTERACTIVE = CANDIDATE + ', input, select, textarea, label';
+  const TAG_ROLE = { A: 'link', BUTTON: 'button', SUMMARY: 'button', INPUT: 'button' };
+  // 주소창이 해석한 프로토콜로 본다: java&#9;script: 같은 변형도 javascript:로 걸러진다
+  const navigatesByHref = (el) => el.tagName === 'A' && /^\s*[^#\s]/.test(el.getAttribute('href') || '') && el.protocol !== 'javascript:';
+  const structuralTab = (el) => !!el.closest('[role="tablist"]') || el.hasAttribute('aria-controls') || el.hasAttribute('aria-selected');
+  const roleOf = (el) => {
+    const r = el.getAttribute('role');
+    if (r === 'tab' && structuralTab(el)) return 'tab';
+    if (navigatesByHref(el)) return 'link';
+    if (r === 'button' || r === 'tab') return 'button';
+    if (r === 'menuitem' || r === 'menuitemcheckbox' || r === 'menuitemradio') return 'menuitem';
+    if (r === 'link' || el.tagName === 'A') return 'scriptlink';
+    return TAG_ROLE[el.tagName] || 'generic';
+  };
+  const MENU_AREA = 'nav, header, [role="navigation"], [role="banner"]';
+  const OUT_AREA = 'nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]';
+  const regionOf = (el) => {
+    if (el.closest(MENU_AREA)) return 'menu';
+    if (!el.closest(OUT_AREA) && mainEl && (mainEl === document.body || mainEl.contains(el))) return 'main';
+    return 'other';
+  };
+  const pointer = (el) => !!el && el.nodeType === 1 && getComputedStyle(el).cursor === 'pointer';
+  const pointerRoot = (el) => pointer(el) && !pointer(el.parentElement);
+  const items = [];
+  let links = 0;
+  let others = 0;
+  let generics = 0;
+  for (const el of document.body ? document.body.getElementsByTagName('*') : []) {
+    if (!el.dataset) continue;
+    const standard = el.matches(CANDIDATE);
+    if (standard) {
+      if (el.classList.contains('skip-link')) continue;
+    } else {
+      if (generics >= 20 || !pointerRoot(el)) continue;
+      if (el.closest(INTERACTIVE) || el.querySelector(INTERACTIVE)) continue;
+      const t = text(el);
+      if (t.length < 2 || t.length > 60) continue;
+    }
+    const role = standard ? roleOf(el) : 'generic';
+    const linkish = role === 'link' || role === 'scriptlink';
+    if (linkish ? links >= 400 : others >= 300) continue;
+    if (!isVisible(el)) continue;
+    const name = nameOf(el);
+    if (!name) continue;
+    if (linkish) links++;
+    else others++;
+    if (!standard) generics++;
+    const item = { ref: refOf(el), role, name, region: regionOf(el), disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true' };
+    const sel = el.getAttribute('aria-selected');
+    const cur = el.getAttribute('aria-current');
+    if (sel !== null) item.selected = sel === 'true';
+    else if (cur !== null && cur !== 'false') item.selected = true;
+    // 국내 누리집 관례: 지금 탭을 title/aria-label의 '선택됨'으로 알린다(복지로 상세: title="지원대상 선택됨")
+    else if (/선택됨/.test([el, el.parentElement].filter(Boolean).map((x) => (x.getAttribute('title') || '') + ' ' + (x.getAttribute('aria-label') || '')).join(' '))) item.selected = true;
+    const exp = el.getAttribute('aria-expanded');
+    if (exp !== null) item.expanded = exp === 'true';
+    else if (el.tagName === 'SUMMARY' && el.parentElement) item.expanded = !!el.parentElement.open;
+    items.push(item);
   }
   const landmarkNames = { HEADER: '머리말', NAV: '탐색 메뉴', MAIN: '본문', ASIDE: '보조 영역', FOOTER: '꼬리말', FORM: '입력 양식' };
   const landmarks = Array.from(document.querySelectorAll('header, nav, main, aside, footer, [role="banner"], [role="navigation"], [role="main"], [role="search"], [role="contentinfo"]'))
@@ -130,7 +208,7 @@
     steps,
     buttons: Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]')).filter((el) => isVisible(el) && !inDialog(el))
       .map((el) => ({ name: (text(el) || el.getAttribute('aria-label') || el.value || '').slice(0, 60), disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true' }))
-      .filter((x) => x.name).slice(0, 40),
+      .filter((x) => x.name).slice(0, 80),
     links: linkNames.slice(0, 300),
     linkCount: linkNames.length,
     menuLinks: uniq(linkEls.filter((a) => a.closest('nav, header, [role="navigation"], [role="banner"]')).map(linkName)).slice(0, 40),
@@ -139,6 +217,7 @@
       : uniq(linkEls.filter((a) => !a.closest('nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]')).map(linkName)).slice(0, 80),
     mainText,
     landmarks,
+    items,
   };
   const status = Array.from(document.querySelectorAll('[role="status"]')).filter(isVisible).map(text).filter(Boolean).join(' ').slice(0, 300);
   if (status) result.status = status;
