@@ -55,7 +55,8 @@ export interface TranscriptSession {
 }
 export type OpenTranscript = (options: Header) => Promise<TranscriptSession>;
 const runtime = createTestRuntime();
-export const openSlice = new Map<IndexEntry["slice"], OpenTranscript>([["PR8a", openBrowserTranscript(runtime)]]);
+const open = openBrowserTranscript(runtime);
+export const openSlice = new Map<IndexEntry["slice"], OpenTranscript>([["PR8a", open], ["PR8b", open]]);
 export const closeTranscriptRuntime = runtime.close;
 
 export function loadTranscript(base: URL, entry: IndexEntry) {
