@@ -215,6 +215,40 @@
       "sha": "8929067ed82b08b6754083c177e0ca236518ab48",
       "partial": true
     },
+    "src/agents/web/browser/index.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/__init__.py",
+        "src/cheongeum/agents/web/browser/cursor.js",
+        "src/cheongeum/agents/web/browser/observe.js",
+        "src/cheongeum/agents/web/browser/rest_cursor.js",
+        "src/cheongeum/agents/web/browser/waiting.html"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/agents/web/agent.ts": {
+      "python": [
+        "src/cheongeum/agents/web/agent.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/agents/web/autopilot.ts": {
+      "python": [
+        "src/cheongeum/agents/web/autopilot.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/agents/web/docs.ts": {
+      "python": [
+        "src/cheongeum/agents/web/docs.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/agents/web/downloads.ts": {
+      "python": [
+        "src/cheongeum/agents/web/downloads.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
     "src/agents/welfare/data/index.ts": {
       "python": [
         "src/cheongeum/agents/welfare/data/__init__.py"

@@ -115,7 +115,8 @@ export function diffViews(before: WebObservation, after: WebObservation, ref?: s
   volatile: Readonly<Record<string, number>> = {}): [Effect, string] {
   if (!samePage(after, before)) return ["moved", ""];
   const old = lines(before), seen = new Set(old);
-  const clicked = [after, before].flatMap(v => v.outline?.items ?? []).find(item => item.ref === ref)?.name;
+  const clicked = ref === undefined ? undefined
+    : after.outline?.items?.find(item => item.ref === ref)?.name ?? before.outline?.items?.find(item => item.ref === ref)?.name;
   const blocks: string[][] = [];
   for (const block of changedBlocks(old, lines(after))) {
     if (!Object.hasOwn(volatile, block.anchor)) blocks.push(block.lines);
