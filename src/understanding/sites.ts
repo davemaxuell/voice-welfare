@@ -130,7 +130,7 @@ export const sitesPatterns = {
   siteNoun: /(홈페이지|누리집|웹\p{White_Space}*사이트|사이트|페이지)/gu,
   openCommand: /(을|를|에|로|으로|좀)?\p{White_Space}*(열어|접속|들어가|이동해|가|켜|띄워)\P{White_Space}*\p{White_Space}*(줘|주세요|봐)?/gu,
   spaces: /\p{White_Space}+/gu,
-  domain: /(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİı0-9-]+\.)+[a-zİı]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?)/iu,
+  domain: /(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİ0-9-]+\.)+[a-zİ]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?)/iu,
   space: /\p{White_Space}/gu,
   otherThanHangul: /[^가-힣]/gu,
   particle: /(으로|에서|을|를|로|에|좀|이|가)(?=\n?$)/gu,
