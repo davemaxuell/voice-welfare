@@ -49,5 +49,11 @@
     "kind": "audio-text-privacy-boundary",
     "fn": "server.app.audio_turn",
     "reason": "Apply the approved mask-before-cut rule to the 500-code-point transcription boundary. Scan the full local transcript, preserve the original input budget, and route a disclosure without exposing a partial identifier in the response, history or model input."
+  },
+  {
+    "kind": "evaluation-goal-input-meter",
+    "fn": "scripts.eval_agent.main",
+    "test": "meters the model that handles browse_step",
+    "reason": "The Python report wraps the web-answer model. When the goal model handles browse_step it reports zero input characters. Count each browse_step on the session's resolved goal model and leave shared providers untouched."
   }
 ]
