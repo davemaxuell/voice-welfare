@@ -58,6 +58,11 @@ it("test_live_startup_and_delegation_instructions", async () => {
     decisions: z.object({ questions: z.tuple([z.object({ instructions: z.string() })]) }),
   }) }) }).parse(body);
   expect(session).not.toHaveProperty("input");
+  expect(session).toMatchObject({
+    model: "gpt-live-1.1",
+    audio: { output: { voice: "coral" } },
+  });
+  expect(session).not.toHaveProperty("audio.format");
   expect(session.instructions).not.toMatch(demonstration);
   expect(session.delegation.decisions.questions[0].instructions).not.toMatch(demonstration);
 });

@@ -51,6 +51,8 @@ it("test_live_offer_seeds_recent_redacted_app_dialogue", async () => {
       questions: z.array(z.object({ name: z.string(), choices: z.array(z.object({ value: z.string() })) })),
     }) }) }) }).parse(body).session;
     expect(first).not.toHaveProperty("input"); expect(first).not.toHaveProperty("triggers"); expect(first.delegation.type).toBe("decisions");
+    expect(first).toMatchObject({ model: "gpt-live-1.1", audio: { output: { voice: "coral" } } });
+    expect(first).not.toHaveProperty("audio.format");
     expect(first.delegation.decisions.questions).toHaveLength(1); expect(first.delegation.decisions.questions[0]?.name).toBe("sol_effort");
     expect(first.delegation.decisions.questions[0]?.choices.map(item => item.value)).toEqual(["low", "medium", "high"]);
     await s.handleTurn("도움말 알려줘"); const kept = await s.handleTurn("청음");

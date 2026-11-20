@@ -85,7 +85,7 @@ it("test_one_key_enables_both_api_providers", () => {
 });
 it("test_edge_selection_is_endpoint_and_key_specific", () => {
   const cases: Array<[{ apiKey?: string; liveModel?: string; baseUrl?: string }, string | undefined]> = [
-    [{}, undefined], [{ apiKey: "dummy" }, "gpt-live-1"], [{ apiKey: "dummy", liveModel: "gpt-live-transcribe" }, undefined],
+    [{}, undefined], [{ apiKey: "dummy" }, "gpt-live-1.1"], [{ apiKey: "dummy", liveModel: "gpt-live-transcribe" }, undefined],
     [{ apiKey: "dummy", baseUrl: "https://custom.example/v1" }, undefined],
   ];
   for (const [config, expected] of cases) {
