@@ -38,7 +38,7 @@ function safeClick(point, expectTitle) {
 
 async function main() {
   assert.equal(process.platform, 'win32', 'Windows only');
-  const { chromium } = require(path.join(__dirname, '..', '..', '..', '.venv', 'Lib', 'site-packages', 'playwright', 'driver', 'package'));
+  const { chromium } = require('playwright');
   const t = await launch({ mic: { burstAt: null } });
   const browser = await chromium.launch({ headless: false, args: ['--window-position=40,40', '--window-size=900,600'] });
   const results = {};

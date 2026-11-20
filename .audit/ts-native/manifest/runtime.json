@@ -1,0 +1,60 @@
+{
+  "src/server/app.ts": {
+    "python": [
+      "src/cheongeum/server/app.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/server/main.ts": {
+    "python": [
+      "src/cheongeum/server/__main__.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/server/runtime.ts": {
+    "python": [
+      "src/cheongeum/server/runtime.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/server/launcher.ts": {
+    "python": ["src/cheongeum/server/__main__.py"],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/server/http.ts": {
+    "python": [
+      "src/cheongeum/server/__main__.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/practice_site/serve.ts": {
+    "python": [
+      "src/cheongeum/practice_site/serve.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "scripts/mock-site.ts": {
+    "python": [
+      "src/cheongeum/practice_site/serve.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/practice_site/site/picture.html": {
+    "python": [
+      "src/cheongeum/practice_site/site/picture.html"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/practice_site/site/portal2.html": {
+    "python": [
+      "src/cheongeum/practice_site/site/portal2.html"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/practice_site/site/src/portal2.js": {
+    "python": [
+      "src/cheongeum/practice_site/site/src/portal2.js"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  }
+}

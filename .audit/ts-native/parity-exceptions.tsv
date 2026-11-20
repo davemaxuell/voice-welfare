@@ -1,0 +1,8 @@
+# Python tests for behavior the owner dropped. One line per test name, then a tab, then the reason. Lines that start with # are notes.
+test_local_drops_silence_hallucinations_and_prompt_echo	local speech recognition dropped, owner decision 2026-11-20
+test_local_prompt_only_for_korean_when_enabled	local speech recognition dropped, owner decision 2026-11-20
+test_local_stop_signal_does_not_wait	local speech recognition dropped, owner decision 2026-11-20
+test_local_transcribes_without_prompt_by_default	local speech recognition dropped, owner decision 2026-11-20
+test_routing_korean_local_others_openai	local speech recognition dropped, owner decision 2026-11-20
+test_routing_without_openai_keeps_every_language_local	local speech recognition dropped, owner decision 2026-11-20
+test_vision_role_is_read_like_the_other_roles	its assertions expect a dedicated ollama provider to build a model, dropped by owner decision 2026-11-20

@@ -1,0 +1,40 @@
+{
+    "src/core/text.ts":  {
+                             "python":  [
+                                            "src/cheongeum/understanding/filters.py"
+                                        ],
+                             "sha":  "77aad3e88704e55be257d443664582a39e23861d",
+                             "partial":  true
+                         },
+    "src/core/mutex.ts":  {
+                              "python":  [
+                                             "src/cheongeum/orchestrator/session.py"
+                                         ],
+                              "sha":  "77aad3e88704e55be257d443664582a39e23861d",
+                              "partial":  true
+                          },
+    "src/core/sequence_matcher.ts":  {
+                                         "python":  [
+                                                        "src/cheongeum/agents/web/effect.py"
+                                                    ],
+                                         "sha":  "77aad3e88704e55be257d443664582a39e23861d",
+                                         "partial":  true
+                                     },
+    "src/core/schema.ts":  {
+                               "python":  [
+                                              "src/cheongeum/core/actions.py",
+                                              "src/cheongeum/core/turn.py",
+                                              "src/cheongeum/core/intents.py"
+                                          ],
+                               "sha":  "77aad3e88704e55be257d443664582a39e23861d",
+                               "partial":  true
+                           },
+    "tests/unit/web-observations.test.ts":  {
+                                                "python":  [
+                                                               "src/cheongeum/agents/web/browser/observe.js",
+                                                               "src/cheongeum/practice_site/site"
+                                                           ],
+                                                "sha":  "77aad3e88704e55be257d443664582a39e23861d",
+                                                "partial":  true
+                                            }
+}

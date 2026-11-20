@@ -1,0 +1,1145 @@
+{
+  "reference": {
+    "commit": "77aad3e88704e55be257d443664582a39e23861d",
+    "collection": ".audit/ts-native/collect-77aad3e.txt"
+  },
+  "modules": {
+    "src/core/actions.ts": {
+      "python": [
+        "src/cheongeum/core/actions.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/intents.ts": {
+      "python": [
+        "src/cheongeum/core/intents.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/turn.ts": {
+      "python": [
+        "src/cheongeum/core/turn.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/dialogue.ts": {
+      "python": [
+        "src/cheongeum/core/dialogue.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/events.ts": {
+      "python": [
+        "src/cheongeum/core/events.py"
+      ],
+      "sha": "9a60a1ab13b72a350a7165d0e62ff3fb3267b9f8"
+    },
+    "src/core/progress.ts": {
+      "python": [
+        "src/cheongeum/core/progress.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/llm.ts": {
+      "python": [
+        "src/cheongeum/core/llm.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/chat.ts": {
+      "python": [
+        "src/cheongeum/understanding/chat.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/llm_planner.ts": {
+      "python": [
+        "src/cheongeum/understanding/llm_planner.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/understand.ts": {
+      "python": [
+        "src/cheongeum/understanding/understand.py",
+        "src/cheongeum/understanding/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/rules.ts": {
+      "python": [
+        "src/cheongeum/understanding/rules.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/filters.ts": {
+      "python": [
+        "src/cheongeum/understanding/filters.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/understanding/sites.ts": {
+      "python": [
+        "src/cheongeum/understanding/sites.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/time.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/url.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/abort.ts": {
+      "python": [
+        "src/cheongeum/core/jsutil.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/text.ts": {
+      "python": [
+        "src/cheongeum/understanding/filters.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/mutex.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/sequence_matcher.ts": {
+      "python": [
+        "src/cheongeum/agents/web/effect.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/core/schema.ts": {
+      "python": [
+        "src/cheongeum/core/actions.py",
+        "src/cheongeum/core/turn.py",
+        "src/cheongeum/core/intents.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/safety/privacy.ts": {
+      "python": [
+        "src/cheongeum/safety/privacy.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/safety/pii_model.ts": {
+      "python": [
+        "src/cheongeum/safety/pii_model.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/safety/gates.ts": {
+      "python": [
+        "src/cheongeum/safety/gates.py"
+      ],
+      "sha": "886583c31ce36e641d221d4d166b0213ca83883b"
+    },
+    "src/safety/guard.ts": {
+      "python": [
+        "src/cheongeum/safety/guard.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/safety/verify.ts": {
+      "python": [
+        "src/cheongeum/safety/verify.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/language/i18n.ts": {
+      "python": [
+        "src/cheongeum/language/i18n.py",
+        "src/cheongeum/language/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/speech/phrasing.ts": {
+      "python": [
+        "src/cheongeum/speech/phrasing.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/digest.ts": {
+      "python": [
+        "src/cheongeum/agents/web/digest.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/effect.ts": {
+      "python": [
+        "src/cheongeum/agents/web/effect.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/approval.ts": {
+      "python": [
+        "src/cheongeum/agents/web/approval.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/profile.ts": {
+      "python": [
+        "src/cheongeum/agents/web/profile.py"
+      ],
+      "sha": "8929067ed82b08b6754083c177e0ca236518ab48"
+    },
+    "src/agents/web/auth_page.ts": {
+      "python": [
+        "src/cheongeum/agents/web/auth_page.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/playbook.ts": {
+      "python": [
+        "src/cheongeum/agents/web/playbook.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "tests/unit/web-observations.test.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/observe.js",
+        "src/cheongeum/practice_site/site"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/agents/web/browser/index.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/__init__.py",
+        "src/cheongeum/agents/web/browser/waiting.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/agent.ts": {
+      "python": [
+        "src/cheongeum/agents/web/agent.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/autopilot.ts": {
+      "python": [
+        "src/cheongeum/agents/web/autopilot.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/docs.ts": {
+      "python": [
+        "src/cheongeum/agents/web/docs.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/downloads.ts": {
+      "python": [
+        "src/cheongeum/agents/web/downloads.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/data/index.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/data/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/rag.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/rag.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/discovery.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/discovery.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/agent.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/agent.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/index.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/store.ts": {
+      "python": [
+        "src/cheongeum/personal/store.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/seal.ts": {
+      "python": [
+        "src/cheongeum/personal/seal.py"
+      ],
+      "sha": "1bce9da29f43edcb05dfb8e762ae5165d25292d0"
+    },
+    "src/personal/action_log.ts": {
+      "python": [
+        "src/cheongeum/personal/action_log.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/commands.ts": {
+      "python": [
+        "src/cheongeum/personal/commands.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/dialogue.ts": {
+      "python": [
+        "src/cheongeum/personal/dialogue.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/skills/common.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/common.py"
+      ],
+      "sha": "af2c1a530e192fc6368b9fd0f98c75003903c876"
+    },
+    "src/agents/web/skills/browse.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/browse.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/speech/screen.ts": {
+      "python": [
+        "src/cheongeum/speech/screen.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/session.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/orchestrator/replies.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/agents/web/skills/form.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/form.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/skills/guided.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/guided.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/application.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/evaluation/index.ts": {
+      "python": [
+        "src/cheongeum/evaluation/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/voice/errors.ts": {
+      "python": [
+        "src/cheongeum/voice/errors.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/voice/stt.ts": {
+      "python": [
+        "src/cheongeum/voice/stt.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/voice/tts.ts": {
+      "python": [
+        "src/cheongeum/voice/tts.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/voice/config.ts": {
+      "python": [
+        "src/cheongeum/voice/config.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/main.ts": {
+      "python": [
+        "src/cheongeum/server/__main__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/app.ts": {
+      "python": [
+        "src/cheongeum/server/app.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/runtime.ts": {
+      "python": [
+        "src/cheongeum/server/runtime.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/index.html": {
+      "python": [
+        "src/cheongeum/web/static/index.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/App.tsx": {
+      "python": [
+        "src/cheongeum/web/static/app.js",
+        "src/cheongeum/web/static/index.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/api.ts": {
+      "python": [
+        "src/cheongeum/web/static/api.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/audio.ts": {
+      "python": [
+        "src/cheongeum/web/static/audio.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/conversation.ts": {
+      "python": [
+        "src/cheongeum/web/static/app.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/mic.ts": {
+      "python": [
+        "src/cheongeum/web/static/mic.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/speaker.ts": {
+      "python": [
+        "src/cheongeum/web/static/speaker.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/styles.css": {
+      "python": [
+        "src/cheongeum/web/static/styles.css"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/evaluation/metrics.ts": {
+      "python": [
+        "src/cheongeum/evaluation/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/evaluation/asr.ts": {
+      "python": [
+        "src/cheongeum/evaluation/asr.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "src/practice_site/serve.ts": {
+      "python": [
+        "src/cheongeum/practice_site/serve.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/mock-site.ts": {
+      "python": [
+        "src/cheongeum/practice_site/serve.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-agent.ts": {
+      "python": [
+        "scripts/eval_agent.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-stt.ts": {
+      "python": [
+        "scripts/eval_stt.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/run-scenarios.ts": {
+      "python": [
+        "scripts/run_scenarios.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/check-llm.ts": {
+      "python": [
+        "scripts/check_llm.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/check-voice.ts": {
+      "python": [
+        "scripts/check_voice.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/check-welfare.ts": {
+      "python": [
+        "scripts/check_welfare.py"
+      ],
+      "sha": "5db04c0d01d0c364a39a99e6fa4f5cd081e33d53"
+    },
+    "scripts/setup-models.ts": {
+      "python": [
+        "scripts/setup_local_models.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/choices.ts": {
+      "python": [
+        "src/cheongeum/core/choices.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/lexicon.ts": {
+      "python": [
+        "src/cheongeum/core/lexicon.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/model_stack.ts": {
+      "python": [
+        "src/cheongeum/core/model_stack.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/picture.ts": {
+      "python": [
+        "src/cheongeum/core/picture.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/places.ts": {
+      "python": [
+        "src/cheongeum/core/places.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/region.ts": {
+      "python": [
+        "src/cheongeum/core/region.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/core/sites.ts": {
+      "python": [
+        "src/cheongeum/core/sites.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/src/main.ts": {
+      "python": [
+        "apps/desktop/main.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/src/preload.ts": {
+      "python": [
+        "apps/desktop/preload.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/src/overlay-preload.ts": {
+      "python": [
+        "apps/desktop/overlay-preload.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/src/updates.ts": {
+      "python": [
+        "apps/desktop/updates.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/src/service.ts": {
+      "python": [
+        "src/cheongeum/server/__main__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "apps/desktop/src/protocol.ts": {
+      "python": [
+        "apps/desktop/main.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "apps/desktop/scripts/build.ts": {
+      "python": [
+        "apps/desktop/electron-builder.yml",
+        "apps/desktop/build/after-pack.cjs",
+        "apps/desktop/build/runtime.py",
+        "apps/desktop/package.json"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/test/updates.test.ts": {
+      "python": [
+        "apps/desktop/test/updates.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "apps/desktop/test/packaged.ts": {
+      "python": [
+        "apps/desktop/test/installed.cjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/understanding/fastpath.ts": {
+      "python": [
+        "src/cheongeum/understanding/fastpath.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/atomic.ts": {
+      "python": [
+        "src/cheongeum/personal/atomic.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/personal/guardian.ts": {
+      "python": [
+        "src/cheongeum/personal/guardian.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/first_run.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/first_run.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/first_run_text.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/first_run.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/speech_repair.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/speech_repair.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/http.ts": {
+      "python": [
+        "src/cheongeum/server/__main__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/practice_site/site/picture.html": {
+      "python": [
+        "src/cheongeum/practice_site/site/picture.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/practice_site/site/portal2.html": {
+      "python": [
+        "src/cheongeum/practice_site/site/portal2.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/practice_site/site/src/portal2.js": {
+      "python": [
+        "src/cheongeum/practice_site/site/src/portal2.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-claps.ts": {
+      "python": [
+        "scripts/eval_claps.mjs"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-pictures.ts": {
+      "python": [
+        "scripts/eval_pictures.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-public-tasks.ts": {
+      "python": [
+        "scripts/eval_public_tasks.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/eval-understanding.ts": {
+      "python": [
+        "scripts/eval_understanding.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/record-setup-clips.ts": {
+      "python": [
+        "scripts/record_setup_clips.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/render-avatar-posters.ts": {
+      "python": [
+        "scripts/render_avatar_posters.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/avatar-poster-frame.ts": {
+      "python": [
+        "scripts/render_avatar_posters.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/sync-datasets.ts": {
+      "python": [
+        "scripts/sync_datasets.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "scripts/collect-previews.ts": {
+      "python": [
+        "welfare_catalog_checkpoint_2026-11-17/tools/collect_previews.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "welfare_catalog_checkpoint_2026-11-17/tools/README.md": {
+      "python": [
+        "welfare_catalog_checkpoint_2026-11-17/tools/README.md"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/public_task.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/public_task.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/key_check.ts": {
+      "python": [
+        "src/cheongeum/server/key_check.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/live_audio.ts": {
+      "python": [
+        "src/cheongeum/server/live_audio.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/public_search.ts": {
+      "python": [
+        "src/cheongeum/server/public_search.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/recovery.ts": {
+      "python": [
+        "src/cheongeum/server/recovery.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/request_policy.ts": {
+      "python": [
+        "src/cheongeum/server/request_policy.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/settings.ts": {
+      "python": [
+        "src/cheongeum/server/settings.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/voice_edge.ts": {
+      "python": [
+        "src/cheongeum/server/voice_edge.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/workflow_store.ts": {
+      "python": [
+        "src/cheongeum/server/workflow_store.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/workflows.ts": {
+      "python": [
+        "src/cheongeum/server/workflows.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/voice/live.ts": {
+      "python": [
+        "src/cheongeum/voice/live.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/orchestrator/public_plan.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/orchestrator/review_loop.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/orchestrator/patterns.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/session.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "src/orchestrator/task_review.ts": {
+      "python": [
+        "src/cheongeum/orchestrator/task_review.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/view.ts": {
+      "python": [
+        "src/cheongeum/web/static/app.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/SettingsDialog.tsx": {
+      "python": [
+        "src/cheongeum/web/static/app.js",
+        "src/cheongeum/web/static/index.html",
+        "src/cheongeum/web/static/onboarding.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/main.tsx": {
+      "python": [
+        "src/cheongeum/web/static/app.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/clap.ts": {
+      "python": [
+        "src/cheongeum/web/static/clap.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/clap-worklet.ts": {
+      "python": [
+        "src/cheongeum/web/static/clap-worklet.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/pcm-worklet.ts": {
+      "python": [
+        "src/cheongeum/web/static/pcm-worklet.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/companion.ts": {
+      "python": [
+        "src/cheongeum/web/static/companion.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/first-run.ts": {
+      "python": [
+        "src/cheongeum/web/static/first-run.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/first-run-text.ts": {
+      "python": [
+        "src/cheongeum/web/static/first-run.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/FirstRun.tsx": {
+      "python": [
+        "src/cheongeum/web/static/first-run.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/onboarding.ts": {
+      "python": [
+        "src/cheongeum/web/static/onboarding.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/onboarding-text.ts": {
+      "python": [
+        "src/cheongeum/web/static/onboarding.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/workspace-language.ts": {
+      "python": [
+        "src/cheongeum/web/static/workspace-language.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/voice-edge.ts": {
+      "python": [
+        "src/cheongeum/web/static/voice-edge.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/workflows.tsx": {
+      "python": [
+        "src/cheongeum/web/static/workflows.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/workflows-text.ts": {
+      "python": [
+        "src/cheongeum/web/static/workflows.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/recording-review.tsx": {
+      "python": [
+        "src/cheongeum/web/static/recording-review.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/src/recording-review-text.ts": {
+      "python": [
+        "src/cheongeum/web/static/recording-review.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    },
+    "web/avatar/index.html": {
+      "python": [
+        "src/cheongeum/web/static/avatar/index.html"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/avatar/overlay.ts": {
+      "python": [
+        "src/cheongeum/web/static/avatar/overlay.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/avatar/overlay.css": {
+      "python": [
+        "src/cheongeum/web/static/avatar/overlay.css"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/src/avatar/character.ts": {
+      "python": [
+        "src/cheongeum/web/static/avatar/character.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/public/art/gov.svg": {
+      "python": [
+        "src/cheongeum/web/static/art/gov.svg"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "web/public/art/scholar.svg": {
+      "python": [
+        "src/cheongeum/web/static/art/scholar.svg"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/file_answer.ts": {
+      "python": [
+        "src/cheongeum/agents/web/file_answer.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/link_choices.ts": {
+      "python": [
+        "src/cheongeum/agents/web/link_choices.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/shot.ts": {
+      "python": [
+        "src/cheongeum/agents/web/shot.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/skills/screen_context.ts": {
+      "python": [
+        "src/cheongeum/agents/web/skills/browse.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/visual_step.ts": {
+      "python": [
+        "src/cheongeum/agents/web/visual_step.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/speech/picture.ts": {
+      "python": [
+        "src/cheongeum/speech/picture.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/answer_card.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/agent.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/direct_links.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/agent.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/index.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/datasets.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/datasets.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/links.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/links.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/places.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/places.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/programs.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/programs.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/open_data/sync.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/open_data/sync.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/welfare/urlsplit.ts": {
+      "python": [
+        "src/cheongeum/agents/welfare/data/__init__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/server/launcher.ts": {
+      "python": [
+        "src/cheongeum/server/__main__.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/browser/blocks.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/blocks.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/browser/cursor.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/cursor.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/browser/full_page.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/full_page.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/browser/observe.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/observe.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "src/agents/web/browser/rest_cursor.ts": {
+      "python": [
+        "src/cheongeum/agents/web/browser/rest_cursor.js"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "tests/e2e/avatar.test.ts": {
+      "python": [
+        "tests/e2e/test_avatar.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d"
+    },
+    "tests/e2e/avatar-portrait-probe.ts": {
+      "python": [
+        "tests/e2e/test_avatar.py"
+      ],
+      "sha": "77aad3e88704e55be257d443664582a39e23861d",
+      "partial": true
+    }
+  }
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "kind": "pii-tokenizer",
+    "model": "atonlee/koelectra-ko-pii-ner",
+    "package": "@huggingface/tokenizers@0.2.0",
+    "comparison": {
+      "inputs": 1613,
+      "idDifferences": 0,
+      "offsetDifferences": 1613,
+      "missingOffsets": 1613
+    },
+    "runtime": "node-onnx",
+    "reason": "The base encoder omits original-text offsets. The native TypeScript tokenizer reconstructs code-point offsets before ONNX inference. The pii-node-parity tests compare the resulting spans with the pinned reference."
+  },
+  {
+    "kind": "digest-main-window",
+    "fn": "agents.web.digest.digest_for_llm",
+    "input": "😀안내 900101-1234567 끝",
+    "offset": 0,
+    "mainChars": 9,
+    "python": "😀안내 90010",
+    "typescript": "😀안내 [비공개]",
+    "reason": "The Python digest cuts before scanning, which exposes part of a resident number at a page boundary. Scan and mask the whole main text before choosing a window. Keep read_more/find coordinates in original code points and show a full mask in every window intersecting a secret."
+  },
+  {
+    "kind": "application-id-collision",
+    "fn": "personal.store.PersonalStore.add_application",
+    "reason": "Two applications recorded within the same millisecond share an ID in Python. Allocate the next unused millisecond ID in TypeScript so updating a deadline or marking an application complete changes only the selected record."
+  },
+  {
+    "kind": "approval-action-count",
+    "fn": "agents.web.approval.recheck",
+    "test": "an added or removed assist action cancels the entire approval",
+    "reason": "Python compares only overlapping action positions. A changed number of proposed actions invalidates the approval before any action ID is granted. Execute the checked snapshot so later changes to the pending object cannot change what is performed."
+  },
+  {
+    "kind": "guided-auth-origin",
+    "fn": "agents.web.skills.guided.GuidedFill.resume_after_auth",
+    "test": "guided auth redirects ask the new site for vault permission",
+    "reason": "Python retains the previous origin and keeps all visible fields after authentication. TypeScript checks the redirected origin before offering saved values and rechecks which fields remain eligible for voice input."
+  },
+  {
+    "kind": "download-original-filename",
+    "fn": "agents.web.downloads.DownloadStore.read_latest",
+    "test": "reads a downloaded HWPX using its original filename in an ephemeral browser session",
+    "reason": "Chromium stores temporary downloads under extensionless UUIDs. Python selects the parser from that UUID and rejects the file. TypeScript selects the parser from the original filename and reads the bytes from Chromium's stored path."
+  },
+  {
+    "kind": "audio-text-privacy-boundary",
+    "fn": "server.app.audio_turn",
+    "reason": "Apply the approved mask-before-cut rule to the 500-code-point transcription boundary. Scan the full local transcript, preserve the original input budget, and route a disclosure without exposing a partial identifier in the response, history or model input."
+  },
+  {
+    "kind": "evaluation-goal-input-meter",
+    "fn": "scripts.eval_agent.main",
+    "test": "meters the model that handles browse_step",
+    "reason": "The Python report wraps the web-answer model. When the goal model handles browse_step it reports zero input characters. Count each browse_step on the session's resolved goal model and leave shared providers untouched."
+  },
+  {
+    "kind": "goal-time-budget-hard-cap",
+    "fn": "agents.web.autopilot.Autopilot.run",
+    "test": "모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 멈춘다",
+    "reason": "Python checks the 75-second deadline only at the top of each step, so a model reply or browser action that starts in time is used even when it finishes after the budget. TypeScript aborts the model call and the browser action when the budget ends and reports the step limit. The owner keeps the hard cap because a voice user should never wait past the budget."
+  },
+  {
+    "kind": "welfare-xml-leniency",
+    "fn": "agents.welfare.data.parse_xml",
+    "package": "fast-xml-parser@5.12.1",
+    "comparison": {
+      "inputs": 71,
+      "differences": 8,
+      "acceptedByTypeScriptOnly": ["XML 1.0 control character in text", "']]>' in text", "'--' inside a comment", "undeclared namespace prefix", "encoding declaration that does not match the text"],
+      "differentKeys": ["namespace keys stay as prefix:name instead of {uri}name", "elements named __proto__ or constructor make the document unreadable"]
+    },
+    "reason": "ElementTree rejects some documents that fast-xml-parser accepts, and the two name namespaced and __proto__ elements differently. Keep the TypeScript behavior. Real API data with a stray control character is better than falling back to fixtures, and the other cases do not occur in real welfare API responses."
+  }
+]

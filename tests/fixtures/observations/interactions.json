@@ -1,0 +1,1778 @@
+{
+  "clicks": [
+    {
+      "action": {
+        "target": {
+          "name": "검색 조건 변경",
+          "ref": "ref-34",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "e917dffabbd21f73a6a1fd55",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "기간: 최근 1년"
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "검색 조건 변경",
+            "now": {
+              "name": "검색 조건 변경",
+              "ref": "ref-34",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_read_only_clicks.py::test_ask_tier_button_presses_after_yes"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "공지 자세히 보기",
+          "ref": "ref-34",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "3f2a1a59038b10730418ffbb",
+      "before": "200340fd8907e16657db65da",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "공지 자세히 보기",
+            "now": {
+              "name": "공지 자세히 보기",
+              "ref": "ref-34",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_link_inside_popup_can_be_pressed"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "공지 팝업 열기",
+          "ref": "ref-33",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "a6c59963928355085645c9c8",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "새해부터 보조기기 대여 품목이 늘어납니다.\n공지 자세히 보기"
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "공지 팝업 열기",
+            "now": {
+              "name": "공지 팝업 열기",
+              "ref": "ref-33",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_link_inside_popup_can_be_pressed"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "관련 법령 보기",
+          "ref": "ref-18",
+          "role": "scriptlink"
+        },
+        "type": "click"
+      },
+      "after": "752d0988cec83d4fa7dfe775",
+      "before": "752d0988cec83d4fa7dfe775",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "관련 법령 보기",
+            "now": {
+              "name": "회원 탈퇴",
+              "ref": "ref-18",
+              "role": "scriptlink"
+            },
+            "role": "scriptlink",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_changed_element_is_not_clicked"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "관련 법령 보기",
+          "ref": "ref-18",
+          "role": "scriptlink"
+        },
+        "type": "click"
+      },
+      "after": "e3b17c59943f1a70ab823adc",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "관련 법령 보기",
+            "now": {
+              "name": "관련 법령 보기",
+              "ref": "ref-18",
+              "role": "scriptlink"
+            },
+            "role": "scriptlink",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[role-link-without-href]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "글자 크게",
+          "ref": "ref-2",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "255beba0c204e72e6b7dcb8a",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "글자 크게",
+            "now": {
+              "name": "글자 크게",
+              "ref": "ref-2",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_nothing_changed_is_reported",
+        "tests/e2e/test_navigation.py::test_voice_click_without_effect_says_so"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "글자 크게",
+          "ref": "ref-2",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "489ebe96df5e4afface22b48",
+      "before": "98ac3e6c8030881937c1ed5e",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "글자 크게",
+            "now": {
+              "name": "글자 크게",
+              "ref": "ref-2",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_rotating_notice_is_not_read_as_the_click_effect"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "기초연금 안내",
+          "ref": "ref-7",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "cb2230bf3170f9da162320b5",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "기초연금 안내",
+            "now": {
+              "name": "기초연금 안내",
+              "ref": "ref-7",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_browsing.py::test_ambiguous_link_asks_then_number"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "날씨",
+          "ref": "ref-3",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "54fbdd1399139791cdbc52c2",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "날씨",
+            "now": {
+              "name": "날씨",
+              "ref": "ref-3",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_flexible_reference_uses_only_an_observed_candidate[3-weather]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "뉴스",
+          "ref": "ref-1",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "258f4dc32338c8a27cffe629",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "뉴스",
+            "now": {
+              "name": "뉴스",
+              "ref": "ref-1",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\\ubc88 \\ub20c\\ub7ec\\uc904\\ub798?-news]",
+        "tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[\\uccab \\ub9c1\\ud06c \\ub20c\\ub7ec\\uc918-news]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음 쪽",
+          "ref": "ref-35",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "4fe33129b4d25d87a1340131",
+      "before": "0218f029e3b268f07f5a6fba",
+      "effect": [
+        "changed",
+        "2쪽 첫 항목: 휠체어 대여 지원"
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음 쪽",
+            "now": {
+              "name": "다음 쪽",
+              "ref": "ref-35",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_content_that_arrived_late_does_not_hide_the_next_click"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "291d1d7e65b8a4cfdd4c7a59",
+      "before": "b8c8cabf1d9f3834889c79c2",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음",
+            "now": {
+              "name": "다음",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_mock_submit_receipt"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "45d384a92b386b6f73ae55bb",
+      "before": "2d35ce75939f251a5fe40bcc",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음",
+            "now": {
+              "name": "다음",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+        "tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence",
+        "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again",
+        "tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions",
+        "tests/e2e/test_safety.py::test_info_popup_closed_and_announced",
+        "tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval",
+        "tests/e2e/test_safety.py::test_timed_out_low_risk_click_is_retried_once",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt",
+        "tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]",
+        "tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once",
+        "tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "9942e83a352eee131a253ac5",
+      "before": "70fb9f1acb768c0ac15a9de4",
+      "effect": [
+        "changed",
+        "입력 내용을 확인해 주세요 (2건)\n성명: 성명을 입력하세요.\n주민등록 주소: 주민등록 주소를 입력하세요.\n성명을 입력하세요.\n주민등록 주소를 입력하세요."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음",
+            "now": {
+              "name": "다음",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S2-field-validation]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "aa0a9ab53edaba9c0fe04e5d",
+      "before": "1abf4df433b243adead6e3b2",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음",
+            "now": {
+              "name": "다음",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_mock_submit_receipt"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "다음",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "b31896ecaab3312392e4428c",
+      "before": "f575dc69f64d07adf887a0ac",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "다음",
+            "now": {
+              "name": "다음",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+        "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again",
+        "tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt",
+        "tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]",
+        "tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once",
+        "tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "닫기",
+          "ref": "ref-1",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "45d225d3c0c44e07cb6162e6",
+      "before": "e6b3b6f96fa38025257505e7",
+      "effect": [
+        "changed",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "닫기",
+            "now": {
+              "name": "닫기",
+              "ref": "ref-1",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/picture.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_picture_turn.py::test_numbered_followup_uses_the_control_that_was_described[False]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "닫기",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "1abf4df433b243adead6e3b2",
+      "before": "291d1d7e65b8a4cfdd4c7a59",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "닫기",
+            "now": {
+              "name": "닫기",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_mock_submit_receipt"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "닫기",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "f575dc69f64d07adf887a0ac",
+      "before": "45d384a92b386b6f73ae55bb",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "닫기",
+            "now": {
+              "name": "닫기",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+        "tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence",
+        "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again",
+        "tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions",
+        "tests/e2e/test_safety.py::test_info_popup_closed_and_announced",
+        "tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval",
+        "tests/e2e/test_safety.py::test_timed_out_low_risk_click_is_retried_once",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt",
+        "tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]",
+        "tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once",
+        "tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "담당 기관 안내 2",
+          "ref": "ref-20",
+          "role": "scriptlink"
+        },
+        "type": "click"
+      },
+      "after": "bdeb0ba1952dc2633d674107",
+      "before": "243a3bc3e243e3cbcac1063d",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "담당 기관 안내 2",
+            "now": {
+              "name": "담당 기관 안내 2",
+              "ref": "ref-20",
+              "role": "scriptlink"
+            },
+            "role": "scriptlink",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_cloned_elements_get_their_own_ref"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "로그인",
+          "ref": "ref-4",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "d975e2c56381fdaaaf112336",
+      "before": "d975e2c56381fdaaaf112336",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "로그인",
+            "now": {
+              "name": "로그인",
+              "ref": "ref-4",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_rotating_notice_does_not_cancel_an_approval"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "로그인",
+          "ref": "ref-4",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "c9905ebce8c44316ba199fc2",
+      "before": "7788ebec66315aec2a966d66",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "로그인",
+            "now": {
+              "name": "로그인",
+              "ref": "ref-4",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_conversation.py::test_real_site_login_moves_explains_asks_then_clicks"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "모의 로그인",
+          "ref": "ref-2",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "df9d70e54fd040c52eb19f84",
+      "before": "5bcf154728e78c5a644de25e",
+      "effect": [
+        "changed",
+        "가상 인증 화면입니다. 실제 인증은 이루어지지 않았습니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "모의 로그인",
+            "now": {
+              "name": "모의 로그인",
+              "ref": "ref-2",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/login.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_conversation.py::test_real_site_login_moves_explains_asks_then_clicks"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "모의접수",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "e721667aba4549a0ab16f00d",
+      "before": "f081ebd4716387003bebdf13",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "모의접수",
+            "now": {
+              "name": "모의접수",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+        "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "모의접수",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "ec6900342f7c9e95c6da4aee",
+      "before": "01a1be06ebadfeec87e885b2",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "모의접수",
+            "now": {
+              "name": "모의접수",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_mock_submit_receipt"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "문의처 안내",
+          "ref": "ref-30",
+          "role": "scriptlink"
+        },
+        "type": "click"
+      },
+      "after": "adb49762dba803f10e059d2d",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "문의처는 보조기기 지원 상담실 내선 204번입니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "문의처 안내",
+            "now": {
+              "name": "문의처 안내",
+              "ref": "ref-30",
+              "role": "scriptlink"
+            },
+            "role": "scriptlink",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_link_acting_as_tab_finishes_quickly"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "보조기기 체험관 둘러보기",
+          "ref": "ref-32",
+          "role": "generic"
+        },
+        "type": "click"
+      },
+      "after": "09ac894cb296a7d36635ca76",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "보조기기 체험관 둘러보기",
+            "now": {
+              "name": "보조기기 체험관 둘러보기",
+              "ref": "ref-32",
+              "role": "generic"
+            },
+            "role": "generic",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[roleless-clickable]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "복지 상담 센터",
+          "ref": "ref-17",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "8aa3df0b4675698adfbf11be",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "복지 상담 센터",
+            "now": {
+              "name": "복지 상담 센터",
+              "ref": "ref-17",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "복지",
+          "ref": "ref-2",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "ecd640839224f681feb374b6",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "복지",
+            "now": {
+              "name": "복지",
+              "ref": "ref-2",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\\ubc88 \\ub9d0\\uace0 2\\ubc88 \\ub20c\\ub7ec\\uc918-welfare]",
+        "tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\\ubc88\\uc740 \\ub204\\ub974\\uc9c0 \\ub9d0\\uace0 2\\ubc88\\uc744 \\ub20c\\ub7ec\\uc918-welfare]",
+        "tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[2\\ubc88 \\ub20c\\ub7ec\\uc918-welfare]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "부산 창구",
+          "ref": "ref-27",
+          "role": "tab"
+        },
+        "type": "click"
+      },
+      "after": "59ea47c6e07c3fe10d2db547",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "불러오는 중…"
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "부산 창구",
+            "now": {
+              "name": "부산 창구",
+              "ref": "ref-27",
+              "role": "tab"
+            },
+            "role": "tab",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_slow_tab_panel_is_read_after_it_loads"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "새 창으로 열기",
+          "ref": "ref-11",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "c61f7d042da5ea044963ba30",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "새 창으로 열기",
+            "now": {
+              "name": "새 창으로 열기",
+              "ref": "ref-11",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_browsing.py::test_follows_new_tab"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "서류는 몇 장인가요?",
+          "ref": "ref-31",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "4bb913689bdd4b7bf89f7977",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "필요한 서류는 신분증 사본과 진단서 두 가지입니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "서류는 몇 장인가요?",
+            "now": {
+              "name": "서류는 몇 장인가요?",
+              "ref": "ref-31",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_expander_opens_in_place"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "서비스 내용",
+          "ref": "ref-24",
+          "role": "tab"
+        },
+        "type": "click"
+      },
+      "after": "f38742e3d55ff9ff369347bb",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "서비스 내용은 보조기기 대여료를 한 달에 최대 3만 원까지 지원하는 것입니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "서비스 내용",
+            "now": {
+              "name": "서비스 내용",
+              "ref": "ref-24",
+              "role": "tab"
+            },
+            "role": "tab",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_tab_reveals_its_panel[button-role-tab]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "신청방법",
+          "ref": "ref-25",
+          "role": "tab"
+        },
+        "type": "click"
+      },
+      "after": "a3bb65aa9768b61ca8943aac",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "changed",
+        "신청 방법은 주소지 행정복지센터 3층 복지과 창구를 방문하는 것입니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "신청방법",
+            "now": {
+              "name": "신청방법",
+              "ref": "ref-25",
+              "role": "tab"
+            },
+            "role": "tab",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_safe_mode_allows_information_tabs_only",
+        "tests/e2e/test_navigation.py::test_tab_reveals_its_panel[li-role-tab]",
+        "tests/e2e/test_navigation.py::test_voice_tab_click_reads_revealed_text_quickly"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "신청방법",
+          "ref": "ref-25",
+          "role": "tab"
+        },
+        "type": "click"
+      },
+      "after": "c8d1df943d493b5bf4fba079",
+      "before": "489ebe96df5e4afface22b48",
+      "effect": [
+        "changed",
+        "신청 방법은 주소지 행정복지센터 3층 복지과 창구를 방문하는 것입니다."
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "신청방법",
+            "now": {
+              "name": "신청방법",
+              "ref": "ref-25",
+              "role": "tab"
+            },
+            "role": "tab",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_rotating_notice_is_not_read_as_the_click_effect"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "이용 안내서",
+          "ref": "ref-22",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "936157341faf246cf79ec57e",
+      "before": "f73813450f07ec6bd27e707c",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "이용 안내서",
+            "now": {
+              "name": "이용 안내서",
+              "ref": "ref-22",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/portal2.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt-over-title]"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "이전",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "3172110bd5c138711f510ffd",
+      "before": "f575dc69f64d07adf887a0ac",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "이전",
+            "now": {
+              "name": "이전",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/apply.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_info_popup_closed_and_announced"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "일정 자세히",
+          "ref": "ref-1",
+          "role": "button"
+        },
+        "type": "click"
+      },
+      "after": "564526c9f2907b1f4bf60799",
+      "before": "afc756a424eaf73cf86d8e1e",
+      "effect": [
+        "changed",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "일정 자세히",
+            "now": {
+              "name": "일정 자세히",
+              "ref": "ref-1",
+              "role": "button"
+            },
+            "role": "button",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/picture.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_picture_turn.py::test_lazy_footer_is_in_one_full_page_request_and_its_button_can_be_pressed"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "자세히 보기",
+          "ref": "ref-8",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "78a0f06a907fe99771883c34",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "자세히 보기",
+            "now": {
+              "name": "자세히 보기",
+              "ref": "ref-8",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_browsing.py::test_duplicate_link_name_opens_first"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "장애인연금 모의 신청하기",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "4b3ccfa50e9a730dd0303634",
+      "before": "76272d0bf33f35d6eb7a51cc",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "장애인연금 모의 신청하기",
+            "now": {
+              "name": "장애인연금 모의 신청하기",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_api.py::test_session_turn_state_cancel",
+        "tests/e2e/test_api.py::test_voice_turn_reaches_screen",
+        "tests/e2e/test_api.py::test_while_busy_only_a_stop_word_is_acted_on",
+        "tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit",
+        "tests/e2e/test_avatar.py::test_first_spoken_request_after_stop_opens_the_requested_form",
+        "tests/e2e/test_browsing.py::test_apply_from_external_opens_mock_form",
+        "tests/e2e/test_browsing.py::test_consent_required_before_screen",
+        "tests/e2e/test_choices.py::test_login_handoff_offers_done_and_cancel_and_resumes_the_form",
+        "tests/e2e/test_conversation.py::test_auth_done_speaks_title_and_resumes_pending_form",
+        "tests/e2e/test_conversation.py::test_called_by_name",
+        "tests/e2e/test_conversation.py::test_fillers_not_entered_as_name",
+        "tests/e2e/test_conversation.py::test_general_question_then_resume",
+        "tests/e2e/test_conversation.py::test_help_on_form_starts_with_form_examples",
+        "tests/e2e/test_conversation.py::test_llm_plan_when_rules_cannot_split",
+        "tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence",
+        "tests/e2e/test_conversation.py::test_plan_stops_on_clarification",
+        "tests/e2e/test_conversation.py::test_real_site_mode",
+        "tests/e2e/test_conversation.py::test_rephrase_with_llm",
+        "tests/e2e/test_conversation.py::test_rephrase_without_llm",
+        "tests/e2e/test_conversation.py::test_short_replies_not_values",
+        "tests/e2e/test_conversation.py::test_welfare_question_not_in_official_data",
+        "tests/e2e/test_first_run_conversation.py::test_practice_yes_opens_the_practice_form_and_finishes",
+        "tests/e2e/test_multilingual.py::test_about_practice_site",
+        "tests/e2e/test_multilingual.py::test_auto_switch_by_script",
+        "tests/e2e/test_multilingual.py::test_changed_numbers_fall_back_to_korean",
+        "tests/e2e/test_multilingual.py::test_switch_to_english_then_translate",
+        "tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again",
+        "tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions",
+        "tests/e2e/test_safety.py::test_edit_waiting_then_new_value",
+        "tests/e2e/test_safety.py::test_guided_dialogue_value_only",
+        "tests/e2e/test_safety.py::test_info_popup_closed_and_announced",
+        "tests/e2e/test_safety.py::test_mock_submit_receipt",
+        "tests/e2e/test_safety.py::test_multi_field_fill_verified_in_dom",
+        "tests/e2e/test_safety.py::test_multi_question_turn_blocked_while_stopped",
+        "tests/e2e/test_safety.py::test_ordinary_words_pass_outside_login",
+        "tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval",
+        "tests/e2e/test_safety.py::test_question_mid_form_then_resume",
+        "tests/e2e/test_safety.py::test_resume_plan_runs_its_later_steps",
+        "tests/e2e/test_safety.py::test_timed_out_low_risk_click_is_retried_once",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again",
+        "tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt",
+        "tests/e2e/test_safety.py::test_two_address_fields_asks_before_fill",
+        "tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S2-field-validation]",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S4-stop-cancel]",
+        "tests/e2e/test_scenarios.py::test_demo_scenario[S5-agent-collaboration]",
+        "tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once",
+        "tests/e2e/test_web_ui.py::test_consent_then_text_command",
+        "tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "장애인연금 모의 신청하기",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "76272d0bf33f35d6eb7a51cc",
+      "before": "76272d0bf33f35d6eb7a51cc",
+      "effect": [
+        "none",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "장애인연금 모의 신청하기",
+            "now": {
+              "name": "장애인연금 모의 신청하기",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://localhost:5174/",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_safety.py::test_stop_interrupts_inflight_and_blocks_later"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "장애인연금 안내",
+          "ref": "ref-6",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "5b76c642b6403ab7994c4a9a",
+      "before": "d654697eb2ec687e41a956c7",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "장애인연금 안내",
+            "now": {
+              "name": "장애인연금 안내",
+              "ref": "ref-6",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_api.py::test_progress_endpoint_reports_code_built_steps",
+        "tests/e2e/test_autopilot.py::test_open_click_answer",
+        "tests/e2e/test_autopilot.py::test_progress_question_mid_goal_names_the_current_step",
+        "tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\\uc5b4\\ub514\\uae4c\\uc9c0 \\ud588\\uc5b4 \\ub4a4\\ub85c \\uac00\\uc918]",
+        "tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\\uc5b4\\ub514\\uae4c\\uc9c0 \\ud588\\uc5b4? \\ub4a4\\ub85c \\uac00\\uc918]",
+        "tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\\uc5bc\\ub9c8\\ub098 \\ub0a8\\uc558\\uc5b4 \\uadf8\\ub9ac\\uace0 \\ub4a4\\ub85c \\uac00\\uc918]",
+        "tests/e2e/test_autopilot.py::test_stop_still_interrupts_a_goal",
+        "tests/e2e/test_browser_specialists.py::test_routine_verified_request_skips_specialists",
+        "tests/e2e/test_browser_specialists.py::test_two_grounding_failures_escalate_once_and_reverify[False]",
+        "tests/e2e/test_browser_specialists.py::test_two_grounding_failures_escalate_once_and_reverify[True]",
+        "tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[approve]",
+        "tests/e2e/test_browsing.py::test_links_by_number_and_back"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "하이코리아 홈페이지 신청 방법",
+          "ref": "ref-6",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "4ddf8036d6df73f1dcc37361",
+      "before": "8565243d20a6496ee238d501",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "하이코리아 홈페이지 신청 방법",
+            "now": {
+              "name": "하이코리아 홈페이지 신청 방법",
+              "ref": "ref-6",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_foreign_affirmative_uses_the_pending_link_before_public_planning",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[,\\ub124\\ud654\\uba74\\uc5d0\\uc788\\ub294\\uccab\\ubc88\\uc9f8\\ub9c1\\ud06c\\uac00\\ub9de\\uc544\\uc694.]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\uadf8\\uac70 \\ub20c\\ub7ec\\uc918]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\ub124, \\uadf8 \\ub9c1\\ud06c \\ub9de\\uc544. \\ud654\\uba74\\uc5d0 \\uc788\\ub294 \\uccab \\ub9c1\\ud06c\\uac00 \\ub9de\\uc544. \\uadf8\\uac70 \\uc5f4\\uc5b4\\uc918.]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\ub124, \\uadf8\\uac70 \\uc5f4\\uc5b4\\uc918]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\ub124, \\ud654\\uba74\\uc5d0 \\uc788\\ub294 \\uccab \\ubc88\\uc9f8 \\ub9c1\\ud06c\\uac00 \\ub9de\\uc544\\uc694]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\ub124]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\uc608. \\uccab \\uac80\\uc0c9 \\uacb0\\uacfc\\uac00 \\ub9de\\uc2b5\\ub2c8\\ub2e4.]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\uccab \\ubc88\\uc9f8 \\uac80\\uc0c9 \\uacb0\\uacfc \\uc5f4\\uc5b4\\uc918]",
+        "tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\\uccab \\ubc88\\uc9f8\\uac00 \\ub9de\\uc544\\uc694]",
+        "tests/e2e/test_voice_edge.py::test_live_link_reply_belongs_to_the_offer_heard_before_speaking"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "하이코리아 홈페이지 지원 대상",
+          "ref": "ref-7",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "acd52ed15c0dac64072415ee",
+      "before": "8565243d20a6496ee238d501",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "하이코리아 홈페이지 지원 대상",
+            "now": {
+              "name": "하이코리아 홈페이지 지원 대상",
+              "ref": "ref-7",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_search_result_numbers_are_consistent_after_reading_the_list"
+      ]
+    },
+    {
+      "action": {
+        "target": {
+          "name": "하이코리아 홈페이지",
+          "ref": "ref-2",
+          "role": "link"
+        },
+        "type": "click"
+      },
+      "after": "2e694ed83d6dc97b5a9e70ff",
+      "before": "60575886d78865ef4fbd036c",
+      "effect": [
+        "moved",
+        ""
+      ],
+      "fingerprint": {
+        "actions": [
+          {
+            "name": "하이코리아 홈페이지",
+            "now": {
+              "name": "하이코리아 홈페이지",
+              "ref": "ref-2",
+              "role": "link"
+            },
+            "role": "link",
+            "type": "click"
+          }
+        ],
+        "fields": [],
+        "page": "http://127.0.0.1:5174/external.html",
+        "speech": "이 항목을 누를까요?"
+      },
+      "tests": [
+        "tests/e2e/test_link_references.py::test_voice_opens_the_named_search_heading_without_reading_the_page"
+      ]
+    }
+  ],
+  "idle": [
+    {
+      "origin": "http://localhost:5174",
+      "view": "0f9ca3335e2635fbd3066b75",
+      "volatile": {}
+    },
+    {
+      "origin": "http://localhost:5174",
+      "view": "9b8b1857b7956d132b6d647f",
+      "volatile": {}
+    },
+    {
+      "origin": "http://localhost:5174",
+      "view": "773729ad98168b543aa45ec7",
+      "volatile": {
+        "보조기기 지원": 1
+      }
+    },
+    {
+      "origin": "http://localhost:5174",
+      "view": "93b42e24eae6e0ccb9faa68d",
+      "volatile": {
+        "보조기기 지원": 1
+      }
+    },
+    {
+      "origin": "http://127.0.0.1:5174",
+      "view": "98ac3e6c8030881937c1ed5e",
+      "volatile": {}
+    },
+    {
+      "origin": "http://127.0.0.1:5174",
+      "view": "f9ce40ee0579efe150758d0f",
+      "volatile": {}
+    },
+    {
+      "origin": "http://127.0.0.1:5174",
+      "view": "c1c42e1ce7cbb4951021160f",
+      "volatile": {
+        "보조기기 지원": 1
+      }
+    },
+    {
+      "origin": "http://127.0.0.1:5174",
+      "view": "f30d0ea12638695fe1675006",
+      "volatile": {
+        "보조기기 지원": 1
+      }
+    }
+  ],
+  "pages": {
+    "http://127.0.0.1:5174/apply.html": "98140874a3584285c5198969",
+    "http://127.0.0.1:5174/external.html": "d654697eb2ec687e41a956c7",
+    "http://127.0.0.1:5174/external2.html": "e2566ce059ab67b122ee6323",
+    "http://127.0.0.1:5174/index.html": "aef1f22c103f1d421c2d098b",
+    "http://127.0.0.1:5174/login.html": "6256b0be16e2ed94769afca8",
+    "http://127.0.0.1:5174/picture.html": "0b1b36b2115615944c3487ff",
+    "http://127.0.0.1:5174/portal2.html": "f73813450f07ec6bd27e707c",
+    "http://localhost:5174/apply.html": "70fb9f1acb768c0ac15a9de4",
+    "http://localhost:5174/external.html": "fccb8d9a460918067552bb80",
+    "http://localhost:5174/external2.html": "45af6cfa27a64c8889a72cf1",
+    "http://localhost:5174/index.html": "0c4af997b8e64be0bb2a0cae",
+    "http://localhost:5174/login.html": "c40dcb4db6acc16dfa88aee8",
+    "http://localhost:5174/picture.html": "e6b3b6f96fa38025257505e7",
+    "http://localhost:5174/portal2.html": "a1947b711380513fc8e240e2"
+  }
+}
