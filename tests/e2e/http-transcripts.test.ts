@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterAll, it, vi } from "vitest";
 import { makeApp } from "../../src/server/app.ts";
 import { InMemoryEventLog } from "../../src/core/events.ts";
+import { parseTurnResult } from "../../src/core/turn.ts";
 import { UnsupportedSttProvider } from "../../src/voice/stt.ts";
 import { UnsupportedTtsProvider } from "../../src/voice/tts.ts";
 import { createTestRuntime, openBrowserTranscript } from "./session-runtime.ts";
@@ -27,6 +28,7 @@ const open = openBrowserTranscript(runtime, async (session) => {
   const created = await app.request("/api/session", { method: "POST" });
   assert.equal(created.status, 200);
   assert.equal(((await created.json()) as { sessionId: string }).sessionId, session.id);
+  let actionId = "";
   return async (call) => {
     const sessionPath = "/api/session/" + session.id;
     let path: string;
@@ -34,11 +36,11 @@ const open = openBrowserTranscript(runtime, async (session) => {
     switch (call.method) {
       case "handle_turn":
         path = "/api/turn";
-        body = { sessionId: session.id, text: call.args[0] };
+        body = { sessionId: session.id, text: call.args[0], actionId };
         break;
       case "confirm":
         path = sessionPath + "/confirm";
-        body = { approve: call.args[0] };
+        body = { approve: call.args[0], actionId };
         break;
       case "cancel":
         path = sessionPath + "/cancel";
@@ -58,7 +60,9 @@ const open = openBrowserTranscript(runtime, async (session) => {
       headers: { "content-type": "application/json" },
     });
     assert.equal(response.status, 200, path);
-    return response.json();
+    const result: unknown = await response.json();
+    actionId = parseTurnResult(result).pendingConfirmation?.actionId ?? "";
+    return result;
   };
 });
 for (const entry of index.cases) {
