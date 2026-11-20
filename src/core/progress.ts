@@ -4,6 +4,8 @@ export class Progress {
   #running = false;
   #steps: string[] = [];
   #seq = 0;
+  #activity: string | null = null;
+  #activitySpoken = false;
 
   get running(): boolean { return this.#running; }
   get count(): number { return this.#steps.length; }
@@ -12,10 +14,18 @@ export class Progress {
   start(): void {
     this.#running = true;
     this.#steps = [];
+    this.#activity = null;
+    this.#activitySpoken = false;
   }
 
   add(sentence: string): void {
     this.#steps.push(sentence);
+    this.#seq++;
+  }
+
+  note(text: string, speak: boolean): void {
+    this.#activity = text;
+    this.#activitySpoken = speak;
     this.#seq++;
   }
 
@@ -32,6 +42,9 @@ export class Progress {
   }
 
   snapshot() {
-    return { running: this.running, seq: this.#seq, latest: this.latest ?? null, spoken: this.spoken && this.#reviews === 0 };
+    return {
+      running: this.running, seq: this.#seq, latest: this.latest ?? null, spoken: this.spoken && this.#reviews === 0,
+      activity: this.#activity, activitySpoken: this.#activitySpoken,
+    };
   }
 }
