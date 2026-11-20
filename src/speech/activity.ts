@@ -10,7 +10,7 @@ export interface ActivityFact {
   ok?: boolean;
 }
 
-const CLAIM = /열었|찾았|끝났|완료|눌렀/u;
+const CLAIM = /열었|열렸|열림|찾았|끝났|완료|눌렀|성공|됐|되었|이동했|들어갔/u;
 
 function cut(value: string | undefined, max: number): string | undefined {
   if (value === undefined) return undefined;

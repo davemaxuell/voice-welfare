@@ -35,6 +35,28 @@ it("검토한 일의 결과를 그대로 돌려준다", async () => {
   await expect(new Progress().review(async () => 7)).resolves.toBe(7);
 });
 
+it("끝난 단계 문장은 다음 상태 줄이 와도 읽을 때까지 남는다", () => {
+  const progress = new Progress();
+  progress.start();
+  progress.note("'신청'을 누르려고 했어요.", true);
+  progress.note("생각하는 중이에요.", false);
+  expect(progress.snapshot().activity).toBe("'신청'을 누르려고 했어요.");
+  expect(progress.shiftSpoken()).toBe("'신청'을 누르려고 했어요.");
+  expect(progress.snapshot().activity).toBe("생각하는 중이에요.");
+});
+
+it("새 목표가 시작된 뒤 이전 다시 쓰기는 줄을 되돌리지 않는다", () => {
+  const progress = new Progress();
+  progress.start();
+  progress.note("옛 문장", true);
+  const seq = progress.snapshot().seq;
+  const generation = progress.generation;
+  progress.start();
+  expect(progress.generation).not.toBe(generation);
+  progress.revise(seq, "옛 문장");
+  expect(progress.snapshot().activity).toBeNull();
+});
+
 it("상태 줄은 사실 단계를 바꾸지 않고 말하기 여부만 남긴다", () => {
   const progress = new Progress();
   progress.start();

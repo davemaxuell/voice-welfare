@@ -6,16 +6,25 @@ export class Progress {
   #seq = 0;
   #activity: string | null = null;
   #activitySpoken = false;
+  #activitySeq = 0;
+  #generation = 0;
+  #quiet: string | null = null;
+  #queue: { seq: number; text: string }[] = [];
 
   get running(): boolean { return this.#running; }
   get count(): number { return this.#steps.length; }
   get latest(): string | undefined { return this.#steps.at(-1); }
+  get generation(): number { return this.#generation; }
 
   start(): void {
     this.#running = true;
     this.#steps = [];
     this.#activity = null;
     this.#activitySpoken = false;
+    this.#activitySeq = 0;
+    this.#quiet = null;
+    this.#queue = [];
+    this.#generation++;
   }
 
   add(sentence: string): void {
@@ -24,14 +33,48 @@ export class Progress {
   }
 
   note(text: string, speak: boolean): void {
-    this.#activity = text;
-    this.#activitySpoken = speak;
     this.#seq++;
+    const audible = speak && this.spoken && this.#reviews === 0;
+    if (audible) {
+      this.#queue.push({ seq: this.#seq, text });
+      this.#activity = text;
+      this.#activitySpoken = true;
+      this.#activitySeq = this.#seq;
+    } else if (this.#queue.length === 0) {
+      this.#quiet = text;
+      this.#activity = text;
+      this.#activitySpoken = false;
+      this.#activitySeq = this.#seq;
+    } else {
+      this.#quiet = text;
+    }
   }
 
-  /** 같은 단계의 문장만 바꾼다. 번호와 말하기 여부는 그대로라 한 번 더 읽지 않는다. */
-  revise(text: string): void {
-    this.#activity = text;
+  hasSpoken(): boolean { return this.#queue.length > 0; }
+
+  /** 아직 읽지 않은 끝난 단계 문장을 하나 꺼낸다. 꺼낸 뒤에는 다음 대기 줄을 보여 준다. */
+  shiftSpoken(): string | undefined {
+    const item = this.#queue.shift();
+    if (this.#queue.length === 0) {
+      this.#activity = this.#quiet;
+      this.#activitySpoken = false;
+      this.#activitySeq = 0;
+    } else {
+      const next = this.#queue[0];
+      if (next !== undefined) {
+        this.#activity = next.text;
+        this.#activitySpoken = true;
+        this.#activitySeq = next.seq;
+      }
+    }
+    return item?.text;
+  }
+
+  /** 그 번호의 대기 문장만 바꾼다. 화면은 그 번호가 아직 보일 때만 바뀐다. */
+  revise(seq: number, text: string): void {
+    const item = this.#queue.find(row => row.seq === seq);
+    if (item !== undefined) item.text = text;
+    if (this.#activitySeq === seq) this.#activity = text;
   }
 
   finish(): void { this.#running = false; }

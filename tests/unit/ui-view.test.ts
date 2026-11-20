@@ -142,9 +142,13 @@ it("activity line shows the phase and speaks only a finished step", () => {
   expect(markup("내용을 가져오는 중이에요.")).toContain('id="st-activity"');
   expect(markup("내용을 가져오는 중이에요.")).toContain("내용을 가져오는 중이에요.");
   expect(markup(null)).toContain('hidden=""');
-  const quiet = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: false }, "");
-  expect(quiet).toEqual({ activity: "요청한 일을 실행하는 중이에요.", speak: undefined });
-  const said = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, "");
+  const quiet = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: false }, 0);
+  expect(quiet).toEqual({ activity: "요청한 일을 실행하는 중이에요.", speak: undefined, seq: 2 });
+  const said = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 0);
   expect(said.speak).toBe("요청한 일을 실행하는 중이에요.");
   expect(said.speak).not.toBe("이전 문장");
+  const held = progressUpdate({ running: true, seq: 3, spoken: false, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 0);
+  expect(held.speak).toBeUndefined();
+  const again = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 2);
+  expect(again.speak).toBeUndefined();
 });

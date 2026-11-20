@@ -20,7 +20,7 @@ import { guideSection } from "./playbook.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import { choices, type VisualChoice } from "./visual_step.ts";
 import type { WebObservation } from "./view.ts";
-import { describeActivity, fixedActivity, settleActivity, type ActivityFact } from "../../speech/activity.ts";
+import { describeActivity, fixedActivity, type ActivityFact } from "../../speech/activity.ts";
 
 export type AutopilotActionType =
   'open_url' | 'click' | 'search' | 'back' | 'find' | 'find_links' | 'more_links' | 'read_more' | 'answer' | 'ask_user' | 'fail';
@@ -313,10 +313,12 @@ export class Autopilot {
     const fixed = fixedActivity(fact);
     progress.note(fixed, speak);
     const request = progress.snapshot().seq;
+    const generation = progress.generation;
     const llm = this.opts.activityLlm;
     if (llm === undefined) return;
     void describeActivity(llm, fact).then(line => {
-      if (progress.snapshot().seq === request) progress.revise(settleActivity(request, request, line, fixed));
+      if (progress.generation !== generation) return;
+      progress.revise(request, line.length > 0 ? line : fixed);
     });
   }
 
