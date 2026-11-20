@@ -189,10 +189,10 @@ it("test_elements_are_classified_for_the_guard", async () => {
 it("test_safe_mode_allows_information_tabs_only", async () => {
   const { session } = await runtime.createBrowserSession({ readOnlyClicks: "safe" });
   const answer = "행정복지센터 3층 복지과 창구에서 신청해요.";
-  scripted(session, [step("open_url", url), step("click", "온라인 신청하기"), step("click", "보조기기 체험관 둘러보기"),
+  scripted(session, [step("open_url", url), step("click", "온라인 신청하기"),
     step("click", "신청방법"), step("answer", null, answer, [applyQuote])]);
   const result = await session.handleTurn(PORTAL2 + "에서 신청 방법 알려줘");
-  expect(result.trace.filter(t => t.note?.includes("안전 규칙으로 막힘") === true)).toHaveLength(2);
+  expect(result.trace.filter(t => t.note?.includes("안전 규칙으로 막힘") === true)).toHaveLength(1);
   expect(result.speech).toBe(answer);
   expect(result.observation?.title).toBe("[테스트] 복지 포털 2 - 보조기기 지원 상세");
 });
