@@ -779,7 +779,8 @@ export class BrowseSkill {
     let here = this.web.currentView?.url ?? "";
     const offerVisual = this.deps.visionLlm !== undefined && !exclusions.includes("screen_capture") && publicTask?.exclusions.includes("screen_capture") !== true;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
-      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, offerVisual, maxSteps, timeBudgetMs: maxSteps === undefined ? undefined : maxSteps * 12_000});
+      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, offerVisual, maxSteps, timeBudgetMs: maxSteps === undefined ? undefined : maxSteps * 12_000,
+      progress: this.progress, activityLlm: this.deps.webLlm});
     this.progress.start();
     let result;
     try {
