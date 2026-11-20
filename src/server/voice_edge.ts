@@ -62,7 +62,7 @@ function quoteAll(text: string): string {
   return encodeURIComponent(text).replace(/[!'()*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
-export interface EdgeSource { readonly baseUrl?: string | undefined; readonly apiKey?: string | undefined; readonly edgeModel?: string | undefined }
+export interface EdgeSource { readonly baseUrl?: string | undefined; readonly apiKey?: string | undefined; readonly edgeModel?: string | undefined; readonly voice?: string | undefined }
 export interface OfferSession {
   readonly lang: string;
   readonly state: string;
@@ -77,6 +77,7 @@ export class LiveProvider implements LiveSessionProvider {
   readonly url: string;
   readonly headers: Record<string, string>;
   readonly model: string;
+  readonly voice: string;
   readonly #fetch: typeof fetch;
   readonly #connect: SocketConnect;
 
@@ -84,6 +85,7 @@ export class LiveProvider implements LiveSessionProvider {
     this.url = (stt.baseUrl ?? "").replace(/\/+$/u, "") + "/live/sessions";
     this.headers = { Authorization: `Bearer ${stt.apiKey ?? ""}` };
     this.model = stt.edgeModel ?? "";
+    this.voice = stt.voice ?? "coral";
     this.#fetch = fetcher;
     this.#connect = connect;
   }
@@ -91,6 +93,7 @@ export class LiveProvider implements LiveSessionProvider {
   config(session: OfferSession, speed: number): Record<string, unknown> {
     const config: Record<string, unknown> = {
       model: this.model,
+      audio: { output: { voice: this.voice } },
       delegation: {
         type: "decisions",
         decisions: {

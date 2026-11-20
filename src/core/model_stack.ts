@@ -13,7 +13,7 @@ export interface ModelStack {
 }
 
 export const STACK: ModelStack = Object.freeze({
-  voice: "gpt-live-1",
+  voice: "gpt-live-1.1",
   agent: "gpt-6.2-sol",
   utility: "gpt-6-luna",
   vision: "gpt-6.1-terra",
