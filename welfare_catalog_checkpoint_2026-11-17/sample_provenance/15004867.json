@@ -1,0 +1,34 @@
+{
+  "id": "15004867",
+  "source": "https://www.data.go.kr/data/15004867/fileData.do",
+  "retrieved_at": "2026-11-17T16:43:46.071776+00:00",
+  "rows": [
+    [
+      "연번",
+      "시군별",
+      "결혼이민자 및 귀화자",
+      "비율"
+    ],
+    [
+      "1",
+      "포항",
+      "2434",
+      "13.48%"
+    ],
+    [
+      "2",
+      "경주",
+      "2198",
+      "12.17%"
+    ],
+    [
+      "3",
+      "김천",
+      "934",
+      "5.17%"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15004867&publicDataDetailPk=uddi%3A59493e18-38ec-4bb5-911c-dbfad4ef6777",
+  "sample_type": "official public file preview"
+}

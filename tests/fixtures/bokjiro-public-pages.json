@@ -1,0 +1,738 @@
+{
+ "_note": "2026-11-19 headless Chromium, 앱의 observe.js로 본 공개 복지로 화면(로그인 안 함). 머리말의 '공동인증서 내보내기' 단추가 모든 화면에 있다. 본문은 앞 1200자만.",
+ "detail": {
+  "url": "https://www.bokjiro.go.kr/ssis-tbu/twataa/wlfareInfo/moveTWAT52011M.do?wlfareInfoId=WLF00001164&wlfareInfoReldBztpCd=01",
+  "title": "복지서비스>서비스 찾기>복지서비스 상세(중앙) | 복지로",
+  "pageId": "external",
+  "platform": "pc",
+  "fields": [
+   {
+    "fieldId": "cheongeum-1-5ftu",
+    "label": "기타 의견을 입력해 주세요",
+    "type": "text",
+    "required": false,
+    "visible": true,
+    "value": "",
+    "filled": false,
+    "invalid": false,
+    "sensitive": false
+   }
+  ],
+  "errors": [],
+  "dialogs": [],
+  "outline": {
+   "headings": [
+    {
+     "level": 2,
+     "text": "복지서비스 상세(중앙)"
+    },
+    {
+     "level": 1,
+     "text": "지원대상 선택됨"
+    }
+   ],
+   "items": [
+    {
+     "ref": "r1-6jwr",
+     "role": "button",
+     "name": "본문 바로가기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r2-u0qf",
+     "role": "button",
+     "name": "공동인증서 내보내기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r3-lbr6",
+     "role": "button",
+     "name": "지원",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r4-tpqy",
+     "role": "button",
+     "name": "작게",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r5-m54r",
+     "role": "button",
+     "name": "크게",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r6-uetf",
+     "role": "button",
+     "name": "로그인",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r7-ltpp",
+     "role": "button",
+     "name": "맞춤형급여안내 (복지멤버십)",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r8-wslt",
+     "role": "generic",
+     "name": "찜하기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r9-1ntt",
+     "role": "button",
+     "name": "신청하기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r10-p6kx",
+     "role": "button",
+     "name": "모의계산",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r11-xpjr",
+     "role": "button",
+     "name": "목록",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r12-z8i7",
+     "role": "scriptlink",
+     "name": "지원대상",
+     "region": "main",
+     "disabled": false,
+     "selected": true
+    },
+    {
+     "ref": "r13-iltw",
+     "role": "scriptlink",
+     "name": "서비스 내용",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r14-541z",
+     "role": "scriptlink",
+     "name": "신청방법",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r15-6m6d",
+     "role": "scriptlink",
+     "name": "추가정보",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r16-uj86",
+     "role": "generic",
+     "name": "매우 만족만족약간 만족보통약간 불만족불만족매우 불만족",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r17-fxif",
+     "role": "button",
+     "name": "평가",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r18-vk4b",
+     "role": "scriptlink",
+     "name": "업무별 누리집",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r19-pr4m",
+     "role": "scriptlink",
+     "name": "보건복지부",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r20-5yzn",
+     "role": "scriptlink",
+     "name": "한국사회보장정보원",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r21-ltrj",
+     "role": "scriptlink",
+     "name": "보건복지상담센터",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r22-dpne",
+     "role": "button",
+     "name": "Youtube",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r23-u6h6",
+     "role": "button",
+     "name": "Facebook",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r24-15w8",
+     "role": "button",
+     "name": "Naver",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r25-rmbi",
+     "role": "link",
+     "name": "과학기술정보통신부 WA(WEB접근성) 품질인증 마크, 웹와치(WebWatch) 2026.9.13~2027.9",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r26-9e4z",
+     "role": "button",
+     "name": "복지로소개",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r27-d6tw",
+     "role": "button",
+     "name": "뉴스레터",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r28-2ocd",
+     "role": "button",
+     "name": "개인정보처리방침",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r29-1mb3",
+     "role": "button",
+     "name": "사이트맵",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r30-g4i7",
+     "role": "button",
+     "name": "민간복지 등록·수정",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r31-fwn9",
+     "role": "button",
+     "name": "시스템 오류 등록 게시판",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r32-jpzf",
+     "role": "button",
+     "name": "새로고침",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r33-rrjf",
+     "role": "button",
+     "name": "챗봇",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r34-u4cu",
+     "role": "button",
+     "name": "상단이동",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r35-tclz",
+     "role": "button",
+     "name": "하단이동",
+     "region": "main",
+     "disabled": false
+    }
+   ],
+   "mainText": "로그아웃\n복지소식\n복지로 소개\n고객센터\n사이트맵\n복지서비스\n서비스 찾기\n복지서비스 상세(중앙)\n복지서비스 상세(중앙)\n즐겨찾기\n내 상황에 맞는 다양한 복지혜택을 찾을 수 있습니다.\n중앙부처 복지사업\n노년\n생활지원\n서민금융\n저소득\n찜하기\n찜하기\n기초연금\n노인에게 기초연금을 지급하여 안정적인 소득기반을 제공함으로써 노인의 생활안정을 지원합니다.\n담당부처\n보건복지부 기초연금과\n복지서비스 상세기준연도\n 문의처\n 지원주기\n 제공유형\n2026\n 1355\n 월\n 현금지급\n신청하기\n모의계산\n목록\n유사사업 참여 이력조회\n지원대상\n서비스 내용\n신청방법\n추가정보\n지원대상 선택됨\n지원대상\n만 65세 이상인 어르신으로서 소득인정액이 매년 보건복지부장관이 정하여 고시하는 금액 이하인 사람에게 지원합니다. \n단, 직역연금 수급권자와 그 배우자는 기초연금 지급대상에서 제외하나, 특례대상과 예외대상에 해당하는 경우는 수급권자의 범위에 포함\n선정기준\n연령 : 만 65세이상인 자\n소득인정액 : 가구의 소득인정액이 선정기준액 이하인 자, 소득인정액은 아래와 같이 계산합니다.\n2026도 선정기준액은 단독가구는 2,470,000원, 부부가구는 3,952,000원\n소득인정액 = 소득평가액 + 재산의 소득환산액\n소득평가액 = {0.7 X (근로소득 - 116만원)} + 기타 소득\n재산의 소득환산액 = [ {(일반재산 - 기본재산액*) + (금융재산 - 2,000만원) - 부채} X 재산의 소득환산율 ÷ 12월] + P**\n *기본재산액은 대도시 및 특례시 1억3,500만원, 중소도시 8,500만원, 농어촌 7,250만원\n **P는 고급자동차 및 회원권의 가액으로 월 100%의 소득환산율을 적용\n직역연금 수급권자 제외 요건은 아래과 같습니다. \n공무원, 사립학교교직원, 군인, 별정우체국직원 등 직역연금의 수급권자와 그 배우자는 기초연금 지급대상에서 제외\n(예외) 다음 어느 하나에 해당하는 직역연금의 수급권자 및 그 배우자는 기초연금 수급권자 범위에 포함\n * 연계퇴직연금 또는 연계퇴직유족연금 수급권자 중 직역재직기간이 10년 미만인 경우\n * 유족연금일시금, 장해일시금, 비공무상 장해일시금, 비직무상 장해일시금, 퇴직유족연금일시금, 퇴직유족일시금을 받은 이후 5년이 경과된 경우\n(특례) 기초연금 수급권자 대상에서 제외되는 직역연금 수급권자 및 그 배우자 중 아래의 경우에 해당하는 자\n * 1949년 6월 30일 이전 출생자로 종전의 「기초노령연금법」에 따"
+  }
+ },
+ "home": {
+  "url": "https://www.bokjiro.go.kr/ssis-tbu/index.do",
+  "title": "대한민국 대표 복지포털 '복지로'",
+  "pageId": "external",
+  "platform": "pc",
+  "fields": [
+   {
+    "fieldId": "cheongeum-1-5akr",
+    "label": "검색어를 입력하세요. 입력된 검색어로 통합검색 페이지로 이동합니다.",
+    "type": "text",
+    "required": false,
+    "visible": true,
+    "value": "",
+    "filled": false,
+    "invalid": false,
+    "sensitive": false,
+    "searchable": true
+   }
+  ],
+  "errors": [],
+  "dialogs": [
+   {
+    "title": "복지로 서비스신청 중단 안내(PC, 모바일)",
+    "text": "복지로 서비스신청 중단 안내(PC, 모바일)오늘하루 열지않기닫기",
+    "buttons": []
+   }
+  ],
+  "outline": {
+   "headings": [
+    {
+     "level": 1,
+     "text": "맞춤형급여안내(복지멤버십) 선택됨"
+    }
+   ],
+   "items": [
+    {
+     "ref": "r1-wqr7",
+     "role": "button",
+     "name": "본문 바로가기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r2-pfrl",
+     "role": "button",
+     "name": "공동인증서 내보내기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r3-ahap",
+     "role": "button",
+     "name": "지원",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r4-b8ei",
+     "role": "button",
+     "name": "작게",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r5-022a",
+     "role": "button",
+     "name": "크게",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r6-vzuo",
+     "role": "button",
+     "name": "로그인",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r7-hoxa",
+     "role": "button",
+     "name": "맞춤형급여안내 (복지멤버십)",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r8-zqbo",
+     "role": "button",
+     "name": "검색하기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r9-7r9w",
+     "role": "generic",
+     "name": "공지사항",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r10-ahek",
+     "role": "button",
+     "name": "복지로 서비스 신청 중단 안내(PC, 모바일)",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r11-egbk",
+     "role": "button",
+     "name": "이전 공지사항",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r12-0a4z",
+     "role": "button",
+     "name": "다음 공지사항",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r13-h82z",
+     "role": "button",
+     "name": "공지사항 더보기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r14-f255",
+     "role": "button",
+     "name": "에너지바우처",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r15-docd",
+     "role": "button",
+     "name": "인기검색어 정지",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r16-r9r8",
+     "role": "button",
+     "name": "검색순위 펼치기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r17-rvxn",
+     "role": "button",
+     "name": "이전",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r18-5k2e",
+     "role": "button",
+     "name": "복지서비스",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r19-irgd",
+     "role": "button",
+     "name": "서비스신청",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r20-yej8",
+     "role": "button",
+     "name": "복지위기알림",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r21-p8on",
+     "role": "button",
+     "name": "복지지도",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r22-7580",
+     "role": "button",
+     "name": "복지신고",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r23-p8k5",
+     "role": "button",
+     "name": "맞춤형급여안내 (복지멤버십)",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r24-wn0x",
+     "role": "button",
+     "name": "다음 버튼",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r25-we6l",
+     "role": "scriptlink",
+     "name": "맞춤형급여안내 (복지멤버십)",
+     "region": "main",
+     "disabled": false,
+     "selected": true
+    },
+    {
+     "ref": "r26-p00y",
+     "role": "scriptlink",
+     "name": "복지지갑",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r27-7b5r",
+     "role": "scriptlink",
+     "name": "복지서비스",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r28-5sv4",
+     "role": "scriptlink",
+     "name": "서비스신청",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r29-xeqi",
+     "role": "button",
+     "name": "맞춤형급여안내(복지멤버십) 바로가기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r30-4bn2",
+     "role": "button",
+     "name": "바로가기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r31-ufrc",
+     "role": "button",
+     "name": "English",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r32-dl4g",
+     "role": "button",
+     "name": "中文",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r33-qf84",
+     "role": "button",
+     "name": "日本語",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r34-ry5g",
+     "role": "button",
+     "name": "Tiếng Việt",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r35-saq1",
+     "role": "button",
+     "name": "ខ្មែរ",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r36-0lvf",
+     "role": "button",
+     "name": "ภาษาไทย",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r37-m77x",
+     "role": "button",
+     "name": "이전",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r38-pcea",
+     "role": "button",
+     "name": "다음 버튼",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r39-cgbp",
+     "role": "scriptlink",
+     "name": "업무별 누리집",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r40-5iwl",
+     "role": "scriptlink",
+     "name": "보건복지부",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r41-48tm",
+     "role": "scriptlink",
+     "name": "한국사회보장정보원",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r42-uz2v",
+     "role": "scriptlink",
+     "name": "보건복지상담센터",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r43-n4l6",
+     "role": "button",
+     "name": "Youtube",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r44-go2p",
+     "role": "button",
+     "name": "Facebook",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r45-u36v",
+     "role": "button",
+     "name": "Naver",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r46-v80n",
+     "role": "link",
+     "name": "과학기술정보통신부 WA(WEB접근성) 품질인증 마크, 웹와치(WebWatch) 2026.9.13~2027.9",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r47-ma61",
+     "role": "button",
+     "name": "복지로소개",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r48-guvm",
+     "role": "button",
+     "name": "뉴스레터",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r49-umgf",
+     "role": "button",
+     "name": "개인정보처리방침",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r50-pzm5",
+     "role": "button",
+     "name": "사이트맵",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r51-eofk",
+     "role": "button",
+     "name": "민간복지 등록·수정",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r52-dzzv",
+     "role": "button",
+     "name": "시스템 오류 등록 게시판",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r53-tmhs",
+     "role": "button",
+     "name": "새로고침",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r54-u1os",
+     "role": "button",
+     "name": "챗봇",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r55-fe98",
+     "role": "button",
+     "name": "상단이동",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r56-51b3",
+     "role": "button",
+     "name": "하단이동",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r57-ln48",
+     "role": "button",
+     "name": "닫기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r58-nbzu",
+     "role": "generic",
+     "name": "오늘하루 열지않기",
+     "region": "main",
+     "disabled": false
+    },
+    {
+     "ref": "r59-rxdm",
+     "role": "button",
+     "name": "닫기",
+     "region": "main",
+     "disabled": false
+    }
+   ],
+   "mainText": "로그아웃\n복지소식\n복지로 소개\n고객센터\n사이트맵\n검색어를 입력하세요\n추천 검색어\n공지사항\n복지로 서비스 신청 중단 안내(PC, 모바일)\n검색순위\n1\n에너지바우처\n1\n에너지바우처\n2\n기초연금\n3\n주거급여\n4\n난방비\n5\n기초연금신청\n6\n청년\n7\n청년월세\n8\n아동수당\n9\n산후도우미\n10\n월세\n검색 Data Lab\n복지 안내도우미\n자주 찾는 서비스\n메뉴설정\n복지지갑\n모의계산\n서비스신청\n증명서발급\n복지서비스\n부정수급신고\n급여계좌변경\n자격증명관리\n복지시설\n신청서식\n자주 찾는 서비스\n복지서비스\n서비스신청\n복지위기알림\n복지지도\n복지신고\n맞춤형급여안내\n(복지멤버십)\n맞춤형급여안내\r\n(복지멤버십)\n복지지갑\n복지서비스\n서비스신청\n맞춤형급여안내(복지멤버십) 바로가기\n복지지갑 바로가기\n복지서비스 전체보기\n서비스신청 바로가기\n맞춤형급여안내(복지멤버십) 선택됨\n맞춤형급여안내(복지멤버십) 서비스에 가입하여 맞춤형 서비스 안내를 경험해 보세요.\n1\n한 번 가입으로 \n받을 가능성이 있는 복지서비스를 \n찾아서 안내해 드립니다.\n2\n나와 우리 가족이 받는\n복지서비스를 한눈에\n확인 할 수 있어요.\n3\n회원님의 상황에 따라\n유용한 복지정보를\n안내 받을 수 있어요.\n맞춤형급여안내로\r\n받을 가능성이 있는\r\n서비스를 확인해보세요.\n바로가기\n맞춤형급여안내 회원님을 위해 준비한 맞춤 정보를 확인해 보세요\n받을 가능성이 있는 서비스\n0\n건\n복지 맞춤형급여안내 \r\n안내 사업\n자세히 보기\nWelfare Info by Language\nEnglish\n中文\n日本語\nTiếng Việt\nខ្មែរ\nภาษาไทย\n만족도 평가\n이 페이지에서 제공하는 정보에 얼마나 만족하십니까 ?\n매우 만족\n만족\n약간 만족\n보통\n약간 불만족\n불만족\n매우 불만족\n기타 의견을 입력해 주세요\n평가\n오늘하루 열지않기\n닫기"
+  }
+ }
+}

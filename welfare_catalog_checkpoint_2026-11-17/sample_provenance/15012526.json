@@ -1,0 +1,38 @@
+{
+  "id": "15012526",
+  "source": "https://www.data.go.kr/data/15012526/fileData.do",
+  "retrieved_at": "2026-11-17T16:53:52.361657+00:00",
+  "rows": [
+    [
+      "시설유형",
+      "시설명",
+      "소재지",
+      "연락처",
+      "데이터기준일자"
+    ],
+    [
+      "모자가족복지시설",
+      "제주모자원",
+      "제주특별자치도 제주시 사송길 42",
+      "064-702-5275",
+      "2025-11-10"
+    ],
+    [
+      "모자일시보호시설",
+      "00 쉼터",
+      "제주특별자치도 서귀포시 (미공개)",
+      "",
+      "2025-11-10"
+    ],
+    [
+      "미혼모자가족 복지시설(기본생활지원형)",
+      "애서원",
+      "제주특별자치도 제주시 한경면 청수동4길 30",
+      "064-773-2010",
+      "2025-11-10"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15012526&publicDataDetailPk=uddi%3Afb44b0ad-e25e-4b6c-a06c-9824dc153c03_201910281051",
+  "sample_type": "official public file preview"
+}

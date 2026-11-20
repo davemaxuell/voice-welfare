@@ -1,0 +1,8 @@
+{
+  "id": "15026633",
+  "source": "https://www.data.go.kr/data/15026633/fileData.do",
+  "retrieved_at": "2026-11-17T17:08:41.096055+00:00",
+  "rows": null,
+  "status": "unavailable",
+  "reason": "URLError: <urlopen error Tunnel connection failed: 403 Forbidden>"
+}

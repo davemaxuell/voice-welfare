@@ -1,0 +1,38 @@
+{
+  "id": "15002196",
+  "source": "https://www.data.go.kr/data/15002196/fileData.do",
+  "retrieved_at": "2026-11-17T16:40:42.774764+00:00",
+  "rows": [
+    [
+      "연번",
+      "단체명",
+      "단체장",
+      "회원수",
+      "주소"
+    ],
+    [
+      "1",
+      "광주여성단체협의회",
+      "정진희",
+      "37751",
+      "광주광역시 서구 경열로 24, 광주여성단체회관 3층"
+    ],
+    [
+      "2",
+      "금화유아교육여성회",
+      "강경연",
+      "100",
+      "광주광역시 서구 상무버들로40번길 14"
+    ],
+    [
+      "3",
+      "고향을 생각하는 주부들의 모임 광주시지회",
+      "윤정숙",
+      "7555",
+      "광주광역시 광산구 무진대로 285 농협광주지역본부"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15002196&publicDataDetailPk=uddi%3Ab4fdc5d6-4663-4d51-87ff-de81dc80c966",
+  "sample_type": "official public file preview"
+}

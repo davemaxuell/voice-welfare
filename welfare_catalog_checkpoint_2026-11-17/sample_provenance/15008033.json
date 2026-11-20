@@ -1,0 +1,34 @@
+{
+  "id": "15008033",
+  "source": "https://www.data.go.kr/data/15008033/fileData.do",
+  "retrieved_at": "2026-11-17T16:48:23.227627+00:00",
+  "rows": [
+    [
+      "연번",
+      "경로당",
+      "주소",
+      "전화번호"
+    ],
+    [
+      "1",
+      "완도읍 분회",
+      "전남 완도군 완도읍 청해진남로38-1",
+      "061-552-0922"
+    ],
+    [
+      "2",
+      "수성리",
+      "전남 완도군 완도읍 청해진남로23번길33",
+      "061-552-0205"
+    ],
+    [
+      "3",
+      "완도여",
+      "전남 완도군 완도읍 군내25번길13-1",
+      "061-552-1322"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15008033&publicDataDetailPk=uddi%3A6a318c24-d5eb-4a13-894d-b7761d09f06f",
+  "sample_type": "official public file preview"
+}

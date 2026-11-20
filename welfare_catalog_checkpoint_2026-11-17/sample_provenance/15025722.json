@@ -1,0 +1,42 @@
+{
+  "id": "15025722",
+  "source": "https://www.data.go.kr/data/15025722/fileData.do",
+  "retrieved_at": "2026-11-17T17:05:49.610828+00:00",
+  "rows": [
+    [
+      "일련번호",
+      "시설명",
+      "소재지",
+      "연락처",
+      "홈페이지",
+      "지원내용"
+    ],
+    [
+      "1",
+      "가람복지센터",
+      "부산광역시 사상구 사상로 123, 3층(감전동, 호승빌딩)",
+      "051-312-7575",
+      "http://cafe.daum.net/garam1111",
+      "활동지원, 방문목욕"
+    ],
+    [
+      "2",
+      "사상구장애인자립생활센터",
+      "부산광역시 사상구 사상로 504, 101호(모라동,대상로웰아파트)",
+      "051-312-5569",
+      "http://www.sscil.kr/",
+      "활동지원"
+    ],
+    [
+      "3",
+      "로뎀활동지원센터",
+      "부산광역시 사상구 백양대로979번길 49(모라동)",
+      "051-322-1131",
+      "",
+      "활동지원"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025722&publicDataDetailPk=uddi%3A7e66f5c9-9e5b-4f93-805c-bfc2d920f977_201909061314",
+  "sample_type": "official public file preview"
+}

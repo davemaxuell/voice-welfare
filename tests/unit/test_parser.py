@@ -1,0 +1,414 @@
+import pytest
+
+from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
+from cheongeum.safety import PolicyConfig, PolicyContext, PolicyGuard
+from cheongeum.safety.guard import is_action_name
+from cheongeum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_progress_question, is_stop_utterance, resolve_site
+from cheongeum.understanding.filters import strip_address
+from cheongeum.understanding.sites import goal_site_request
+
+parser = RuleBasedIntentProvider(field_vocabulary(create_mock_welfare_profile("http://localhost:5174")))
+
+
+def parse(t: str, state: str = "APPLICATION_OPEN", awaiting: str | None = None) -> dict:
+    return parser.parse_sync(t, IntentContext(state=state, awaitingFieldId=awaiting))
+
+
+@pytest.mark.parametrize(
+    "text,type_",
+    [
+        ("장애인연금 신청 도와줘", "START_APPLICATION"),
+        ("신청 페이지를 열어줘", "START_APPLICATION"),
+        ("주소 다시 읽어줘", "READ_FIELD"),
+        ("다음으로", "NEXT"),
+        ("이전으로", "PREV"),
+        ("이 항목은 무슨 뜻이야?", "EXPLAIN"),
+        ("지금까지 쓴 내용 읽어줘", "REVIEW"),
+        ("모의 접수 내용을 확인했어", "PREPARE_SUBMIT"),
+        ("최종 확인할게", "PREPARE_SUBMIT"),
+        ("제출해", "PREPARE_SUBMIT"),
+        ("모의접수 승인", "APPROVE"),
+        ("승인 안 해", "REJECT"),
+        ("멈춰", "STOP"),
+        ("다시 시작", "RESUME"),
+        ("로그인하고 싶어", "LOGIN"),
+        ("주소 수정할게", "EDIT_FIELD"),
+        ("현재 단계 알려줘", "CURRENT_STEP"),
+        ("화면 설명해줘", "DESCRIBE_SCREEN"),
+        ("지금 화면에 뭐가 있어?", "DESCRIBE_SCREEN"),
+        ("장애인연금 신청 화면 설명해줘", "DESCRIBE_SCREEN"),
+        # 다른 사이트로 가서 보라는 말은 지금 화면 질문이 아니라 목표
+        ("127.0.0.1:5174/portal2.html에서 복지지도 메뉴를 열어서 무슨 화면인지 알려줘", "GOAL"),
+        ("복지로 가서 첫 화면에 뭐가 있는지 알려줘", "GOAL"),
+        # 지금 화면을 가리키는 말(이·여기·지금)이나 '화면에서'는 다른 사이트가 아니다. 기초연금 같은 복지 낱말은 사이트 이름과 겹친다.
+        ("이 화면에서 기초연금 신청 방법 읽어줘", "DESCRIBE_SCREEN"),
+        ("지금 복지로에서 어느 단계야?", "CURRENT_STEP"),
+        ("네이버에서 지금 화면 설명해줘", "DESCRIBE_SCREEN"),
+        ("이 사이트 뭐 하는 곳이야? 네이버에서 들어왔어", "ABOUT_SITE"),
+        ("장애인연금 지원대상과 신청 절차 알려줘", "POLICY_QUESTION"),
+        ("장애인연금 지금 신청할 수 있어?", "POLICY_QUESTION"),
+        ("지금 신청할 수 있어?", "POLICY_QUESTION"),
+        ("상담원 연결해줘", "HELP_HUMAN"),
+        ("오늘 날씨 어때", "UNKNOWN"),
+    ],
+)
+def test_intents(text, type_):
+    assert parse(text)["type"] == type_
+
+
+def test_field_and_value_split():
+    assert parse("이름은 김하늘") == {"type": "FILL", "fills": [{"fieldMention": "이름", "value": "김하늘"}]}
+    assert parse("주소는 부산광역시 예시구 예시로 10") == {
+        "type": "FILL",
+        "fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 10"}],
+    }
+    assert parse("이름은 김하늘이야")["fills"][0]["value"] == "김하늘"
+
+
+def test_multiple_fields_in_one_sentence():
+    r = parse("이름은 김하늘, 주소는 부산광역시 예시구 예시로 10")
+    assert r["type"] == "FILL"
+    assert [f["fieldMention"] for f in r["fills"]] == ["이름", "주소"]
+
+
+def test_specific_alias_beats_generic():
+    assert parse("실거주지 주소는 서울특별시 예시구 예시로 5")["fills"] == [
+        {"fieldMention": "실거주지 주소", "value": "서울특별시 예시구 예시로 5"}
+    ]
+
+
+def test_edit_with_value_is_fill():
+    r = parse("주소 수정해 부산광역시 예시구 예시로 20")
+    assert r == {"type": "FILL", "fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 20"}]}
+
+
+def test_awaiting_value_long_address_not_navigation():
+    assert parse("서울특별시 이전구 다음로 3", "AWAITING_FIELD_VALUE", "address")["type"] == "UNKNOWN"
+
+
+def test_stop_is_rule_based():
+    assert is_stop_utterance("잠깐 멈춰")
+    assert is_stop_utterance("취소")
+    assert not is_stop_utterance("멈추지 마")
+    assert not is_stop_utterance("정부24에서 행정지원 서비스를 찾아줘")
+    assert not is_stop_utterance("재정지원 제도를 알려줘")
+    assert not is_stop_utterance("신청 취소 방법을 알려줘")
+    assert not is_stop_utterance("청음아, 취소?")
+    assert not is_stop_utterance("cancel?")
+    assert not is_stop_utterance("Where is the next bus stop?")
+    assert not is_stop_utterance("停止申请的流程是什么？")
+    for command in ("청음아 지금 작업을 중단해 줘", "please stop now", "请停止", "止めてください", "stop?", "could you cancel?", "취소? 아니, 멈춰"):
+        assert is_stop_utterance(command)
+
+
+@pytest.mark.parametrize("said", ["지금 어디까지 했어?", "청음아, 어디까지 됐어?", "얼마나 남았어?", "아직 멀었어?", "지금 뭐 하고 있어?"])
+def test_progress_question_is_rule_based(said):
+    assert is_progress_question(said)
+    assert parse(said, "BROWSING") == {"type": "PROGRESS"}
+
+
+@pytest.mark.parametrize("said", ["신청 기한 얼마나 남았어?", "지금 어느 단계야?", "본문 어디까지 읽었어?", "지금 어디까지 했어 그리고 네이버 열어줘"])
+def test_not_a_progress_question(said):
+    assert not is_progress_question(said)
+
+
+def test_clean_value():
+    assert clean_value('"김하늘"이라고 써줘') == "김하늘"
+    assert clean_value("3명으로 해줘") == "3명"
+
+
+@pytest.mark.parametrize(
+    "text,n",
+    [
+        ("이름은 김하늘이고 주소는 부산광역시 예시구 예시로 10, 다음으로 넘어가줘", 3),
+        ("복지로 열어줘 그리고 기초연금 검색해줘", 2),
+        ("이름은 김하늘", 1),
+    ],
+)
+def test_split_commands(text, n):
+    assert len(parser.split_commands(text)) == n
+
+
+def test_rephrase():
+    assert parse("무슨 말이야?")["type"] == "REPHRASE"
+    assert parse("다시 말해줘")["type"] == "REPHRASE"
+    assert parse("주소 다시 말해줘")["type"] == "READ_FIELD"
+
+
+@pytest.mark.parametrize(
+    "text,more",
+    [
+        ("뭐라고 말하면 돼?", False),
+        ("뭐라고 해야 돼?", False),
+        ("뭘 할 수 있어?", False),
+        ("넌 뭘 할 수 있어?", False),
+        ("무슨 말 할 수 있어?", False),
+        ("도움말", False),
+        ("사용법 알려줘", False),
+        ("명령어 알려줘", False),
+        ("명령어 뭐가 있어?", False),
+        ("다른 말도 알려줘", True),
+        ("다른 명령어도 알려줘", True),
+        ("도움말 더", True),
+    ],
+)
+def test_what_can_i_say(text, more):
+    assert parse(text) == {"type": "WHAT_CAN_I_SAY", "more": more}
+
+
+@pytest.mark.parametrize(
+    "text,type_",
+    [
+        ("다른 거 알려줘", "UNKNOWN"),  # 맞춤 찾기 결과 더 듣기(_unknown)
+        ("이 사이트에서 뭘 할 수 있어?", "ABOUT_SITE"),
+        ("도움 요청할래", "HELP_HUMAN"),
+        ("어떻게 해야 돼?", "UNKNOWN"),
+    ],
+)
+def test_not_help(text, type_):
+    assert parse(text, "BROWSING")["type"] == type_
+    assert parse("다른 말로 해줘")["type"] != "WHAT_CAN_I_SAY"
+
+
+def test_listed_service_is_not_field_explanation():
+    # 찾기 결과의 "두 번째 제도"는 항목 설명이 아니다. 규칙은 모르는 말로 두고 찾기 결과·LLM 계획이 받는다.
+    assert parse("두 번째 제도 설명해줘", "IDLE")["type"] == "UNKNOWN"
+    assert parse("가구원 수가 무슨 뜻이야?") == {"type": "EXPLAIN", "fieldMention": "가구원 수"}
+
+
+# ---------------------------------------------------------------- 웹 읽기 명령(browsing-rules)
+
+
+def bparse(t: str) -> dict:
+    return parser.parse_sync(t, IntentContext(state="BROWSING"))
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("복지로 열어줘", {"type": "OPEN_SITE"}),
+        ("정부24 들어가줘", {"type": "OPEN_SITE"}),
+        ("gov.kr 열어줘", {"type": "OPEN_SITE"}),
+        ("모의 사이트 열어줘", {"type": "OPEN_SITE"}),
+        ("본문 읽어줘", {"type": "READ_MAIN", "more": False}),
+        ("계속 읽어줘", {"type": "READ_MAIN", "more": True}),
+        ("링크 목록 알려줘", {"type": "LIST_LINKS", "more": False}),
+        ("링크 더 알려줘", {"type": "LIST_LINKS", "more": True}),
+        ("장애인연금 안내 링크 눌러줘", {"type": "FOLLOW_LINK", "name": "장애인연금 안내"}),
+        ("'자세히 보기' 눌러줘", {"type": "FOLLOW_LINK", "name": "자세히 보기"}),
+        ("신청방법 탭 눌러줘", {"type": "FOLLOW_LINK", "name": "신청방법"}),
+        ("지원대상 눌러줘", {"type": "FOLLOW_LINK", "name": "지원대상"}),
+        ("뒤로 가줘", {"type": "PREV"}),
+        ("장애인연금 검색해줘", {"type": "SEARCH", "query": "장애인연금"}),
+        ("복지로에서 기초연금 검색해줘", {"type": "SEARCH", "query": "기초연금", "site": "복지로"}),
+    ],
+)
+def test_browsing_commands(text, expected):
+    r = bparse(text)
+    assert {k: r.get(k) for k in expected} == expected
+
+
+def test_browsing_does_not_clash():
+    assert bparse("지금까지 쓴 내용 읽어줘")["type"] == "REVIEW"
+    assert bparse("장애인연금 신청 도와줘")["type"] == "START_APPLICATION"
+    assert bparse("신청 페이지를 열어줘")["type"] == "START_APPLICATION"
+    assert bparse("로그인 페이지 열어줘")["type"] == "LOGIN"
+    assert bparse("로그아웃해줘")["type"] == "CLEAR_LOGIN"
+    assert bparse("로그인 기록 지워줘")["type"] == "CLEAR_LOGIN"
+
+
+def test_resolve_site():
+    assert resolve_site("복지로 열어줘")["url"] == "https://www.bokjiro.go.kr"
+    assert resolve_site("국민연금공단 사이트")["url"] == "https://www.nps.or.kr"
+    assert resolve_site("gov.kr 열어줘")["url"] == "https://gov.kr"
+    assert resolve_site("127.0.0.1:5174/external.html 열어줘")["url"] == "http://127.0.0.1:5174/external.html"
+    assert resolve_site("우리동네복지관 열어줘") is None
+
+
+def test_resolve_site_stt_variants():
+    assert resolve_site("Naver 열어줘")["url"] == "https://www.naver.com"
+    assert resolve_site("네이보 열어줘")["url"] == "https://www.naver.com"
+    assert resolve_site("복지루 들어가줘")["url"] == "https://www.bokjiro.go.kr"
+    assert resolve_site("naver news 열어줘")["url"] == "https://news.naver.com"
+    assert resolve_site("우리동네복지관 열어줘") is None
+
+
+@pytest.mark.parametrize(("goal", "url"), [
+    ("복지로에서 기초연금 신청 방법 찾아줘", "https://www.bokjiro.go.kr"),
+    ("기초연금에 대해 복지로 누리집에서 찾아줘", "https://www.bokjiro.go.kr"),
+    ("네이버 뉴스에서 오늘 뉴스 알려줘", "https://news.naver.com"),
+    ("127.0.0.1:5174/external.html에서 찾아줘", "http://127.0.0.1:5174/external.html"),
+    ("https://example.org/bokjiro.go.kr에서 찾아줘", "https://example.org/bokjiro.go.kr"),
+    ("지금 화면에서 기초연금 찾아줘", None),
+    ("복지로에서 찾아보고 정부24에서 확인해줘", None),
+])
+def test_goal_evidence_source_is_the_requested_site(goal, url):
+    assert goal_site_request(goal)[0] == url
+
+
+# ---------------------------------------------------------------- PolicyGuard 읽기 전용 등급
+
+ALL_TYPES = ["navigate", "back", "click", "fill", "press", "select", "check", "scroll", "read", "focus"]
+ro_guard = PolicyGuard(
+    PolicyConfig(
+        allowedOrigins=["http://localhost:5174"],
+        allowedActionTypes=ALL_TYPES,
+        allowedFieldIds=["applicantName"],
+        secretFieldIds=["loginPassword"],
+        maxActionsPerTurn=10,
+        readOnlyWeb=True,
+    )
+)
+RO_CTX = PolicyContext(currentUrl="https://example.org/", stopped=False, approvals=set(), actionsThisTurn=0)
+
+
+def a(**p) -> dict:
+    return {"id": "x", "type": "click", "reason": "t", "risk": "low", "requiresConfirmation": False, **p}
+
+
+def test_tiers():
+    assert ro_guard.tier_of("http://localhost:5174/apply.html") == "full"
+    assert ro_guard.tier_of("https://www.bokjiro.go.kr/") == "read-only"
+    assert ro_guard.tier_of("file:///etc/passwd") == "none"
+    assert ro_guard.tier_of("javascript:alert(1)") == "none"
+
+
+@pytest.mark.parametrize(
+    "name,action,code",
+    [
+        ("다른 사이트로 이동", a(type="navigate", url="https://www.gov.kr/"), "ALLOWED_READ_ONLY"),
+        ("링크 클릭", a(target={"role": "link", "name": "복지서비스"}), "ALLOWED_READ_ONLY"),
+        ("뒤로", a(type="back"), "ALLOWED_READ_ONLY"),
+        ("검색창 입력", a(type="fill", target={"role": "searchbox", "fieldId": "q"}, value="장애인연금"), "ALLOWED_READ_ONLY"),
+        ("검색 실행", a(type="press", target={"role": "searchbox", "fieldId": "q"}, value="Enter"), "ALLOWED_READ_ONLY"),
+        ("버튼 클릭", a(target={"role": "button", "name": "보내기"}), "DENIED_READ_ONLY"),
+        ("로그인 버튼은 묻고 누른다", a(target={"role": "button", "name": "로그인"}), "NEEDS_CONFIRMATION"),
+        ("로그인 링크도 묻고 누른다", a(target={"role": "link", "name": "로그인"}), "NEEDS_CONFIRMATION"),
+        ("초점 옮기기", a(type="focus", target={"role": "button", "name": "로그인"}), "ALLOWED_READ_ONLY"),
+        ("로그아웃은 막는다", a(target={"role": "button", "name": "로그아웃"}), "DENIED_READ_ONLY"),
+        ("실제 신청은 막는다", a(target={"role": "button", "name": "신청하기"}), "DENIED_READ_ONLY"),
+        ("정보 이름 탭(safe)", a(target={"role": "tab", "name": "신청방법"}), "ALLOWED_READ_ONLY"),
+        ("동작 이름 탭(safe)", a(target={"role": "tab", "name": "온라인 신청하기"}), "DENIED_READ_ONLY"),
+        ("정보 이름 스크립트 링크(safe)", a(target={"ref": "r2", "role": "scriptlink", "name": "신청방법"}), "ALLOWED_READ_ONLY"),
+        ("동작 이름 스크립트 링크(safe)", a(target={"ref": "r3", "role": "scriptlink", "name": "회원 탈퇴"}), "DENIED_READ_ONLY"),
+        ("주소 있는 링크는 이름과 상관없이(safe)", a(target={"role": "link", "name": "회원 탈퇴 안내"}), "ALLOWED_READ_ONLY"),
+        ("메뉴 항목(safe)", a(target={"role": "menuitem", "name": "복지서비스"}), "ALLOWED_READ_ONLY"),
+        ("동작 메뉴 항목(safe)", a(target={"role": "menuitem", "name": "신청"}), "DENIED_READ_ONLY"),
+        ("역할 없는 요소(safe)", a(target={"ref": "r1", "role": "generic", "name": "체험관 둘러보기"}), "NEEDS_CONFIRMATION"),
+        ("이름 없는 ref", a(target={"ref": "r1"}), "DENIED_SCHEMA"),
+        ("일반 입력란", a(type="fill", target={"label": "이름", "fieldId": "n"}, value="김하늘"), "DENIED_READ_ONLY"),
+        ("선택", a(type="select", target={"fieldId": "s"}, value="1"), "DENIED_READ_ONLY"),
+        ("Enter 외 키", a(type="press", target={"role": "searchbox", "fieldId": "q"}, value="Tab"), "DENIED_READ_ONLY"),
+        ("검색어에 주민번호", a(type="fill", target={"role": "searchbox", "fieldId": "q"}, value="900101-1234567"), "DENIED_SECRET"),
+        ("중요 동작", a(target={"role": "link", "name": "x"}, risk="consequential", requiresConfirmation=True), "DENIED_READ_ONLY"),
+        ("파일 주소 이동", a(type="navigate", url="file:///etc/hosts"), "DENIED_ORIGIN"),
+    ],
+)
+def test_read_only_policy(name, action, code):
+    assert ro_guard.check(action, RO_CTX)["code"] == code
+
+
+def test_read_only_login_click_runs_after_approval():
+    approved = PolicyContext(currentUrl="https://example.org/", stopped=False, approvals={"x"}, actionsThisTurn=0)
+    assert ro_guard.check(a(target={"role": "button", "name": "로그인"}), approved)["code"] == "APPROVED"
+
+
+@pytest.mark.parametrize(
+    "name,action",
+    [
+        ("신청방법", False), ("신청 안내", False), ("제출서류", False), ("지원대상", False), ("서비스 내용", False), ("신청 자격", False),
+        ("신청하기", True), ("온라인 신청하기", True), ("신청", True), ("회원 탈퇴", True), ("결제 정보", True), ("로그인", True),
+        ("신청하기 새창", True), ("신청하기 >", True), ("신청서 제출", True), ("임시 저장", True), ("전체 동의", True),
+        ("본인 인증", True), ("가입", True), ("Send", True), ("Confirm", True), ("Sign in", True),
+    ],
+)  # fmt: skip
+def test_action_names(name, action):
+    assert is_action_name(name) is action
+
+
+def test_read_only_any_clicks_allows_every_click_but_not_input():
+    any_guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": "any"}))
+    for target in ({"role": "tab", "name": "신청방법"}, {"ref": "r1", "role": "generic", "name": "체험관"}, {"role": "button", "name": "보내기"}):
+        assert any_guard.check(a(target=target), RO_CTX)["code"] == "ALLOWED_READ_ONLY"
+    assert any_guard.check(a(type="fill", target={"label": "이름", "fieldId": "n"}, value="김하늘"), RO_CTX)["code"] == "DENIED_READ_ONLY"
+    assert any_guard.check(a(target={"role": "link", "name": "x"}, risk="consequential", requiresConfirmation=True), RO_CTX)["code"] == "DENIED_READ_ONLY"
+
+
+@pytest.mark.parametrize("mode", ["safe", "any"])
+@pytest.mark.parametrize("role", ["button", "link", "tab", "scriptlink", "menuitem", "generic"])
+def test_read_only_login_needs_approval_for_each_control(mode, role):
+    guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": mode}))
+    click = a(target={"role": role, "name": "로그인"})
+    assert guard.check(click, RO_CTX)["code"] == "NEEDS_CONFIRMATION"
+    approved = PolicyContext(currentUrl=RO_CTX.currentUrl, approvals={click["id"]})
+    assert guard.check(click, approved)["code"] == "APPROVED"
+
+
+def test_read_only_off_means_supported_sites_only():
+    strict = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyWeb": False}))
+    assert strict.tier_of("https://www.gov.kr/") == "none"
+
+
+assist_guard = PolicyGuard(
+    PolicyConfig(
+        allowedOrigins=["http://localhost:5174"],
+        allowedActionTypes=ALL_TYPES,
+        allowedFieldIds=[],
+        secretFieldIds=[],
+        maxActionsPerTurn=10,
+        readOnlyWeb=True,
+    )
+)
+BASE = {
+    "id": "f1",
+    "type": "fill",
+    "target": {"fieldId": "x", "name": "이름"},
+    "value": "김하늘",
+    "reason": "t",
+    "risk": "sensitive",
+    "requiresConfirmation": True,
+}
+
+
+def actx(approved: bool) -> PolicyContext:
+    return PolicyContext(currentUrl="https://example.org/", approvals={"f1"} if approved else set())
+
+
+def test_assist_needs_approval():
+    assert assist_guard.check(BASE, actx(False))["code"] == "NEEDS_CONFIRMATION"
+    assert assist_guard.check(BASE, actx(True))["code"] == "APPROVED"
+
+
+def test_assist_secret_always_denied():
+    assert assist_guard.check({**BASE, "target": {"fieldId": "p", "name": "비밀번호"}}, actx(True))["code"] == "DENIED_SECRET"
+    assert assist_guard.check({**BASE, "value": "900101-1234567"}, actx(True))["code"] == "DENIED_SECRET"
+
+
+def test_assist_low_risk_input_denied():
+    assert assist_guard.check({**BASE, "risk": "low", "requiresConfirmation": False}, actx(True))["code"] == "DENIED_READ_ONLY"
+
+
+@pytest.mark.parametrize(
+    ("said", "rest"),
+    [
+        ("청음아, 화면 설명해줘", "화면 설명해줘"),
+        ("청음아 멈춰", "멈춰"),
+        ("청음이야 다음으로", "다음으로"),
+        ("청음, 뒤로 가줘", "뒤로 가줘"),
+        ("청음이! 이름은 김하늘", "이름은 김하늘"),
+        ("청음아.", ""),
+        ("청음이 뭐야?", "청음이 뭐야?"),
+        ("청음", "청음"),
+        ("화면 설명해줘", "화면 설명해줘"),
+    ],
+)
+def test_strip_address(said, rest):
+    assert strip_address(said) == rest
+
+
+def test_intro_replay_and_setup_restart_phrases_parse():
+    assert parse("청음 소개 다시 해줘", "IDLE")["type"] == "INTRO_REPLAY"
+    assert parse("청음 소개해줘", "IDLE")["type"] == "INTRO_REPLAY"
+    assert parse("설정 다시 해줘", "IDLE")["type"] == "SETUP_RESTART"
+    assert parse("처음 설정 다시 할래", "IDLE")["type"] == "SETUP_RESTART"
+    assert parse("말하기 설정 다시 해줘", "IDLE")["type"] != "SETUP_RESTART"

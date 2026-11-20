@@ -1,0 +1,30 @@
+{
+  "id": "15023237",
+  "source": "https://www.data.go.kr/data/15023237/fileData.do",
+  "retrieved_at": "2026-11-17T17:00:58.060624+00:00",
+  "rows": [
+    [
+      "구분",
+      "심한 장애",
+      "심하지 않은 장애"
+    ],
+    [
+      "지체",
+      "1381",
+      "5178"
+    ],
+    [
+      "시각",
+      "311",
+      "1226"
+    ],
+    [
+      "청각",
+      "458",
+      "1892"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15023237&publicDataDetailPk=uddi%3A8f0e46b5-429a-41c5-a98b-88263cb2b568",
+  "sample_type": "official public file preview"
+}

@@ -1,0 +1,38 @@
+{
+  "id": "15026067",
+  "source": "https://www.data.go.kr/data/15026067/fileData.do",
+  "retrieved_at": "2026-11-17T17:07:30.859820+00:00",
+  "rows": [
+    [
+      "서비스 종류",
+      "제공기관명",
+      "대표자명",
+      "기관 연락번호",
+      "기관주소"
+    ],
+    [
+      "발달재활서비스",
+      "만덕종합사회복지관",
+      "정신모",
+      "051-332-8004",
+      "부산광역시 북구 함박봉로 140번길 102 (만덕동)"
+    ],
+    [
+      "발달재활서비스",
+      "부산인지심리연구소",
+      "서소희",
+      "051-817-9990",
+      "부산광역시 북구 금곡대로 20번길 24 (덕천동)"
+    ],
+    [
+      "발달재활서비스",
+      "보듬아동발달센터",
+      "정초희",
+      "0507-1336-9377",
+      "부산광역시 북구 금곡대로303번길 22, 401호(화명동)"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026067&publicDataDetailPk=uddi%3Afe5b5623-5e02-49f6-9c26-cd3d1edfd980_202002211501",
+  "sample_type": "official public file preview"
+}

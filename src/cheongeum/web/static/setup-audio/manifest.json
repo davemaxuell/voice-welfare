@@ -1,0 +1,54 @@
+{
+  "lang-ko": {"ko": "한국어는 1번"},
+  "lang-en": {"en": "English, press 2"},
+  "lang-zh": {"zh": "中文请按3"},
+  "lang-ja": {"ja": "日本語は4番"},
+  "who": {
+    "ko": "지금 누가 설정하고 계세요? 사용하실 분 본인이면 1번, 가족이나 복지관 직원이면 2번.",
+    "en": "Who is setting this up? Press 1 if you are the person who will use it, or 2 if you are a family member or staff helping them.",
+    "zh": "现在是谁在设置？如果是使用者本人请按1，如果是家人或福利机构的工作人员请按2。",
+    "ja": "いま設定しているのはどなたですか？ご本人なら1番、ご家族や福祉施設の職員なら2番を押してください。"
+  },
+  "key-alone": {
+    "ko": "API 키를 복사해 두셨으면 Ctrl과 V를 함께 누르고 Enter를 눌러 주세요. 키가 없으면 가족이나 복지관에 키 등록을 부탁해 주세요.",
+    "en": "If you have copied your API key, press Control and V together, then press Enter. If you do not have a key, please ask a family member or a welfare center to register one.",
+    "zh": "如果已经复制了 API 密钥，请同时按 Ctrl 和 V，然后按回车键。如果没有密钥，请请家人或福利机构帮您登记。",
+    "ja": "API キーをコピーしてあれば、Ctrl と V を同時に押してから Enter を押してください。キーがない場合は、ご家族や福祉施設にキーの登録を頼んでください。"
+  },
+  "key-checking": {
+    "ko": "키를 확인하고 있어요.",
+    "en": "Checking your key.",
+    "zh": "正在确认密钥。",
+    "ja": "キーを確認しています。"
+  },
+  "key-invalid": {
+    "ko": "키가 맞지 않아요.",
+    "en": "That key does not work.",
+    "zh": "密钥不正确。",
+    "ja": "キーが正しくありません。"
+  },
+  "key-quota": {
+    "ko": "사용 한도를 넘었어요.",
+    "en": "This key has reached its usage limit.",
+    "zh": "已超出使用限额。",
+    "ja": "利用上限を超えています。"
+  },
+  "key-network": {
+    "ko": "인터넷 연결을 확인해 주세요.",
+    "en": "Please check your internet connection.",
+    "zh": "请检查网络连接。",
+    "ja": "インターネット接続を確認してください。"
+  },
+  "pc": {
+    "ko": "이 컴퓨터를 혼자 쓰시면 1번, 여러 사람이 쓰면 2번.",
+    "en": "Press 1 if only you use this computer, or 2 if several people use it.",
+    "zh": "如果只有您使用这台电脑请按1，如果多人共用请按2。",
+    "ja": "このパソコンをお一人で使うなら1番、複数の人で使うなら2番。"
+  },
+  "handover": {
+    "ko": "이제 사용하실 분께 넘겨 주세요. 준비되면 Enter를 눌러 주세요.",
+    "en": "Now please hand over to the person who will use it. Press Enter when ready.",
+    "zh": "现在请交给使用者本人。准备好后请按回车键。",
+    "ja": "では、お使いになる方に交代してください。準備ができたら Enter を押してください。"
+  }
+}

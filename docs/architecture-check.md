@@ -6,7 +6,7 @@
 |---|---|---|---|
 | ① 입력 | 음성 입력(주) | ✅ | 핸즈프리 VAD 루프·끼어들기·전역 단축키 (`web/static/mic.js`, `apps/desktop`) |
 | | 텍스트 입력(선택) | ✅ | 웹 UI 입력란 |
-| | STT | ✅ | OpenAI `gpt-4o-mini-transcribe`, 또는 `STT_PROVIDER=local`: 한국어는 이 컴퓨터 안(faster-whisper + `whisper-small-komixv2`, `voice/stt_local.py`)·다른 언어는 OpenAI. 평가 `scripts/eval_stt.py` |
+| | STT | ✅ | 마이크 입력은 등록한 API 키로 `gpt-live-transcribe`에 실시간 전송하고 최종 받아쓰기를 처리합니다. 녹음 파일용 모델은 `STT_MODEL`로 설정합니다. (`voice/live.py`, `voice/stt.py`) |
 | | 현재 웹페이지 맥락(DOM·접근성 트리·URL) | ✅ | 관찰 스크립트 `observe.js` (`agents/web/browser/`) |
 | ② 의도 이해 | LLM 의도 분석(의도·과업 추출·대화 맥락) | ✅ | 규칙 파서 먼저 → LLM(`gpt-5-mini`) 보조, 직전 안내·최근 8발화 맥락 (`understanding/rules.py`, `llm_planner.py`) |
 | ③ AI 오케스트레이터 | 복합 요청 분해 | ✅ | 여러 명령 계획(`_run_plan`), 여러 질문 나누기(`_answer_many`) (`orchestrator/session.py`) |
@@ -27,7 +27,7 @@
 | | 실행 검증(성공 확인) | ✅ | 실행 후 재관찰·입력값 다시 읽기 |
 | | 안전·오류 처리(재시도·대체) | ◐ | PolicyGuard 차단, 멈춤 즉시 처리, 제한적 재시도(위 오류 복구와 같음) |
 | | 사용자 확인(민감 동작 전) | ✅ | 승인된 액션 ID 없이는 실행 불가, 실제 제출·로그인·인증은 사람에게 |
-| ⑥ 접근성 출력 | TTS(단계별·맥락 맞춤 음성 안내) | ✅ | OpenAI `gpt-4o-mini-tts` 또는 OS 내장 음성, 핵심부터 짧게 |
+| ⑥ 접근성 출력 | TTS(단계별·맥락 맞춤 음성 안내) | ✅ | 등록한 API 키로 `gpt-4o-mini-tts`가 음성을 합성하고 설정한 속도로 안내합니다. |
 | | 접근성 텍스트(선택, 화면낭독기 친화) | ✅ | `aria-live` 대화 기록·상태 알림 (`web/static/`) |
 | 지속 개선 피드백 | | ◐ | 비식별 이벤트(동작·성공·오류 종류) 기록. 자동 반영은 없음 |
 | 평가 파이프라인 | 작업 성공률 | ✅ | `scripts/run_scenarios.py`, `scripts/eval_agent.py` |

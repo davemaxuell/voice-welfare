@@ -1,0 +1,34 @@
+{
+  "id": "15007712",
+  "source": "https://www.data.go.kr/data/15007712/fileData.do",
+  "retrieved_at": "2026-11-17T16:47:44.326227+00:00",
+  "rows": [
+    [
+      "읍면",
+      "마을명",
+      "회관명",
+      "소재지"
+    ],
+    [
+      "영암읍",
+      "회문1리",
+      "녹암",
+      "전라남도 영암군 영암읍 녹암대동보길 128-17"
+    ],
+    [
+      "영암읍",
+      "회문2리",
+      "회의촌",
+      "전라남도 영암군 영암읍 회의촌길 18"
+    ],
+    [
+      "영암읍",
+      "교동1리",
+      "교동1구",
+      "전라남도 영암군 영암읍 낭산로 20-7"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15007712&publicDataDetailPk=uddi%3Af517c846-9e7d-4cb0-93af-ddae1c9e1b73",
+  "sample_type": "official public file preview"
+}

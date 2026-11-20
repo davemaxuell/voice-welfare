@@ -1,0 +1,44 @@
+{
+  "id": "15026414",
+  "source": "https://www.data.go.kr/data/15026414/fileData.do",
+  "retrieved_at": "2026-11-17T17:08:12.000540+00:00",
+  "rows": [
+    [
+      "순번",
+      "시설명",
+      "설치주체",
+      "시설종류",
+      "공공_민간",
+      "운영방법",
+      "주소",
+      "연락처",
+      "팩스",
+      "우편번호",
+      "위도",
+      "경도",
+      "대지면적",
+      "견물연면적",
+      "데이터기준일"
+    ],
+    [
+      "1",
+      "중구청소년문화의집",
+      "부산광역시 중구",
+      "청소년수련시설",
+      "공공",
+      "위탁",
+      "부산 중구 보수대로 124번길 24-2",
+      "051-247-8425",
+      "051-247-9860",
+      "48964",
+      "129.02261",
+      "35.105955",
+      "181",
+      "494.49",
+      "2025-11-08"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026414&publicDataDetailPk=uddi%3Ad1715cb0-9ef0-4828-b504-b5914e2d6f72",
+  "sample_type": "official public file preview"
+}

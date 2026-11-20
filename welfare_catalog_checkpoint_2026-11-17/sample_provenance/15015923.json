@@ -1,0 +1,40 @@
+{
+  "id": "15015923",
+  "source": "https://www.data.go.kr/data/15015923/fileData.do",
+  "retrieved_at": "2026-11-17T16:55:45.022336+00:00",
+  "rows": [
+    [
+      "순번",
+      "구분",
+      "대상및이용지역",
+      "개소일",
+      "위치",
+      "면적",
+      "수혜대상(세대)",
+      "데이터기준일"
+    ],
+    [
+      "1",
+      "푸드마켓 1호점",
+      "제물포구 전역",
+      "2003-03-10",
+      "인천광역시 제물포구 금곡로81번길 27(송림동)",
+      "264.5m²",
+      "616",
+      "2026-07-21"
+    ],
+    [
+      "2",
+      "푸드마켓 2호점",
+      "제물포구 전역",
+      "2026-07-01",
+      "인천광역시 제물포구 홍예문로 77, 1층",
+      "101.7m²",
+      "545",
+      "2026-07-21"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15015923&publicDataDetailPk=uddi%3Ad087031b-cd54-4764-951b-887467339fe6",
+  "sample_type": "official public file preview"
+}

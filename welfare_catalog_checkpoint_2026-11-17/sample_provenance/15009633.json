@@ -1,0 +1,50 @@
+{
+  "id": "15009633",
+  "source": "https://www.data.go.kr/data/15009633/fileData.do",
+  "retrieved_at": "2026-11-17T16:49:23.403722+00:00",
+  "rows": [
+    [
+      "서지고유번호",
+      "구분",
+      "서명",
+      "권호",
+      "저자",
+      "출판사",
+      "출판연도",
+      "원문"
+    ],
+    [
+      "학술1",
+      "학술지(청소년상담연구)",
+      "청소년상담의 성격과 학문적 과제",
+      "청소년상담연구 제1권 1호",
+      "황 응 연",
+      "한국청소년상담복지개발원",
+      "1993",
+      "https://www.kyci.or.kr/fileup/lib_pdf/1993-25-01.pdf"
+    ],
+    [
+      "학술10",
+      "학술지(청소년상담연구)",
+      "집단심리치료보고 : 안양소년원 심리극 프로그램",
+      "청소년상담연구 제1권 1호",
+      "송종용",
+      "한국청소년상담복지개발원",
+      "1993",
+      "https://www.kyci.or.kr/fileup/lib_pdf/1993-25-10.pdf"
+    ],
+    [
+      "학술100",
+      "학술지(청소년상담연구)",
+      "중학교 진학 후의 심리적 부적응을 예측하는 요인",
+      "청소년상담연구 제11권 2호",
+      "정현희",
+      "한국청소년상담복지개발원",
+      "2003",
+      "https://www.kyci.or.kr/fileup/lib_pdf/2003-27-04.pdf"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15009633&publicDataDetailPk=uddi%3A7da834a8-f5f5-46fd-b032-eca20e523681",
+  "sample_type": "official public file preview"
+}
