@@ -70,5 +70,5 @@ it("새 목표에서 단계만 지우고 전체 진행 번호를 이어 센다",
   progress.finish();
   expect(progress.latest).toBe("첫 화면을 열었어요.");
   progress.start();
-  expect(progress.snapshot()).toEqual({ running: true, seq: 1, latest: null, spoken: true });
+  expect(progress.snapshot()).toEqual({ running: true, seq: 1, latest: null, spoken: true, activity: null, activitySpoken: false });
 });
