@@ -1,23 +1,42 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { chromium } from "@playwright/test";
 import { expect, it } from "vitest";
-import { launchBrowser } from "../../src/agents/web/browser/index.ts";
-import { apiFixture, serveFixture } from "./runtime-http-fixture.ts";
+import { soundCues } from "../../src/core/assets.ts";
+import { AgentRuntime, loadConfig } from "../../src/server/runtime.ts";
+import { testRuntimeEnv } from "../helpers.ts";
+import { startUi } from "./web-ui-fixtures.ts";
 
-it("test_saved_slow_rate_reaches_the_server_voice", async () => {
-  const { api, close } = apiFixture({ REQUIRE_CONSENT: "true" }, { web: true, tts: {
-    name: "fake-server-tts", supported: true, async synthesize() { return { audio: Uint8Array.of(255, 243), mimeType: "audio/mpeg" }; },
-  } });
-  const service = await serveFixture(api);
-  const browser = await launchBrowser(true, 0);
-  try {
-    const page = await browser.newPage({ locale: "ko-KR" });
-    const rates: unknown[] = [];
-    page.on("request", req => { if (req.url().endsWith("/api/audio/speak")) rates.push(Reflect.get(Object(req.postDataJSON()), "rate")); });
-    await page.goto(service.origin);
-    await page.getByRole("button", { name: "안내 듣고 시작하기 (Enter)" }).click({ timeout: 15000 });
-    await page.getByRole("button", { name: "동의하고 시작 (Enter)" }).click();
-    const box = page.getByLabel("명령 입력 (말하듯이 입력하세요)");
-    await box.fill("천천히 말해줘"); await box.press("Enter");
-    await expect.poll(() => rates.includes(0.9), { timeout: 15000 }).toBe(true);
-    expect(rates[0]).toBe(1.25 * 1.12);
-  } finally { await browser.close(); await service.closeServer(); await close(); }
+it("test_saved_slow_rate_reaches_the_server_voice", async (test) => {
+  const audio = await readFile(join(soundCues, "done.ogg"));
+  const paces: Array<number | undefined> = [];
+  const runtime = new AgentRuntime(loadConfig(testRuntimeEnv({ REQUIRE_CONSENT: "true" })), undefined, {
+    name: "test-tone", supported: true,
+    async synthesize(_text, { pace }) {
+      paces.push(pace);
+      return { audio, mimeType: "audio/ogg" };
+    },
+  });
+  const ui = await startUi(false, {}, runtime);
+  test.onTestFinished(() => ui.close());
+  const browser = await chromium.launch();
+  test.onTestFinished(() => browser.close());
+  const page = await browser.newPage({ locale: "ko-KR" });
+  const rates: unknown[] = [];
+  page.on("request", req => {
+    if (new URL(req.url()).pathname === "/api/audio/speak") rates.push(Reflect.get(Object(req.postDataJSON()), "rate"));
+  });
+
+  await page.goto(ui.url);
+  await page.getByRole("button", { name: "안내 듣고 시작하기 (Enter)" }).click();
+  // The consent guide speeds up the default rate by 12%. Wait for synthesis before dismissing it.
+  await expect.poll(() => paces[0]).toBeCloseTo(1.12);
+  expect(rates[0]).toBe(1.25 * 1.12);
+  await page.getByRole("button", { name: "동의하고 시작 (Enter)" }).click();
+  const box = page.getByLabel("명령 입력 (말하듯이 입력하세요)");
+  await box.fill("천천히 말해줘");
+  await box.press("Enter");
+  // The server normalizes the UI rate against its standard 1.25 before calling TTS.
+  await expect.poll(() => paces.includes(0.9 / 1.25), { timeout: 15_000 }).toBe(true);
+  expect(rates).toContain(0.9);
 });
