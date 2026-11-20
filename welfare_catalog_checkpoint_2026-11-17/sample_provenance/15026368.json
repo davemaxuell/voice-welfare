@@ -1,0 +1,26 @@
+{
+  "id": "15026368",
+  "source": "https://www.data.go.kr/data/15026368/fileData.do",
+  "retrieved_at": "2026-11-17T17:07:40.946341+00:00",
+  "rows": [
+    [
+      "업체명",
+      "소재지도로명주소"
+    ],
+    [
+      "153구포국수 남포점",
+      "부산광역시 중구 광복로55번길 8 1-3층(창선동1가)"
+    ],
+    [
+      "18번완당집",
+      "부산 중구 비프광장로 31, 지하 (남포동3가)"
+    ],
+    [
+      "1953형제돼지국밥",
+      "부산광역시 중구 중앙대로81번길 8-1 지상1,2층"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026368&publicDataDetailPk=uddi%3Ad1894e1b-a047-4b26-9fe7-a736753bbb29",
+  "sample_type": "official public file preview"
+}

@@ -25,7 +25,7 @@ def parse(text: str, state: str = "IDLE") -> dict:
 
 def test_one_row_per_type_with_two_examples():
     types = [i.type for i in INTENTS]
-    assert len(types) == len(set(types)) == 37
+    assert len(types) == len(set(types)) == 43
     for i in INTENTS:
         assert len(i.examples) >= 2, i.type
         assert i.help is None or i.help in HELP_GROUPS, i.type
@@ -52,14 +52,18 @@ def test_fill_examples_name_practice_fields():
 
 def test_derived_lists_follow_the_table():
     assert INTENT_TYPES == tuple(i.type for i in INTENTS)
-    assert set(LLM_INTENT_TYPES) == set(INTENT_TYPES) - {"APPROVE", "STOP", "PROGRESS"}
+    assert set(LLM_INTENT_TYPES) == set(INTENT_TYPES) - {"APPROVE", "STOP", "PROGRESS", "DESCRIBE_PICTURE", "READ_START_GUIDE",
+                                                         "INTRO_REPLAY", "SETUP_RESTART"}
     assert SCHEMA["properties"]["type"]["enum"] == list(LLM_INTENT_TYPES)
     assert ALLOWED_WITHOUT_CONSENT == {
         "POLICY_QUESTION",
         "HELP_HUMAN",
+        "READ_START_GUIDE",
+        "SETUP_RESTART",
         "STOP",
         "PROGRESS",
         "DISCOVER",
+        "FIND_PLACE",
         "SERVICE_DETAIL",
         "PRECHECK",
         "PREPARE_APPLY",

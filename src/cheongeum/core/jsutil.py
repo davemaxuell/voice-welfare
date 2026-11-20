@@ -15,7 +15,7 @@ import math
 import time
 import uuid as _uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, TypeVar
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
@@ -57,8 +57,12 @@ def now_iso() -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S.") + f"{t.microsecond // 1000:03d}Z"
 
 
-def today_iso() -> str:
-    return now_iso()[:10]
+KST = timezone(timedelta(hours=9))
+
+
+def today_iso(now: datetime | None = None) -> str:
+    """오늘 날짜(한국 시각). 사용자는 한국에 있으므로 UTC 날짜를 쓰면 아침 9시 전에 어제 날짜를 말한다."""
+    return (now or datetime.now(timezone.utc)).astimezone(KST).date().isoformat()
 
 
 def js_round(x: float) -> int:
@@ -224,6 +228,9 @@ async def race_abort(work: Awaitable[T], signal: AbortSignal | None, error: Exce
     waiter = asyncio.ensure_future(signal.wait())
     try:
         done, _ = await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
     finally:
         waiter.cancel()
     if task in done:

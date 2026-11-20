@@ -22,7 +22,7 @@ ALLOWED = {
     "agents.web": {"core", "safety", "speech.phrasing"},
     "speech.screen": {"agents.web", "core", "safety", "speech.phrasing"},
     "agents.web.skills": {"agents.web", "core", "safety", "speech.phrasing", "speech.screen", "understanding"},
-    "agents.welfare": {"core", "safety"},
+    "agents.welfare": {"core", "safety", "speech.phrasing"},
     "evaluation": {"agents.welfare", "core", "safety"},
     "orchestrator": {
         "agents.web",
@@ -100,3 +100,39 @@ def test_layer_table_has_no_cycle():
 
     for name in ALLOWED:
         visit(name, ())
+
+
+def test_only_sync_command_imports_snapshot_writer():
+    from importlib.util import resolve_name
+
+    for path in (ROOT / "cheongeum").rglob("*.py"):
+        module = module_of(path)
+        package = module if path.name == "__init__.py" else module.rpartition(".")[0]
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                imports = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                base = resolve_name("." * node.level + (node.module or ""), package)
+                imports = [base, *(f"{base}.{alias.name}" for alias in node.names)]
+            else:
+                continue
+            assert "cheongeum.agents.welfare.open_data.sync" not in imports, path
+
+
+def test_snapshot_consumers_use_public_interface():
+    from cheongeum.agents.welfare import open_data
+
+    package = open_data.__name__
+    for path in (ROOT / "cheongeum").rglob("*.py"):
+        if module_of(path).startswith(package):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module == package:
+                assert all(alias.name in open_data.__all__ for alias in node.names), path
+            if isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            elif isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            else:
+                continue
+            assert all(not name.startswith(package + ".") for name in names), path

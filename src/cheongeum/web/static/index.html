@@ -3,135 +3,252 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>청음 — 음성 복지 신청 도우미 (데모)</title>
+    <meta name="theme-color" content="#f5f4f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111018" media="(prefers-color-scheme: dark)" />
+    <title>청음 — 공공서비스 음성 도우미</title>
+    <link rel="icon" href="/avatar/still.png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div id="app" class="app">
       <a class="skip-link" href="#command">명령 입력으로 바로가기</a>
-      <div class="mock-banner" role="note">데모 · 모의 신청 전용 — 실제 복지로 접수가 아닙니다. 합성 데이터만 사용하세요.</div>
       <header class="app-header">
-        <h1>청음 — 음성 복지 신청 도우미 (데모)</h1>
-        <div class="toolbar" role="group" aria-label="도구">
-          <button type="button" class="stop" id="stop-all">멈춰 (모든 동작 중단)</button>
-          <button type="button" id="tts-toggle" aria-pressed="true">음성 안내 켜짐</button>
-          <button type="button" id="sound-check">소리 확인</button>
-          <button type="button" id="stop-speaking">말하기 중지</button>
-          <button type="button" id="contrast-toggle" aria-pressed="false">고대비 꺼짐</button>
+        <div class="header-inner">
+          <h1 class="brand"><span class="brand-mark" aria-hidden="true"><span class="brand-eq"><i></i><i></i><i></i></span></span>청음<span class="brand-description">공공서비스 음성 도우미</span></h1>
+          <div class="mode-note" id="practice-banner" role="note" hidden>
+            <strong><span class="mode-dot" aria-hidden="true"></span>연습 모드</strong>
+            <span class="mode-detail">모의 신청에는 예시 정보만 사용해 주세요. 실제 접수는 이루어지지 않아요.</span>
+          </div>
+          <div class="toolbar" role="group" aria-label="도구">
+            <button type="button" class="header-button" id="open-settings" hidden>이용 설정</button>
+            <button type="button" class="header-button contrast-button" id="contrast-toggle" title="고대비 전환" aria-pressed="false">고대비 꺼짐</button>
+            <button type="button" class="header-button stop" id="stop-all">멈춰<span class="sr-only"> (모든 동작 중단)</span></button>
+            <button type="button" class="header-button end" id="session-end" aria-label="이용 종료" title="이용 종료" disabled>이용 종료</button>
+          </div>
         </div>
       </header>
 
       <div class="sr-only" aria-live="assertive" id="announce"></div>
-
-      <section class="panel consent" id="consent-panel" aria-labelledby="consent-title" aria-describedby="consent-text" hidden>
-        <h2 id="consent-title">시작 전 안내와 동의</h2>
-        <p id="consent-text"></p>
-        <div class="row">
-          <button type="button" class="primary big" id="consent-hear" disabled>안내 듣고 시작하기 (Enter)</button>
-          <button type="button" class="primary big" id="consent-yes" hidden>동의하고 시작 (Enter)</button>
-          <button type="button" class="big" id="consent-no" hidden>동의하지 않음 (Esc)</button>
-        </div>
+      <dialog id="settings-dialog" aria-labelledby="settings-title">
+        <form id="settings-form">
+          <h2 id="settings-title" data-onboarding="title">청음 이용 설정</h2>
+          <p data-onboarding="about">OpenAI API 키 하나로 받아쓰기, 음성 안내와 공공서비스 탐색을 이용할 수 있어요. 키는 이 PC에 암호화해 저장합니다.</p>
+          <label for="setup-language" data-onboarding="language">대화 언어</label>
+          <select id="setup-language"><option value="ko">한국어</option><option value="en">English</option><option value="zh">中文</option><option value="ja">日本語</option></select>
+          <label for="setup-key" data-onboarding="key">OpenAI API 키</label>
+          <input id="setup-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" aria-describedby="setup-key-hint" />
+          <p class="hint" id="setup-key-hint"></p>
+          <label for="setup-region" data-onboarding="region">지역 안내에 사용할 시·도 (선택)</label>
+          <select id="setup-region"><option value="" data-onboarding="none">선택 안 함</option></select>
+          <label for="setup-speed" data-onboarding="speed">안내 속도</label>
+          <select id="setup-speed"><option value="0.85" data-onboarding="slow">천천히 · 0.85배</option><option value="1" data-onboarding="normal">보통 · 1배</option><option value="1.35" data-onboarding="fast" selected>빠르게 · 1.35배</option><option value="1.6" data-onboarding="faster">더 빠르게 · 1.6배</option></select>
+          <label for="setup-device" data-onboarding="device">이 PC를 누가 사용하나요?</label>
+          <select id="setup-device"><option value="unidentified" data-onboarding="none">선택 안 함</option><option value="personal" data-onboarding="personal">나만 쓰는 개인 PC</option><option value="shared" data-onboarding="shared">함께 쓰는 공용 PC</option></select>
+          <label><input id="setup-remember-service" type="checkbox" /> <span data-onboarding="remember">개인 PC에서 다음 이용에도 마지막 기관과 업무 이름 기억하기</span></label>
+          <label for="setup-browser" data-onboarding="browser">사이트를 열 브라우저 (개인 PC, 다음 실행부터)</label>
+          <select id="setup-browser"><option value="separate" data-onboarding="separate">따로 쓰는 브라우저</option><option value="chrome" data-onboarding="chrome">평소 쓰는 크롬 (로그인 유지)</option></select>
+          <p class="hint" id="setup-browser-fallback" hidden data-onboarding="fallback">평소 쓰는 크롬을 열 수 없어서 따로 쓰는 브라우저를 쓰고 있어요.</p>
+          <label id="setup-autostart-row" hidden><input id="setup-autostart" type="checkbox" /> <span data-onboarding="autostart">컴퓨터를 켤 때 청음도 켜기</span></label>
+          <p class="error" id="setup-error" role="alert" hidden></p>
+          <div class="row"><button class="primary" id="setup-save" type="submit">저장하고 시작</button><button id="setup-cancel" data-onboarding="cancel" type="button">취소</button></div>
+        </form>
+      </dialog>
+      <dialog id="first-run" aria-labelledby="first-run-title">
+        <p class="first-run-brand" id="first-run-title">청음 처음 설정</p>
+        <div id="first-run-steps"></div>
+        <p class="sr-only" id="first-run-live" aria-live="polite"></p>
+      </dialog>
+      <section id="intro-card" class="intro-card" aria-label="청음 소개" hidden>
+        <img id="intro-pose" alt="" width="120" height="133" />
+        <p id="intro-text" aria-live="polite"></p>
+        <button type="button" id="intro-skip">건너뛰기 <kbd>Esc</kbd></button>
       </section>
-
-      <main id="main" class="layout">
-        <section aria-labelledby="conv-title" class="panel conversation">
-          <h2 id="conv-title">대화</h2>
-          <div class="conversation-control">
-            <button type="button" class="primary big" id="conv-start" disabled>대화 시작 (Enter)</button>
-            <button type="button" class="big" id="conv-end" hidden>대화 끝내기</button>
-            <p class="phase phase-off" aria-live="polite" id="phase">음성 대화: 꺼짐</p>
-            <label class="mic-select" id="mic-wrap" hidden>
-              마이크 선택
-              <select id="mic-select"></select>
-            </label>
-            <label class="mic-select">
-              대화 언어 Language
-              <select id="lang-select">
-                <option value="ko">한국어</option>
-                <option value="en">English</option>
-                <option value="zh">中文</option>
-                <option value="ja">日本語</option>
-              </select>
-            </label>
-            <p class="hint" id="conv-hint" hidden>띵 소리 뒤에 말씀하세요. 스페이스 키나 박수 두 번: 안내 중이면 끊고 바로 말하기, 말하는 중이면 바로 보내기.</p>
-          </div>
-          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="대화 기록">
-            <ol class="log" id="log"></ol>
-          </div>
-          <p class="error" role="alert" id="error" hidden></p>
-          <form class="command-form" id="command-form">
-            <label for="command">명령 입력 (말하듯이 입력하세요)</label>
-            <div class="row">
-              <input id="command" autocomplete="off" aria-describedby="command-help" disabled />
-              <button type="submit" id="send" disabled>보내기</button>
-              <button type="button" id="mic-btn" aria-pressed="false" disabled>음성 입력</button>
-              <button type="button" id="talk-btn" hidden>듣는 중 — 말씀하세요</button>
+      <main id="main" class="workspace">
+        <section class="hero" id="consent-panel" aria-labelledby="consent-title" hidden>
+          <div class="hero-content">
+            <h2 id="consent-title" data-onboarding="welcome">반가워요, 청음이에요.</h2>
+            <p class="hero-lead" data-onboarding="lead">민원, 장학금, 복지 정보를 찾아보고 신청 화면을 함께 읽어드려요.</p>
+            <div class="row hero-buttons">
+              <button type="button" class="primary" id="consent-hear" data-onboarding="hear" aria-label="안내 듣고 시작하기 (Enter)" disabled>안내 듣고 시작하기 <kbd>Enter</kbd></button>
+              <button type="button" class="primary" id="consent-yes" data-onboarding="yes" aria-label="동의하고 시작 (Enter)" hidden>동의하고 시작 <kbd>Enter</kbd></button>
+              <button type="button" id="consent-no" data-onboarding="no" aria-label="동의하지 않음 (Esc)" hidden>동의하지 않음 <kbd>Esc</kbd></button>
             </div>
-            <p id="command-help" class="hint"></p>
-          </form>
-          <details>
-            <summary>예시 명령</summary>
-            <ul class="examples" id="examples"></ul>
-          </details>
+            <details class="consent-details">
+              <summary data-onboarding="details">음성 이용 및 개인정보 안내 전문</summary>
+              <p id="consent-text"></p>
+              <button type="button" id="consent-full" data-onboarding="replay">안내 전문 듣기</button>
+            </details>
+          </div>
+          <div class="hero-art" aria-hidden="true"><div class="ripples"><i></i><i></i><i></i></div><img src="/avatar/still.png" alt="" width="240" height="240" /></div>
         </section>
 
-        <aside class="side">
-          <section aria-labelledby="status-title" class="panel">
-            <h2 id="status-title">현재 상태</h2>
-            <dl class="status">
-              <dt>상태</dt>
-              <dd id="st-state">대기</dd>
-              <dt>단계</dt>
-              <dd id="st-step">없음</dd>
-              <dt>화면</dt>
-              <dd id="st-title">아직 열지 않음</dd>
-              <dt>접근</dt>
-              <dd id="st-access">없음</dd>
-            </dl>
-            <div id="fields-wrap" hidden>
-              <h3>현재 화면 입력 항목</h3>
-              <ul class="fields" id="fields"></ul>
+        <section class="hero" id="welcome-panel" aria-labelledby="welcome-title" hidden>
+          <div class="hero-content">
+            <h2 id="welcome-title">무엇을 도와드릴까요?</h2>
+            <p class="hero-lead">필요한 공공서비스나 읽고 싶은 화면을 알려주세요.</p>
+            <div id="starter-actions" class="starter-actions" role="group" aria-label="요청 예시 선택">
+              <button type="button" data-request="장애인연금 얼마 받아?"><span class="choice-art pension-art" aria-hidden="true"></span>장애인연금 알아보기</button>
+              <button type="button" data-request="복지로 열어줘" data-consent="granted"><span class="choice-art site-art" aria-hidden="true"></span>복지로 열기</button>
+              <button type="button" data-request="정부24에서 주민등록등본 발급 방법 찾아줘" data-consent="granted"><span class="choice-art gov-art" aria-hidden="true"></span>정부24 민원 찾기</button>
+              <button type="button" data-request="장학재단에서 국가장학금 신청 안내 찾아줘" data-consent="granted"><span class="choice-art scholar-art" aria-hidden="true"></span>국가장학금 알아보기</button>
+              <button type="button" data-request="화면 설명해줘" data-consent="granted"><span class="choice-art screen-art" aria-hidden="true"></span>화면 설명 듣기</button>
+              <button type="button" data-request="장애인연금 지원 대상이 누구야?" data-consent="declined" hidden><span class="choice-art site-art" aria-hidden="true"></span>지원 대상 알아보기</button>
+              <button type="button" data-request="장애인연금 신청할 때 필요한 서류가 뭐야?" data-consent="declined" hidden><span class="choice-art screen-art" aria-hidden="true"></span>준비 서류 알아보기</button>
             </div>
-          </section>
+          </div>
+          <div class="hero-art" aria-hidden="true"><div class="ripples"><i></i><i></i><i></i></div><img src="/avatar/still.png" alt="" width="240" height="240" /></div>
+        </section>
 
-          <section aria-labelledby="confirm-title" class="panel confirm" id="confirm-panel" hidden>
-            <h2 id="confirm-title" tabindex="-1">안전 확인: 실행 전에 승인이 필요합니다</h2>
-            <p>목적: <span id="confirm-purpose"></span><br />대상 사이트: <span id="confirm-site"></span></p>
-            <dl class="status" id="confirm-values"></dl>
-            <p class="hint">실제 제출 아님. 승인하면 모의 접수번호만 만들어집니다.</p>
-            <div class="row">
-              <button type="button" class="primary" id="confirm-yes">모의접수 승인</button>
-              <button type="button" id="confirm-edit">수정하기</button>
-              <button type="button" id="confirm-no">거절</button>
-            </div>
-          </section>
+        <section class="panel recovery" id="recovery-panel" aria-labelledby="recovery-title" hidden>
+          <h2 id="recovery-title" tabindex="-1"></h2>
+          <p id="recovery-message"></p>
+          <div class="row">
+            <button type="button" class="primary" id="recovery-yes" aria-describedby="recovery-message"></button>
+            <button type="button" id="recovery-no"></button>
+          </div>
+        </section>
+        <button type="button" class="primary" id="session-new" hidden>새 작업 시작</button>
 
-          <section aria-labelledby="auth-title" class="panel auth" id="auth-panel" hidden>
-            <h2 id="auth-title">직접 인증 필요</h2>
-            <p>브라우저 창의 가상 인증 화면에 키보드로 직접 입력하세요. 청음은 비밀번호를 듣거나 입력하지 않습니다.</p>
-          </section>
+        <div class="layout">
+          <div class="primary-column">
+            <section aria-labelledby="conv-title" class="panel conversation">
+              <div class="conversation-header">
+                <h2 id="conv-title"><span class="portrait" aria-hidden="true"></span>청음과의 대화</h2>
+                <p class="phase phase-off" aria-live="polite" id="phase"><span class="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label">음성 대화: 꺼짐</span></p>
+                <p id="live-caption" hidden></p>
+              </div>
+              <div class="thread" id="thread">
+                <div role="log" aria-live="polite" aria-relevant="additions" aria-label="대화 기록">
+                  <ol class="log" id="log" tabindex="0" aria-label="대화 메시지"></ol>
+                </div>
+                <section aria-labelledby="answer-title" class="answer" id="answer-panel" hidden>
+                  <h3 id="answer-title">복지 제도 답변</h3>
+                  <dl class="status">
+                    <dt>출처</dt><dd><a id="answer-source" target="_blank" rel="noreferrer"></a></dd>
+                    <dt>다음 행동</dt><dd id="answer-next"></dd>
+                  </dl>
+                  <details class="answer-details"><summary>답변과 자료 기준 보기</summary>
+                    <p id="answer-text"></p>
+                    <dl class="status">
+                      <dt>자료 구분</dt><dd id="answer-origin"></dd>
+                      <dt>자료 기준</dt><dd id="answer-date"></dd>
+                      <dt>확인일</dt><dd id="answer-checked"></dd>
+                    </dl>
+                  </details>
+                </section>
+                <div class="decision confirm" id="confirm-panel" role="region" aria-labelledby="confirm-title" hidden>
+                  <h3 id="confirm-title" tabindex="-1">실행하기 전에 확인해 주세요</h3>
+                  <dl class="status"><dt>목적</dt><dd id="confirm-purpose"></dd><dt>대상</dt><dd id="confirm-site"></dd></dl>
+                  <dl class="status" id="confirm-values"></dl>
+                  <p class="hint" id="confirm-hint" hidden></p>
+                  <div class="row">
+                    <button type="button" class="primary" id="confirm-yes">이 동작 승인</button>
+                    <button type="button" id="confirm-edit">수정하기</button>
+                    <button type="button" id="confirm-no">거절</button>
+                  </div>
+                </div>
+                <div class="decision auth" id="auth-panel" role="region" aria-labelledby="auth-title" hidden>
+                  <h3 id="auth-title">직접 인증이 필요해요</h3>
+                  <p>브라우저 창에서 직접 확인을 완료해 주세요. 마이크는 꺼져 있어요.</p>
+                  <div class="row"><button type="button" class="primary" id="auth-done">직접 확인을 마쳤어요</button><button type="button" id="auth-cancel">인증 취소</button></div>
+                </div>
+                <div class="decision result" id="result-panel" role="region" aria-labelledby="result-title" hidden>
+                  <h3 id="result-title">모의접수 결과</h3>
+                  <p>모의 접수번호 <strong id="receipt"></strong></p>
+                  <p>실제 접수가 아니며 어떤 기관에도 전송되지 않았어요.</p>
+                </div>
+                <p class="error" role="alert" id="error" hidden></p>
+                <div class="typing" id="typing" aria-hidden="true" hidden><span class="typing-avatar"></span><span class="typing-dots"><i></i><i></i><i></i></span></div>
+              </div>
+              <form class="command-form" id="command-form">
+                <label class="sr-only" for="command">명령 입력 (말하듯이 입력하세요)</label>
+                <div class="composer">
+                  <input id="command" placeholder="청음에게 물어보세요" autocomplete="off" aria-describedby="command-help" disabled />
+                  <button type="submit" class="primary send" id="send" title="보내기" disabled>보내기</button>
+                </div>
+                <div class="voice-actions">
+                  <button type="button" class="voice-start" id="conv-start" aria-label="대화 시작 (Enter)" disabled>대화 시작 <kbd>Enter</kbd></button>
+                  <button type="button" id="conv-end" hidden>대화 끝내기</button>
+                  <button type="button" id="mic-btn" aria-pressed="false" aria-describedby="command-help" disabled>음성 입력</button>
+                  <button type="button" id="talk-btn" hidden>듣는 중 — 말씀하세요</button>
+                </div>
+                <p class="hint" id="dictation-hint" hidden></p>
+                <p class="hint" id="conv-hint" hidden>띵 소리 뒤에 말씀하세요. 스페이스 키나 박수 두 번으로 안내를 끊거나, 하던 말을 바로 보낼 수 있어요.</p>
+                <p id="command-help" class="hint"></p>
+              </form>
+              <details class="examples-disclosure"><summary>예시 명령 보기</summary><ul class="examples" id="examples"></ul></details>
+              <details id="recording-review" class="examples-disclosure" hidden>
+                <summary id="recording-title">녹음 파일 받아쓰기</summary>
+                <label for="recording-file" id="recording-label">녹음 파일 선택 (최대 10 MiB)</label>
+                <input type="file" id="recording-file" accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,.flac" />
+                <button id="recording-send" type="button" disabled>음성 API에 보내 받아쓰기</button>
+                <p id="recording-status" role="status"></p>
+                <label id="recording-result-label" for="recording-result" hidden>받아쓴 내용</label>
+                <textarea id="recording-result" rows="4" readonly hidden></textarea>
+              </details>
+            </section>
+          </div>
 
-          <section aria-labelledby="result-title" class="panel result" id="result-panel" hidden>
-            <h2 id="result-title">모의접수 결과</h2>
-            <p>모의 접수번호: <strong id="receipt"></strong></p>
-            <p>실제 복지로 접수가 아니며 어떤 기관에도 전송되지 않았습니다.</p>
-          </section>
+          <aside class="side" aria-label="작업 정보와 설정">
+            <section aria-labelledby="status-title" class="panel">
+              <h2 id="status-title"><span class="panel-icon status-icon" aria-hidden="true"></span>현재 작업</h2>
+              <progress id="step-progress" aria-label="신청 진행률" hidden></progress>
+              <dl class="status work-status">
+                <div class="st-state-row"><dt>진행 상태</dt><dd><span id="st-state">대기</span></dd></div>
+                <div class="st-step-row"><dt>신청 단계</dt><dd id="st-step">없음</dd></div>
+                <div class="st-title-row"><dt>현재 화면</dt><dd id="st-title">아직 열지 않음</dd></div>
+                <div class="st-access-row"><dt>접근 권한</dt><dd id="st-access">없음</dd></div>
+              </dl>
+              <div id="fields-wrap" hidden><h3>현재 화면 입력 항목</h3><ul class="fields" id="fields"></ul></div>
+            </section>
 
-          <section aria-labelledby="src-title" class="panel" id="sources-panel" hidden>
-            <h2 id="src-title">근거 자료</h2>
-            <ul id="sources"></ul>
-          </section>
+            <section aria-labelledby="src-title" class="panel" id="sources-panel" hidden>
+              <h2 id="src-title">근거 자료</h2><ul id="sources"></ul>
+            </section>
+            <section aria-labelledby="act-title" class="panel" id="actions-panel" hidden>
+              <h2 id="act-title">실행 내역</h2><ol class="actions" id="actions"></ol>
+            </section>
 
-          <section aria-labelledby="act-title" class="panel" id="actions-panel" hidden>
-            <h2 id="act-title">실행 내역</h2>
-            <ol class="actions" id="actions"></ol>
-          </section>
-
-          <section aria-labelledby="unsupported-title" class="panel muted">
-            <h2 id="unsupported-title">데모/미지원</h2>
-            <ul id="unsupported"></ul>
-          </section>
-        </aside>
+            <section class="panel settings" aria-labelledby="sound-title">
+              <h2 id="sound-title"><span class="panel-icon audio-icon" aria-hidden="true"></span>음성 설정</h2>
+              <div class="setting-row">
+                <label for="lang-select">대화 언어</label>
+                <select id="lang-select"><option value="ko">한국어</option><option value="en">English</option><option value="zh">中文</option><option value="ja">日本語</option></select>
+              </div>
+              <label class="setting-row" id="mic-wrap" hidden>마이크 선택<select id="mic-select"></select></label>
+              <label class="setting-row" id="conversation-mode-wrap" hidden><span id="conversation-mode-label">대화 방식</span>
+                <select id="conversation-mode"><option value="native">실시간 음성 대화</option><option value="dictate">받아쓰기 후 답변</option></select>
+              </label>
+              <button type="button" class="voice-switch" id="tts-toggle" aria-pressed="true">음성 안내 켜짐</button>
+              <div class="audio-tools"><button type="button" id="mic-check" disabled>마이크 확인</button><button type="button" id="sound-check">소리 확인</button><button type="button" id="stop-speaking">말하기 중지</button></div>
+              <p id="mic-check-result" class="hint" role="status"></p>
+              <details class="secondary-details"><summary>음성 처리 방식</summary><p id="voice-details"></p></details>
+            </section>
+            <details id="workflow-panel" class="panel settings" hidden>
+              <summary id="workflow-title">자료 조사와 저장한 메모</summary>
+              <form id="research-form">
+                <label id="research-label" for="research-input"></label>
+                <textarea id="research-input" rows="2" maxlength="600" required></textarea>
+                <label><input id="research-consent" type="checkbox" required> <span id="research-permission"></span></label>
+                <button id="research-add" type="submit"></button>
+              </form>
+              <ul id="research-list"></ul>
+              <form id="note-form">
+                <label id="note-label" for="note-input"></label>
+                <textarea id="note-input" rows="2" maxlength="300" required></textarea>
+                <label><input id="note-consent" type="checkbox"> <span id="note-permission"></span></label>
+                <button id="note-add" type="submit"></button>
+                <button id="note-search" type="button"></button>
+                <button id="note-all" type="button"></button>
+              </form>
+              <ul id="note-list"></ul>
+              <p id="workflow-feedback" role="status"></p>
+            </details>
+            <details class="support-details">
+              <summary id="unsupported-title">지원하지 않는 기능</summary><ul id="unsupported"></ul>
+            </details>
+          </aside>
+        </div>
       </main>
     </div>
     <script type="module" src="/app.js"></script>

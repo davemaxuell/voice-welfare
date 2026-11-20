@@ -127,9 +127,6 @@ def main() -> int:
     write_notes()
     if ok:
         print("\n.env에 다음을 넣고 서버를 다시 시작하세요:")
-        print("STT_PROVIDER=local")
-        print(f"STT_LOCAL_MODEL={STT_OUT.relative_to(ROOT).as_posix()}")
-        print("STT_MODEL=gpt-4o-mini-transcribe   # 한국어 외 언어(영어·중국어·일본어)만 OpenAI로")
         print(f"PII_MODEL={PII_OUT.relative_to(ROOT).as_posix()}")
     return 0 if ok else 1
 

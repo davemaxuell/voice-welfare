@@ -10,6 +10,7 @@ from cheongeum.safety import (
     set_pii_model,
     spoken_digit_spans,
 )
+from cheongeum.safety.guard import click_tier
 from cheongeum.safety.pii_model import merge_bio
 
 ORIGIN = "http://localhost:5174"
@@ -96,9 +97,30 @@ def test_risky_button_on_supported_site_needs_approval_whatever_the_declared_ris
     assert g.check(click("link", "장애인연금 모의 신청하기"), ctx())["code"] == "ALLOWED"
 
 
+@pytest.mark.parametrize("role", ["tab", "scriptlink", "menuitem", "generic"])
+def test_action_controls_on_supported_site_require_matching_approval(role):
+    click = action(id="c2", type="click", target={"role": role, "name": "모의접수"}, value=None)
+    assert guard.check(click, ctx(approvals={"other"}))["code"] == "NEEDS_CONFIRMATION"
+    assert guard.check(click, ctx(approvals={"c2"}))["code"] == "APPROVED"
+
+
+@pytest.mark.parametrize("role", ["tab", "scriptlink"])
+def test_information_controls_on_supported_site_open_directly(role):
+    click = action(type="click", target={"role": role, "name": "신청방법"}, value=None)
+    assert guard.check(click, ctx())["code"] == "ALLOWED"
+
+
 def test_stopped_and_rate_limit():
     assert guard.check(action(), ctx(stopped=True))["code"] == "DENIED_STOPPED"
     assert guard.check(action(), ctx(actionsThisTurn=3))["code"] == "DENIED_RATE_LIMIT"
+
+
+def test_review_budget_respects_policy_ceiling_and_the_default_turn_limit(monkeypatch):
+    monkeypatch.setattr(guard.config, "defaultActionsPerTurn", 1)
+    assert guard.check(action(), ctx(actionsThisTurn=1))["code"] == "DENIED_RATE_LIMIT"
+    assert guard.check(action(), ctx(actionsThisTurn=1, action_limit=2))["allowed"]
+    assert guard.check(action(), ctx(actionsThisTurn=2, action_limit=2))["code"] == "DENIED_RATE_LIMIT"
+    assert guard.check(action(), ctx(actionsThisTurn=3, action_limit=99))["code"] == "DENIED_RATE_LIMIT"
 
 
 @pytest.mark.parametrize(
@@ -231,3 +253,35 @@ def test_merge_bio():
 
 def test_mask_phone():
     assert mask_value("010-1234-5678") == "010-****-5678"
+
+
+@pytest.mark.parametrize("role,name,tier", [
+    ("button", "확인", "ask"), ("button", "자격 확인", "ask"), ("button", "검색 조건 변경", "ask"),
+    ("button", "모의계산 확인", "ask"), ("button", "신청방법", "ask"), ("button", "취소", "ask"),
+    ("button", "온라인 신청", "hard"), ("menuitem", "복지서비스 신청", "hard"), ("button", "보내기", "hard"),
+    ("button", "회원가입", "hard"), ("button", "신청 취소", "hard"), ("button", "", "hard"),
+    ("button", "더보기", "free"), ("button", "닫기", "free"), ("button", "검색하기", "free"),
+    ("tab", "검색하기", "ask"), ("tab", "신청방법", "free"), ("link", "신청하기", "free"),
+    ("generic", "서비스 내용", "ask"),
+])
+def test_click_tier(role, name, tier):
+    assert click_tier(role, name) == tier
+
+
+def test_read_only_ask_tier_needs_then_takes_approval():
+    config = PolicyConfig([], ["click"], [], [], 3, readOnlyWeb=True)
+    safe = PolicyGuard(config)
+    click = action(type="click", target={"role": "button", "name": "확인"}, value=None)
+    assert safe.check(click, ctx(approvals={"other"}))["code"] == "NEEDS_CONFIRMATION"
+    assert safe.check(click, ctx(approvals={click["id"]}))["code"] == "APPROVED"
+    for name in ("온라인 신청", "로그인 후 결제"):
+        click["target"]["name"] = name
+        assert safe.check(click, ctx(approvals={click["id"]}))["code"] == "DENIED_READ_ONLY"
+
+
+@pytest.mark.parametrize("background", [True, False])
+def test_approval_cannot_expand_public_lookup_scope(background):
+    config = PolicyConfig([], ["click"], [], [], 3, readOnlyWeb=True, publicLookupOnly=background)
+    click = action(type="click", target={"role": "button", "name": "신청방법"}, value=None)
+    policy = PolicyGuard(config).check(click, ctx(public_lookup=not background, approvals={click["id"]}))
+    assert not policy["allowed"] and policy["code"] != "NEEDS_CONFIRMATION"

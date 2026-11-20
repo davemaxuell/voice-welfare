@@ -10,42 +10,73 @@ import argparse
 import asyncio
 import logging
 import os
+import socket
 import sys
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 from cheongeum.agents.web.browser import stop_playwright
 from cheongeum.practice_site import is_reachable, start_mock_site
 from cheongeum.server.app import close_all, create_app, mount_web_ui
 from cheongeum.server.runtime import AgentRuntime, load_config
+from cheongeum.server.settings import SettingsStore
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def build(desktop: bool = False, env: dict | None = None):
+def _bind_local(sock: socket.socket, host: str, port: int, port_file: Path | None) -> int:
+    # Keeping the same origin preserves the user's microphone selection between app launches.
+    if port_file:
+        try:
+            saved = int(port_file.read_text(encoding="ascii"))
+            if 1024 <= saved <= 65535:
+                port = saved
+        except (OSError, ValueError):
+            pass
+    try:
+        sock.bind((host, port))
+    except OSError:
+        if port_file is None:
+            raise
+        sock.bind((host, 0))
+    sock.listen()
+    port = sock.getsockname()[1]
+    if port_file:
+        try:
+            port_file.write_text(str(port), encoding="ascii")
+        except OSError:
+            pass
+    return port
+
+
+def build(desktop: bool = False, env: dict | None = None, *, port: int | None = None):
     env = dict(os.environ if env is None else env)
     if desktop:
         # 데스크톱 앱은 실제 사이트 모드가 기본(연습 신청서는 "연습"이라고 할 때만). PRACTICE_MODE=true로 바꿀 수 있다.
         env.setdefault("PRACTICE_MODE", "false")
         # 금고·신청 기록은 이 컴퓨터의 ~/.cheongeum/personal.json(권한 600)에만
         env.setdefault("CHEONGEUM_DATA_DIR", str(Path.home() / ".cheongeum"))
-    runtime = AgentRuntime(load_config(env))
+        if runtime_dir := env.get("CHEONGEUM_DESKTOP_RUNTIME"):
+            models = Path(runtime_dir) / "models"
+            env.setdefault("PII_MODEL", str(models / "koelectra-ko-pii-ner"))
+    settings_dir = Path(env.get("CHEONGEUM_SETTINGS_DIR") or Path.home() / ".cheongeum")
+    runtime = AgentRuntime(load_config(env), SettingsStore(settings_dir / "preferences.json"))
 
     @asynccontextmanager
     async def lifespan(app):
-        # 로컬 받아쓰기 모델은 시작을 막지 않고 백그라운드 스레드에서 미리 불러온다(첫 말이 늦지 않게)
-        warm = getattr(runtime.stt, "warm", None)
-        if warm:
-            asyncio.get_running_loop().run_in_executor(None, warm)
-        yield
-        await close_all(app.state.sessions)
-        await runtime.close()
-        await stop_playwright()
+        await app.state.workflows.reconfigure()
+        try:
+            yield
+        finally:
+            await app.state.workflows.close()
+            await close_all(app.state.sessions)
+            await runtime.close()
+            await stop_playwright()
 
-    api, _sessions = create_app(runtime, lifespan=lifespan)
+    api, _sessions = create_app(runtime, lifespan=lifespan, port=port, workflow_dsn=env.get("CHEONGEUM_DATABASE_URL") or "")
     mount_web_ui(api, csp=desktop)
     return api, runtime
 
@@ -56,31 +87,54 @@ def main() -> None:
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--desktop", action="store_true", help="데스크톱 앱 뒤쪽 프로세스로 실행")
     parser.add_argument("--no-mock", action="store_true", help="모의 사이트를 띄우지 않음")
+    parser.add_argument("--env-file", type=Path, default=ROOT / ".env", help="서비스 설정 파일")
     args = parser.parse_args()
-    load_dotenv(ROOT / ".env")
+    if args.desktop and os.environ.get("CHEONGEUM_DESKTOP_RUNTIME"):
+        # Imported service settings are app configuration, not environment variables for child browsers.
+        settings = dotenv_values(args.env_file, encoding="utf-8-sig")
+        env = {**{k: v for k, v in settings.items() if v is not None}, **os.environ}
+    else:
+        load_dotenv(args.env_file, encoding="utf-8-sig")
+        env = dict(os.environ)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if sys.platform == "win32":
         # Playwright는 하위 프로세스를 쓰므로 Proactor 루프가 필요하다(기본값이지만 명시).
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    port = args.port or int(os.environ.get("DESKTOP_PORT" if args.desktop else "PORT") or (8790 if args.desktop else 8787))
-    mock = None
-    if not args.no_mock and not is_reachable("http://localhost:5174"):
-        mock = start_mock_site(5174)
-    api, runtime = build(desktop=args.desktop)
-    cfg = runtime.config
-    tag = "desktop" if args.desktop else "server"
-    print(f"[{tag}] http://localhost:{port}  (LLM: {runtime.intent_provider.name}, 복지데이터: {runtime.welfare_provider.mode})")
-    print(f"[{tag}] 허용 출처: {', '.join(runtime.allowed_origins)}  · 브라우저: {'headless' if cfg.headless else 'headed'}")
-    server = uvicorn.Server(uvicorn.Config(api, host=args.host, port=port, log_level="warning"))
-    if args.desktop:
-        print(f"[desktop] ready http://localhost:{port}", flush=True)
-        if os.environ.get("CHEONGEUM_PARENT_PIPE") == "1":
+    configured_port = env.get("DESKTOP_PORT" if args.desktop else "PORT")
+    port = args.port if args.port is not None else int(configured_port or (8790 if args.desktop else 8787))
+    if args.host not in ("localhost", "127.0.0.1", "::1"):
+        parser.error("--host는 루프백 주소여야 합니다.")
+    child = args.desktop and env.get("CHEONGEUM_PARENT_PIPE") == "1"
+    bundled = child and env.get("CHEONGEUM_DESKTOP_RUNTIME")
+    with ExitStack() as stack:
+        listener = None
+        if child or port == 0:
+            # Keep the loopback socket from port allocation through Uvicorn startup.
+            family = socket.AF_INET6 if args.host == "::1" else socket.AF_INET
+            listener = stack.enter_context(socket.socket(family))
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            auto = bundled and args.port is None and not configured_port
+            port = _bind_local(listener, args.host, port, args.env_file.with_name("service-port") if auto else None)
+        if not args.no_mock:
+            if bundled and not env.get("MOCK_SITE_URL"):
+                mock = start_mock_site(0)
+                stack.callback(mock.close)
+                env["MOCK_SITE_URL"] = f"http://localhost:{mock.port}"
+            elif not is_reachable("http://localhost:5174"):
+                stack.callback(start_mock_site(5174).close)
+        api, runtime = build(desktop=args.desktop, env=env, port=port)
+        tag = "desktop" if args.desktop else "server"
+        host = f"[{args.host}]" if ":" in args.host else args.host
+        url = f"http://{host}:{port}"
+        print(f"[{tag}] {url}  (LLM: {runtime.intent_provider.name}, 복지데이터: {runtime.welfare_provider.mode})")
+        print(f"[{tag}] 허용 출처: {', '.join(runtime.allowed_origins)}  · 브라우저: {'headless' if runtime.config.headless else 'headed'}")
+        server = uvicorn.Server(uvicorn.Config(api, host=args.host, port=port, log_level="warning"))
+        if child:
             _exit_when_parent_closes(server)
-    try:
-        server.run()
-    finally:
-        if mock:
-            mock.close()
+        if args.desktop:
+            print(f"[desktop] ready {url}", flush=True)
+        server.run(sockets=[listener] if listener else None)
 
 
 def _exit_when_parent_closes(server: uvicorn.Server) -> None:

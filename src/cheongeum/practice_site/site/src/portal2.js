@@ -31,6 +31,10 @@ if (new URLSearchParams(location.search).get('rotate')) {
     }, 700);
 }
 
+document.getElementById('filter-change').addEventListener('click', () => {
+    document.getElementById('filter-panel').hidden = false;
+});
+
 if (new URLSearchParams(location.search).get('lazy')) {
     const list = document.getElementById('lazy-list');
     const show = (text) => { list.innerHTML = ''; const li = document.createElement('li'); li.textContent = text; list.append(li); };

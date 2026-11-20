@@ -12,12 +12,13 @@ import xml.etree.ElementTree as ET
 from importlib import resources
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 import regex
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from cheongeum.core.jsutil import compact, is_valid_url, now_iso, rx, today_iso
+from cheongeum.core.jsutil import compact, is_valid_url, now_iso, rx, today_iso, try_url
 
 log = logging.getLogger("cheongeum.welfare")
 T = TypeVar("T")
@@ -72,6 +73,7 @@ class WelfareServiceModel(_M):
     benefit: Optional[str] = None
     applySteps: Optional[list[_Step]] = None
     contacts: Optional[list[_Contact]] = None
+    relatedSites: Optional[list[_Form]] = None
     forms: Optional[list[_Form]] = None
     laws: Optional[list[str]] = None
     ministry: Optional[str] = None
@@ -192,6 +194,35 @@ def api_error_message(body: str) -> str:
     return f"{clean_api_text(h.get('errMsg'))} ({clean_api_text(h.get('returnAuthMsg'))})" if h else "알 수 없는 응답 형식"
 
 
+def _clean_http_url(raw: str) -> str | None:
+    """공식 API 응답의 관련 사이트·서식 주소를 검증된 http(s) 주소로 정리한다."""
+    text = raw.strip().rstrip(".,);")
+    if not text or " " in text:
+        return None
+    if text.lower().startswith(("http;//", "https;//")):
+        text = text.replace(";//", "://", 1)
+    elif not text.lower().startswith(("http://", "https://")):
+        if not rx(r"^(?:www\.)?[a-zA-Z0-9가-힣-]+(?:\.[a-zA-Z0-9가-힣-]+)+(?::\d+)?(?:/.*)?$").fullmatch(text):
+            return None
+        text = "https://" + text
+    parts = urlsplit(text)
+    parsed = try_url(text)
+    if (not parsed or parsed.protocol not in ("http:", "https:") or not parsed.hostname or "." not in parsed.hostname
+            or parsed.hostname in ("localhost", "127.0.0.1") or parts.username or parts.password):
+        return None
+    return parsed.href
+
+
+def _catalog_total(body: str) -> int:
+    root = _as_dict(parse_xml(body).get("wantedList"))
+    if root is None:
+        return 0
+    try:
+        return int(clean_api_text(root.get("totalCount")) or 0)
+    except ValueError:
+        return 0
+
+
 def parse_service_catalog(body: str, provider: Literal["central", "local"]) -> list[dict]:
     """목록조회 XML → 요약 목록(맞춤 찾기용). 중앙(lifeArray…)·지자체(lifeNmArray…, ctpvNm) 필드를 모두 받는다."""
     root = _as_dict(parse_xml(body).get("wantedList"))
@@ -286,9 +317,25 @@ def parse_welfare_detail(body: str, detail_url: str, checked_at: str | None = No
         }
         for c in [*items(r.get("inqplCtadrList")), *items(r.get("inqplHmpgReldList"))]
     ]
+    related_sites: list[dict] = []
+    seen_sites: set[str] = set()
+    for site in items(r.get("inqplHmpgReldList")):
+        raw_url = clean_api_text(_first(site, "servSeDetailLink", "wlfareInfoReldCn"))
+        cleaned = _clean_http_url(raw_url)
+        if not cleaned:
+            continue
+        key = cleaned.casefold().rstrip("/")
+        if key in seen_sites:
+            continue
+        seen_sites.add(key)
+        related_sites.append({"name": clean_api_text(_first(site, "servSeDetailNm", "wlfareInfoReldNm")), "url": cleaned})
     forms = [
-        {"name": clean_api_text(_first(f, "servSeDetailNm", "wlfareInfoReldNm")), "url": clean_api_text(_first(f, "servSeDetailLink", "wlfareInfoReldCn"))}
+        {
+            "name": clean_api_text(_first(f, "servSeDetailNm", "wlfareInfoReldNm")),
+            "url": _clean_http_url(raw_url) or raw_url,
+        }
         for f in items(r.get("basfrmList"))
+        for raw_url in [clean_api_text(_first(f, "servSeDetailLink", "wlfareInfoReldCn"))]
     ]
     laws = [x for x in (clean_api_text(_first(law, "servSeDetailNm", "wlfareInfoReldNm")) for law in items(r.get("baslawList"))) if x]
     # 지자체 상세만 시행 시작·종료일(enfcBgngYmd·enfcEndYmd, YYYYMMDD)을 준다. 중앙에는 없음.
@@ -304,6 +351,7 @@ def parse_welfare_detail(body: str, detail_url: str, checked_at: str | None = No
         "applyMethod": apply_steps[0]["detail"] if apply_steps else clean_api_text(_first(r, "aplyMtdCn", "aplyMtdNm")),
         "applySteps": apply_steps,
         "contacts": contacts,
+        "relatedSites": related_sites,
         "forms": forms,
         "laws": laws,
         "ministry": clean_api_text(r.get("jurMnofNm") if r.get("jurMnofNm") is not None else (r.get("bizChrDeptNm") if local else None)),
@@ -434,22 +482,48 @@ class OfficialCentralWelfareApiProvider:
 
     async def catalog(self, ctpv: str | None = None) -> list[dict]:
         async def work() -> list[dict]:
+            async def load_pages(fetch_page: Callable[[int], Awaitable[str]], provider: Literal["central", "local"]) -> list[dict]:
+                collected: list[dict] = []
+                seen_ids: set[str] = set()
+                for page in range(1, 6):
+                    body = await fetch_page(page)
+                    rows = parse_service_catalog(body, provider)
+                    added = 0
+                    for row in rows:
+                        sid = row.get("servId")
+                        if sid and sid in seen_ids:
+                            continue
+                        if sid:
+                            seen_ids.add(sid)
+                        collected.append(row)
+                        added += 1
+                    total = _catalog_total(body)
+                    if not added or (total and len(collected) >= total) or (not total and len(rows) < 500):
+                        break
+                return collected
+
             async def load_central() -> list[dict]:
-                res = await self.fetch_raw("L", extra={"numOfRows": "500"})
-                if res["status"] != 200:
-                    raise WelfareApiError(api_error_message(res["body"]), res["status"])
-                return parse_service_catalog(res["body"], "central")
+                async def page(n: int) -> str:
+                    res = await self.fetch_raw("L", extra={"pageNo": str(n), "numOfRows": "500"})
+                    if res["status"] != 200:
+                        raise WelfareApiError(api_error_message(res["body"]), res["status"])
+                    return res["body"]
+
+                return await load_pages(page, "central")
 
             central = await self._cached("C:central", load_central)
             if not ctpv:
                 return central
 
             async def load_local() -> list[dict]:
-                params = {"pageNo": "1", "numOfRows": "500", "srchKeyCode": "001", "ctpvNm": ctpv, "serviceKey": self.api_key}
-                status, body = await self._get(f"{self._local_base_url()}/LcgvWelfarelist", params)
-                if status != 200:
-                    raise WelfareApiError(api_error_message(body), status)
-                return parse_service_catalog(body, "local")
+                async def page(n: int) -> str:
+                    params = {"pageNo": str(n), "numOfRows": "500", "srchKeyCode": "001", "ctpvNm": ctpv, "serviceKey": self.api_key}
+                    status, body = await self._get(f"{self._local_base_url()}/LcgvWelfarelist", params)
+                    if status != 200:
+                        raise WelfareApiError(api_error_message(body), status)
+                    return body
+
+                return await load_pages(page, "local")
 
             local = await self._cached(f"C:local:{ctpv}", load_local)
             return [*central, *local]
@@ -475,13 +549,18 @@ class OfficialCentralWelfareApiProvider:
                 raise WelfareApiError(api_error_message(res["body"]), res["status"])
             return parse_welfare_detail(res["body"], detail_url)
 
-        return await self._cached(f"D:{serv_id}", load)
+        cached = await self._cached(f"D:{serv_id}", load)
+        if detail_url and cached.get("source", {}).get("url") == "https://www.data.go.kr/data/15090532/openapi.do":
+            upgraded = {**cached, "source": {**cached["source"], "url": detail_url}}
+            self._cache[f"D:{serv_id}"] = (time.time() * 1000, upgraded)
+            return upgraded
+        return cached
 
     async def list_services(self, query: str = "") -> list[dict]:
         return await self._with_fallback(lambda: self._list(query), lambda: self.fallback.list_services(query))
 
-    async def get_service(self, serv_id: str) -> dict | None:
-        return await self._with_fallback(lambda: self._detail(serv_id, ""), lambda: self.fallback.get_service(serv_id))
+    async def get_service(self, serv_id: str, detail_url: str = "") -> dict | None:
+        return await self._with_fallback(lambda: self._detail(serv_id, detail_url), lambda: self.fallback.get_service(serv_id))
 
     async def find_service(self, name: str) -> dict | None:
         async def work() -> dict:

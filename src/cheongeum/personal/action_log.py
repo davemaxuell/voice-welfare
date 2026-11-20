@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+from threading import RLock
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from cheongeum.core.jsutil import jdumps
 from cheongeum.personal.seal import Seal
+from cheongeum.personal.atomic import write_private
 
 KEEP_DAYS = 30
 GENESIS = "0" * 64
@@ -25,6 +26,7 @@ class ActionLog:
         self._seal = seal
         self._rows: list[dict] = []
         self._prev = GENESIS
+        self._lock = RLock()
         if path and Path(path).exists():
             self._load()
 
@@ -54,26 +56,20 @@ class ActionLog:
             return
         payload = jdumps({"prev": self._prev, "rows": self._rows}, indent=2).encode("utf-8")
         blob = self._seal.seal(payload) if self._seal else payload
-        p = Path(self.path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as f:
-            f.write(blob)
-        tmp.replace(p)
-        try:
-            os.chmod(p, 0o600)
-        except OSError:
-            pass  # 윈도 등
+        write_private(Path(self.path), blob)
 
     def append(self, entry: dict) -> dict:
         """한 줄 추가. entry는 코드가 만든 요약만(페이지 원문·비밀값 금지). 실패하면 예외."""
+        with self._lock:
+            return self._append(entry)
+
+    def _append(self, entry: dict) -> dict:
         day = date.today().isoformat()
         at = datetime.now(timezone.utc).isoformat()
         # 라벨은 호출 쪽에서 이미 비식별화한다(personal → safety 가져오기 금지)
         label = str(entry.get("label") or "")[:120]
         row = {
-            "seq": len(self._rows) + 1,
+            "seq": (self._rows[-1]["seq"] + 1) if self._rows else 1,
             "day": day,
             "at": at,
             "host": entry.get("host") or "",
@@ -85,15 +81,24 @@ class ActionLog:
             "ok": entry.get("ok"),
             "prev": self._prev,
         }
+        if row["phase"] == "refused":
+            row["reasonCode"] = entry["reasonCode"]
+            row["actor"] = entry["actor"]
         body = json.dumps({k: v for k, v in row.items() if k != "prev"}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         row["hash"] = hashlib.sha256((self._prev + body).encode("utf-8")).hexdigest()
         self._rows.append(row)
         self._prev = row["hash"]
-        self._flush()
+        try:
+            self._flush()
+        except Exception:
+            self._rows.pop()
+            self._prev = row["prev"]
+            raise
         return row
 
     def recent(self, n: int = 5, day: str | None = None) -> list[dict]:
-        rows = self._rows
+        with self._lock:
+            rows = list(self._rows)
         if day:
             rows = [r for r in rows if r.get("day") == day]
         return rows[-n:]

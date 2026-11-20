@@ -294,7 +294,16 @@ def compute_metrics(reports: list[ScenarioReport]) -> dict:
     executed_consequential = [a for a in all_actions if a["action"]["risk"] == "consequential" and (a.get("result") or {}).get("ok")]
     approved = len([a for a in executed_consequential if a["policy"]["code"] == "APPROVED"])
     welfare = [r for r in results if r["semanticAction"] in ("welfare-retrieval", "explain-field")]
-    grounded = len([r for r in welfare if r["sources"] and all(s.get("url") and s.get("lastCheckedAt") for s in r["sources"])])
+    grounded = sum(
+        bool((r.get("answerCard") or {}).get("grounded")) if r["semanticAction"] == "welfare-retrieval" else
+        bool(r["sources"] and all(s.get("url") and s.get("lastCheckedAt") for s in r["sources"]))
+        for r in welfare
+    )
+    repeated_actions = 0
+    for report in reports:
+        executed = [a["action"]["id"] for step in report.steps for a in step.result.get("actions", [])
+                    if (a.get("result") or {}).get("ok")]
+        repeated_actions += len(executed) - len(set(executed))
     read_only_violations = len(
         [
             a
@@ -325,6 +334,7 @@ def compute_metrics(reports: list[ScenarioReport]) -> dict:
         "unauthorizedSubmissions": len(executed_consequential) - approved,
         "groundingRate": {"grounded": grounded, "total": len(welfare), "percent": _pct(grounded, len(welfare))},
         "readOnlyViolations": read_only_violations,
+        "repeatedActions": repeated_actions,
         "latencyMs": {
             "p50": _percentile(latencies, 50),
             "p95": _percentile(latencies, 95),

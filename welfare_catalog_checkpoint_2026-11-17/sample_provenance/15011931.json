@@ -1,0 +1,38 @@
+{
+  "id": "15011931",
+  "source": "https://www.data.go.kr/data/15011931/fileData.do",
+  "retrieved_at": "2026-11-17T16:52:42.800126+00:00",
+  "rows": [
+    [
+      "센터명",
+      "주소",
+      "전화번호",
+      "홈페이지",
+      "기타 소통채널"
+    ],
+    [
+      "충청북도종합자원봉사지원센터",
+      "충청북도 청주시 청원구 공항로 150번길 73",
+      "043-225-1365",
+      "http://cb1365.net",
+      "페이스북, 인스타그램, 유튜브"
+    ],
+    [
+      "충청북도 청주시자원봉사센터",
+      "청주시 상당구 월운로 24(방서동 977)",
+      "043-298-1365",
+      "http://cj1365.or.kr/",
+      "밴드"
+    ],
+    [
+      "충청북도 충주시자원봉사센터",
+      "충청북도 충주시 으뜸로 21 충주시청",
+      "043-855-1365",
+      "https://cjvc1365.or.kr/",
+      "카페운영, 카카오톡 채널"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15011931&publicDataDetailPk=uddi%3Af1949e9a-be4c-405a-b4b6-d81a3443193a",
+  "sample_type": "official public file preview"
+}

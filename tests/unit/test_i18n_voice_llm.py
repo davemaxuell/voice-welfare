@@ -6,7 +6,8 @@ from conftest import FakeLlm
 
 from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
 from cheongeum.core.llm import LlmConfig
-from cheongeum.language import detect_lang_switch, detect_script_lang, foreign_confirmation, translate_out, untranslated_korean
+from cheongeum.core.lexicon import foreign_approval
+from cheongeum.language import detect_lang_switch, detect_script_lang, translate_out, untranslated_korean
 from cheongeum.safety import unsupported_numbers
 from cheongeum.understanding import (
     INTENT_JSON_SCHEMA,
@@ -55,18 +56,20 @@ def test_script_lang():
     assert detect_script_lang("네이버 열어줘") == "ko"
     assert detect_script_lang("Open 네이버 뉴스.") is None
     assert detect_script_lang("gov.kr") is None
+    assert detect_script_lang("On Gov24 I need a certificate. I am not sure which one.") == "en"
+    assert detect_script_lang("Please open gov.kr.") == "en"
     assert detect_script_lang("yes") is None
 
 
-def test_foreign_confirmation():
-    assert foreign_confirmation("Yes", "en") == "approve"
-    assert foreign_confirmation("Yes, approve", "en") == "approve"
-    assert foreign_confirmation("确认", "zh") == "approve"
-    assert foreign_confirmation("はい、お願いします", "ja") == "approve"
-    assert foreign_confirmation("No", "en") == "reject"
-    assert foreign_confirmation("不要", "zh") == "reject"
-    assert foreign_confirmation("OK open Naver", "en") is None
-    assert foreign_confirmation("Yes but change the address first", "en") is None
+def test_foreign_approval():
+    assert foreign_approval("Yes", "en") == "approve"
+    assert foreign_approval("Yes, approve", "en") == "approve"
+    assert foreign_approval("确认", "zh") == "approve"
+    assert foreign_approval("はい、お願いします", "ja") == "approve"
+    assert foreign_approval("No", "en") == "reject"
+    assert foreign_approval("不要", "zh") == "reject"
+    assert foreign_approval("OK open Naver", "en") is None
+    assert foreign_approval("Yes but change the address first", "en") is None
 
 
 def test_stop_words_multilingual():
@@ -81,6 +84,23 @@ def test_translation_number_units():
     assert unsupported_numbers("每月30万韩元", ["매월 30만 원"]) == []
     assert unsupported_numbers("月30万ウォン", ["월 300,000원"]) == []
     assert unsupported_numbers("1.2 million won", ["120만 원"]) == []
+
+
+async def test_verified_translation_distinguishes_legal_citations_decimals_and_won():
+    source = "제29조 제2항에 따라 월 30만 원을 받고 수수료율은 3.5%입니다."
+    correct = "Under Article 29, paragraph 2, you receive 300,000 won a month. The fee rate is 3.5%."
+    assert await translate_out(FakeLlm({"translate_out": {"text": correct}}), source, "en", verified=True) == correct
+    changed = correct.replace("3.5%", "3.6%")
+    assert await translate_out(FakeLlm({"translate_out": {"text": changed}}), source, "en", verified=True) is None
+
+
+async def test_verified_translation_retries_with_source_figures_bound_to_the_service():
+    draft = FakeLlm({"translate_out": {"text": "It costs 400 won per copy."}})
+    reviewer = FakeLlm({"translate_out": {"text": "[[FIG_0]] copy costs [[FIG_1]] won."}})
+    answer = await translate_out(draft, "1통에 400원입니다.", "en", verified=True, subject="주민등록표 등본", reviewer=reviewer)
+    assert answer == "1 copy costs 400 won."
+    assert len(draft.calls) == len(reviewer.calls) == 1
+    assert "주민등록표 등본" in reviewer.calls[0]["user"] and "400" not in reviewer.calls[0]["user"]
 
 
 async def test_translate_out_retries_on_changed_numbers():
@@ -132,13 +152,14 @@ async def test_stt_sends_model_language_extension(http_mock):
     assert out["text"] == "다음으로"
     assert str(calls[0].url) == "https://api.openai.com/v1/audio/transcriptions"
     f = form_fields(calls[0])
+    assert calls[0].headers["Authorization"] == "Bearer sk-test"
     assert f["model"] == "stt-model"
     assert f["language"] == "ko"
     assert f["file"] == "speech.webm"
 
 
 async def test_stt_prompt_echo_retries_without_language(http_mock):
-    echo = "장애인연금 신청 대화. 성명, 주민등록 주소, 실거주지, 연락처, 소득·재산 신고, 가구원 수, 모의접수, 다음으로, 이전으로, 멈춰."
+    echo = "정부24, 주민등록등본, 국민신문고, 민원, 한국장학재단, 국가장학금."
     replies = [echo, "Korean please"]
     calls = http_mock(lambda req: httpx.Response(200, json={"text": replies.pop(0)}))
     out = await OpenAISttProvider(**CFG).transcribe(bytes(500), language="ko", mime_type="audio/webm")
@@ -149,7 +170,7 @@ async def test_stt_prompt_echo_retries_without_language(http_mock):
 
 
 async def test_stt_echo_twice_returns_empty(http_mock):
-    echo = "성명, 주민등록 주소, 실거주지, 연락처, 모의접수, 멈춰."
+    echo = "정부24, 주민등록등본, 국민신문고, 민원, 한국장학재단, 국가장학금."
     http_mock(lambda req: httpx.Response(200, json={"text": echo}))
     out = await OpenAISttProvider(**CFG).transcribe(bytes(500), language="ko", mime_type="audio/webm")
     assert out["text"] == ""
@@ -178,11 +199,11 @@ async def test_provider_error_status_only(http_mock):
         await OpenAISttProvider(**CFG).transcribe(bytes(500), language="ko", mime_type="audio/webm")
 
 
-def test_voice_fallback_without_key_or_model():
-    stt, tts = create_voice_providers(VoiceConfig(stt="openai", tts="openai", sttModel="m"))
+def test_one_key_enables_both_api_providers():
+    stt, tts = create_voice_providers(VoiceConfig())
     assert not stt.supported and not tts.supported
-    stt, tts = create_voice_providers(VoiceConfig(stt="openai", tts="mock", apiKey="sk", sttModel="m"))
-    assert stt.supported and not tts.supported
+    stt, tts = create_voice_providers(VoiceConfig(apiKey="sk"))
+    assert stt.supported and tts.supported
 
 
 def test_audio_extension():
@@ -193,9 +214,9 @@ def test_audio_extension():
 
 def test_prompt_echo_detection():
     assert is_prompt_echo(
-        "Disability pension application conversation. Name, resident registration address, actual residence, contact information, mock application, next, stop."
+        "Government24, resident registration, civil complaint, student aid foundation, national scholarship, stop."
     )
-    assert is_prompt_echo("성명, 주민등록 주소, 실거주지, 연락처, 모의접수, 멈춰.")
+    assert is_prompt_echo("정부24, 주민등록등본, 국민신문고, 민원, 한국장학재단, 국가장학금.")
     assert not is_prompt_echo("주소는 부산광역시 예시구 예시로 10, 다음으로")
     assert not is_prompt_echo("English please")
 

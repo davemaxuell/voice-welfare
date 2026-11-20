@@ -4,15 +4,18 @@
 목록 필터·순위는 규칙 기반(빠르고 재현 가능). 자격 판정은 하지 않는다.
 
 UserProfile은 dict: age(int, -1=말하지 않음) · disability('severe'|'mild'|'yes'|'no'|'unknown') ·
-income('basic'|'near-poor'|'low'|'normal'|'unknown') · ctpv(str 또는 None=건너뜀) · singleParent · manyChildren ·
-veteran · multicultural · living('alone'|'family'). 키가 없으면 아직 모름.
+income('basic'|'near-poor'|'low'|'normal'|'unknown') · ctpv(str 또는 None=건너뜀) ·
+sgg(사는 시·군·구, None=모름. ctpv 없이 sgg만 있으면 여러 시·도에 있는 이름이라 어느 시·도인지 물을 차례) ·
+singleParent · manyChildren · veteran · multicultural · living('alone'|'family'). 키가 없으면 아직 모름.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cmp_to_key
 
+from cheongeum.agents.welfare.open_data import official_districts
 from cheongeum.core.jsutil import rx
+from cheongeum.core.region import district_after_province, parse_region_mention, province_name
 
 PROFILE_ORDER = ["age", "disability", "income", "ctpv"]
 
@@ -20,33 +23,7 @@ PROFILE_QUESTIONS = {
     "age": "나이가 어떻게 되세요?",
     "disability": "장애가 있으신가요? 있다면 심한 장애인지도 말씀해 주세요.",
     "income": "기초생활수급자나 차상위계층이신가요? 잘 모르시면 '모름'이라고 하셔도 돼요.",
-    "ctpv": "사시는 시·도를 알려 주시면 지역 복지도 함께 찾아볼게요. 건너뛰려면 '건너뛰기'라고 해 주세요.",
-}
-
-CTPV = {
-    "서울": "서울특별시",
-    "부산": "부산광역시",
-    "대구": "대구광역시",
-    "인천": "인천광역시",
-    "광주": "광주광역시",
-    "대전": "대전광역시",
-    "울산": "울산광역시",
-    "세종": "세종특별자치시",
-    "경기": "경기도",
-    "강원": "강원특별자치도",
-    "충북": "충청북도",
-    "충청북": "충청북도",
-    "충남": "충청남도",
-    "충청남": "충청남도",
-    "전북": "전북특별자치도",
-    "전라북": "전북특별자치도",
-    "전남": "전라남도",
-    "전라남": "전라남도",
-    "경북": "경상북도",
-    "경상북": "경상북도",
-    "경남": "경상남도",
-    "경상남": "경상남도",
-    "제주": "제주특별자치도",
+    "ctpv": "사시는 시·도와 시·군·구를 알려 주시면 지역 복지도 함께 찾아볼게요. 예: '부산 사상구'. 건너뛰려면 '건너뛰기'라고 해 주세요.",
 }
 
 TENS = {"열": 10, "스물": 20, "스무": 20, "서른": 30, "마흔": 40, "쉰": 50, "예순": 60, "일흔": 70, "여든": 80, "아흔": 90}
@@ -68,10 +45,46 @@ def _parse_age(t: str) -> int | None:
 SKIP = rx(r"^(모름|몰라|모르겠|잘\s*모르|건너\s*뛰|건너\s*뛸|패스|넘어가|넘길|다음|없어요?$|말\s*안\s*할래|말하기\s*싫)")
 
 
-def parse_profile_answer(text: str, asking: str | None = None) -> dict:
+def _area_in(province: str, name: str) -> str:
+    """그 시·도에 있는 공식 시·군·구 이름이면 복지 사업을 하는 시·군·구(일반구는 그 시), 아니면 빈 문자열."""
+    return next((area for ctpv, area in official_districts().get(name, ()) if ctpv == province), "")
+
+
+def _home(t: str, known: dict) -> dict:
+    """
+    사는 시·도와 시·군·구. 시·도 바로 뒤의 구가 먼저다('부산 사상구').
+    홀로 말한 구는 공식 시·군·구 이름일 때만 사는 곳으로 본다('1인 가구'의 '가구'는 아님).
+    여러 시·도에 있는 이름(중구 등)이고 시·도를 모르면 sgg만 남겨 어느 시·도인지 묻게 한다.
+    """
+    region = parse_region_mention(t)
+    # '광주시'는 광주광역시를 그렇게 부르기도 해서 시·도 없이 들으면 어느 쪽인지 모른다
+    names = [d for d in region.districts if d in official_districts() and not province_name(d.removesuffix("시"))]
+    province = region.province
+    if province:
+        said = district_after_province(t)
+        if said:
+            return {"ctpv": province, "sgg": _area_in(province, said) or said}
+        # '어느 시의 중구인가요?'에 '부산'이라고만 답하면 앞서 말한 구를 이어 붙인다
+        pending = [known["sgg"]] if known.get("sgg") and not known.get("ctpv") else []
+        areas = [a for a in (_area_in(province, n) for n in [*names, *pending]) if a]
+        # 시·도를 새로 말하면 그 시·도에 없는 구는 버린다(다른 시·도의 구·군으로 거르지 않게)
+        return {"ctpv": province, "sgg": areas[0] if areas else None}
+    if not names:
+        return {}
+    if known.get("ctpv"):
+        area = _area_in(known["ctpv"], names[0])
+        return {"sgg": area} if area else {}
+    homes = official_districts()[names[0]]
+    if len(homes) == 1:
+        return {"ctpv": homes[0][0], "sgg": homes[0][1]}
+    return {"sgg": names[0]}
+
+
+def parse_profile_answer(text: str, asking: str | None = None, known: dict | None = None) -> dict:
     """
     답에서 알아들을 수 있는 정보를 모두 뽑는다(한 번에 여러 개 말해도 됨).
     asking: 지금 물어본 항목 — "네/없어/모름" 같은 짧은 답을 그 항목에 적용한다.
+    known: 지금까지 들은 답 — 시·도만 말하면 앞서 말한 구를, 구만 말하면 아는 시·도를 쓴다.
     """
     # 말 앞의 군말("음", "어", "그러니까")은 빼고 본다: "음 맞아" → "맞아"
     t = rx(r"\s+").sub(" ", text).strip()
@@ -99,9 +112,7 @@ def parse_profile_answer(text: str, asking: str | None = None) -> dict:
     elif rx(r"(해당\s*안|아니에?요?|보통|일반|평범|직장\s*다녀)").search(t) and asking == "income":
         out["income"] = "normal"
 
-    region = rx(r"(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청북|충북|충청남|충남|전라북|전북|전라남|전남|경상북|경북|경상남|경남|제주)").search(t)
-    if region:
-        out["ctpv"] = CTPV[region.group(1)]
+    out.update(_home(t, known or {}))
 
     if rx(r"(한부모|조손)").search(t):
         out["singleParent"] = True
@@ -139,6 +150,15 @@ def parse_profile_answer(text: str, asking: str | None = None) -> dict:
 
 def next_profile_slot(p: dict) -> str | None:
     return next((s for s in PROFILE_ORDER if s not in p), None)
+
+
+def profile_question(slot: str, p: dict) -> str:
+    """물을 말. 여러 시·도에 있는 구 이름만 들었으면 어느 시·도의 구인지 묻는다."""
+    if slot == "ctpv" and p.get("sgg"):
+        homes = official_districts().get(p["sgg"], ())
+        where = "도" if homes and all(ctpv.endswith("도") for ctpv, _ in homes) else "시"
+        return f"어느 {where}의 {p['sgg']}인가요?"
+    return PROFILE_QUESTIONS[slot]
 
 
 def life_stage_of(age: int | None) -> str | None:
@@ -186,11 +206,37 @@ def _locale_compare(a: str, b: str) -> int:
     return (a > b) - (a < b)
 
 
+def program_district(service: dict) -> str:
+    """지자체 사업이 한 시·군·구 주민 대상이면 그 이름(목록의 sggNm). 시·도 전체 사업·교육청은 빈 문자열."""
+    if service.get("provider") != "local":
+        return ""
+    sgg = (service.get("region") or {}).get("sgg") or ""
+    return sgg if sgg.endswith(("시", "군", "구")) and not province_name(sgg) else ""
+
+
+def residence_status(service: dict, p: dict) -> str | None:
+    """사는 시·군·구와 사업 지역 비교: met·unmet·unknown(사는 곳을 모름). 한 시·군·구 사업이 아니면 None."""
+    area = program_district(service)
+    if not area:
+        return None
+    if not p.get("sgg"):
+        return "unknown"
+    return "met" if p["sgg"] in area.split() else "unmet"
+
+
+def other_district_left_out(catalog: list[dict], p: dict) -> bool:
+    """사는 시·군·구를 알 때 다른 시·군·구 사업이라서 목록에서 뺀 것이 있는지(구를 모를 때의 목록과 비교)."""
+    if not p.get("sgg"):
+        return False
+    return any(residence_status(m.service, p) == "unmet" for m in match_services(catalog, {**p, "sgg": None}))
+
+
 def match_services(catalog: list[dict], p: dict) -> list[Match]:
     """
     규칙 기반 맞춤 순위:
      - 나이를 알면 생애주기가 안 맞는 서비스는 뺀다(생애주기 정보가 없는 서비스는 남김)
      - 대상이 정해진 서비스(장애인·저소득 등)는 사용자와 겹칠 때만 남긴다
+     - 다른 시·군·구 주민 대상 사업은 뺀다. 사는 시·군·구를 모르면 구·군 사업에 지역 점수를 주지 않는다
      - 겹치는 대상 수 > 생애주기 일치 > 지역 서비스 > 온라인 신청 가능 순으로 점수
     """
     stage = life_stage_of(p.get("age"))
@@ -207,6 +253,9 @@ def match_services(catalog: list[dict], p: dict) -> list[Match]:
             continue
         if not s["targets"] and not mine and not stage:
             continue  # 정보가 없으면 너무 넓다
+        residence = residence_status(s, p)
+        if residence == "unmet":
+            continue
         reasons = list(overlap)
         score = len(overlap) * 2.0
         text = f"{s['servNm']} {s['summary']}"
@@ -230,7 +279,7 @@ def match_services(catalog: list[dict], p: dict) -> list[Match]:
         if stage and stage in s["lifeStages"]:
             score += 0.5
             reasons.append(stage)
-        if s["provider"] == "local":
+        if s["provider"] == "local" and residence != "unknown":
             score += 0.5
             region = s.get("region") or {}
             reasons.append(f"{region.get('sgg') or region.get('ctpv')} 지역")
@@ -268,5 +317,5 @@ def describe_profile(p: dict) -> str:
     elif inc == "low":
         parts.append("소득 낮음")
     if p.get("ctpv"):
-        parts.append(p["ctpv"])
+        parts.append(" ".join(x for x in (p["ctpv"], p.get("sgg")) if x))
     return ", ".join(parts)

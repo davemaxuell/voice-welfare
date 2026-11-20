@@ -8,9 +8,23 @@ import asyncio
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field as dc_field, replace
-from typing import Any, Callable, Iterator, Literal
+from typing import Any, Awaitable, Callable, Iterator, Literal
 
-from cheongeum.agents.web.effect import Churn, Effect, diff_views, item_changed, looks_loading, opened_dialog, unconfirmed_message
+from cheongeum.agents.web.browser import AdapterError
+from cheongeum.agents.web.shot import REFUSAL_SPEECH, ShotRefusal, plan_shot
+from cheongeum.core.picture import Picture
+from cheongeum.agents.web.effect import (
+    Churn,
+    Effect,
+    NOT_READY,
+    diff_views,
+    has_content,
+    item_changed,
+    looks_loading,
+    opened_dialog,
+    still_building,
+    unconfirmed_message,
+)
 from cheongeum.agents.web.profile import FieldProfile, SiteProfile, normalize_term
 from cheongeum.core.actions import LINK_ROLES
 from cheongeum.core.jsutil import AbortSignal, I, nz, rx, try_url, uniq, uuid
@@ -41,6 +55,11 @@ class ExecContext:
     is_stopped: Callable[[], bool]
     trace: Callable[..., None]  # trace(phase, agent, note=None)
     counter: dict = dc_field(default_factory=lambda: {"actions": 0})
+    actor: str = "resident"
+    session_id: str = ""
+    task_id: str = ""
+    public_lookup: bool = False
+    action_limit: int | None = None
 
     @contextmanager
     def granted(self, ids: list[str]) -> Iterator[None]:
@@ -85,6 +104,8 @@ class WebOutcome:
     focused: bool = False
     effect: Effect | None = None
     revealed: str | None = None
+    # back: 양식을 다시 보내지 않으려고 돌아가지 않은 이전 화면의 주소
+    resubmitUrl: str | None = None
 
 
 MAX_TIMEOUT_RETRIES = 1
@@ -98,6 +119,10 @@ REVEAL_STABLE_WITHOUT_TEXT = 2
 # 기다리는 동안 관찰이 이만큼 연달아 실패하면(페이지가 닫힘 등) 그만 기다린다
 MAX_OBSERVE_FAILURES = 3
 MAX_STEPS = 6
+# 화면이 채워지기를 기다리는 한도: 연 화면, 검색 결과(틀이 뜬 뒤 결과를 따로 받아 온다. 복지로는 10초쯤), 읽어 달라고 한 화면
+SETTLE_MS = 6000
+SEARCH_SETTLE_MS = 12_000
+READY_WAIT_MS = 6000
 
 _SYNONYMS: dict[str, list[str]] = {
     "이름": ["성명", "이름", "신청인"],
@@ -155,6 +180,15 @@ class WebExecutionAgent:
     def current_view(self) -> dict | None:
         return self._last_view
 
+    def moved_since_last_view(self) -> bool:
+        """
+        브라우저 화면이 마지막으로 읽은 화면과 다른 주소로 이미 바뀌었는지(관찰 없이, 바로).
+        멈춤 답이 '화면이 바뀌었어요'를 말할지 정한다. 아직 응답을 기다리는 이동은 주소가 그대로라 바뀐 것이 아니다.
+        """
+        page = getattr(self.adapter, "page", None)
+        before = (self._last_view or {}).get("url")
+        return bool(page is not None and before and page.url != before)
+
     async def show_browser(self) -> None:
         """브라우저 창을 사용자 앞으로"""
         fn = getattr(self.adapter, "bring_to_front", None)
@@ -184,19 +218,40 @@ class WebExecutionAgent:
         if not r or not r.get("ok"):
             return self._failed(log, r)
         ctx.trace("VERIFYING", self.id, "페이지 내용 확인")
-        view = await self._observe_until(ctx, lambda v: v["url"] != "about:blank" and self._has_content(v), 6000)
+        view = await self._observe_until(ctx, lambda v: v["url"] != "about:blank" and has_content(v), 6000)
         return WebOutcome(status="ok", actions=log, view=await self._settle(ctx, view))
 
-    async def follow_link(self, name: str, ctx: ExecContext, links_only: bool = False) -> WebOutcome:
+    async def follow_link(
+        self, name: str, ctx: ExecContext, links_only: bool = False, *, expected: tuple[str, str, str] | None = None,
+        matched_control: dict | None = None,
+    ) -> WebOutcome:
         """
         누를 수 있는 요소를 이름(일부만 말해도 됨)으로 찾아 누른다: 링크 우선, 없으면 버튼·탭·메뉴 항목·역할 없는 클릭 요소.
         여러 개가 맞으면 누르지 않고 후보를 돌려준다. 누른 뒤에는 화면이 어떻게 바뀌었는지(effect)를 함께 돌려준다.
         """
         log: list[dict] = []
         view = await self.observe(ctx)
-        item, hits = self._locate(view, name, links_only=links_only)
-        if item is None:
-            return self._not_located(name, hits, view, log)
+        if matched_control is not None:
+            fresh = await self.adapter.control_window(ref=matched_control["ref"])
+            item = next((it for it in fresh["items"] if it["ref"] == matched_control["ref"]
+                         and it["name"] == name and it["role"] == matched_control["role"]
+                         and it.get("context") == matched_control.get("context")), None)
+            if item is None or fresh["url"] != matched_control["url"] or fresh["url"] != view["url"]:
+                return WebOutcome(status="needs-clarification", actions=log, view=view, message="고른 항목이 바뀌었어요. 현재 화면에서 다시 찾아 주세요.")
+        elif expected is not None:
+            matches = [it for it in _outline(view).get("items") or [] if not it.get("disabled") and it["name"] == name]
+            if len(matches) != 1 or (view["url"], matches[0]["ref"], matches[0]["role"]) != expected:
+                return WebOutcome(status="needs-clarification", actions=log, view=view, message="사진을 찍은 뒤 항목이 바뀌었어요. 화면 사진을 다시 요청해 주세요.")
+            item = matches[0]
+        else:
+            item, hits = self._locate(view, name, links_only=links_only)
+            if item is None and not hits and name.strip() and hasattr(self.adapter, "control_window"):
+                window = await self.adapter.control_window(name, exact=True)
+                candidates = [it for it in window["items"] if not links_only or it["role"] == "link"]
+                if window["url"] == view["url"] and len(candidates) == 1 and not window["more"]:
+                    item = candidates[0]
+            if item is None:
+                return self._not_located(name, hits, view, log)
         r = await self._run(self._action(type="click", target=_item_target(item), reason=f"'{item['name']}' 누르기({item['role']})"), ctx, log)
         if not r or not r.get("ok"):
             return self._failed(log, r, view)
@@ -304,7 +359,7 @@ class WebExecutionAgent:
         def done(v: dict) -> bool:
             effect, _ = diff_views(before, v, item["ref"])
             if effect == "moved":
-                return self._has_content(v)
+                return has_content(v)
             return opened_dialog(before, v) or item_changed(before, v, item["ref"])
 
         after = await self._observe_until(ctx, done, 1500 if quick else 6000)
@@ -334,17 +389,24 @@ class WebExecutionAgent:
                 break
         return after, effect, revealed
 
-    async def back(self, ctx: ExecContext) -> WebOutcome:
+    async def back(self, ctx: ExecContext, past_form_to: str | None = None) -> WebOutcome:
+        """past_form_to: 바로 뒤의 양식 결과 화면을 건너뛰어 그 앞의 이 주소로 돌아간다(양식은 다시 보내지 않는다)."""
         log: list[dict] = []
         view = await self.observe(ctx)
-        r = await self._run(self._action(type="back", reason="이전 페이지로 돌아가기"), ctx, log)
+        action = (
+            self._action(type="back", url=past_form_to, reason="양식 결과 화면을 건너뛰어 그 앞 화면으로 돌아가기")
+            if past_form_to
+            else self._action(type="back", reason="이전 페이지로 돌아가기")
+        )
+        r = await self._run(action, ctx, log)
+        if r and r.get("errorCode") == "RESUBMIT_BLOCKED":
+            return replace(self._failed(log, r, view), resubmitUrl=r.get("message"))
         if not r or not r.get("ok"):
             return self._failed(log, r, view)
         if not r.get("verified"):
             return WebOutcome(status="failed", actions=log, view=view, message="더 돌아갈 이전 페이지가 없습니다.")
-        return WebOutcome(
-            status="ok", actions=log, view=await self._observe_until(ctx, lambda v: v["url"] != view["url"] and self._has_content(v), 6000)
-        )
+        after = await self._observe_until(ctx, lambda v: v["url"] != view["url"] and has_content(v), 6000)
+        return WebOutcome(status="ok", actions=log, view=await self._settle(ctx, after))
 
     async def search(self, query: str, ctx: ExecContext) -> WebOutcome:
         """화면의 검색창에 검색어를 넣고 Enter. 검색창이 아닌 입력란에는 쓰지 않는다."""
@@ -361,10 +423,18 @@ class WebExecutionAgent:
         if not r or not r.get("ok"):
             return self._failed(log, r, view)
         ctx.trace("VERIFYING", self.id, "검색 결과 확인")
-        after = await self._observe_until(
-            ctx, lambda v: (v["url"] != view["url"] or v["title"] != view["title"]) and self._has_content(v), 6000
-        )
-        return WebOutcome(status="ok", actions=log, view=await self._settle(ctx, after, 8000))
+
+        def changed(v: dict) -> bool:
+            effect, _ = diff_views(view, v, volatile=self._churn.volatile())
+            return effect != "none" and has_content(v)
+
+        after = await self._observe_until(ctx, changed, 6000)
+        after = await self._settle(ctx, after, SEARCH_SETTLE_MS)
+        if still_building(after):
+            return WebOutcome(status="unconfirmed", actions=log, view=after, message=NOT_READY)
+        if not changed(after):
+            return WebOutcome(status="unconfirmed", actions=log, view=after, message="검색 결과가 바뀌었는지 확인하지 못했어요.")
+        return WebOutcome(status="ok", actions=log, view=after)
 
     def assist_candidates(self, mention: str, view: dict | None = ...) -> list[dict]:  # type: ignore[assignment]
         """
@@ -467,8 +537,16 @@ class WebExecutionAgent:
                 return await self.observe(ctx, poll=True)
             await asyncio.sleep(0.1)
 
-    async def _settle(self, ctx: ExecContext, view: dict, max_ms: int = 6000) -> dict:
-        """늦게 채워지는 내용(검색 결과 등)이 더 이상 바뀌지 않을 때까지 잠깐 기다린다(최대 max_ms)."""
+    async def observe_ready(self, ctx: ExecContext) -> dict:
+        """읽어 줄 화면: 아직 채워지는 중이면 채워질 때까지 잠깐 기다렸다가 본다."""
+        view = await self.observe(ctx)
+        return await self._settle(ctx, view, READY_WAIT_MS) if still_building(view) else view
+
+    async def _settle(self, ctx: ExecContext, view: dict, max_ms: int = SETTLE_MS) -> dict:
+        """
+        늦게 채워지는 내용(검색 결과 등)이 다 오고 더 이상 바뀌지 않을 때까지 잠깐 기다린다(최대 max_ms).
+        시간이 넘으면 채워지던 화면을 그대로 돌려준다: 부르는 쪽이 still_building으로 보고 다 열렸다고 말하지 않는다.
+        """
         deadline = time.monotonic() + max_ms / 1000
         prev = view
         failures = 0
@@ -482,21 +560,56 @@ class WebExecutionAgent:
             failures = 0
             same = (_outline(nxt).get("mainText") or "") == (_outline(prev).get("mainText") or "") and nxt["url"] == prev["url"]
             prev = nxt
-            if same:
+            if same and not still_building(nxt):
                 break
         return prev
-
-    @staticmethod
-    def _has_content(v: dict) -> bool:
-        """화면에 내용이 그려졌는지(SPA는 주소가 먼저 바뀌고 내용이 나중에 채워진다)."""
-        o = _outline(v)
-        return (nz(o.get("linkCount"), 0) + len(o.get("buttons") or []) + len(v.get("fields") or [])) > 0 or bool(o.get("mainText"))
 
     @staticmethod
     def _action(**partial: Any) -> dict:
         return {"id": uuid(), "risk": "low", "requiresConfirmation": False, **partial}
 
-    async def _run(self, action: dict, ctx: ExecContext, log: list[dict]) -> dict | None:
+    async def capture_picture(self, view: dict, ctx: ExecContext, log: list[dict]) -> tuple[Picture | None, str, dict]:
+        """Keep image bytes local to this call. Only the action and its status enter the trace."""
+        plan = plan_shot(view)
+        if isinstance(plan, ShotRefusal):
+            return None, plan.speech, view
+        action = self._action(type="capture", reason="요청한 브라우저 탭 사진 촬영")
+        picture = None
+        failure = "현재 웹페이지의 사진을 찍지 못했어요. 다시 요청해 주세요."
+
+        async def capture() -> dict:
+            nonlocal picture, failure, view
+            start = time.monotonic()
+            error = None
+            try:
+                async with self.adapter.full_page_layout():
+                    shot = await self.adapter.prepare_full_page(plan.url, ctx.signal)
+                    if shot is None:
+                        view = await self.observe(ctx)
+                        fresh_plan = plan_shot(view)
+                        if isinstance(fresh_plan, ShotRefusal):
+                            shot = fresh_plan
+                        elif fresh_plan.url != plan.url or ctx.signal.aborted:
+                            shot = ShotRefusal("changed", REFUSAL_SPEECH["changed"])
+                        else:
+                            shot = await self.adapter.capture(fresh_plan, (view.get("outline") or {}).get("mainText") or "")
+                if isinstance(shot, ShotRefusal):
+                    failure, error = shot.speech, "VERIFY_FAILED"
+                else:
+                    picture = shot
+            except AdapterError as exc:
+                error = exc.code
+            return {"actionId": action["id"], "ok": error is None, "errorCode": error,
+                    "verified": error is None, "latencyMs": int((time.monotonic() - start) * 1000)}
+
+        result = await self._run(action, ctx, log, perform=capture)
+        if result is None:
+            failure = log[-1]["policy"]["reason"]
+        elif result.get("errorCode") == "LOG_FAILED":
+            failure = "촬영 기록을 남기지 못해 사진을 보내지 않았어요."
+        return picture, failure, view
+
+    async def _run(self, action: dict, ctx: ExecContext, log: list[dict], *, perform: Callable[[], Awaitable[dict]] | None = None) -> dict | None:
         """
         PolicyGuard 검사 후에만 어댑터를 호출한다. 저위험이고 승인이 필요 없던 조작만 TIMEOUT을 한 번 다시 한다.
         중요한 조작은 이미 됐을 수 있어 다시 하지 않는다(부르는 쪽이 화면을 다시 보고 알린다).
@@ -509,11 +622,19 @@ class WebExecutionAgent:
                 stopped=ctx.is_stopped() or ctx.signal.aborted,
                 approvals=ctx.approvals,
                 actionsThisTurn=ctx.counter["actions"],
+                action_limit=ctx.action_limit,
+                public_lookup=ctx.public_lookup,
             ),
         )
         entry: dict = {"agent": self.id, "action": action, "policy": policy}
         log.append(entry)
         if not policy["allowed"]:
+            if self.action_log is not None:
+                try:
+                    self.action_log.append({"actionType": action["type"], "phase": "refused", "ok": False,
+                                            "actor": ctx.actor, "reasonCode": policy["code"]})
+                except Exception:  # noqa: BLE001
+                    pass
             return None
         if self.action_log is not None:
             try:
@@ -528,14 +649,14 @@ class WebExecutionAgent:
                     }
                 )
             except Exception:  # noqa: BLE001
-                if action.get("requiresConfirmation") or policy["code"] == "APPROVED":
-                    entry["result"] = {"ok": False, "errorCode": "LOG_FAILED", "latencyMs": 0}
+                if action["type"] == "capture" or action.get("requiresConfirmation") or policy["code"] == "APPROVED":
+                    entry["result"] = {"actionId": action["id"], "ok": False, "verified": False, "errorCode": "LOG_FAILED", "latencyMs": 0}
                     return entry["result"]
         ctx.counter["actions"] += 1
         self._acted_since_observe = True
         ctx.trace("EXECUTING", self.id, action["type"])
-        result = await self.adapter.execute(action, ctx.signal)
-        retries = MAX_TIMEOUT_RETRIES if action["risk"] == "low" and policy["code"] != "APPROVED" else 0
+        result = await perform() if perform else await self.adapter.execute(action, ctx.signal)
+        retries = MAX_TIMEOUT_RETRIES if perform is None and action["risk"] == "low" and policy["code"] != "APPROVED" else 0
         i = 0
         while i < retries and not result["ok"] and result.get("errorCode") == "TIMEOUT" and not ctx.signal.aborted:
             result = await self.adapter.execute(action, ctx.signal)
@@ -815,6 +936,8 @@ class WebExecutionAgent:
                 stopped=ctx.is_stopped(),
                 approvals=ctx.approvals,
                 actionsThisTurn=ctx.counter["actions"],
+                action_limit=ctx.action_limit,
+                public_lookup=ctx.public_lookup,
             ),
         )
         return {"agent": self.id, "action": action, "policy": policy}

@@ -1,0 +1,9 @@
+{
+  "id": "15025256",
+  "source": "https://www.data.go.kr/data/15025256/fileData.do",
+  "retrieved_at": "2026-11-17T17:04:02.934028+00:00",
+  "rows": null,
+  "status": "unavailable",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025256&publicDataDetailPk=uddi%3A97a6fb49-e72a-41ef-94ac-b56179887eab",
+  "reason": "No tabular public data preview found; not a fabricated example"
+}

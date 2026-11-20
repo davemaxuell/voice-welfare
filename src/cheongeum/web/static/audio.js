@@ -1,6 +1,6 @@
 // 마이크(mic.js)와 스피커(speaker.js)가 함께 쓰는 것: 대화 언어와 AudioContext 하나.
 // 끼어들기 감시가 같은 채널에서 나오는 안내 소리를 기준으로 재므로 AudioContext는 하나만 둔다.
-/** 지금 대화 언어(서버 응답의 lang을 따른다). 브라우저 음성 인식·합성 언어에 쓴다. */
+/** 음성 API에 전달할 대화 언어. */
 export const BCP47 = { ko: 'ko-KR', en: 'en-US', zh: 'zh-CN', ja: 'ja-JP' };
 let speechLang = 'ko';
 export function setSpeechLang(lang) {

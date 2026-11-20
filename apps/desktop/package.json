@@ -1,17 +1,27 @@
 {
   "name": "cheongeum-desktop",
-  "version": "0.1.0",
+  "version": "0.4.3",
   "private": true,
-  "description": "청음 PC 데스크톱 앱(Electron 셸): Python 서버(python -m cheongeum.server --desktop)를 띄우고 앱 창·전역 단축키로 음성 대화",
+  "description": "청음 — 말로 웹을 읽고 공공서비스 신청을 돕는 데스크톱 앱",
+  "author": "청음",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --config electron-builder.yml",
-    "dist:win": "electron-builder --config electron-builder.yml --win",
-    "dist:mac": "electron-builder --config electron-builder.yml --mac"
+    "dist": "electron-builder --config electron-builder.yml --publish never",
+    "dist:win": "electron-builder --config electron-builder.yml --win --publish never",
+    "dist:mac": "electron-builder --config electron-builder.yml --mac --publish never",
+    "test:avatar": "node test/avatar.e2e.cjs",
+    "test:native": "node test/native-a11y.cjs",
+    "test:installed": "node test/installed.cjs",
+    "test:updates": "node --test test/updates.cjs",
+    "test:release": "node test/release.cjs"
   },
   "devDependencies": {
-    "electron": "^45.3.3",
-    "electron-builder": "^26.0.12"
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0",
+    "ws": "^8.23.0"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
   }
 }

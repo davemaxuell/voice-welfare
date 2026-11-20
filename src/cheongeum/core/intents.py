@@ -77,7 +77,7 @@ INTENTS: tuple[IntentSpec, ...] = (
     # ---- 시작
     _row(
         "OPEN_SITE",
-        '특정 사이트 열기: topic에 사이트 이름이나 주소, 예 "Naver 열어줘"→네이버',
+        "특정 사이트 열기: site에 사용자가 지정한 사이트 이름이나 주소",
         "시작",
         ["복지로 열어줘", "정부24 들어가줘"],
         target=(_TEXT, _REQ),
@@ -101,6 +101,7 @@ INTENTS: tuple[IntentSpec, ...] = (
         topic=(str, _REQ),
     ),
     _row("DISCOVER", "나에게 맞는 복지 찾기", "복지 정보", ["나한테 맞는 복지 찾아줘", "받을 수 있는 복지 찾아줘"], before_consent=True),
+    _row("FIND_PLACE", "공식 자료에서 기관 위치·전화번호 찾기", "복지 정보", ["우리 동네 주민센터 어디야?", "국민연금 지사 전화번호 알려줘"], before_consent=True),
     _row(
         "PRECHECK",
         "특정 제도 자격 미리 점검: topic에 제도명",
@@ -119,13 +120,23 @@ INTENTS: tuple[IntentSpec, ...] = (
     ),
     _row(
         "SERVICE_DETAIL",
-        "찾아 드린 제도 목록 중 하나 자세히: topic에 번호(예 2번)나 제도명",
+        "찾아 드린 제도 목록 중 하나 자세히: topic에 목록 번호나 제도명",
         "복지 정보",
         ["2번 자세히 알려줘", "1번 설명해줘"],
         before_consent=True,
         service=(Optional[str], None),
     ),
+    _row(
+        "OPEN_OFFICIAL",
+        "찾아 드린 제도의 공식 안내 페이지를 읽기 전용으로 열기: topic에 목록 번호나 제도명, 없으면 방금 이야기한 제도",
+        "복지 정보",
+        ["공식 안내 열어줘", "2번 공식 안내 열어줘"],
+        service=(Optional[str], None),
+    ),
     _row("HELP_HUMAN", "사람 도움 요청", "복지 정보", ["상담원 연결해줘", "사람한테 도움 받고 싶어"], before_consent=True),
+    _row("READ_START_GUIDE", "첫 이용 안내 다시 듣기", None, ["시작 안내 다시 읽어줘", "처음 안내 다시 들려줘"], llm=False, before_consent=True),
+    _row("INTRO_REPLAY", "청음 소개 다시 듣기", None, ["청음 소개 다시 해줘", "청음 소개해줘"], llm=False),
+    _row("SETUP_RESTART", "처음 설정 다시 하기", None, ["설정 다시 해줘", "처음 설정 다시 할래"], llm=False, before_consent=True),
     # ---- 웹 읽기
     _row(
         "READ_MAIN",
@@ -164,7 +175,7 @@ INTENTS: tuple[IntentSpec, ...] = (
         "READ_DOWNLOAD",
         "받은 파일 읽기",
         "웹 읽기",
-        ["받은 파일 읽어줘", "다운로드 읽어줘", "받은 파일 목록"],
+        ["받은 파일 읽어줘", "다운로드 읽어줘", "받은 파일 목록", "받은 파일 요약해줘", "받은 PDF에서 신청 기한이 언제야?"],
         list=(Optional[bool], False),
     ),
     # ---- 신청서(항목 이름은 연습 사이트 어휘)
@@ -192,6 +203,7 @@ INTENTS: tuple[IntentSpec, ...] = (
     _row("STOP", "즉시 멈춤", "언제든", ["멈춰", "그만"], llm=False, before_consent=True),
     # 멈춤처럼 턴 대기열 앞에서 규칙으로 바로 답한다(일하는 중에도). 그래서 LLM 계획에는 넣지 않는다.
     _row("PROGRESS", "하고 있는 일이 어디까지 왔는지 묻기", "언제든", ["지금 어디까지 했어?", "얼마나 남았어?"], llm=False, before_consent=True),
+    _row("DESCRIBE_PICTURE", "요청한 브라우저 화면 사진 설명", "웹 읽기", ["화면 사진으로 설명해줘", "페이지 전체를 캡처해서 접수 기한을 알려줘", "스크린샷으로 차트의 추세를 알려줘"], llm=False, question=(_TEXT, _REQ)),
     _row("DESCRIBE_SCREEN", "화면 전체 설명", "언제든", ["화면 설명해줘", "지금 화면에 뭐가 있어?"]),
     _row("REPHRASE", "방금 들은 안내를 쉬운 말로 다시", "언제든", ["쉽게 말해줘", "무슨 말이야?"]),
     _row("RESUME", "다시 시작", "언제든", [("다시 시작", "STOPPED"), "계속 진행해"]),

@@ -1,0 +1,42 @@
+{
+  "id": "15017258",
+  "source": "https://www.data.go.kr/data/15017258/fileData.do",
+  "retrieved_at": "2026-11-17T16:58:18.749517+00:00",
+  "rows": [
+    [
+      "구분",
+      "일반_대인",
+      "일반_소인",
+      "사산아",
+      "개장유골",
+      "데이터기준일"
+    ],
+    [
+      "01월",
+      "881",
+      "5",
+      "12",
+      "11",
+      "2026-06-23"
+    ],
+    [
+      "02월",
+      "784",
+      "1",
+      "4",
+      "3",
+      "2026-06-23"
+    ],
+    [
+      "03월",
+      "891",
+      "3",
+      "6",
+      "38",
+      "2026-06-23"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15017258&publicDataDetailPk=uddi%3Aea38dfc0-6d72-4d60-9441-c3dea6807f6e",
+  "sample_type": "official public file preview"
+}

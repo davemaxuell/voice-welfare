@@ -1,0 +1,42 @@
+{
+  "id": "15007438",
+  "source": "https://www.data.go.kr/data/15007438/fileData.do",
+  "retrieved_at": "2026-11-17T16:46:35.444107+00:00",
+  "rows": [
+    [
+      "읍면동명",
+      "경로당명",
+      "주소",
+      "등록연도",
+      "규모(제곱미터)",
+      "데이터기준일자"
+    ],
+    [
+      "풍산읍",
+      "풍산읍분회경로당",
+      "경상북도 안동시 풍산읍 장터2길 11",
+      "1981",
+      "285.69",
+      "2025-11-25"
+    ],
+    [
+      "풍산읍",
+      "안교1리경로당",
+      "경상북도 안동시 풍산읍 장터중앙길 59",
+      "1998",
+      "244.59",
+      "2025-11-25"
+    ],
+    [
+      "풍산읍",
+      "안교2리경로당",
+      "경상북도 안동시 풍산읍 홍정길 2",
+      "1975",
+      "80.51",
+      "2025-11-25"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15007438&publicDataDetailPk=uddi%3Aff14b24c-9511-4321-8b33-f6eec48d749c",
+  "sample_type": "official public file preview"
+}

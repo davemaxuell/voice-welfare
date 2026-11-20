@@ -1,6 +1,8 @@
 """목표 수행이 어디까지 왔는지: 세션당 하나. 단계 문장은 코드가 행동 종류·대상 이름·사이트 이름으로 만든 것만 들어온다."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 
 class Progress:
     """
@@ -11,6 +13,7 @@ class Progress:
     def __init__(self) -> None:
         # 묻지 않아도 진행 상황을 소리로 알릴지(기본 켬). 음성 설정 명령이 바꾼다.
         self.spoken = True
+        self._reviews = 0
         self._running = False
         self._steps: list[str] = []
         # 지금까지 넣은 단계 수(목표가 바뀌어도 이어 센다): 화면은 이 번호로 아직 말하지 않은 단계인지 안다
@@ -40,5 +43,15 @@ class Progress:
     def finish(self) -> None:
         self._running = False
 
+    @contextmanager
+    def review(self):
+        """검토가 끝날 때까지 자동 음성 안내만 보류한다. 사용자가 물으면 최신 단계는 그대로 읽을 수 있다."""
+        self._reviews += 1
+        try:
+            yield
+        finally:
+            self._reviews -= 1
+
     def snapshot(self) -> dict:
-        return {"running": self._running, "seq": self._seq, "latest": self.latest, "spoken": self.spoken}
+        return {"running": self._running, "seq": self._seq, "latest": self.latest,
+                "spoken": self.spoken and self._reviews == 0}

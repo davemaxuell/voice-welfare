@@ -1,0 +1,30 @@
+{
+  "id": "15005663",
+  "source": "https://www.data.go.kr/data/15005663/fileData.do",
+  "retrieved_at": "2026-11-17T16:45:09.773892+00:00",
+  "rows": [
+    [
+      "번호",
+      "구분",
+      "거래증권사명"
+    ],
+    [
+      "1",
+      "국내주식",
+      "대신증권"
+    ],
+    [
+      "2",
+      "국내주식",
+      "다올투자증권"
+    ],
+    [
+      "3",
+      "국내주식",
+      "다이와증권"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15005663&publicDataDetailPk=uddi%3Afe070e7b-26a6-4acb-8a21-d8c3cdb55903",
+  "sample_type": "official public file preview"
+}

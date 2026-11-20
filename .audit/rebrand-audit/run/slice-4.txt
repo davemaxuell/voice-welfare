@@ -1,0 +1,19 @@
+research_notes/피클 AI 에이전트 청음 적용 검토/pickle_technical_build.md
+scripts/check_llm.py
+scripts/check_voice.py
+scripts/check_welfare.py
+scripts/convert_whisper_ct2.py
+scripts/eval_agent.py
+scripts/eval_claps.mjs
+scripts/eval_pictures.py
+scripts/eval_stt.py
+scripts/run_scenarios.py
+scripts/setup_local_models.py
+scripts/sync_datasets.py
+src/cheongeum/__init__.py
+src/cheongeum/agents/__init__.py
+src/cheongeum/agents/web/__init__.py
+src/cheongeum/agents/web/agent.py
+src/cheongeum/agents/web/approval.py
+src/cheongeum/agents/web/auth_page.py
+src/cheongeum/agents/web/autopilot.py

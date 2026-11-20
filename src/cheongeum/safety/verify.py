@@ -8,11 +8,13 @@ LLM을 한 번 더 부르지 않는 규칙 검사라 지연이 거의 없다.
 from __future__ import annotations
 
 import math
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 from cheongeum.core.jsutil import I, js_round, rx, uniq
+from cheongeum.safety.privacy import REDACTED, redact_text
 
 
 @dataclass
@@ -24,6 +26,65 @@ class GroundingCheck:
     matchedQuotes: list[str] = field(default_factory=list)
     # 근거에 없는 숫자
     unsupportedNumbers: list[str] = field(default_factory=list)
+
+
+PUBLIC_FACT_LABELS = {"documents": "필요한 서류", "dates": "기간", "eligibility": "대상",
+                      "amount": "금액", "procedure": "방법", "contact": "연락처", "location": "위치", "other": "요청한 정보"}
+
+
+@dataclass
+class PublicEvidence:
+    """요청한 사실별로 공식 페이지에서 다시 찾은 문장을 보관한다."""
+    required: Sequence[str]
+    passages: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+
+    @staticmethod
+    def _passage(quote: str, source: str) -> str | None:
+        # 원문 문장 전체를 보존한다. 연속된 표 행·문장을 인용하는 경우도 허용한다.
+        lines = [" ".join(row.split()) for row in re.split(r"[\r\n]+|(?<=[.!?。])\s+", source) if row.strip()]
+        start = " ".join(lines).find(quote)
+        if start < 0:
+            return None
+        offset, selected = 0, []
+        for line in lines:
+            if offset >= start + len(quote):
+                break
+            if offset + len(line) > start:
+                selected.append(line)
+            offset += len(line) + 1
+        passage = " ".join(selected)
+        return passage if 0 < len(passage) <= 500 else None
+
+    def collect(self, claims: object, pages: dict[str, str], *, observed_row: bool = False) -> None:
+        for claim in (claims[:12] if isinstance(claims, list) else []):
+            if not isinstance(claim, dict) or claim.get("fact") not in self.required:
+                continue
+            quote = claim.get("quote")
+            if not isinstance(quote, str) or not (1 if observed_row else 5) <= len(quote.strip()) <= 500:
+                continue
+            quote = " ".join(quote.split())
+            for url, source in reversed(pages.items()):
+                if observed_row:
+                    passage = quote if quote in " ".join(source.split()) else None
+                else:
+                    passage = self._passage(quote, source)
+                if passage and REDACTED not in passage and redact_text(passage) == passage:
+                    bucket = self.passages.setdefault(claim["fact"], [])
+                    if (url, passage) not in bucket and len(bucket) < 4:
+                        bucket.append((url, passage))
+                    break
+
+    @property
+    def missing(self) -> list[str]:
+        return [fact for fact in self.required if fact not in self.passages]
+
+    def result(self, titles: dict[str, str]) -> tuple[str, list[dict]]:
+        rows = [item for fact in self.required for item in self.passages.get(fact, ())]
+        speech = " ".join(dict.fromkeys(quote for _, quote in rows))
+        if self.missing:
+            labels = ", ".join(PUBLIC_FACT_LABELS[fact] for fact in self.missing)
+            speech = f"{speech} 공식 자료에서 {labels} 항목은 아직 확인하지 못했어요.".strip()
+        return speech, [{"url": url, "title": titles.get(url, "")} for url in dict.fromkeys(u for u, _ in rows)]
 
 
 _NORM = rx(r"""[\s"'“”‘’`.,!?;:·…()\[\]{}<>「」『』〈〉《》\-–—~/\\|]+""")
@@ -110,7 +171,7 @@ def _num(s: str) -> float:
     return float(s)
 
 
-def extract_numbers(text: str) -> Numbers:
+def extract_numbers(text: str, *, canonical: bool = False) -> Numbers:
     """
     글 속 숫자를 값으로 모은다. "30만 원" → 300000, "300,000원" → 300000, "1억 2천만" → 120000000,
     "1588-1234"·"2025.1.1" 같은 묶음은 자리 숫자 그대로(문자열) 비교한다.
@@ -138,7 +199,7 @@ def extract_numbers(text: str) -> Numbers:
 
     def flush() -> None:
         if state["chain"]:
-            values.add(float(js_round(state["total"])))
+            values.add(state["total"] if canonical else float(js_round(state["total"])))
             raw.append(state["chain"].strip())
         state["total"] = 0.0
         state["chain"] = ""
@@ -147,6 +208,8 @@ def extract_numbers(text: str) -> Numbers:
     for m in _NUM_RE.finditer(rest):
         n = _num(m.group(1).replace(",", ""))
         unit = m.group(2)
+        if unit == "조" and rx(r"제\s*$").search(rest[max(0, m.start() - 4):m.start()]):
+            unit = None  # 법령의 제29조에서 '조'는 조 단위의 수가 아니다.
         gap = rest[last_end : m.start()] if last_end >= 0 else ""
         # "1억 2천만"처럼 큰 단위 뒤에 바로 이어지면 한 값으로 합친다
         if not (state["chain"] and rx(r"^\s*$").search(gap) and unit):
@@ -155,7 +218,8 @@ def extract_numbers(text: str) -> Numbers:
             u = unit.lower()
             mult = 1e7 if u in ("천만", "千万", "千萬") else 1e6 if u == "백만" else UNIT[u]
             state["total"] += n * mult
-            values.add(n)  # "30만"이라고 쓴 근거와 "30만"이라고 답한 경우도 맞도록 숫자 자체도 둔다
+            if not canonical:
+                values.add(n)
         else:
             state["total"] += n
         state["chain"] += m.group(0)

@@ -5,12 +5,67 @@ from datetime import date
 
 from cheongeum.core.dialogue import DialogueState
 from cheongeum.core.jsutil import rx
+from cheongeum.core.lexicon import agree, approval, whole_rejection
 from cheongeum.core.turn import draft
 from cheongeum.personal.commands import days_until, vault_key_for_label
 from cheongeum.personal.store import SPEECH_LABELS, VAULT_LABELS, PersonalStore
-from cheongeum.speech.phrasing import speak_date
+from cheongeum.speech.phrasing import speak_call_name, speak_date
 
 _LENGTH_KO = {"short": "짧게", "normal": "보통", "detailed": "자세히"}
+
+_VAULT_LABELS = {
+    "ko": {**VAULT_LABELS, "callName": "부르는 이름"},
+    "en": {"name": "Name", "address": "Address", "phone": "Phone", "email": "Email", "birth": "Date of birth", "callName": "Preferred name"},
+    "zh": {"name": "姓名", "address": "地址", "phone": "电话", "email": "电子邮箱", "birth": "出生日期", "callName": "称呼"},
+    "ja": {"name": "氏名", "address": "住所", "phone": "電話番号", "email": "メール", "birth": "生年月日", "callName": "呼び名"},
+}
+_SAVE_ON_DEVICE = {
+    "ko": "이렇게 이 컴퓨터에 저장할까요? 맞으면 '응', 아니면 '아니'라고 해 주세요.",
+    "en": "Save these details on this computer? Say yes or no.",
+    "zh": "要把这些信息保存在这台电脑上吗？请回答是或不是。",
+    "ja": "この情報をこの端末に保存しますか。はい、またはいいえでお答えください。",
+}
+_SAVE_IN_SESSION = {
+    "ko": "이렇게 기억할까요? 맞으면 '응', 아니면 '아니'라고 해 주세요.",
+    "en": "Remember these details for this conversation? Say yes or no.",
+    "zh": "要在这次对话中记住这些信息吗？请回答是或不是。",
+    "ja": "この会話の間だけこの情報を覚えておきますか。はい、またはいいえでお答えください。",
+}
+_READ_VAULT = {
+    "ko": "저장된 정보는 {entries}이에요.",
+    "en": "Your saved details are {entries}.",
+    "zh": "您已保存的信息是：{entries}。",
+    "ja": "保存されている情報は、{entries}です。",
+}
+_ASK_VAULT_FIELDS = {
+    "ko": "무엇을 저장할까요? 예: '내 이름은 김하늘이고 주소는 부산광역시 예시구 예시로 10이라고 저장해줘'. 비밀번호·주민등록번호는 저장하지 않아요.",
+    "en": "Which detail should I remember? Please ask me to save it again, giving the field name first and then its value.",
+    "zh": "您想保存哪项信息？请重新说出保存请求，先说项目名称，再说相应的内容。",
+    "ja": "どの情報を保存しますか。項目名とその内容を順に指定して、もう一度保存を依頼してください。",
+}
+_VAULT_VERBS = {
+    "vault-save": rx(r"(?:저장해|기억해)\s*(?:줘요?|주세요)?"),
+    "vault-clear": rx(r"(?:지워|삭제해)\s*(?:줘요?|주세요)?"),
+}
+
+
+def vault_reply(text: str, kind: str, lang: str) -> bool | None:
+    """Match the complete, untranslated reply to the operation the user heard."""
+    t = text.strip().rstrip(".!。！~").rstrip()
+    if not t or t.endswith(("?", "？")):
+        return None
+    if lang != "ko":
+        if approval(t, lang) == "approve":
+            return True
+        return False if whole_rejection(t, lang) else None
+    if rx(r"[가-힣]").search(t) and (answer := agree(t)):
+        return answer == "yes"
+    phrase = rx(r"^(?:응|네|예)[,\s]+").sub("", t, count=1)
+    if _VAULT_VERBS[kind].fullmatch(phrase) or (phrase.startswith("승인") and approval(phrase) == "approve"):
+        return True
+    if phrase in ("거절", "취소", "됐어") or rx(r"(?:지우지|저장하지|기억하지|삭제하지|하지)\s*마(?:세요|요)?").fullmatch(phrase):
+        return False
+    return None
 
 
 def _speak_speech(prefs: dict) -> str:
@@ -41,52 +96,44 @@ class PersonalDialogue:
         key = vault_key_for_label(label)
         return self._store.vault().get(key) if key else None
 
-    def confirm(self, text: str) -> dict | None:
-        """금고 저장·삭제 확인에 대한 대답. 확인 대기는 늘 접는다. '응'·'아니'가 아니면 None(그 말은 오케스트레이터가 이어서 처리)."""
-        yes = bool(rx(r"^(응|네|예|맞아|그래|좋아|저장해|지워)").search(text))
-        no = bool(rx(r"^(아니|아뇨|취소|됐어|하지\s*마)").search(text))
+    def confirm(self, approved: bool) -> dict:
         pending = self.dialogue.take_vault_confirm()
-        if yes and pending["kind"] == "vault-save":
+        if not approved:
+            return draft("IDLE", "none", "알겠어요. 그대로 둘게요.")
+        if pending["kind"] == "vault-save":
             self._store.save_vault(pending["values"])
             where = "이 컴퓨터에만 저장했어요" if self._store.persistent else "이번 대화 동안 기억할게요"
             return draft("IDLE", "none", f"{where}. 입력 칸을 채울 때 먼저 여쭤보고 쓸게요.")
-        if yes and pending["kind"] == "vault-clear":
-            self._store.clear_vault()
-            return draft("IDLE", "none", "저장된 내 정보를 모두 지웠어요.")
-        if no:
-            return draft("IDLE", "none", "알겠어요. 그대로 둘게요.")
-        return None
+        if pending["kind"] != "vault-clear":
+            raise ValueError("Unexpected vault confirmation")
+        self._store.clear_vault()
+        return draft("IDLE", "none", "저장된 내 정보를 모두 지웠어요.")
 
-    def run(self, cmd: dict) -> dict | None:
+    def run(self, cmd: dict, *, lang: str = "ko") -> dict | None:
         """금고·신청 기록 명령(parse_personal_command의 결과). 모르는 종류면 None."""
         vault = self._store.vault()
         kind = cmd["kind"]
         if kind == "vault-save":
             entries = list(cmd["values"].items())
             if not entries:
-                return draft(
-                    self.dialogue.state,
-                    "clarify",
-                    "무엇을 저장할까요? 예: '내 이름은 김하늘이고 주소는 부산광역시 예시구 예시로 10이라고 저장해줘'. 비밀번호·주민등록번호는 저장하지 않아요.",
-                )
+                return draft(self.dialogue.state, "clarify", _ASK_VAULT_FIELDS[lang], lang=lang)
             self.dialogue.ask_vault_confirm(cmd)
-            listed = ", ".join(f"{VAULT_LABELS[k]} {v}" for k, v in entries)
+            listed = ", ".join(f"{_VAULT_LABELS[lang][k]} {v}" for k, v in entries)
+            question = _SAVE_ON_DEVICE if self._store.persistent else _SAVE_IN_SESSION
             return draft(
                 "WAITING_FOR_USER_CONFIRMATION",
                 "clarify",
-                f"{listed}. 이렇게 {'이 컴퓨터에 저장할까요' if self._store.persistent else '기억할까요'}? 맞으면 '응', 아니면 '아니'라고 해 주세요.",
+                f"{listed}. {question[lang]}", lang=lang,
             )
         if kind == "vault-read":
-            entries = list(vault.items())
-            return draft(
-                self.dialogue.state,
-                "none",
-                f"저장된 정보는 {', '.join(f'{VAULT_LABELS[k]} {v}' for k, v in entries)}이에요."
-                if entries
-                else "저장된 정보가 없어요. '내 이름은 …이라고 저장해줘'처럼 말씀해 주세요.",
-            )
+            entries = [f"{_VAULT_LABELS[lang][k]} {v}" for k, v in vault.items()]
+            if name := self._store.call_name():
+                entries.append(f"{_VAULT_LABELS[lang]['callName']} {speak_call_name(name) if lang == 'ko' else name}")
+            if entries:
+                return draft(self.dialogue.state, "none", _READ_VAULT[lang].format(entries=", ".join(entries)), lang=lang)
+            return draft(self.dialogue.state, "none", "저장된 정보가 없어요. '내 이름은 …이라고 저장해줘'처럼 말씀해 주세요.")
         if kind == "vault-clear":
-            if not vault:
+            if not vault and not self._store.guardian() and not self._store.call_name():
                 return draft(self.dialogue.state, "none", "저장된 정보가 없어요.")
             self.dialogue.ask_vault_confirm(cmd)
             return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", "저장된 내 정보를 모두 지울까요? 맞으면 '응'이라고 해 주세요.")

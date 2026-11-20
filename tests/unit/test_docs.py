@@ -61,3 +61,20 @@ async def test_parse_read_download():
     assert (await r.parse("받은 파일 읽어줘", IntentContext(state="IDLE")))["type"] == "READ_DOWNLOAD"
     listed = await r.parse("받은 파일 목록", IntentContext(state="IDLE"))
     assert listed["type"] == "READ_DOWNLOAD" and listed.get("list")
+
+
+@pytest.mark.parametrize("text", ["이미지 검색해줘", "이 페이지에 어떤 사진이 있어?", "화면의 이미지를 설명해줘"])
+def test_screen_and_search_requests_do_not_read_downloads(text):
+    parser = RuleBasedIntentProvider([])
+    assert parser.parse_sync(text, IntentContext(state="BROWSING"))["type"] != "READ_DOWNLOAD"
+
+
+def test_download_verbatim_can_continue_past_first_chunk(tmp_path):
+    path = tmp_path / "안내.hwpx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("Contents/section0.xml", "<r><t>첫째 부분. 마지막 부분.</t></r>")
+    store = DownloadStore()
+    store.remember(path)
+    assert "마지막" not in store.read_latest(max_chars=8)
+    assert "마지막" in store.read_latest(max_chars=8, more=True)
+    assert "끝까지" in store.read_latest(max_chars=8, more=True)

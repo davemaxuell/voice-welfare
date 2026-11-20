@@ -1,0 +1,24 @@
+.gitignore
+CLAUDE.md
+README.md
+apps/desktop/electron-builder.yml
+apps/desktop/main.cjs
+apps/desktop/package.json
+apps/desktop/preload.cjs
+docs/architecture-check.md
+docs/bokjiro-data-usage-ko.docx
+docs/bokjiro-data-usage.docx
+docs/install.md
+docs/stt-eval/sentences.csv
+docs/superpowers/plans/2026-11-18-sound-cues.md
+docs/superpowers/specs/2026-11-18-sound-cues-design.md
+docs/user-test/consent-template.md
+docs/user-test/plan.md
+docs/user-test/record-sheet.csv
+docs/user-test/tasks.md
+docs/기획요약.md
+drafts/future implementations/double-clap detector - test and tune.md
+drafts/future implementations/file understanding - send files to a stronger model.md
+drafts/future implementations/guardian contact - SMS first, KakaoTalk later.md
+drafts/future implementations/official datasets - private programs and where to go.md
+drafts/future implementations/speech providers - stay on OpenAI during checking.md

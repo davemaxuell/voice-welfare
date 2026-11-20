@@ -77,7 +77,7 @@ def _difference(asked: dict, now: dict) -> str | None:
             kind = josa("링크" if a["role"] == "link" else "버튼", "이", "가")
             how = "화면에서 없어졌어요" if n["now"] is None else "다른 것으로 바뀌었어요"
             return f"누르려던 '{a['name'] or ''}' {kind} {how}."
-    changed = [a["label"] for a, n in zip(asked["fields"], now["fields"]) if a["valueHash"] != n["valueHash"]]
+    changed = [a["label"] for a, n in zip(asked["fields"], now["fields"]) if (a["label"], a["valueHash"]) != (n["label"], n["valueHash"])]
     return f"{', '.join(changed)} 칸 값이 바뀌었어요." if changed else None
 
 

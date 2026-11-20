@@ -1,4 +1,4 @@
-"""② 의도 이해: 짧은 말·군말·두루뭉술한 말 거르기, 규칙 파서가 먼저이고 LLM 계획은 보조, 화면 밖 자유 대화 분류. 사이트 이름 → 주소."""
+"""② 말 이해와 계획. 빠른 명령과 오프라인 규칙, 모델 계획, 화면 밖 대화, 사이트 이름 해석."""
 
 from cheongeum.understanding.llm_planner import (
     INTENT_JSON_SCHEMA,

@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import dataclass
 
 import httpx
+import pytest
 import pytest_asyncio
 from conftest import PORTAL, Gate, step
 
@@ -11,10 +12,10 @@ from cheongeum.core.turn import TurnResult
 from cheongeum.server import close_all, create_app
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture
 async def api(runtime):
     app, sessions = create_app(runtime)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
         yield client
     await close_all(sessions)
 
@@ -32,7 +33,10 @@ class FakeTts:
     name = "fake"
     supported = True
 
-    async def synthesize(self, text, *, language, signal=None):
+    paces: list = []
+
+    async def synthesize(self, text, *, language, signal=None, pace=None):
+        FakeTts.paces.append(pace)
         return {"audio": bytes([0xFF, 0xF3]), "mimeType": "audio/mpeg"}
 
 
@@ -42,15 +46,46 @@ class Voice:
     tts: FakeTts
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture
 async def voice_api(runtime):
     app, sessions = create_app(runtime, Voice(FakeStt(), FakeTts()))
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
         yield client
     await close_all(sessions)
 
 
 AUDIO = bytes(1000)
+
+
+async def test_vault_replies_require_the_presented_id_across_inputs(voice_api):
+    sid = (await voice_api.post("/api/session")).json()["sessionId"]
+
+    async def turn(text, **body):
+        return (await voice_api.post("/api/turn", json={"sessionId": sid, "text": text, **body})).json()
+
+    ask = await turn("내 이름은 박하늘이라고 저장해줘")
+    save = ask["pendingConfirmation"]
+    assert save["kind"] == "vault-save" and "박하늘" not in str(save)
+    missing = await turn("응")
+    assert missing["pendingConfirmation"]["actionId"] == save["actionId"]
+    await turn("응", actionId=save["actionId"])
+    ask = await turn("내 정보 지워줘")
+    clear = ask["pendingConfirmation"]
+    assert clear["kind"] == "vault-clear" and clear["actionId"] != save["actionId"]
+    FakeStt.next_transcript = "응" + "!" * 499 + " 지우지 마세요"
+    long_reply = await voice_api.post(f"/api/audio/turn?sessionId={sid}", content=AUDIO,
+                                      headers={"Content-Type": "audio/webm", "X-Cheongeum-Action": clear["actionId"]})
+    assert long_reply.status_code == 422 and long_reply.json()["error"] == "TRANSCRIPT_TOO_LONG"
+    FakeStt.next_transcript = "응"
+    for headers in ({}, {"X-Cheongeum-Action": save["actionId"]}):
+        stale = await voice_api.post(f"/api/audio/turn?sessionId={sid}", content=AUDIO,
+                                     headers={"Content-Type": "audio/webm", **headers})
+        assert stale.json()["pendingConfirmation"]["actionId"] == clear["actionId"]
+    stale_button = await voice_api.post(f"/api/session/{sid}/confirm", json={"approve": True, "actionId": save["actionId"]})
+    assert stale_button.json()["pendingConfirmation"]["actionId"] == clear["actionId"]
+    confirmed = await voice_api.post(f"/api/session/{sid}/confirm", json={"approve": True, "actionId": clear["actionId"]})
+    assert confirmed.json()["intentType"] == "VAULT_CONFIRM"
+    assert "저장된 정보가 없어요" in (await turn("내 정보 알려줘"))["speech"]
 
 
 async def say(client, session_id: str, transcript: str):
@@ -82,9 +117,52 @@ async def test_session_turn_state_cancel(api):
     assert cancelled.json()["state"] == "STOPPED"
 
 
+async def test_wake_accepts_only_current_stop_and_does_not_replay_a_task(api):
+    sid = (await api.post("/api/session")).json()["sessionId"]
+    path = f"/api/session/{sid}"
+
+    async def turn(text):
+        return (await api.post("/api/turn", json={"sessionId": sid, "text": text})).json()
+
+    await turn(f"{PORTAL} 열어줘")
+    approval = (await turn("이름 칸에 김하늘 써줘"))["pendingConfirmation"]["actionId"]
+    stopped = await turn("멈춰")
+    token = {"stopGeneration": stopped["stopGeneration"]}
+    assert (await turn("다음으로"))["state"] == "STOPPED"
+    before = (await api.get(f"{path}/state")).json()
+    assert before["stopGeneration"] == token["stopGeneration"]
+    for invalid in ({}, {"stopGeneration": True}, {"stopGeneration": -1}):
+        assert (await api.post(f"{path}/wake", json=invalid)).status_code == 400
+    retry = {"x-cheongeum-request": "1"}
+    assert (await api.post(f"{path}/wake", json=token, headers=retry)).json() == {"state": "IDLE"}
+    assert (await api.post(f"{path}/wake", json=token)).json() == {"state": "IDLE"}
+    after = (await api.get(f"{path}/state")).json()
+    assert "stopGeneration" not in after and "pendingConfirmation" not in after
+    assert before["observation"] == after["observation"] and before["history"] == after["history"]
+    stale_approval = await api.post(f"{path}/confirm", json={"approve": True, "actionId": approval})
+    assert stale_approval.json()["actions"] == []
+    assert (await turn("화면 설명해줘"))["semanticAction"] == "describe-screen"
+    newer = (await api.post(f"{path}/cancel")).json()
+    assert newer["stopGeneration"] > token["stopGeneration"]
+    assert (await api.post(f"{path}/wake", json=token, headers=retry)).status_code == 409
+    assert (await api.get(f"{path}/state")).json()["state"] == "STOPPED"
+
+
+async def test_stop_supersedes_a_wake_waiting_on_the_session_lock(new_session):
+    session = await new_session()
+    first = session.cancel()
+    async with session._lock:
+        waiting = asyncio.create_task(session.wake(first["stopGeneration"]))
+        await asyncio.sleep(0)
+        second = session.cancel()
+    assert await waiting is None
+    assert session.state == "STOPPED"
+    assert await session.wake(second["stopGeneration"]) == "IDLE"
+
+
 async def test_progress_endpoint_reports_code_built_steps(runtime):
     app, sessions = create_app(runtime)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
         sid = (await client.post("/api/session")).json()["sessionId"]
         url = f"/api/session/{sid}/progress"
         assert (await client.get(url)).json() == {"running": False, "seq": 0, "latest": None, "spoken": True}
@@ -107,7 +185,10 @@ async def test_progress_endpoint_reports_code_built_steps(runtime):
 async def test_bad_requests_and_unsupported_voice(api):
     assert (await api.post("/api/turn", json={"sessionId": "x"})).status_code == 400
     assert (await api.post("/api/turn", json={"sessionId": "nope", "text": "안녕"})).status_code == 404
-    assert (await api.post("/api/audio/transcribe")).status_code == 501
+    assert (await api.post("/api/audio/transcribe")).status_code == 415
+    assert (await api.post("/api/audio/transcribe", content=AUDIO, headers={"Content-Type": "audio/webm"})).status_code == 404
+    sid = (await api.post("/api/session")).json()["sessionId"]
+    assert (await api.post(f"/api/audio/transcribe?sessionId={sid}", content=AUDIO, headers={"Content-Type": "audio/webm"})).status_code == 501
     services = (await api.get("/api/welfare/services", params={"q": "장애인연금"})).json()
     assert services["mode"] == "fixture"
     assert services["services"][0]["source"]["url"].startswith("https://")
@@ -161,7 +242,8 @@ async def test_spoken_password_never_returned(voice_api):
     assert "556677" not in snap
 
     FakeStt.next_transcript = "주민번호 900101-1234567"
-    t = (await voice_api.post("/api/audio/transcribe", content=AUDIO, headers={"Content-Type": "audio/webm"})).json()
+    clean_session = (await voice_api.post("/api/session")).json()["sessionId"]
+    t = (await voice_api.post(f"/api/audio/transcribe?sessionId={clean_session}", content=AUDIO, headers={"Content-Type": "audio/webm"})).json()
     assert t["secretDetected"] is True
     assert "1234567" not in t["text"]
 
@@ -171,6 +253,9 @@ async def test_empty_transcript_tts_health(voice_api):
     assert (await say(voice_api, sid, ""))[0] == 422
     speak = await voice_api.post("/api/audio/speak", json={"text": "안녕하세요"})
     assert "audio/mpeg" in speak.headers["content-type"]
+    # 웹 화면의 말 빠르기 설정(천천히 0.9, 보통 1.25)이 서버 음성 속도로 간다
+    await voice_api.post("/api/audio/speak", json={"text": "안녕하세요", "rate": 0.9})
+    assert FakeTts.paces[-2:] == [None, pytest.approx(0.72)]
     health = (await voice_api.get("/api/health")).json()
     # localLanguages: 음성이 이 컴퓨터 밖으로 나가지 않는 언어(가짜 STT는 외부로 보는 셈)
-    assert health["stt"] == {"provider": "fake", "supported": True, "localLanguages": []}
+    assert health["stt"] == {"provider": "fake", "supported": True, "localLanguages": [], "liveModel": None}

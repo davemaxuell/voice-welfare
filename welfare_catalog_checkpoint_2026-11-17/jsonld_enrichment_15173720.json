@@ -1,0 +1,47 @@
+{
+  "retrieved_date": "2026-11-17",
+  "source_url": "https://www.data.go.kr/catalog/15173720/fileData.json",
+  "dataset_id": "15173720",
+  "data_contents_fields": "시도,시군구,서비스 제공기관명,기관연락처,기관주소,대분류,중분류,프로그램명칭",
+  "schema_status": "Verified official JSON-LD metadata; not independently validated against data rows",
+  "field_definitions": [
+    {
+      "name": "시도",
+      "description": "시도"
+    },
+    {
+      "name": "시군구",
+      "description": "시군구"
+    },
+    {
+      "name": "서비스 제공기관명",
+      "description": "서비스 제공기관명"
+    },
+    {
+      "name": "기관연락처",
+      "description": "기관연락처"
+    },
+    {
+      "name": "기관주소",
+      "description": "기관주소"
+    },
+    {
+      "name": "대분류",
+      "description": "대분류"
+    },
+    {
+      "name": "중분류",
+      "description": "중분류"
+    },
+    {
+      "name": "프로그램명칭",
+      "description": "프로그램명칭"
+    }
+  ],
+  "live_classification": "사회복지 - 보건의료",
+  "inventory_classification": "보건의료 - 보건의료",
+  "snapshot_date": "2026-06-30",
+  "update_frequency": "수시 (1회성 데이터)",
+  "sample_retrieved": false,
+  "integration_note": "Fill missing schema only; preserve original classification and do not change sample status."
+}
