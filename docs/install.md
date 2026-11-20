@@ -2,7 +2,7 @@
 
 ## Windows에 설치하기
 
-1. Windows x64 PC에서 `Cheongeum-Setup-0.4.3.exe`를 엽니다. 이 로컬 빌드는 서명되지 않아 Windows가 게시자 확인 안내를 표시할 수 있습니다.
+1. Windows x64 PC에서 받은 `Cheongeum-Setup-버전.exe`를 엽니다. 이 설치본에는 Chromium과 앱을 실행하는 Node 런타임이 포함됩니다. 서명되지 않은 로컬 빌드에서는 Windows가 게시자 확인 안내를 표시할 수 있습니다.
 2. 설치 폴더를 고르고 **관리자 권한** 화면에서 청음 바로 가기에 관리자 권한을 허용할지 선택한 뒤 **설치**를 누릅니다.
 3. 시작 메뉴에서 **청음**을 엽니다. 첫 실행에 **청음 처음 설정**이 열리고 녹음된 목소리가 단계마다 읽어 줍니다. 숫자 키, Enter, Esc(이전 단계)로 답하세요.
    - 대화 언어를 고른 뒤 **지금 누가 설정하는지** 고릅니다. 사용하실 분 본인은 1번, 가족이나 복지관 직원은 2번입니다.
@@ -38,7 +38,7 @@
 
 다음 대화에서도 사용할 선호 사항은 메모란에 직접 적고 메모 저장 동의를 선택하세요. 청음은 메모와 관련 질문을 임베딩해 필요한 메모만 참고합니다. 같은 패널에서 메모를 찾고 삭제할 수 있습니다. 음성 녹음은 조사나 메모에 저장하지 않습니다.
 
-기본 저장소는 Windows 계정의 `~/.cheongeum/workflows.sqlite3`입니다. 서버를 운영할 때는 pgvector 0.5 이상이 설치된 PostgreSQL을 준비하고 `CHEONGEUM_DATABASE_URL`에 연결 문자열을 설정할 수 있습니다. DB 계정에는 최초 생성 시 테이블과 인덱스를 만들 권한이 필요합니다. 관리자가 먼저 `CREATE EXTENSION vector`를 실행하거나 DB 계정에 해당 권한을 부여하세요. 설치판에는 PostgreSQL 드라이버가 포함됩니다. 소스 설치 시에는 `uv sync --extra postgres`를 사용하세요. 기존 SQLite 조사와 메모는 해당 파일에 보관되며 DB 연결 변경 시 자동으로 복사되지 않습니다.
+기본 저장소는 Windows 계정의 `~/.cheongeum/workflows.sqlite3`입니다. 서버를 운영할 때는 pgvector 0.5 이상이 설치된 PostgreSQL을 준비하고 `CHEONGEUM_DATABASE_URL`에 연결 문자열을 설정할 수 있습니다. DB 계정에는 최초 생성 시 테이블과 인덱스를 만들 권한이 필요합니다. 관리자가 먼저 `CREATE EXTENSION vector`를 실행하거나 DB 계정에 해당 권한을 부여하세요. 소스에서 실행할 때는 저장소 루트의 `npm ci`가 PostgreSQL 드라이버(`pg`)도 설치합니다. 기존 SQLite 조사와 메모는 해당 파일에 보관되며 DB 연결 변경 시 자동으로 복사되지 않습니다.
 
 ## 마이크, 스피커, 관리자 권한
 
@@ -52,7 +52,7 @@
 
 ## 서비스 연결하기
 
-기본 설정으로는 저장된 복지 자료, 규칙 기반 질문, 웹 읽기와 연습 신청을 이용할 수 있습니다. 최신 복지 API 조회, 외부 모델을 사용하는 질문·화면 사진 분석, 실제 문자 발송 등은 각 서비스의 설정이 필요합니다.
+청음은 저장된 복지 자료와 규칙으로 질문에 답할 수 있습니다. 한국어를 포함한 모든 언어의 음성 대화와 받아쓰기에는 인증된 음성 API가 필요합니다. 기기에 포함된 개인정보 인식 모델은 입력에서 민감한 글을 찾는 데 사용합니다. 최신 복지 API 조회와 실제 문자 발송에는 각 서비스의 설정이 필요합니다.
 
 이미 개발용 `.env`가 있다면 청음의 트레이 메뉴에서 **기존 서비스 설정 가져오기…**를 선택하고 해당 파일을 고르세요. 청음을 완전히 종료하고 다시 열면 적용됩니다.
 
@@ -60,25 +60,24 @@
 
 ## 설치 파일 만들기
 
-저장소 루트에서 Node.js 22.12 이상과 uv를 사용합니다. Windows x64 빌드에는 Visual Studio C++ Build Tools의 x64 도구 및 재배포용 CRT도 필요합니다. 설치본에 이 DLL을 포함하므로 사용하는 PC에서는 별도 설치가 필요 없습니다.
+빌드할 대상과 같은 운영체제·CPU를 사용하는 컴퓨터에서 Node.js 24 이상을 준비하세요. Windows x64 설치 파일은 Windows x64에서 다음과 같이 만듭니다. 명령은 모두 저장소 루트에서 실행하세요.
 
 ```sh
-uv sync --locked --managed-python --python 3.12
-uv run python scripts/setup_local_models.py --only pii
-npm --prefix apps/desktop ci
-npm --prefix apps/desktop run dist:win
+npm ci
+npm run setup-models
+npm run dist:desktop
+npm run test:desktop-packaged
+npm run test:desktop-release
 ```
 
-기본 결과 파일은 `apps/desktop/dist/Cheongeum-Setup-0.4.3.exe`입니다. 같은 폴더의 `latest.yml`과 `.exe.blockmap`은 업데이트에 사용합니다. Windows 설치본을 검증하려면 설치 후 아래 명령에 실제 청음 실행 파일 경로를 넣습니다.
+`npm run setup-models`는 개인정보 탐지용 ONNX 모델을 내려받아 로컬 추론을 확인합니다. 패키징할 때 이 모델과 Chromium을 설치본에 복사합니다. `apps/desktop/dist/`에 `Cheongeum-Setup-버전.exe`, `.exe.blockmap`, `latest.yml`이 생깁니다. 버전 번호는 `apps/desktop/package.json`에서 확인할 수 있습니다.
 
-```sh
-npm --prefix apps/desktop run test:installed -- "<설치 폴더>/청음.exe"
-```
+`test:desktop-packaged`는 패키지 안의 앱과 서비스를, `test:desktop-release`는 설치 파일과 업데이트 자료를 검사합니다. 새 Windows 계정에 직접 설치해 실제 마이크와 화면 읽기 프로그램으로 확인하는 절차가 별도로 남아 있습니다.
 
-macOS용 DMG는 대상 Mac에서 같은 준비 명령 후 `npm --prefix apps/desktop run dist:mac`으로 빌드합니다. Mac의 CPU에 맞는 Python과 Chromium을 함께 묶습니다. 이 릴리스에서 설치와 실행을 확인한 대상은 Windows x64입니다.
+macOS용 DMG는 대상 Mac에서 같은 `npm ci`, `npm run setup-models`, `npm run dist:desktop` 순서로 빌드합니다. 해당 Mac의 CPU에 맞는 Electron과 Chromium이 포함됩니다.
 
 ## GitHub에 새 버전 배포하기
 
-첫 배포에는 앱 코드, 빌드 파일, 마스코트와 웹 자산, 잠금 파일, `.github/workflows/release-windows.yml`을 함께 커밋하세요. 첫 태그는 `v0.2.0`입니다. 이후에는 `apps/desktop`에서 `npm version patch --no-git-tag-version`으로 버전을 올리고 변경 사항을 커밋하세요. 해당 커밋에 일치하는 태그(예: `v0.2.2`)를 만들어 GitHub에 푸시하면 워크플로가 Windows 설치 파일을 빌드하고 업데이트에 필요한 세 파일을 한 릴리스에 공개합니다.
+`apps/desktop/package.json`의 버전을 올려 커밋하고 같은 버전의 태그(예: 버전 `0.4.5`이면 `v0.4.5`)를 푸시하면 `.github/workflows/release-windows.yml`이 Windows 설치 파일을 빌드합니다. 패키지와 업데이트 검사를 통과하면 설치 파일, 블록맵, `latest.yml`을 공개 릴리스에 올립니다.
 
 수동 배포도 가능합니다. 같은 버전의 공개 정식 릴리스에 `Cheongeum-Setup-버전.exe`, `Cheongeum-Setup-버전.exe.blockmap`, `latest.yml`을 파일 이름 그대로 올리세요. 기존 사용자는 현재 설치된 버전보다 높은 정식 버전이 공개되면 업데이트를 선택할 수 있습니다.

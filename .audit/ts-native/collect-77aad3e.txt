@@ -1,0 +1,1836 @@
+tests/e2e/test_api.py::test_vault_replies_require_the_presented_id_across_inputs
+tests/e2e/test_api.py::test_session_turn_state_cancel
+tests/e2e/test_api.py::test_wake_accepts_only_current_stop_and_does_not_replay_a_task
+tests/e2e/test_api.py::test_stop_supersedes_a_wake_waiting_on_the_session_lock
+tests/e2e/test_api.py::test_progress_endpoint_reports_code_built_steps
+tests/e2e/test_api.py::test_bad_requests_and_unsupported_voice
+tests/e2e/test_api.py::test_voice_turn_reaches_screen
+tests/e2e/test_api.py::test_while_busy_only_a_stop_word_is_acted_on
+tests/e2e/test_api.py::test_while_busy_a_progress_question_is_answered
+tests/e2e/test_api.py::test_spoken_password_never_returned
+tests/e2e/test_api.py::test_empty_transcript_tts_health
+tests/e2e/test_autopilot.py::test_goal_intent_by_rules
+tests/e2e/test_autopilot.py::test_open_click_answer
+tests/e2e/test_autopilot.py::test_answers_a_contact_number_from_the_footer
+tests/e2e/test_autopilot.py::test_footer_numbers_do_not_back_an_answer_that_quotes_elsewhere
+tests/e2e/test_autopilot.py::test_uses_search_box
+tests/e2e/test_autopilot.py::test_policy_guard_blocks_action_button
+tests/e2e/test_autopilot.py::test_stops_when_looping
+tests/e2e/test_autopilot.py::test_rejects_answer_without_visit
+tests/e2e/test_autopilot.py::test_bokjiro_goal_reads_the_named_programs_catalog_page[\uae30\ucd08\uc5f0\uae08-\uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \ucc3e\uc544\uc918]
+tests/e2e/test_autopilot.py::test_bokjiro_goal_reads_the_named_programs_catalog_page[\uc7a5\uc560\uc778\uc5f0\uae08-\uc7a5\uc560\uc778\uc5f0\uae08\uc744 \uc5b4\ub5bb\uac8c \uc2e0\uccad\ud558\ub294\uc9c0 \uc54c\ub824\uc918]
+tests/e2e/test_autopilot.py::test_named_site_goal_cannot_use_another_sites_evidence
+tests/e2e/test_autopilot.py::test_visiting_the_requested_site_does_not_validate_off_site_quotes
+tests/e2e/test_autopilot.py::test_rewrites_non_korean_answer
+tests/e2e/test_autopilot.py::test_few_hanja_allowed
+tests/e2e/test_autopilot.py::test_verifier_rejects_invented_evidence_and_numbers
+tests/e2e/test_autopilot.py::test_verifier_gives_up_honestly
+tests/e2e/test_autopilot.py::test_llm_gets_digested_page
+tests/e2e/test_autopilot.py::test_goal_mode_asks_aloud_before_mock_submit
+tests/e2e/test_autopilot.py::test_goal_mode_hands_off_login_before_model_can_attempt_click
+tests/e2e/test_autopilot.py::test_cancelling_goal_login_handoff_leaves_the_page_alone
+tests/e2e/test_autopilot.py::test_progress_question_mid_goal_names_the_current_step
+tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4? \ub4a4\ub85c \uac00\uc918]
+tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\uc5bc\ub9c8\ub098 \ub0a8\uc558\uc5b4 \uadf8\ub9ac\uace0 \ub4a4\ub85c \uac00\uc918]
+tests/e2e/test_autopilot.py::test_status_then_back_answers_and_navigates[\uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4 \ub4a4\ub85c \uac00\uc918]
+tests/e2e/test_autopilot.py::test_stop_still_interrupts_a_goal
+tests/e2e/test_autopilot.py::test_no_llm_step_by_step
+tests/e2e/test_avatar.py::test_all_animation_frames_fit_the_desktop_portrait
+tests/e2e/test_avatar.py::test_static_poses_match_the_frame_and_ground_line
+tests/e2e/test_avatar.py::test_controller_cards_carry_no_values_and_dispatch_once
+tests/e2e/test_avatar.py::test_avatar_page_renders_cards_as_text_and_passes_axe
+tests/e2e/test_avatar.py::test_avatar_keeps_its_transparent_stopped_pose_in_every_corner
+tests/e2e/test_avatar.py::test_long_choice_scrolls_inside_the_bubble_on_a_short_display
+tests/e2e/test_avatar.py::test_message_bubbles_expire_once_and_choices_stay_available
+tests/e2e/test_avatar.py::test_sleep_wake_keeps_the_first_action_and_respects_reduced_motion
+tests/e2e/test_avatar.py::test_first_spoken_request_after_stop_opens_the_requested_form
+tests/e2e/test_avatar.py::test_voice_approval_binds_to_the_decision_shown_when_listening_began
+tests/e2e/test_avatar_animation.py::test_interrupt_land_and_restore_current_pose
+tests/e2e/test_avatar_animation.py::test_bubble_reverses_mid_pop_and_preserves_the_latest_choice
+tests/e2e/test_avatar_animation.py::test_avatar_and_menu_reverse_together_and_honor_reduced_motion
+tests/e2e/test_avatar_animation.py::test_overlay_refits_on_display_change_and_preserves_pose_during_gpu_reset
+tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[approve]
+tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[reject]
+tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[changed]
+tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[ambiguous]
+tests/e2e/test_browser_specialists.py::test_visual_recovery_requires_consent_and_a_stable_unique_control[invented]
+tests/e2e/test_browser_specialists.py::test_two_grounding_failures_escalate_once_and_reverify[True]
+tests/e2e/test_browser_specialists.py::test_two_grounding_failures_escalate_once_and_reverify[False]
+tests/e2e/test_browser_specialists.py::test_routine_verified_request_skips_specialists
+tests/e2e/test_browser_specialists.py::test_public_visual_continuation_keeps_prior_cited_passage
+tests/e2e/test_browser_specialists.py::test_observed_passages_preserve_conditions_and_split_unrelated_footer_entries
+tests/e2e/test_browsing.py::test_open_external_read_only_summary
+tests/e2e/test_browsing.py::test_read_main_in_chunks_ignoring_instructions
+tests/e2e/test_browsing.py::test_links_by_number_and_back
+tests/e2e/test_browsing.py::test_site_that_fails_to_load_leaves_the_user_where_they_were
+tests/e2e/test_browsing.py::test_ambiguous_link_asks_then_number
+tests/e2e/test_browsing.py::test_duplicate_link_name_opens_first
+tests/e2e/test_browsing.py::test_follows_new_tab
+tests/e2e/test_browsing.py::test_search_box_only
+tests/e2e/test_browsing.py::test_no_general_input_or_buttons_on_external
+tests/e2e/test_browsing.py::test_apply_from_external_opens_mock_form
+tests/e2e/test_browsing.py::test_unknown_site_name_is_searched
+tests/e2e/test_browsing.py::test_consent_required_before_screen
+tests/e2e/test_browsing.py::test_declined_consent_keeps_blocking
+tests/e2e/test_browsing.py::test_assist_fill_after_yes
+tests/e2e/test_browsing.py::test_assist_no_means_no
+tests/e2e/test_browsing.py::test_assist_fill_dropped_when_the_field_changed
+tests/e2e/test_browsing.py::test_submit_button_left_to_user
+tests/e2e/test_browsing.py::test_missing_field_not_found
+tests/e2e/test_browsing.py::test_guided_fill_with_vault
+tests/e2e/test_browsing.py::test_guided_fill_with_spoken_value
+tests/e2e/test_choices.py::test_login_handoff_offers_done_and_cancel_and_resumes_the_form
+tests/e2e/test_choices.py::test_superseded_handoff_and_cancel
+tests/e2e/test_choices.py::test_read_main_offer_is_bound_to_the_page_it_was_offered_for
+tests/e2e/test_choices.py::test_no_offer_while_an_approval_is_pending
+tests/e2e/test_choices.py::test_choice_route_validates_and_reports_expired_offers
+tests/e2e/test_conversation.py::test_open_fill_next_in_one_sentence
+tests/e2e/test_conversation.py::test_plan_stops_on_clarification
+tests/e2e/test_conversation.py::test_llm_plan_when_rules_cannot_split
+tests/e2e/test_conversation.py::test_rephrase_without_llm
+tests/e2e/test_conversation.py::test_rephrase_with_llm
+tests/e2e/test_conversation.py::test_rephrase_that_changes_a_number_repeats_the_original
+tests/e2e/test_conversation.py::test_general_question_then_resume
+tests/e2e/test_conversation.py::test_realtime_question_searches_and_grounds
+tests/e2e/test_conversation.py::test_verifier_blocks_ungrounded_search_answer
+tests/e2e/test_conversation.py::test_welfare_question_not_in_official_data
+tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uc5f4\uc5b4\uc918-\uc5b4\ub290 \uc0ac\uc774\ud2b8\ub97c \uc5f4\uae4c\uc694]
+tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uac80\uc0c9\ud574\uc918-\ubb34\uc5c7\uc744 \uac80\uc0c9\ud560\uae4c\uc694]
+tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uadf8\uac70 \ud574\uc918-\ubb34\uc5c7\uc744 \ud560\uae4c\uc694]
+tests/e2e/test_conversation.py::test_vague_requests_ask_back[\uc54c\ub824\uc918-\ubb34\uc5c7\uc744 \uc54c\ub824\ub4dc\ub9b4\uae4c\uc694]
+tests/e2e/test_conversation.py::test_apply_without_service_name_asks
+tests/e2e/test_conversation.py::test_welfare_question_without_context_asks_service
+tests/e2e/test_conversation.py::test_fillers_not_entered_as_name
+tests/e2e/test_conversation.py::test_other_service_context_does_not_open_disability_form
+tests/e2e/test_conversation.py::test_discover_flow
+tests/e2e/test_conversation.py::test_discover_interrupted_by_other_command
+tests/e2e/test_conversation.py::test_no_consecutive_clarify
+tests/e2e/test_conversation.py::test_llm_language_route
+tests/e2e/test_conversation.py::test_brief_screen_vs_detailed
+tests/e2e/test_conversation.py::test_summary_with_unknown_number_dropped
+tests/e2e/test_conversation.py::test_real_site_login_moves_explains_asks_then_clicks
+tests/e2e/test_conversation.py::test_real_site_login_rejected_clicks_nothing
+tests/e2e/test_conversation.py::test_auth_done_stays_while_login_page_unchanged
+tests/e2e/test_conversation.py::test_auth_negation_keeps_the_original_handoff
+tests/e2e/test_conversation.py::test_auth_done_speaks_title_and_resumes_pending_form
+tests/e2e/test_conversation.py::test_main_screen_opens_site_home
+tests/e2e/test_conversation.py::test_custom_named_link_is_follow_link
+tests/e2e/test_conversation.py::test_short_replies_not_values
+tests/e2e/test_conversation.py::test_called_by_name
+tests/e2e/test_conversation.py::test_multiple_questions
+tests/e2e/test_conversation.py::test_planned_subquestion_is_not_a_numbered_click[False]
+tests/e2e/test_conversation.py::test_planned_subquestion_is_not_a_numbered_click[True]
+tests/e2e/test_conversation.py::test_real_site_mode
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[READ_MAIN]
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[LIST_LINKS]
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[SEARCH]
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[FOLLOW_LINK]
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[REPHRASE]
+tests/e2e/test_conversation.py::test_planner_understands_what_rules_miss[SERVICE_DETAIL]
+tests/e2e/test_conversation.py::test_help_on_form_starts_with_form_examples
+tests/e2e/test_conversation.py::test_help_on_web_page_starts_with_web_reading
+tests/e2e/test_conversation.py::test_help_until_nothing_left
+tests/e2e/test_conversation.py::test_help_before_consent
+tests/e2e/test_conversation.py::test_help_while_stopped_gets_stop_reply
+tests/e2e/test_conversation.py::test_not_understood_points_to_help
+tests/e2e/test_conversation.py::test_captcha_handoff_blocks_automation_and_checks_expected_screen
+tests/e2e/test_conversation.py::test_handoff_expiry_cancellation_and_browser_loss
+tests/e2e/test_conversation.py::test_genuine_access_block_gives_official_alternative
+tests/e2e/test_cursor.py::test_waiting_shows_the_bubble_and_the_click_clears_it
+tests/e2e/test_cursor.py::test_cursor_does_not_get_in_the_way
+tests/e2e/test_dense_navigation.py::test_deep_catalog_uses_trusted_clicks_and_the_correct_identically_named_link
+tests/e2e/test_dense_navigation.py::test_replaced_catalog_row_is_rejected_and_never_clicked
+tests/e2e/test_dense_navigation.py::test_requested_tabs_are_visited_even_when_the_first_page_has_the_answer
+tests/e2e/test_dense_navigation.py::test_public_page_proof_omits_form_values_and_protected_screens
+tests/e2e/test_durable_workspace.py::test_conversation_delegation_explicit_notes_and_isolated_research
+tests/e2e/test_durable_workspace.py::test_restart_without_foreground_session_then_cancel_running_job
+tests/e2e/test_durable_workspace.py::test_workspace_panel_save_recall_and_forget_through_installed_ui
+tests/e2e/test_expired_link_reply.py::test_delayed_reply_cannot_open_a_link_after_the_offer_changed[\uccab \ubc88\uc9f8 \ub9c1\ud06c \uc5f4\uc5b4\uc918-model_answers0-False]
+tests/e2e/test_expired_link_reply.py::test_delayed_reply_cannot_open_a_link_after_the_offer_changed[Open the first link on this page.-model_answers1-False]
+tests/e2e/test_expired_link_reply.py::test_delayed_reply_cannot_open_a_link_after_the_offer_changed[Open the first link on this page.-model_answers2-True]
+tests/e2e/test_expired_link_reply.py::test_delayed_reply_cannot_open_a_link_after_the_offer_changed[\ub274\uc2a4 \ub20c\ub7ec\uc918-model_answers3-False]
+tests/e2e/test_expired_link_reply.py::test_delayed_reply_cannot_open_a_link_after_the_offer_changed[\ub274\uc2a4\ub85c \ub4e4\uc5b4\uac00 \ubcfc\ub798-model_answers4-False]
+tests/e2e/test_expired_link_reply.py::test_delayed_independent_request_still_opens_its_named_destination
+tests/e2e/test_expired_link_reply.py::test_delayed_confirmation_does_not_reoffer_an_expired_list
+tests/e2e/test_file_answers.py::test_local_read_stays_private_after_another_plan_step
+tests/e2e/test_file_answers.py::test_scan_upload_is_bound_to_one_confirmation[False]
+tests/e2e/test_file_answers.py::test_scan_upload_is_bound_to_one_confirmation[True]
+tests/e2e/test_file_answers.py::test_file_replacement_refusal_stop_and_unrelated_speech
+tests/e2e/test_file_answers.py::test_queued_yes_and_new_download_with_same_name
+tests/e2e/test_file_answers.py::test_hwpx_grounding_and_local_fallback
+tests/e2e/test_file_answers.py::test_size_and_page_limits_avoid_upload
+tests/e2e/test_file_answers.py::test_stop_during_model_request_ends_progress
+tests/e2e/test_first_run_conversation.py::test_consent_greets_by_saved_call_name
+tests/e2e/test_first_run_conversation.py::test_consent_without_a_name_keeps_the_usual_greeting
+tests/e2e/test_first_run_conversation.py::test_vault_read_includes_call_name
+tests/e2e/test_first_run_conversation.py::test_name_kept_only_for_the_session_without_a_personal_store
+tests/e2e/test_first_run_conversation.py::test_consent_on_first_run_starts_the_mic_check
+tests/e2e/test_first_run_conversation.py::test_name_saved_on_personal_pc_after_yes
+tests/e2e/test_first_run_conversation.py::test_name_on_shared_pc_is_session_only_and_not_greeted_next_time
+tests/e2e/test_first_run_conversation.py::test_stop_on_the_stop_step_praises_then_yes_plays_the_intro
+tests/e2e/test_first_run_conversation.py::test_another_command_ends_the_guide_and_runs_it
+tests/e2e/test_first_run_conversation.py::test_reopened_session_resumes_at_recorded_step[name]
+tests/e2e/test_first_run_conversation.py::test_practice_yes_opens_the_practice_form_and_finishes
+tests/e2e/test_first_run_conversation.py::test_practice_no_finishes_quietly
+tests/e2e/test_first_run_conversation.py::test_call_name_stays_out_of_the_history_sent_to_models
+tests/e2e/test_first_run_runtime.py::test_personal_pc_choice_opens_a_sealed_store_without_pilot_profile
+tests/e2e/test_first_run_runtime.py::test_shared_pc_choice_has_no_personal_store
+tests/e2e/test_first_run_runtime.py::test_switching_to_shared_drops_the_store_for_new_sessions
+tests/e2e/test_first_run_runtime.py::test_usual_chrome_is_chosen_only_on_a_personal_pc
+tests/e2e/test_first_run_runtime.py::test_usual_chrome_that_cannot_start_falls_back_to_separate_browser
+tests/e2e/test_first_run_ui.py::test_user_alone_finishes_stage1_with_keys_only
+tests/e2e/test_first_run_ui.py::test_wrong_key_stays_on_key_step_with_reason
+tests/e2e/test_first_run_ui.py::test_double_key_press_answers_one_step
+tests/e2e/test_first_run_ui.py::test_each_choice_step_moves_focus_to_its_heading_and_reads_the_clip_text
+tests/e2e/test_first_run_ui.py::test_esc_goes_back_one_step
+tests/e2e/test_first_run_ui.py::test_helper_path_saves_extras_then_hands_over
+tests/e2e/test_first_run_ui.py::test_shared_pc_skips_browser_and_guardian
+tests/e2e/test_first_run_ui.py::test_guardian_can_be_skipped
+tests/e2e/test_first_run_ui.py::test_reopening_in_stage2_resumes_at_sound_check[first_run_ui0]
+tests/e2e/test_first_run_ui.py::test_speed_keys_change_and_save_speed_then_consent[first_run_ui0]
+tests/e2e/test_first_run_ui.py::test_three_replays_show_the_sound_help[first_run_ui0]
+tests/e2e/test_first_run_ui.py::test_intro_replay_shows_a_card_per_line_and_esc_skips[first_run_ui0]
+tests/e2e/test_first_run_ui.py::test_setup_restart_opens_the_wizard[first_run_ui0]
+tests/e2e/test_guardian_contact.py::test_guardian_setup_preview_and_remove
+tests/e2e/test_guardian_contact.py::test_guardian_waits_for_consent_and_stop
+tests/e2e/test_guardian_contact.py::test_changed_or_expired_guardian_request_requires_fresh_yes[contact]
+tests/e2e/test_guardian_contact.py::test_changed_or_expired_guardian_request_requires_fresh_yes[screen]
+tests/e2e/test_guardian_contact.py::test_changed_or_expired_guardian_request_requires_fresh_yes[time]
+tests/e2e/test_guardian_contact.py::test_queued_yes_cannot_approve_a_new_prompt
+tests/e2e/test_guardian_contact.py::test_sms_mode_requires_fresh_unambiguous_confirmation
+tests/e2e/test_guardian_contact.py::test_guardian_endpoint_saves_on_personal_pc_and_refuses_on_shared
+tests/e2e/test_history_safety.py::test_back_onto_a_form_result_does_not_send_the_form_again
+tests/e2e/test_history_safety.py::test_back_through_ordinary_pages_still_works
+tests/e2e/test_history_safety.py::test_failed_load_after_a_form_result_does_not_send_the_form_again
+tests/e2e/test_history_safety.py::test_failed_reload_of_the_current_page_does_not_jump_further_back
+tests/e2e/test_history_safety.py::test_back_still_works_after_a_failed_load
+tests/e2e/test_history_safety.py::test_back_between_two_form_results_sends_neither_again
+tests/e2e/test_history_safety.py::test_footer_text_is_the_site_footer_not_article_footers
+tests/e2e/test_intent_planner_safety.py::test_spoken_secret_never_reaches_planner
+tests/e2e/test_intent_planner_safety.py::test_stop_interrupts_intent_plan_before_routing
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[2\ubc88 \ub20c\ub7ec\uc918-welfare]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88 \ub9d0\uace0 2\ubc88 \ub20c\ub7ec\uc918-welfare]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88\uc740 \ub204\ub974\uc9c0 \ub9d0\uace0 2\ubc88\uc744 \ub20c\ub7ec\uc918-welfare]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[\uccab \ub9c1\ud06c \ub20c\ub7ec\uc918-news]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88\uc774 \ubb50\uc600\uc9c0?-None]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88?-None]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88 \ub20c\ub7ec\uc904\ub798?-news]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88\uc740 \ub204\ub974\uc9c0 \ub9c8-None]
+tests/e2e/test_link_references.py::test_listed_links_respect_the_whole_request[1\ubc88\uc774\ub098 2\ubc88 \ub20c\ub7ec\uc918-None]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\ub124]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\uadf8\uac70 \ub20c\ub7ec\uc918]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\ub124, \uadf8\uac70 \uc5f4\uc5b4\uc918]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\uccab \ubc88\uc9f8 \uac80\uc0c9 \uacb0\uacfc \uc5f4\uc5b4\uc918]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\ub124, \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[,\ub124\ud654\uba74\uc5d0\uc788\ub294\uccab\ubc88\uc9f8\ub9c1\ud06c\uac00\ub9de\uc544\uc694.]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\uc608. \uccab \uac80\uc0c9 \uacb0\uacfc\uac00 \ub9de\uc2b5\ub2c8\ub2e4.]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\uccab \ubc88\uc9f8\uac00 \ub9de\uc544\uc694]
+tests/e2e/test_link_references.py::test_search_proposes_a_result_and_remembers_it_without_listing[\ub124, \uadf8 \ub9c1\ud06c \ub9de\uc544. \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ub9c1\ud06c\uac00 \ub9de\uc544. \uadf8\uac70 \uc5f4\uc5b4\uc918.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694?]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694?!.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\ub098\uc694]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \ud654\uba74\uc5d0 \uc788\ub294 \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\ub098\uc694? \uadf8\uac70 \uc5f4\uc5b4\uc918.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \ub450 \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \uccab \ubc88\uc9f8\ub098 \ub450 \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\uc544\ub2c8\uc694, \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc9c0 \uc54a\uc544\uc694]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\uc544\ub2c8\uc694, \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc9c0 \uc54a\uc544\uc694. \uadf8\uac70 \uc5f4\uc5b4\uc918.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694. \uc5f4\uc9c0 \ub9c8\uc138\uc694.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\ub124, \uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694. \ub0a0\uc528 \ub9c1\ud06c\ub3c4 \uc5f4\uc5b4\uc918.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\uccab \ubc88\uc9f8\uac00 \ub9de\uc544\uc694. \uc9c0\uc6d0\uae08\ub3c4 \uc5f4\uc5b4\uc918.]
+tests/e2e/test_link_references.py::test_search_confirmation_requires_one_matching_affirmative[\uccab \ubc88\uc9f8 \ub9c1\ud06c\uac00 \ub9de\uc544\uc694\ub77c\uace0 \ub9d0\ud55c \uc801\uc774 \uc788\uc5b4\uc694.]
+tests/e2e/test_link_references.py::test_ordinal_confirmation_requires_a_live_proposal[\ub9c1\ud06c \ubaa9\ub85d \uc54c\ub824\uc918]
+tests/e2e/test_link_references.py::test_ordinal_confirmation_requires_a_live_proposal[\uccad\uc74c \uc18c\uac1c\ud574\uc918]
+tests/e2e/test_link_references.py::test_ordinal_confirmation_cannot_accept_a_replaced_proposal[\uccab \ubc88\uc9f8]
+tests/e2e/test_link_references.py::test_ordinal_confirmation_cannot_accept_a_replaced_proposal[\ub450 \ubc88\uc9f8]
+tests/e2e/test_link_references.py::test_ordinal_confirmation_cannot_click_a_changed_target
+tests/e2e/test_link_references.py::test_changed_link_destination_requires_a_new_choice
+tests/e2e/test_link_references.py::test_foreign_affirmative_uses_the_pending_link_before_public_planning
+tests/e2e/test_link_references.py::test_information_request_rejects_a_model_generated_click
+tests/e2e/test_link_references.py::test_result_selection_never_uses_header_links
+tests/e2e/test_link_references.py::test_search_result_numbers_are_consistent_after_reading_the_list
+tests/e2e/test_link_references.py::test_reply_already_queued_cannot_accept_a_new_search_proposal
+tests/e2e/test_link_references.py::test_questioning_or_leaving_a_proposal_cannot_open_it
+tests/e2e/test_link_references.py::test_flexible_reference_uses_only_an_observed_candidate[3-weather]
+tests/e2e/test_link_references.py::test_flexible_reference_uses_only_an_observed_candidate[900-None]
+tests/e2e/test_link_references.py::test_flexible_reference_uses_only_an_observed_candidate[None-None]
+tests/e2e/test_link_references.py::test_voice_opens_the_named_search_heading_without_reading_the_page
+tests/e2e/test_live_transcription.py::test_streams_before_commit_and_uses_only_the_matching_final
+tests/e2e/test_live_transcription.py::test_live_receipt_requires_consent_preserves_privacy_and_is_consumed_once
+tests/e2e/test_multilingual.py::test_switch_to_english_then_translate
+tests/e2e/test_multilingual.py::test_stop_without_translation
+tests/e2e/test_multilingual.py::test_only_the_first_bare_reply_to_a_password_mention_is_screened_locally[en-Where do I enter my password?-BlueMeadow]
+tests/e2e/test_multilingual.py::test_only_the_first_bare_reply_to_a_password_mention_is_screened_locally[ja-\u30d1\u30b9\u30ef\u30fc\u30c9\u306f\u3069\u3053\u306b\u5165\u529b\u3057\u307e\u3059\u304b-\u9752\u3044\u3057\u305a\u304f]
+tests/e2e/test_multilingual.py::test_only_the_first_bare_reply_to_a_password_mention_is_screened_locally[zh-\u5728\u54ea\u91cc\u8f93\u5165\u5bc6\u7801\uff1f-\u84dd\u8272\u8349\u5730]
+tests/e2e/test_multilingual.py::test_only_the_first_bare_reply_to_a_password_mention_is_screened_locally[ko-\ube44\ubc00\ubc88\ud638\ub97c \uc5b4\ub514\uc5d0 \uc785\ub825\ud558\uc8e0?-\ud478\ub978\uc5b8\ub355]
+tests/e2e/test_multilingual.py::test_private_readback_is_localized_without_sending_profile_to_the_translator
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[en-Please remember my name as Melody Finch-fields0]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[en-Save my address as 27 Maple Lane-fields1]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[ja-\u79c1\u306e\u540d\u524d\u306f\u661f\u7a7a\u3067\u3059\u3002\u899a\u3048\u3066\u304f\u3060\u3055\u3044-fields2]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[ja-\u79c1\u306e\u4f4f\u6240\u306f\u6708\u898b\u753a\u4e03\u756a\u5730\u3067\u3059\u3002\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044-fields3]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[zh-\u8bf7\u8bb0\u4f4f\u6211\u7684\u540d\u5b57\u662f\u4e91\u821f-fields4]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[zh-\u8bf7\u4fdd\u5b58\u6211\u7684\u5730\u5740\uff1a\u6708\u5149\u8def\u4e03\u53f7-fields5]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[en-Remember my name is Cloud Finch and my address is \uac00\uc0c1\ud2b9\ubcc4\uc2dc \ub2ec\ube5b\ub098\ub8e8\uad6c \uc0c8\ubd04\ub9c8\uc744 \uc740\ube5b\uae38-fields6]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[ja-\u79c1\u306e\u540d\u524d\u306f\u661f\u7a7a\u3001\u4f4f\u6240\u306f\u6708\u898b\u753a\u4e03\u756a\u5730\u3067\u3059\u3002\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044-fields7]
+tests/e2e/test_multilingual.py::test_explicit_vault_save_never_sends_the_supplied_value_to_a_model[zh-\u8bf7\u4fdd\u5b58\u6211\u7684\u59d3\u540d\u662f\u4e91\u821f\uff0c\u5730\u5740\u662f\u6708\u5149\u8def\u4e03\u53f7-fields8]
+tests/e2e/test_multilingual.py::test_question_about_saving_an_address_still_reaches_general_language_routing
+tests/e2e/test_multilingual.py::test_recognizable_personal_saves_can_clarify_locally[Save the address 77 Pineview Orchard on this computer-77 Pineview Orchard]
+tests/e2e/test_multilingual.py::test_recognizable_personal_saves_can_clarify_locally[Keep Aurelia Rowan as the name I use for applications-Aurelia Rowan]
+tests/e2e/test_multilingual.py::test_recognizable_personal_saves_can_clarify_locally[\u628a\u4e91\u821f\u4f5c\u4e3a\u6211\u7684\u540d\u5b57\u4fdd\u5b58\u4e0b\u6765-\u4e91\u821f]
+tests/e2e/test_multilingual.py::test_recognizable_personal_saves_can_clarify_locally[\u661f\u7a7a\u3092\u79c1\u306e\u540d\u524d\u3068\u3057\u3066\u899a\u3048\u3066\u304f\u3060\u3055\u3044-\u661f\u7a7a]
+tests/e2e/test_multilingual.py::test_foreign_secret_blocked_before_translation
+tests/e2e/test_multilingual.py::test_only_rule_words_approve
+tests/e2e/test_multilingual.py::test_changed_numbers_fall_back_to_korean
+tests/e2e/test_multilingual.py::test_auto_switch_by_script
+tests/e2e/test_multilingual.py::test_no_llm_no_switch
+tests/e2e/test_multilingual.py::test_about_unknown_site
+tests/e2e/test_multilingual.py::test_about_practice_site
+tests/e2e/test_navigation.py::test_menu_buttons_reach_the_model
+tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt]
+tests/e2e/test_navigation.py::test_clicks_elements_missed_before[image-link-alt-over-title]
+tests/e2e/test_navigation.py::test_clicks_elements_missed_before[role-link-without-href]
+tests/e2e/test_navigation.py::test_clicks_elements_missed_before[roleless-clickable]
+tests/e2e/test_navigation.py::test_tab_reveals_its_panel[li-role-tab]
+tests/e2e/test_navigation.py::test_tab_reveals_its_panel[button-role-tab]
+tests/e2e/test_navigation.py::test_expander_opens_in_place
+tests/e2e/test_navigation.py::test_find_moves_the_text_window
+tests/e2e/test_navigation.py::test_nothing_changed_is_reported
+tests/e2e/test_navigation.py::test_voice_tab_click_reads_revealed_text_quickly
+tests/e2e/test_navigation.py::test_slow_tab_panel_is_read_after_it_loads
+tests/e2e/test_navigation.py::test_rotating_notice_is_not_read_as_the_click_effect
+tests/e2e/test_navigation.py::test_content_that_arrived_late_does_not_hide_the_next_click
+tests/e2e/test_navigation.py::test_link_acting_as_tab_finishes_quickly
+tests/e2e/test_navigation.py::test_voice_click_without_effect_says_so
+tests/e2e/test_navigation.py::test_link_inside_popup_can_be_pressed
+tests/e2e/test_navigation.py::test_login_button_waits_for_the_go_word
+tests/e2e/test_navigation.py::test_login_click_is_dropped_when_the_button_changed
+tests/e2e/test_navigation.py::test_rotating_notice_does_not_cancel_an_approval
+tests/e2e/test_navigation.py::test_cloned_elements_get_their_own_ref
+tests/e2e/test_navigation.py::test_changed_element_is_not_clicked
+tests/e2e/test_navigation.py::test_elements_are_classified_for_the_guard
+tests/e2e/test_navigation.py::test_safe_mode_allows_information_tabs_only
+tests/e2e/test_picture_capture.py::test_personal_details_inputs_and_frames_are_black
+tests/e2e/test_picture_capture.py::test_the_page_is_left_unmarked
+tests/e2e/test_picture_capture.py::test_cursor_overlay_is_not_in_the_picture
+tests/e2e/test_picture_capture.py::test_login_page_is_refused_before_capture
+tests/e2e/test_picture_capture.py::test_password_field_that_appears_after_planning_is_refused
+tests/e2e/test_picture_capture.py::test_secret_in_main_text_that_no_block_holds_is_refused
+tests/e2e/test_picture_capture.py::test_new_auth_screen_on_the_same_url_is_refused_before_capture
+tests/e2e/test_picture_capture.py::test_mutation_during_screenshot_discards_bytes_and_cleans_up
+tests/e2e/test_picture_capture.py::test_single_png_contains_both_ends_and_masks_below_the_fold
+tests/e2e/test_picture_turn.py::test_numbered_followup_uses_the_control_that_was_described[False]
+tests/e2e/test_picture_turn.py::test_numbered_followup_uses_the_control_that_was_described[True]
+tests/e2e/test_picture_turn.py::test_compound_turn_does_not_put_picture_text_into_planner_history
+tests/e2e/test_picture_turn.py::test_selected_passage_is_explained_without_a_screenshot
+tests/e2e/test_picture_turn.py::test_unspecified_part_prompts_for_a_target
+tests/e2e/test_picture_turn.py::test_focused_input_uses_its_label_without_sending_the_value
+tests/e2e/test_picture_turn.py::test_chart_with_a_text_equivalent_can_answer_without_vision
+tests/e2e/test_picture_turn.py::test_visual_screen_description_sends_one_masked_page_with_recent_user_context
+tests/e2e/test_picture_turn.py::test_text_only_commands_skip_image_capture
+tests/e2e/test_picture_turn.py::test_semantic_read_skill_honors_capture_exclusion
+tests/e2e/test_picture_turn.py::test_screen_description_uses_text_when_the_image_is_unavailable[password]
+tests/e2e/test_picture_turn.py::test_screen_description_uses_text_when_the_image_is_unavailable[provider]
+tests/e2e/test_picture_turn.py::test_declined_consent_refuses_before_observing_or_capturing[\uc2a4\ud06c\ub9b0\uc0f7\uc73c\ub85c \uc811\uc218 \ub9c8\uac10\uacfc \ub204\ub97c \uc218 \uc788\ub294 \uac83\uc744 \uc54c\ub824\uc918]
+tests/e2e/test_picture_turn.py::test_declined_consent_refuses_before_observing_or_capturing[\ud654\uba74 \uc124\uba85\ud574\uc918]
+tests/e2e/test_picture_turn.py::test_capture_failure_does_not_contact_provider
+tests/e2e/test_picture_turn.py::test_capture_requires_action_budget_and_working_audit_log[quota]
+tests/e2e/test_picture_turn.py::test_capture_requires_action_budget_and_working_audit_log[audit]
+tests/e2e/test_picture_turn.py::test_lazy_footer_is_in_one_full_page_request_and_its_button_can_be_pressed
+tests/e2e/test_picture_turn.py::test_scrollable_main_panel_restores_its_position_and_masks_its_footer
+tests/e2e/test_picture_turn.py::test_oversize_page_is_refused_before_any_screenshot_or_upload
+tests/e2e/test_picture_turn.py::test_interrupted_text_decision_does_not_capture_the_new_screen[stop]
+tests/e2e/test_picture_turn.py::test_interrupted_text_decision_does_not_capture_the_new_screen[navigate]
+tests/e2e/test_picture_turn.py::test_interrupt_while_capturing_discards_the_picture
+tests/e2e/test_pilot_recovery.py::test_recovered_stopped_session_requires_current_writer_and_stop_generation
+tests/e2e/test_pilot_recovery.py::test_recovery_rotates_writer_and_revalidates_before_fresh_approval
+tests/e2e/test_pilot_recovery.py::test_shared_profiles_isolate_personal_state_and_preserve_three_active_sessions
+tests/e2e/test_public_auth_labels.py::test_public_guide_with_certificate_button_keeps_guidance
+tests/e2e/test_public_auth_labels.py::test_english_follow_up_on_public_guide_is_answered_in_english
+tests/e2e/test_public_datasets.py::test_directory_before_consent_disambiguates_and_preserves_short_speech
+tests/e2e/test_public_datasets.py::test_private_program_discovery_followups_use_its_own_record
+tests/e2e/test_public_datasets.py::test_direct_links_cover_local_bokjiro_csv_related_sites_and_official_hints
+tests/e2e/test_public_planner.py::test_decision_schema_scopes_memory_and_keeps_explicit_model_overrides
+tests/e2e/test_public_planner.py::test_claims_preserve_source_conditions_and_missing_facts
+tests/e2e/test_public_planner.py::test_normal_turn_uses_native_intake_and_verified_page[ko-\uc815\ubd8024\uc5d0\uc11c \ub85c\uadf8\uc778\uc740 \uac74\ub108\ub6f0\uace0 \uc8fc\ubbfc\ub4f1\ub85d\ub4f1\ubcf8 \ubc1c\uae09 \uc11c\ub958\ub9cc \uc54c\ub824\uc918]
+tests/e2e/test_public_planner.py::test_normal_turn_uses_native_intake_and_verified_page[en-On Gov24 please find the paperwork, without logging in.]
+tests/e2e/test_public_planner.py::test_normal_turn_uses_native_intake_and_verified_page[zh-\u8bf7\u5728\u653f\u5e9c24\u67e5\u4e00\u4e0b\u529e\u7406\u4f4f\u6c11\u767b\u8bb0\u6240\u9700\u6750\u6599\uff0c\u4e0d\u8981\u767b\u5f55\u3002]
+tests/e2e/test_public_planner.py::test_normal_turn_uses_native_intake_and_verified_page[ja-\u653f\u5e9c24\u3067\u4f4f\u6c11\u767b\u9332\u8b04\u672c\u306e\u66f8\u985e\u3092\u8abf\u3079\u3066\u304f\u3060\u3055\u3044\u3002\u30ed\u30b0\u30a4\u30f3\u306f\u4e0d\u8981\u3067\u3059\u3002]
+tests/e2e/test_public_planner.py::test_clarification_choice_rejection_and_agency_switch
+tests/e2e/test_public_planner.py::test_stop_during_intake_discards_late_decision
+tests/e2e/test_public_planner.py::test_read_scope_even_on_a_supported_form
+tests/e2e/test_public_planner.py::test_partial_lookup_keeps_earlier_proof_and_names_the_missing_fact
+tests/e2e/test_public_planner.py::test_catalog_answers_compound_public_lookup_without_a_browser_or_another_model
+tests/e2e/test_public_planner.py::test_fixture_reference_requires_observed_official_evidence[False-True]
+tests/e2e/test_public_planner.py::test_fixture_reference_requires_observed_official_evidence[True-True]
+tests/e2e/test_public_planner.py::test_fixture_reference_requires_observed_official_evidence[True-False]
+tests/e2e/test_public_planner.py::test_durable_completion_checks_original_request_and_verbatim_support[different-action-partial]
+tests/e2e/test_public_planner.py::test_durable_completion_checks_original_request_and_verbatim_support[unsupported-quote-partial]
+tests/e2e/test_public_planner.py::test_durable_completion_checks_original_request_and_verbatim_support[timeout-response-partial]
+tests/e2e/test_public_planner.py::test_durable_completion_checks_original_request_and_verbatim_support[irrelevant-incomplete]
+tests/e2e/test_public_planner.py::test_durable_completion_checks_original_request_and_verbatim_support[fully-supported-completed]
+tests/e2e/test_public_planner.py::test_browser_launch_recovers_on_retry_and_after_disconnect
+tests/e2e/test_public_service_setup.py::test_scholarship_procedure_uses_selected_tab_for_evidence
+tests/e2e/test_public_service_setup.py::test_settings_enable_audio_planning_and_survive_restart
+tests/e2e/test_public_service_setup.py::test_switches_official_sites_and_keeps_followup_on_scholarships
+tests/e2e/test_public_service_setup.py::test_editing_settings_keeps_the_current_task_and_forgets_shared_device_topic
+tests/e2e/test_public_service_setup.py::test_reads_legacy_portal_without_mistaking_a_notice_for_login
+tests/e2e/test_public_service_setup.py::test_speech_repair_waits_for_agreement_and_accepts_a_correction
+tests/e2e/test_qa_long_tasks.py::test_site_goal_with_several_questions_stays_one_goal
+tests/e2e/test_qa_long_tasks.py::test_reads_to_the_end_of_a_long_page
+tests/e2e/test_qa_long_tasks.py::test_read_more_past_the_end_is_a_failed_step
+tests/e2e/test_qa_long_tasks.py::test_slow_repeat_spells_the_number_and_keeps_settings
+tests/e2e/test_qa_long_tasks.py::test_open_official_opens_the_selected_service_page
+tests/e2e/test_qa_long_tasks.py::test_open_official_without_a_service_asks
+tests/e2e/test_qa_long_tasks.py::test_real_site_login_without_a_site_asks_instead_of_practice_login
+tests/e2e/test_qa_long_tasks.py::test_verified_web_answer_carries_its_page_as_source
+tests/e2e/test_qa_long_tasks.py::test_open_official_for_another_named_service_does_not_open_the_current_one
+tests/e2e/test_qa_long_tasks.py::test_name_question_on_a_page_without_a_form_is_answered_not_refused
+tests/e2e/test_qa_long_tasks.py::test_typed_verification_code_never_reaches_the_screen_summary
+tests/e2e/test_qa_long_tasks.py::test_language_switch_and_fixed_lines_during_a_login_handoff
+tests/e2e/test_qa_long_tasks.py::test_named_source_is_spoken_once_per_site
+tests/e2e/test_qa_long_tasks.py::test_near_miss_site_name_is_confirmed_before_going
+tests/e2e/test_qa_long_tasks.py::test_near_miss_site_name_goes_after_yes
+tests/e2e/test_qa_long_tasks.py::test_exact_site_name_is_not_confirmed
+tests/e2e/test_read_only_clicks.py::test_ask_tier_button_presses_after_yes
+tests/e2e/test_read_only_clicks.py::test_ask_tier_decline_or_target_change_never_clicks[\uac70\uc808]
+tests/e2e/test_read_only_clicks.py::test_ask_tier_decline_or_target_change_never_clicks[\ub20c\ub7ec]
+tests/e2e/test_read_only_clicks.py::test_hard_tier_still_refused
+tests/e2e/test_read_only_clicks.py::test_offline_partial_approval_never_clicks[\uc544\ub2c8, \ub20c\ub7ec]
+tests/e2e/test_read_only_clicks.py::test_offline_partial_approval_never_clicks[\uc751 \uadf8\ub9ac\uace0 \ubcf8\ubb38 \uc77d\uc5b4\uc918]
+tests/e2e/test_read_only_clicks.py::test_ask_tier_does_not_follow_an_approval_to_another_record
+tests/e2e/test_read_only_clicks.py::test_unrestricted_goal_pauses_at_generic_control
+tests/e2e/test_read_only_clicks.py::test_approved_ask_click_does_not_retry_after_timeout
+tests/e2e/test_review_loop.py::test_intake_accepts_all_requested_steps_within_the_hard_budget
+tests/e2e/test_review_loop.py::test_public_retry_keeps_form_values_out_of_the_search
+tests/e2e/test_review_loop.py::test_missing_fact_retries_in_same_turn_and_keeps_first_quote[easy-2]
+tests/e2e/test_review_loop.py::test_missing_fact_retries_in_same_turn_and_keeps_first_quote[medium-3]
+tests/e2e/test_review_loop.py::test_missing_fact_retries_in_same_turn_and_keeps_first_quote[hard-5]
+tests/e2e/test_review_loop.py::test_missing_fact_retries_in_same_turn_and_keeps_first_quote[None-3]
+tests/e2e/test_review_loop.py::test_no_progress_or_missing_reviewer_never_announces_success
+tests/e2e/test_review_loop.py::test_stop_cancels_outstanding_review_without_another_lookup
+tests/e2e/test_review_loop.py::test_new_evidence_cannot_extend_the_selected_iteration_limit[easy-2]
+tests/e2e/test_review_loop.py::test_new_evidence_cannot_extend_the_selected_iteration_limit[medium-3]
+tests/e2e/test_review_loop.py::test_new_evidence_cannot_extend_the_selected_iteration_limit[hard-5]
+tests/e2e/test_reviewed_actions.py::test_reviewed_open_click_fill_click[approve]
+tests/e2e/test_reviewed_actions.py::test_reviewed_open_click_fill_click[decline]
+tests/e2e/test_reviewed_actions.py::test_reviewed_open_click_fill_click[stale]
+tests/e2e/test_reviewed_actions.py::test_reviewed_open_click_fill_click[stop]
+tests/e2e/test_reviewed_actions.py::test_final_arrival_is_checked_after_the_reviewer_replies
+tests/e2e/test_safety.py::test_prompt_injection_ignored_and_no_submit_before_approval
+tests/e2e/test_safety.py::test_multi_field_fill_verified_in_dom
+tests/e2e/test_safety.py::test_two_address_fields_asks_before_fill
+tests/e2e/test_safety.py::test_describe_screen_reads_everything_and_ignores_instructions
+tests/e2e/test_safety.py::test_guided_dialogue_value_only
+tests/e2e/test_safety.py::test_question_mid_form_then_resume
+tests/e2e/test_safety.py::test_edit_waiting_then_new_value
+tests/e2e/test_safety.py::test_info_popup_closed_and_announced
+tests/e2e/test_safety.py::test_stop_interrupts_inflight_and_blocks_later
+tests/e2e/test_safety.py::test_multi_question_turn_waits_for_consent
+tests/e2e/test_safety.py::test_picking_discovered_service_waits_for_consent
+tests/e2e/test_safety.py::test_multi_question_turn_blocked_while_stopped
+tests/e2e/test_safety.py::test_resume_plan_runs_its_later_steps
+tests/e2e/test_safety.py::test_password_never_stored_spoken_or_entered
+tests/e2e/test_safety.py::test_bare_password_on_login_page_not_sent_or_stored
+tests/e2e/test_safety.py::test_bare_word_after_password_mention
+tests/e2e/test_safety.py::test_ordinary_words_pass_outside_login
+tests/e2e/test_safety.py::test_mock_submit_receipt
+tests/e2e/test_safety.py::test_value_changed_after_read_back_cancels_mock_submit
+tests/e2e/test_safety.py::test_approval_after_two_minutes_reads_the_summary_again
+tests/e2e/test_safety.py::test_timed_out_mock_submit_is_not_sent_again
+tests/e2e/test_safety.py::test_timed_out_mock_submit_that_went_through_reports_the_receipt
+tests/e2e/test_safety.py::test_timed_out_low_risk_click_is_retried_once
+tests/e2e/test_safety.py::test_cancel_drops_a_pending_vault_save_and_says_so
+tests/e2e/test_safety.py::test_vault_and_records_wait_while_stopped
+tests/e2e/test_safety.py::test_vault_and_records_wait_for_consent
+tests/e2e/test_safety.py::test_web_answer_hides_resident_number_from_llm
+tests/e2e/test_safety.py::test_vault_values_hidden_in_history
+tests/e2e/test_safety.py::test_declined_vault_values_stay_out_of_later_model_requests
+tests/e2e/test_safety.py::test_stop_during_private_save_keeps_readback_on_device
+tests/e2e/test_safety.py::test_short_speech_keeps_private_addresses_complete_on_device
+tests/e2e/test_scenarios.py::test_demo_scenario[S1-normal-flow]
+tests/e2e/test_scenarios.py::test_demo_scenario[S2-field-validation]
+tests/e2e/test_scenarios.py::test_demo_scenario[S3-sensitive-auth-handoff]
+tests/e2e/test_scenarios.py::test_demo_scenario[S4-stop-cancel]
+tests/e2e/test_scenarios.py::test_demo_scenario[S5-agent-collaboration]
+tests/e2e/test_search_visibility.py::test_answer_first_then_show_on_request_and_keep_the_page
+tests/e2e/test_search_visibility.py::test_quiet_search_unavailable_stays_in_conversation[True]
+tests/e2e/test_search_visibility.py::test_quiet_search_unavailable_stays_in_conversation[False]
+tests/e2e/test_search_visibility.py::test_stop_discards_late_silent_search_answer
+tests/e2e/test_server_voice_pace.py::test_saved_slow_rate_reaches_the_server_voice
+tests/e2e/test_shared_browser.py::test_closing_the_last_shared_tab_leaves_a_tab_for_the_next_session
+tests/e2e/test_shared_browser.py::test_two_shared_sessions_closing_at_once_leave_a_tab
+tests/e2e/test_shared_browser.py::test_closing_one_of_two_shared_sessions_closes_only_its_tab
+tests/e2e/test_slow_pages.py::test_a_page_that_answers_but_builds_slowly_counts_as_opened
+tests/e2e/test_slow_pages.py::test_failed_load_returns_to_a_slow_previous_page_not_a_blank_one
+tests/e2e/test_slow_pages.py::test_back_onto_a_slow_page_is_done_when_the_page_answers
+tests/e2e/test_slow_pages.py::test_files_stay_cached_from_one_page_to_the_next
+tests/e2e/test_slow_pages.py::test_returning_from_a_popup_restores_the_openers_pending_search
+tests/e2e/test_slow_pages.py::test_the_adapter_opens_web_addresses_only
+tests/e2e/test_slow_pages.py::test_bokjiro_does_not_call_a_pending_result_a_completed_search
+tests/e2e/test_slow_pages.py::test_search_waits_for_results_that_come_after_the_page
+tests/e2e/test_slow_pages.py::test_search_does_not_announce_success_on_an_unchanged_page
+tests/e2e/test_slow_pages.py::test_an_inline_empty_result_is_a_completed_search
+tests/e2e/test_slow_pages.py::test_search_says_results_are_not_in_yet_and_reading_waits_for_them
+tests/e2e/test_slow_pages.py::test_back_onto_a_page_that_fetches_its_content_describes_that_content
+tests/e2e/test_slow_pages.py::test_back_to_results_of_a_form_search_runs_that_search_again
+tests/e2e/test_slow_pages.py::test_back_onto_some_other_form_result_stays_and_does_not_say_try_again
+tests/e2e/test_stack_intake.py::test_personal_foreground_and_background_worker_have_distinct_scopes
+tests/e2e/test_stack_intake.py::test_semantic_screen_skill_never_routes_an_approval
+tests/e2e/test_stack_intake.py::test_file_transcript_needs_consent_and_never_executes_or_enters_history
+tests/e2e/test_stop_inflight.py::test_stop_before_the_page_answers_keeps_the_screen_that_was_open[button]
+tests/e2e/test_stop_inflight.py::test_stop_before_the_page_answers_keeps_the_screen_that_was_open[voice]
+tests/e2e/test_stop_inflight.py::test_stop_drops_what_was_queued_behind_the_page_that_was_opening
+tests/e2e/test_stop_inflight.py::test_stop_after_a_link_was_pressed_keeps_the_screen_that_was_open
+tests/e2e/test_stop_inflight.py::test_stop_after_the_page_already_changed_says_so_on_resume
+tests/e2e/test_vault_confirmation.py::test_delete_needs_assent_to_this_operation[\ub124, \uc9c0\uc6b0\uc9c0 \ub9c8\uc138\uc694]
+tests/e2e/test_vault_confirmation.py::test_delete_needs_assent_to_this_operation[\ub124\uc774\ubc84 \uc5f4\uc5b4\uc918]
+tests/e2e/test_vault_confirmation.py::test_delete_needs_assent_to_this_operation[\uc800\uc7a5\ud574]
+tests/e2e/test_vault_confirmation.py::test_queued_yes_cannot_answer_a_vault_question_created_while_waiting
+tests/e2e/test_vault_confirmation.py::test_original_language_controls_vault_consent
+tests/e2e/test_vault_confirmation.py::test_foreign_correction_can_change_tasks_during_vault_confirmation
+tests/e2e/test_voice_edge.py::test_edge_selection_is_endpoint_and_key_specific
+tests/e2e/test_voice_edge.py::test_live_offer_seeds_recent_redacted_app_dialogue
+tests/e2e/test_voice_edge.py::test_live_offer_falls_back_to_client_when_decisions_are_unavailable
+tests/e2e/test_voice_edge.py::test_live_history_keeps_the_newest_turns_within_the_size_limit
+tests/e2e/test_voice_edge.py::test_transcript_matches_offsets_and_keeps_fragments_and_approval_together
+tests/e2e/test_voice_edge.py::test_private_readback_reaches_the_device_without_live_commentary
+tests/e2e/test_voice_edge.py::test_late_transcript_replay_and_voice_stop_during_delegated_work
+tests/e2e/test_voice_edge.py::test_a_thinking_pause_keeps_the_whole_sentence
+tests/e2e/test_voice_edge.py::test_an_oversized_native_fragment_cannot_turn_into_a_short_approval
+tests/e2e/test_voice_edge.py::test_an_evicted_transcript_prefix_cannot_turn_into_a_short_approval
+tests/e2e/test_voice_edge.py::test_live_vault_consent_uses_the_card_known_at_connection_start
+tests/e2e/test_voice_edge.py::test_live_link_reply_belongs_to_the_offer_heard_before_speaking
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[open]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[cancel]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[duplicate]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[open-with-ack]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[cancel-with-ack]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[cancel-with-korean-ack]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[cancel-with-split-ack]
+tests/e2e/test_voice_edge.py::test_live_link_reply_waits_through_a_spoken_pause[cancel-with-preloaded-ack]
+tests/e2e/test_voice_edge.py::test_delayed_link_delegation_keeps_the_refusal_across_an_ack[27900]
+tests/e2e/test_voice_edge.py::test_delayed_link_delegation_keeps_the_refusal_across_an_ack[28050]
+tests/e2e/test_voice_edge.py::test_ambiguous_live_output_cannot_authorize_the_prefix_of_a_link_reply
+tests/e2e/test_voice_edge.py::test_link_delegation_does_not_reach_back_across_prior_live_output
+tests/e2e/test_voice_edge.py::test_live_link_reply_keeps_the_first_offer_until_a_new_turn[False]
+tests/e2e/test_voice_edge.py::test_live_link_reply_keeps_the_first_offer_until_a_new_turn[True]
+tests/e2e/test_voice_edge.py::test_live_link_reply_times_out_before_dispatching_unsettled_text
+tests/e2e/test_voice_edge.py::test_live_link_timeout_does_not_authorize_a_late_suffix
+tests/e2e/test_voice_edge.py::test_live_urgent_turn_stays_prompt_with_a_link_offer[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4]
+tests/e2e/test_voice_edge.py::test_live_urgent_turn_stays_prompt_with_a_link_offer[\uba48\ucdb0]
+tests/e2e/test_voice_edge.py::test_live_decisions_set_effort_only_for_the_matching_sol_turn
+tests/e2e/test_voice_edge.py::test_progress_question_is_answered_while_a_task_runs
+tests/e2e/test_voice_edge.py::test_long_task_speaks_each_new_progress_step_once
+tests/e2e/test_voice_edge.py::test_reviewed_turn_holds_automatic_progress_and_speaks_the_reviewed_result
+tests/e2e/test_voice_edge.py::test_a_user_who_keeps_talking_is_heard_in_full
+tests/e2e/test_voice_edge.py::test_stop_right_after_unanswered_speech_still_stops
+tests/e2e/test_voice_edge.py::test_missing_words_ask_the_user_to_say_it_again
+tests/e2e/test_voice_edge.py::test_requests_beyond_the_waiting_limit_are_answered_busy
+tests/e2e/test_voice_edge.py::test_conversation_route_owns_sdp_consent_writer_and_auth_handoff
+tests/e2e/test_web_ui.py::test_typed_vault_reply_is_bound_when_typing_starts[ui_url0]
+tests/e2e/test_web_ui.py::test_held_sign_in_cancel_cannot_apply_to_another_handoff[ui_url0]
+tests/e2e/test_web_ui.py::test_workspace_language_changes_starter_and_example_payloads
+tests/e2e/test_web_ui.py::test_consent_then_text_command
+tests/e2e/test_web_ui.py::test_decline_and_high_contrast
+tests/e2e/test_web_ui.py::test_starters_match_consent_and_stage_an_editable_question[voice-consent]
+tests/e2e/test_web_ui.py::test_starters_match_consent_and_stage_an_editable_question[questions-only]
+tests/e2e/test_web_ui.py::test_one_shot_api_recording_reports_listening
+tests/e2e/test_web_ui.py::test_sound_cues_stay_under_mic_detector_limits
+tests/e2e/test_web_ui.py::test_double_clap_uses_continuous_mic_audio_and_releases_it
+tests/e2e/test_web_ui.py::test_live_barge_in_ignores_bleed_and_short_noise
+tests/e2e/test_web_ui.py::test_live_mode_talking_over_local_speech_stops_it
+tests/e2e/test_web_ui.py::test_clap_stop_during_permission_prompt
+tests/e2e/test_web_ui.py::test_private_speech_mutes_existing_and_new_uploading_microphones
+tests/e2e/test_web_ui.py::test_transition_cue_only_on_state_change
+tests/e2e/test_web_ui.py::test_earcon_always_resolves
+tests/e2e/test_web_ui.py::test_private_prompt_never_uses_remote_speech[on-device-voice]
+tests/e2e/test_web_ui.py::test_private_prompt_never_uses_remote_speech[only-online-voices]
+tests/e2e/test_web_ui.py::test_pointer_held_on_old_vault_prompt_cannot_approve_its_replacement[ui_url0]
+tests/e2e/test_web_ui.py::test_approval_plays_its_cue_once
+tests/e2e/test_web_ui.py::test_stop_plays_stopped_once_even_with_voice_guidance_off
+tests/e2e/test_web_ui.py::test_progress_cues_never_play_over_speech
+tests/e2e/test_web_ui.py::test_keyboard_welfare_answer_shows_source_date_and_next_action
+tests/e2e/test_web_ui.py::test_same_tab_reload_offers_resume_with_microphone_off[ui_url0]
+tests/e2e/test_web_ui.py::test_no_key_never_uses_browser_speech
+tests/e2e/test_web_ui.py::test_field_confirmation_reads_same_destination_and_stale_id_cannot_write
+tests/unit/test_action_log.py::test_seal_roundtrip
+tests/unit/test_action_log.py::test_action_log_hash_chain
+tests/unit/test_action_log.py::test_action_log_refuse_path_memory
+tests/unit/test_action_log.py::test_parse_action_log_read
+tests/unit/test_action_log.py::test_action_label_redacts
+tests/unit/test_action_log_guard.py::test_approval_action_blocked_when_log_fails
+tests/unit/test_approval.py::test_body_text_and_title_changes_do_not_count
+tests/unit/test_approval.py::test_page_change_is_named
+tests/unit/test_approval.py::test_target_gone_or_replaced_is_named
+tests/unit/test_approval.py::test_value_change_in_a_read_back_field_is_named
+tests/unit/test_approval.py::test_recheck_returns_a_fresh_fingerprint_with_the_same_sentence
+tests/unit/test_approval.py::test_proposed_fill_value_is_bound_in_the_fingerprint
+tests/unit/test_auth_apps.py::test_pass_app
+tests/unit/test_auth_apps.py::test_kakao_in_button
+tests/unit/test_auth_apps.py::test_login_not_verification
+tests/unit/test_auth_page.py::test_auth_page_kind_login_by_page_id_and_password
+tests/unit/test_auth_page.py::test_auth_page_kind_login_by_title
+tests/unit/test_auth_page.py::test_auth_page_kind_verification_by_title_without_password
+tests/unit/test_auth_page.py::test_auth_page_kind_other_when_not_auth
+tests/unit/test_auth_page.py::test_first_fill_field_prefers_non_password
+tests/unit/test_auth_page.py::test_verification_clue_is_read_from_observed_main_text
+tests/unit/test_auth_page.py::test_public_page_with_certificate_button_is_not_an_auth_screen[detail]
+tests/unit/test_auth_page.py::test_public_page_with_certificate_button_is_not_an_auth_screen[home]
+tests/unit/test_auth_page.py::test_real_gate_on_the_same_site_still_hands_off
+tests/unit/test_auth_page.py::test_certificate_login_buttons_without_a_telling_title_are_verification[names0]
+tests/unit/test_auth_page.py::test_certificate_login_buttons_without_a_telling_title_are_verification[names1]
+tests/unit/test_auth_page.py::test_certificate_tool_buttons_alone_are_not_verification
+tests/unit/test_auth_page.py::test_sms_code_page_is_verification
+tests/unit/test_auth_page.py::test_other_real_verification_screens[kwargs0]
+tests/unit/test_auth_page.py::test_other_real_verification_screens[kwargs1]
+tests/unit/test_auth_page.py::test_other_real_verification_screens[kwargs2]
+tests/unit/test_auth_page.py::test_guide_text_describing_certificates_is_not_a_gate[\uc8fc\ubbfc\ub4f1\ub85d\ud45c \ub4f1\ubcf8 \ubc1c\uae09. \uacf5\ub3d9\xb7\uae08\uc735\uc778\uc99d\uc11c \ub610\ub294 \uac04\ud3b8\uc778\uc99d\uc73c\ub85c \ub85c\uadf8\uc778\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.]
+tests/unit/test_auth_page.py::test_guide_text_describing_certificates_is_not_a_gate[\uc628\ub77c\uc778 \uc2e0\uccad\uc740 \uacf5\ub3d9\uc778\uc99d\uc11c\ub85c \ub85c\uadf8\uc778\ud55c \ub4a4 \uc2e0\uccad\ud558\uc138\uc694.]
+tests/unit/test_auth_page.py::test_guide_text_describing_certificates_is_not_a_gate[PASS \uc571\uc774 \uc788\uc73c\uba74 \ub354 \ud3b8\ud558\uac8c \uc2e0\uccad\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.]
+tests/unit/test_auth_page.py::test_body_instruction_to_verify_now_is_a_gate[PASS \uc778\uc99d\uc73c\ub85c \ubcf8\uc778 \ud655\uc778\uc744 \uc9c4\ud589\ud569\ub2c8\ub2e4.]
+tests/unit/test_auth_page.py::test_body_instruction_to_verify_now_is_a_gate[\ud734\ub300\ud3f0\uc5d0\uc11c PASS \uc571\uc73c\ub85c \uc778\uc99d\ud558\uc138\uc694.]
+tests/unit/test_auth_page.py::test_body_instruction_to_verify_now_is_a_gate[\uacf5\ub3d9\uc778\uc99d\uc11c\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.]
+tests/unit/test_auth_page.py::test_body_instruction_to_verify_now_is_a_gate[PASS \uc571\uc5d0\uc11c \uc778\uc99d\uc744 \uc644\ub8cc\ud55c \ub4a4 \ud655\uc778\uc744 \ub20c\ub7ec \uc8fc\uc138\uc694.]
+tests/unit/test_autopilot_source.py::test_source_is_the_page_that_holds_the_answer
+tests/unit/test_autopilot_source.py::test_answer_from_two_pages_cites_both
+tests/unit/test_call_name.py::test_call_name_round_trip_and_cleared_with_vault
+tests/unit/test_call_name.py::test_setting_none_forgets_the_call_name
+tests/unit/test_call_name.py::test_speak_call_name_never_doubles_nim
+tests/unit/test_dialogue.py::test_slots_are_read_only[state]
+tests/unit/test_dialogue.py::test_slots_are_read_only[approval]
+tests/unit/test_dialogue.py::test_slots_are_read_only[awaiting]
+tests/unit/test_dialogue.py::test_slots_are_read_only[clarification]
+tests/unit/test_dialogue.py::test_slots_are_read_only[profile_question]
+tests/unit/test_dialogue.py::test_slots_are_read_only[vault_confirm]
+tests/unit/test_dialogue.py::test_slots_are_read_only[guided]
+tests/unit/test_dialogue.py::test_slots_are_read_only[auth_resume]
+tests/unit/test_dialogue.py::test_value_filled_releases_matching_wait_and_voids_approval
+tests/unit/test_dialogue.py::test_value_filled_keeps_wait_for_another_field
+tests/unit/test_dialogue.py::test_navigated_off_form_drops_wait_and_approval
+tests/unit/test_dialogue.py::test_navigated_on_form_keeps_wait
+tests/unit/test_dialogue.py::test_approval_age_counts_from_the_latest_ask
+tests/unit/test_dialogue.py::test_stop_clears_every_wait
+tests/unit/test_dialogue.py::test_hold_auth_and_take_resume
+tests/unit/test_discovery_personal.py::test_central_catalog
+tests/unit/test_discovery_personal.py::test_local_catalog
+tests/unit/test_discovery_personal.py::test_profile_answer_many_at_once
+tests/unit/test_discovery_personal.py::test_profile_short_answers
+tests/unit/test_discovery_personal.py::test_profile_unrelated
+tests/unit/test_discovery_personal.py::test_rank_severe_basic
+tests/unit/test_discovery_personal.py::test_rank_senior_low_income
+tests/unit/test_discovery_personal.py::test_rank_with_region
+tests/unit/test_discovery_personal.py::test_local_detail
+tests/unit/test_discovery_personal.py::test_vault_values
+tests/unit/test_discovery_personal.py::test_vault_key_for_label
+tests/unit/test_discovery_personal.py::test_store_file_mode
+tests/unit/test_discovery_personal.py::test_store_sealed
+tests/unit/test_discovery_personal.py::test_personal_commands
+tests/unit/test_discovery_personal.py::test_speech_pref_commands
+tests/unit/test_discovery_personal.py::test_speech_prefs_persist
+tests/unit/test_discovery_personal.py::test_speech_dialogue_applies
+tests/unit/test_discovery_personal.py::test_parse_date
+tests/unit/test_discovery_personal.py::test_due_reminder
+tests/unit/test_discovery_region.py::test_profile_keeps_district_said_after_province
+tests/unit/test_discovery_region.py::test_other_district_program_is_never_recommended
+tests/unit/test_discovery_region.py::test_list_says_once_that_other_district_programs_were_left_out
+tests/unit/test_discovery_region.py::test_list_does_not_mention_left_out_programs_when_none_were[profile0]
+tests/unit/test_discovery_region.py::test_list_does_not_mention_left_out_programs_when_none_were[profile1]
+tests/unit/test_discovery_region.py::test_bare_official_district_name_is_where_the_user_lives[\uc0ac\uc0c1\uad6c\uc5d0 \uc0b4\uc544\uc694-\ubd80\uc0b0\uad11\uc5ed\uc2dc-\uc0ac\uc0c1\uad6c]
+tests/unit/test_discovery_region.py::test_bare_official_district_name_is_where_the_user_lives[\uae30\uc7a5\uad70\uc774\uc694-\ubd80\uc0b0\uad11\uc5ed\uc2dc-\uae30\uc7a5\uad70]
+tests/unit/test_discovery_region.py::test_bare_official_district_name_is_where_the_user_lives[\ubd80\uc0b0\uc5d0 \uc0b4\uace0 \uc911\uad6c\uc608\uc694-\ubd80\uc0b0\uad11\uc5ed\uc2dc-\uc911\uad6c]
+tests/unit/test_discovery_region.py::test_bare_official_district_name_is_where_the_user_lives[\ubd84\ub2f9\uad6c \uc0b4\uc544\uc694-\uacbd\uae30\ub3c4-\uc131\ub0a8\uc2dc]
+tests/unit/test_discovery_region.py::test_word_that_is_not_an_official_district_of_the_province_is_not_a_district[1\uc778 \uac00\uad6c\uc608\uc694]
+tests/unit/test_discovery_region.py::test_word_that_is_not_an_official_district_of_the_province_is_not_a_district[\ud63c\uc790 \uc0ac\ub294 1\uc778 \uac00\uad6c\uace0 \ub3c4\uc2dc\uc5d0 \uc0b4\uc544\uc694]
+tests/unit/test_discovery_region.py::test_word_that_is_not_an_official_district_of_the_province_is_not_a_district[\ubd80\uc0b0 \uc0b4\uace0 \ubd84\ub2f9\uad6c\uc608\uc694]
+tests/unit/test_discovery_region.py::test_word_that_is_not_an_official_district_of_the_province_is_not_a_district[\uad11\uc8fc\uc2dc\uc5d0 \uc0b4\uc544\uc694]
+tests/unit/test_discovery_region.py::test_shared_district_name_asks_which_province_once_it_is_time[\uc911\uad6c-\uc5b4\ub290 \uc2dc\uc758 \uc911\uad6c\uc778\uac00\uc694?]
+tests/unit/test_discovery_region.py::test_shared_district_name_asks_which_province_once_it_is_time[\uace0\uc131\uad70-\uc5b4\ub290 \ub3c4\uc758 \uace0\uc131\uad70\uc778\uac00\uc694?]
+tests/unit/test_discovery_region.py::test_answer_to_which_city_keeps_the_district_only_if_that_city_has_it
+tests/unit/test_discovery_region.py::test_known_province_settles_a_shared_district_name
+tests/unit/test_discovery_region.py::test_unknown_district_ranks_district_programs_lower_and_names_their_district
+tests/unit/test_discovery_region.py::test_precheck_surfaces_the_residence_gate[\uc0ac\uc0c1\uad6c-\uae30\uc7a5\uad70 \uac70\uc8fc: \ub9de\uc9c0 \uc54a\uc744 \uc218 \uc788\uc5b4\uc694]
+tests/unit/test_discovery_region.py::test_precheck_surfaces_the_residence_gate[\uae30\uc7a5\uad70-\uae30\uc7a5\uad70 \uac70\uc8fc: \ub9d0\uc500\ud558\uc2e0 \ub300\ub85c\uba74 \ub9de\uc544\uc694]
+tests/unit/test_discovery_region.py::test_precheck_surfaces_the_residence_gate[None-\uae30\uc7a5\uad70 \uac70\uc8fc: \ud655\uc778\uc774 \ud544\uc694\ud574\uc694]
+tests/unit/test_discovery_region.py::test_precheck_keeps_length_of_residence_from_the_model[\uae30\uc7a5\uad70\uc5d0 1\ub144 \uc774\uc0c1 \uac70\uc8fc]
+tests/unit/test_discovery_region.py::test_precheck_keeps_length_of_residence_from_the_model[\uc804\uc785 \ud6c4 6\uac1c\uc6d4]
+tests/unit/test_discovery_region.py::test_precheck_without_official_criteria_still_names_residence
+tests/unit/test_discovery_region.py::test_prepare_does_not_call_attachments_required_forms
+tests/unit/test_docs.py::test_read_hwp_refused
+tests/unit/test_docs.py::test_read_hwpx
+tests/unit/test_docs.py::test_read_pdf_kind
+tests/unit/test_docs.py::test_download_store_read
+tests/unit/test_docs.py::test_parse_read_download
+tests/unit/test_docs.py::test_screen_and_search_requests_do_not_read_downloads[\uc774\ubbf8\uc9c0 \uac80\uc0c9\ud574\uc918]
+tests/unit/test_docs.py::test_screen_and_search_requests_do_not_read_downloads[\uc774 \ud398\uc774\uc9c0\uc5d0 \uc5b4\ub5a4 \uc0ac\uc9c4\uc774 \uc788\uc5b4?]
+tests/unit/test_docs.py::test_screen_and_search_requests_do_not_read_downloads[\ud654\uba74\uc758 \uc774\ubbf8\uc9c0\ub97c \uc124\uba85\ud574\uc918]
+tests/unit/test_docs.py::test_download_verbatim_can_continue_past_first_chunk
+tests/unit/test_effect.py::test_moved_when_address_or_title_changes
+tests/unit/test_effect.py::test_changed_reports_only_new_lines
+tests/unit/test_effect.py::test_state_change_alone_counts
+tests/unit/test_effect.py::test_clicked_link_becoming_selected_is_its_own_change
+tests/unit/test_effect.py::test_selection_elsewhere_is_not_the_clicks_effect
+tests/unit/test_effect.py::test_new_dialog_text_is_revealed
+tests/unit/test_effect.py::test_a_spot_that_changed_in_two_pauses_is_ignored_for_any_text
+tests/unit/test_effect.py::test_content_that_arrived_once_is_not_ignored
+tests/unit/test_effect.py::test_only_the_lines_that_used_to_change_are_ignored
+tests/unit/test_effect.py::test_ticker_at_the_top_does_not_hide_a_whole_page_swap
+tests/unit/test_effect.py::test_churn_forgets_when_the_page_changes
+tests/unit/test_effect.py::test_loading_placeholders_are_not_content
+tests/unit/test_effect.py::test_none_when_nothing_changes
+tests/unit/test_first_run_settings.py::test_first_save_starts_setup_progress_at_stage2
+tests/unit/test_first_run_settings.py::test_settings_file_from_before_this_feature_counts_as_done
+tests/unit/test_first_run_settings.py::test_set_first_run_survives_reload_and_rejects_unknown_steps
+tests/unit/test_first_run_settings.py::test_browser_choice_is_kept_on_personal_pc_and_forced_to_separate_on_shared
+tests/unit/test_first_run_settings.py::test_saving_without_any_key_is_refused
+tests/unit/test_first_run_text.py::test_call_name_from[\ud64d\uae38\ub3d9-\ud64d\uae38\ub3d9]
+tests/unit/test_first_run_text.py::test_call_name_from[\ud64d\uae38\ub3d9\uc774\ub77c\uace0 \ubd88\ub7ec \uc918-\ud64d\uae38\ub3d9]
+tests/unit/test_first_run_text.py::test_call_name_from[\ud64d\uae38\ub3d9\uc774\ub77c\uace0 \ubd88\ub7ec\uc8fc\uc138\uc694-\ud64d\uae38\ub3d9]
+tests/unit/test_first_run_text.py::test_call_name_from[\uae38\ub3d9\ub2d8-\uae38\ub3d9]
+tests/unit/test_first_run_text.py::test_call_name_from[\uc74c \uae40\ud558\ub298\uc774\uc5d0\uc694-\uae40\ud558\ub298]
+tests/unit/test_first_run_text.py::test_call_name_from[\uae40\ud558\ub298\uc785\ub2c8\ub2e4-\uae40\ud558\ub298]
+tests/unit/test_first_run_text.py::test_call_name_from[\ud558\ub298\uc774\ub77c\uace0 \ud574 \uc918-\ud558\ub298]
+tests/unit/test_first_run_text.py::test_call_name_from[\uac74\ub108\ub6f0\uae30-None]
+tests/unit/test_first_run_text.py::test_call_name_from[\uac74\ub108\ub6f8\uac8c-None]
+tests/unit/test_first_run_text.py::test_call_name_from[\uc2eb\uc5b4-None]
+tests/unit/test_first_run_text.py::test_call_name_from[\uc5c6\uc5b4-None]
+tests/unit/test_first_run_text.py::test_call_name_from[\uc548 \ud560\ub798-None]
+tests/unit/test_first_run_text.py::test_call_name_from[-None]
+tests/unit/test_first_run_text.py::test_call_name_from[\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00-None]
+tests/unit/test_first_run_text.py::test_every_line_and_intro_line_has_four_languages
+tests/unit/test_first_run_text.py::test_intro_poses_exist_in_the_avatar_model
+tests/unit/test_first_run_text.py::test_first_run_slot_is_pending_and_cleared_by_stop
+tests/unit/test_first_run_text.py::test_end_first_run_clears_the_slot
+tests/unit/test_first_run_text.py::test_intro_draft_is_a_valid_turn_result_and_replay_has_no_offer
+tests/unit/test_grounding.py::test_quote_tolerates_spacing_punctuation_endings
+tests/unit/test_grounding.py::test_quote_not_in_source_or_too_short
+tests/unit/test_grounding.py::test_units_converted
+tests/unit/test_grounding.py::test_unsupported_amounts_and_phones
+tests/unit/test_grounding.py::test_small_numbers_ignored
+tests/unit/test_grounding.py::test_dates
+tests/unit/test_grounding.py::test_check_grounding
+tests/unit/test_grounding.py::test_digest_menu_and_content
+tests/unit/test_grounding.py::test_digest_kinds
+tests/unit/test_grounding.py::test_digest_for_llm_is_smaller
+tests/unit/test_grounding.py::test_digest_ranks_menu_buttons_over_screen_tools
+tests/unit/test_grounding.py::test_digest_gives_spare_room_to_buttons
+tests/unit/test_grounding.py::test_digest_lists_tabs_and_expanders_first_with_state
+tests/unit/test_grounding.py::test_readable_body
+tests/unit/test_grounding.py::test_korean_answer_rule_allows_hanja_in_news_titles
+tests/unit/test_guardian.py::test_guardian_does_not_replace_user_phone_and_is_cleared_with_vault
+tests/unit/test_guardian.py::test_explicit_sender_and_exact_request
+tests/unit/test_guardian.py::test_solapi_single_request_and_acceptance[200-body0-accepted]
+tests/unit/test_guardian.py::test_solapi_single_request_and_acceptance[200-body1-failed]
+tests/unit/test_guardian.py::test_solapi_single_request_and_acceptance[403-body2-failed]
+tests/unit/test_guardian.py::test_solapi_single_request_and_acceptance[500-body3-unknown]
+tests/unit/test_guardian.py::test_solapi_single_request_and_acceptance[200-body4-unknown]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc601\uc5b4\ub85c \ub9d0\ud574\uc918-en]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[Speak English-en]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[English please-en]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[English, please.-en]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[Korean, please.-ko]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc911\uad6d\uc5b4\ub85c \ub300\ub2f5\ud574 \uc918-zh]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u8bf4\u4e2d\u6587-zh]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\uc77c\ubcf8\uc5b4\ub85c \ud574\uc918-ja]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u65e5\u672c\u8a9e\u3067\u8a71\u3057\u3066-ja]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\ud55c\uad6d\uc5b4\ub85c-ko]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[Korean please-ko]
+tests/unit/test_i18n_voice_llm.py::test_lang_switch[\u97d3\u56fd\u8a9e\u3067\u304a\u9858\u3044\u3057\u307e\u3059-ko]
+tests/unit/test_i18n_voice_llm.py::test_lang_name_inside_long_sentence_is_not_command
+tests/unit/test_i18n_voice_llm.py::test_script_lang
+tests/unit/test_i18n_voice_llm.py::test_foreign_approval
+tests/unit/test_i18n_voice_llm.py::test_stop_words_multilingual
+tests/unit/test_i18n_voice_llm.py::test_translation_number_units
+tests/unit/test_i18n_voice_llm.py::test_verified_translation_distinguishes_legal_citations_decimals_and_won
+tests/unit/test_i18n_voice_llm.py::test_verified_translation_retries_with_source_figures_bound_to_the_service
+tests/unit/test_i18n_voice_llm.py::test_translate_out_retries_on_changed_numbers
+tests/unit/test_i18n_voice_llm.py::test_translate_out_retries_when_korean_left
+tests/unit/test_i18n_voice_llm.py::test_stt_sends_model_language_extension
+tests/unit/test_i18n_voice_llm.py::test_stt_prompt_echo_retries_without_language
+tests/unit/test_i18n_voice_llm.py::test_stt_echo_twice_returns_empty
+tests/unit/test_i18n_voice_llm.py::test_stt_no_korean_prompt_for_other_languages
+tests/unit/test_i18n_voice_llm.py::test_tts_body_and_mp3
+tests/unit/test_i18n_voice_llm.py::test_provider_error_status_only
+tests/unit/test_i18n_voice_llm.py::test_one_key_enables_both_api_providers
+tests/unit/test_i18n_voice_llm.py::test_audio_extension
+tests/unit/test_i18n_voice_llm.py::test_prompt_echo_detection
+tests/unit/test_i18n_voice_llm.py::test_rules_first_no_llm_call
+tests/unit/test_i18n_voice_llm.py::test_openai_strict_schema_no_temperature
+tests/unit/test_i18n_voice_llm.py::test_compatible_mode_json_object
+tests/unit/test_i18n_voice_llm.py::test_llm_cannot_approve_or_stop
+tests/unit/test_i18n_voice_llm.py::test_llm_failures_fall_back
+tests/unit/test_i18n_voice_llm.py::test_flat_unknown_uses_utterance
+tests/unit/test_i18n_voice_llm.py::test_no_key_means_rules
+tests/unit/test_key_check.py::test_key_check_maps_status[200-ok]
+tests/unit/test_key_check.py::test_key_check_maps_status[401-invalid]
+tests/unit/test_key_check.py::test_key_check_maps_status[403-invalid]
+tests/unit/test_key_check.py::test_key_check_maps_status[429-quota]
+tests/unit/test_key_check.py::test_key_check_maps_status[500-network]
+tests/unit/test_key_check.py::test_key_check_network_error
+tests/unit/test_key_check.py::test_check_key_endpoint_never_echoes_the_key
+tests/unit/test_layers.py::test_imports_follow_pipeline_layers
+tests/unit/test_layers.py::test_layer_table_has_no_cycle
+tests/unit/test_layers.py::test_only_sync_command_imports_snapshot_writer
+tests/unit/test_layers.py::test_snapshot_consumers_use_public_interface
+tests/unit/test_lexicon.py::test_approval[\uc2b9\uc778-ko-approve]
+tests/unit/test_lexicon.py::test_approval[\ubaa8\uc758\uc811\uc218 \uc2b9\uc778-ko-approve]
+tests/unit/test_lexicon.py::test_approval[\uc751-ko-approve]
+tests/unit/test_lexicon.py::test_approval[\ub20c\ub7ec\uc918-ko-approve]
+tests/unit/test_lexicon.py::test_approval[\ubcf4\ub0b4\uc918-ko-approve]
+tests/unit/test_lexicon.py::test_approval[\uc544\ub2c8-ko-reject]
+tests/unit/test_lexicon.py::test_approval[\ubcf4\ub0b4\uc9c0 \ub9c8-ko-reject]
+tests/unit/test_lexicon.py::test_approval[\uc774 \ubc84\ud2bc \ub20c\ub7ec\ub3c4 \ub3fc?-ko-None]
+tests/unit/test_lexicon.py::test_approval[\uc751 \uadfc\ub370 \uc774\uac70 \ubb50\uc57c-ko-None]
+tests/unit/test_lexicon.py::test_approval[Yes, go ahead-en-approve]
+tests/unit/test_lexicon.py::test_approval[no-en-reject]
+tests/unit/test_lexicon.py::test_approval[\uc2b9\uc778-en-None]
+tests/unit/test_lexicon.py::test_approval[\u306f\u3044-ja-approve]
+tests/unit/test_lexicon.py::test_approval[\u53d6\u6d88-zh-reject]
+tests/unit/test_lexicon.py::test_foreign_approval_ignores_korean_sessions
+tests/unit/test_lexicon.py::test_agree[\uc5b4-yes]
+tests/unit/test_lexicon.py::test_agree[\ub9de\uc544\uc694-yes]
+tests/unit/test_lexicon.py::test_agree[yes-yes]
+tests/unit/test_lexicon.py::test_agree[\u306f\u3044-yes]
+tests/unit/test_lexicon.py::test_agree[\uc544\ub0d0-no]
+tests/unit/test_lexicon.py::test_agree[\u4e0d\u5bf9-no]
+tests/unit/test_lexicon.py::test_agree[\uae00\uc384-None]
+tests/unit/test_lexicon.py::test_ack_kind[\uc54c\uc558\uc5b4\uc694.-ack]
+tests/unit/test_lexicon.py::test_ack_kind[\uad1c\ucc2e\uc544-no]
+tests/unit/test_lexicon.py::test_ack_kind[\uc54c\uc558\uc5b4 \ub2e4\uc74c-None]
+tests/unit/test_lexicon.py::test_done_reply[\ub2e4 \ud588\uc5b4\uc694-True]
+tests/unit/test_lexicon.py::test_done_reply[I'm done-True]
+tests/unit/test_lexicon.py::test_done_reply[\ub2e4\uc74c\uc73c\ub85c-False]
+tests/unit/test_lexicon.py::test_login_secret_exemption_requires_the_whole_reply
+tests/unit/test_lexicon.py::test_cancel_reply[\uc778\uc99d \ucde8\uc18c-True]
+tests/unit/test_lexicon.py::test_cancel_reply[cancel-True]
+tests/unit/test_lexicon.py::test_cancel_reply[\ucde8\uc18c \uc218\uc218\ub8cc \uc5bc\ub9c8\uc57c-False]
+tests/unit/test_lexicon.py::test_sign_in_cancellation_respects_the_whole_reply[Please don't cancel]
+tests/unit/test_lexicon.py::test_sign_in_cancellation_respects_the_whole_reply[What happens if I cancel?]
+tests/unit/test_lexicon.py::test_sign_in_cancellation_respects_the_whole_reply[\uc778\uc99d \ucde8\uc18c\ud558\uc9c0 \ub9c8\uc138\uc694]
+tests/unit/test_lexicon.py::test_sign_in_cancellation_respects_the_whole_reply[\u4e0d\u8981\u53d6\u6d88]
+tests/unit/test_lexicon.py::test_sign_in_cancellation_respects_the_whole_reply[\u30ad\u30e3\u30f3\u30bb\u30eb\u3057\u306a\u3044\u3067\u304f\u3060\u3055\u3044]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[I'm not done yet]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[I'll let you know when I'm done]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[\ub85c\uadf8\uc778 \uc644\ub8cc\ud588\uc5b4?]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[\uc778\uc99d\uc744 \ub2e4 \ud588\uc5b4\uc694, \uc544\ub2c8 \uc544\uc9c1\uc774\uc5d0\uc694]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[\u522b\u4ee5\u4e3a\u6211\u5df2\u7ecf\u5b8c\u6210\u4e86]
+tests/unit/test_lexicon.py::test_sign_in_completion_requires_an_affirmative_statement[\u300c\u7d42\u308f\u308a\u307e\u3057\u305f\u300d\u3068\u306f\u8a00\u3063\u3066\u3044\u307e\u305b\u3093]
+tests/unit/test_lexicon.py::test_sign_in_accepts_complete_spoken_statements[\uc778\uc99d\uc774 \ub05d\ub0ac\uc5b4\uc694.]
+tests/unit/test_lexicon.py::test_sign_in_accepts_complete_spoken_statements[\ub85c\uadf8\uc778\ud588\uc5b4\uc694]
+tests/unit/test_lexicon.py::test_sign_in_accepts_complete_spoken_statements[I\u2019m done.]
+tests/unit/test_lexicon.py::test_sign_in_accepts_complete_spoken_statements[\u5b8c\u6210\u4e86\u3002]
+tests/unit/test_lexicon.py::test_sign_in_accepts_complete_spoken_statements[\u7d42\u308f\u308a\u307e\u3057\u305f\uff01]
+tests/unit/test_llm_privacy.py::test_digest_for_llm_redacts_resident_number_in_main_text
+tests/unit/test_llm_privacy.py::test_digest_for_llm_gives_the_footer_with_personal_data_hidden
+tests/unit/test_llm_privacy.py::test_footer_is_redacted_before_it_is_cut
+tests/unit/test_llm_privacy.py::test_page_summary_sends_the_llm_redacted_text
+tests/unit/test_llm_privacy.py::test_digest_for_llm_redacts_title_heading_and_dialog
+tests/unit/test_llm_privacy.py::test_page_for_llm_redacts_resident_number
+tests/unit/test_llm_privacy.py::test_grounding_still_passes_on_unredacted_page_copy
+tests/unit/test_llm_privacy.py::test_goal_history_lines_hide_personal_data
+tests/unit/test_llm_privacy.py::test_page_text_for_llm_hides_personal_data_before_cutting
+tests/unit/test_llm_roles.py::test_overlay_llm_falls_back
+tests/unit/test_llm_roles.py::test_load_config_role_overrides
+tests/unit/test_llm_roles.py::test_single_key_defaults_and_independent_role_endpoints
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[GET-/api/health-headers0--400-INVALID_HOST]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[GET-/api/health-headers1--400-INVALID_HOST]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/session-headers2--400-INVALID_HOST]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/session-headers3--403-INVALID_ORIGIN]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/session-headers4--403-INVALID_ORIGIN]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/session-headers5--403-INVALID_ORIGIN]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/turn-headers6-{}-415-UNSUPPORTED_MEDIA_TYPE]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/audio/transcribe-headers7-{}-415-UNSUPPORTED_MEDIA_TYPE]
+tests/unit/test_local_requests.py::test_refused_requests_never_reach_runtime[POST-/api/audio/speak-headers8-a-415-UNSUPPORTED_MEDIA_TYPE]
+tests/unit/test_local_requests.py::test_local_api_accepts_same_origin_and_non_browser_clients[localhost]
+tests/unit/test_local_requests.py::test_local_api_accepts_same_origin_and_non_browser_clients[127.0.0.1]
+tests/unit/test_local_requests.py::test_local_api_accepts_same_origin_and_non_browser_clients[[::1]]
+tests/unit/test_local_stt.py::test_local_transcribes_without_prompt_by_default
+tests/unit/test_local_stt.py::test_local_prompt_only_for_korean_when_enabled
+tests/unit/test_local_stt.py::test_local_drops_silence_hallucinations_and_prompt_echo[\uc2dc\uccad\ud574 \uc8fc\uc154\uc11c \uac10\uc0ac\ud569\ub2c8\ub2e4.]
+tests/unit/test_local_stt.py::test_local_drops_silence_hallucinations_and_prompt_echo[\uad6c\ub3c5\uacfc \uc88b\uc544\uc694 \ubd80\ud0c1\ub4dc\ub9bd\ub2c8\ub2e4]
+tests/unit/test_local_stt.py::test_local_drops_silence_hallucinations_and_prompt_echo[MBC \ub274\uc2a4 \uc774\ub355\uc601\uc785\ub2c8\ub2e4.]
+tests/unit/test_local_stt.py::test_local_drops_silence_hallucinations_and_prompt_echo[\uc815\ubd8024, \uc8fc\ubbfc\ub4f1\ub85d\ub4f1\ubcf8, \uad6d\ubbfc\uc2e0\ubb38\uace0, \ubbfc\uc6d0, \ud55c\uad6d\uc7a5\ud559\uc7ac\ub2e8, \uad6d\uac00\uc7a5\ud559\uae08.]
+tests/unit/test_local_stt.py::test_hallucination_keeps_real_utterances
+tests/unit/test_local_stt.py::test_local_stop_signal_does_not_wait
+tests/unit/test_local_stt.py::test_routing_korean_local_others_openai
+tests/unit/test_local_stt.py::test_routing_without_openai_keeps_every_language_local
+tests/unit/test_local_stt.py::test_legacy_settings_use_only_authenticated_voice_apis[local]
+tests/unit/test_local_stt.py::test_legacy_settings_use_only_authenticated_voice_apis[browser]
+tests/unit/test_local_stt.py::test_legacy_settings_use_only_authenticated_voice_apis[mock]
+tests/unit/test_local_stt.py::test_cer_and_digit_runs
+tests/unit/test_mock_site.py::test_starts_its_own_site_then_reuses_it
+tests/unit/test_mock_site.py::test_does_not_reuse_another_checkouts_server
+tests/unit/test_mock_site.py::test_cannot_share_a_port_another_server_holds
+tests/unit/test_mock_site.py::test_takes_the_port_once_the_other_server_stops
+tests/unit/test_open_data.py::test_bundled_programs_have_own_source_and_application_rules
+tests/unit/test_open_data.py::test_place_from_real_administrative_and_legal_dong
+tests/unit/test_open_data.py::test_pension_office_in_address_district
+tests/unit/test_open_data.py::test_missing_kind_and_region_ambiguity
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\ubd80\uc0b0\uc774\uc694]
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\ubd80\uc0b0\uc5d0\uc11c\uc694]
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\ubd80\uc0b0 \uc0b4\uc544\uc694]
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\ubd80\uc0b0\uc774\uace0\u2026]
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\ubd80\uc0b0\uad11\uc5ed\uc2dc\uc5d0\uc694.]
+tests/unit/test_open_data.py::test_spoken_discovery_province_answers[\uc9c0\uc5ed\uc740 \ubd80\uc0b0, \ub098\uc774\ub294 25\uc0b4]
+tests/unit/test_open_data.py::test_mobility_csv_uses_booking_number_and_row_reference_date
+tests/unit/test_open_data.py::test_place_phrases[\uc7a5\uc560\uc778 \ucf5c\ud0dd\uc2dc \uc5b4\ub514\uc5d0 \uc608\uc57d\ud574?-True]
+tests/unit/test_open_data.py::test_place_phrases[\ud589\uc815\ubcf5\uc9c0\uc13c\ud130 \uc804\ud654\ubc88\ud638 \uc880 \uc54c\ub824\uc918-True]
+tests/unit/test_open_data.py::test_place_phrases[\uad6d\ubbfc\uc5f0\uae08 \uc9c0\uc0ac \uc704\uce58 \uc54c\ub824\uc918-True]
+tests/unit/test_open_data.py::test_place_phrases[\uac1c\ud3ec\uba74\uc0ac\ubb34\uc18c \uc8fc\uc18c \uc54c\ub824\uc918-True]
+tests/unit/test_open_data.py::test_place_phrases[\uae30\ucd08\uc5f0\uae08 \uc2e0\uccad\uc740 \uc8fc\ubbfc\uc13c\ud130 \uc5b4\ub514\uc11c \ud574?-False]
+tests/unit/test_open_data.py::test_place_phrases[\uc8fc\uc18c\ub294 \uac1c\ud3ec1\ub3d9 \uc8fc\ubbfc\uc13c\ud130\uc57c-False]
+tests/unit/test_open_data.py::test_place_phrases[\uc774 \ud398\uc774\uc9c0\uc5d0\uc11c \uc8fc\ubbfc\uc13c\ud130 \uc804\ud654\ubc88\ud638 \uc77d\uc5b4\uc918-False]
+tests/unit/test_open_data.py::test_place_phrases[\uc8fc\ubbfc\uc13c\ud130 \uc804\ud654\ubc88\ud638 \ub9c1\ud06c \ub20c\ub7ec-False]
+tests/unit/test_open_data.py::test_csv_validation_preserves_good_snapshot_and_check_detects_corruption
+tests/unit/test_open_data.py::test_bundled_central_welfare_links_cover_bokjiro_and_related_sites
+tests/unit/test_open_data.py::test_15083323_csv_import_validates_bokjiro_urls_and_parses_sites
+tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ub3c4\uc640\uc918-START_APPLICATION]
+tests/unit/test_parser.py::test_intents[\uc2e0\uccad \ud398\uc774\uc9c0\ub97c \uc5f4\uc5b4\uc918-START_APPLICATION]
+tests/unit/test_parser.py::test_intents[\uc8fc\uc18c \ub2e4\uc2dc \uc77d\uc5b4\uc918-READ_FIELD]
+tests/unit/test_parser.py::test_intents[\ub2e4\uc74c\uc73c\ub85c-NEXT]
+tests/unit/test_parser.py::test_intents[\uc774\uc804\uc73c\ub85c-PREV]
+tests/unit/test_parser.py::test_intents[\uc774 \ud56d\ubaa9\uc740 \ubb34\uc2a8 \ub73b\uc774\uc57c?-EXPLAIN]
+tests/unit/test_parser.py::test_intents[\uc9c0\uae08\uae4c\uc9c0 \uc4f4 \ub0b4\uc6a9 \uc77d\uc5b4\uc918-REVIEW]
+tests/unit/test_parser.py::test_intents[\ubaa8\uc758 \uc811\uc218 \ub0b4\uc6a9\uc744 \ud655\uc778\ud588\uc5b4-PREPARE_SUBMIT]
+tests/unit/test_parser.py::test_intents[\ucd5c\uc885 \ud655\uc778\ud560\uac8c-PREPARE_SUBMIT]
+tests/unit/test_parser.py::test_intents[\uc81c\ucd9c\ud574-PREPARE_SUBMIT]
+tests/unit/test_parser.py::test_intents[\ubaa8\uc758\uc811\uc218 \uc2b9\uc778-APPROVE]
+tests/unit/test_parser.py::test_intents[\uc2b9\uc778 \uc548 \ud574-REJECT]
+tests/unit/test_parser.py::test_intents[\uba48\ucdb0-STOP]
+tests/unit/test_parser.py::test_intents[\ub2e4\uc2dc \uc2dc\uc791-RESUME]
+tests/unit/test_parser.py::test_intents[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4-LOGIN]
+tests/unit/test_parser.py::test_intents[\uc8fc\uc18c \uc218\uc815\ud560\uac8c-EDIT_FIELD]
+tests/unit/test_parser.py::test_intents[\ud604\uc7ac \ub2e8\uacc4 \uc54c\ub824\uc918-CURRENT_STEP]
+tests/unit/test_parser.py::test_intents[\ud654\uba74 \uc124\uba85\ud574\uc918-DESCRIBE_SCREEN]
+tests/unit/test_parser.py::test_intents[\uc9c0\uae08 \ud654\uba74\uc5d0 \ubb50\uac00 \uc788\uc5b4?-DESCRIBE_SCREEN]
+tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ud654\uba74 \uc124\uba85\ud574\uc918-DESCRIBE_SCREEN]
+tests/unit/test_parser.py::test_intents[127.0.0.1:5174/portal2.html\uc5d0\uc11c \ubcf5\uc9c0\uc9c0\ub3c4 \uba54\ub274\ub97c \uc5f4\uc5b4\uc11c \ubb34\uc2a8 \ud654\uba74\uc778\uc9c0 \uc54c\ub824\uc918-GOAL]
+tests/unit/test_parser.py::test_intents[\ubcf5\uc9c0\ub85c \uac00\uc11c \uccab \ud654\uba74\uc5d0 \ubb50\uac00 \uc788\ub294\uc9c0 \uc54c\ub824\uc918-GOAL]
+tests/unit/test_parser.py::test_intents[\uc774 \ud654\uba74\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \uc77d\uc5b4\uc918-DESCRIBE_SCREEN]
+tests/unit/test_parser.py::test_intents[\uc9c0\uae08 \ubcf5\uc9c0\ub85c\uc5d0\uc11c \uc5b4\ub290 \ub2e8\uacc4\uc57c?-CURRENT_STEP]
+tests/unit/test_parser.py::test_intents[\ub124\uc774\ubc84\uc5d0\uc11c \uc9c0\uae08 \ud654\uba74 \uc124\uba85\ud574\uc918-DESCRIBE_SCREEN]
+tests/unit/test_parser.py::test_intents[\uc774 \uc0ac\uc774\ud2b8 \ubb50 \ud558\ub294 \uacf3\uc774\uc57c? \ub124\uc774\ubc84\uc5d0\uc11c \ub4e4\uc5b4\uc654\uc5b4-ABOUT_SITE]
+tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uacfc \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918-POLICY_QUESTION]
+tests/unit/test_parser.py::test_intents[\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uae08 \uc2e0\uccad\ud560 \uc218 \uc788\uc5b4?-POLICY_QUESTION]
+tests/unit/test_parser.py::test_intents[\uc9c0\uae08 \uc2e0\uccad\ud560 \uc218 \uc788\uc5b4?-POLICY_QUESTION]
+tests/unit/test_parser.py::test_intents[\uc0c1\ub2f4\uc6d0 \uc5f0\uacb0\ud574\uc918-HELP_HUMAN]
+tests/unit/test_parser.py::test_intents[\uc624\ub298 \ub0a0\uc528 \uc5b4\ub54c-UNKNOWN]
+tests/unit/test_parser.py::test_field_and_value_split
+tests/unit/test_parser.py::test_multiple_fields_in_one_sentence
+tests/unit/test_parser.py::test_specific_alias_beats_generic
+tests/unit/test_parser.py::test_edit_with_value_is_fill
+tests/unit/test_parser.py::test_awaiting_value_long_address_not_navigation
+tests/unit/test_parser.py::test_stop_is_rule_based
+tests/unit/test_parser.py::test_progress_question_is_rule_based[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4?]
+tests/unit/test_parser.py::test_progress_question_is_rule_based[\uccad\uc74c\uc544, \uc5b4\ub514\uae4c\uc9c0 \ub410\uc5b4?]
+tests/unit/test_parser.py::test_progress_question_is_rule_based[\uc5bc\ub9c8\ub098 \ub0a8\uc558\uc5b4?]
+tests/unit/test_parser.py::test_progress_question_is_rule_based[\uc544\uc9c1 \uba40\uc5c8\uc5b4?]
+tests/unit/test_parser.py::test_progress_question_is_rule_based[\uc9c0\uae08 \ubb50 \ud558\uace0 \uc788\uc5b4?]
+tests/unit/test_parser.py::test_not_a_progress_question[\uc2e0\uccad \uae30\ud55c \uc5bc\ub9c8\ub098 \ub0a8\uc558\uc5b4?]
+tests/unit/test_parser.py::test_not_a_progress_question[\uc9c0\uae08 \uc5b4\ub290 \ub2e8\uacc4\uc57c?]
+tests/unit/test_parser.py::test_not_a_progress_question[\ubcf8\ubb38 \uc5b4\ub514\uae4c\uc9c0 \uc77d\uc5c8\uc5b4?]
+tests/unit/test_parser.py::test_not_a_progress_question[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4 \uadf8\ub9ac\uace0 \ub124\uc774\ubc84 \uc5f4\uc5b4\uc918]
+tests/unit/test_parser.py::test_clean_value
+tests/unit/test_parser.py::test_split_commands[\uc774\ub984\uc740 \uae40\ud558\ub298\uc774\uace0 \uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10, \ub2e4\uc74c\uc73c\ub85c \ub118\uc5b4\uac00\uc918-3]
+tests/unit/test_parser.py::test_split_commands[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918 \uadf8\ub9ac\uace0 \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-2]
+tests/unit/test_parser.py::test_split_commands[\uc774\ub984\uc740 \uae40\ud558\ub298-1]
+tests/unit/test_parser.py::test_rephrase
+tests/unit/test_parser.py::test_what_can_i_say[\ubb50\ub77c\uace0 \ub9d0\ud558\uba74 \ub3fc?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ubb50\ub77c\uace0 \ud574\uc57c \ub3fc?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ubb58 \ud560 \uc218 \uc788\uc5b4?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ub10c \ubb58 \ud560 \uc218 \uc788\uc5b4?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ubb34\uc2a8 \ub9d0 \ud560 \uc218 \uc788\uc5b4?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ub3c4\uc6c0\ub9d0-False]
+tests/unit/test_parser.py::test_what_can_i_say[\uc0ac\uc6a9\ubc95 \uc54c\ub824\uc918-False]
+tests/unit/test_parser.py::test_what_can_i_say[\uba85\ub839\uc5b4 \uc54c\ub824\uc918-False]
+tests/unit/test_parser.py::test_what_can_i_say[\uba85\ub839\uc5b4 \ubb50\uac00 \uc788\uc5b4?-False]
+tests/unit/test_parser.py::test_what_can_i_say[\ub2e4\ub978 \ub9d0\ub3c4 \uc54c\ub824\uc918-True]
+tests/unit/test_parser.py::test_what_can_i_say[\ub2e4\ub978 \uba85\ub839\uc5b4\ub3c4 \uc54c\ub824\uc918-True]
+tests/unit/test_parser.py::test_what_can_i_say[\ub3c4\uc6c0\ub9d0 \ub354-True]
+tests/unit/test_parser.py::test_not_help[\ub2e4\ub978 \uac70 \uc54c\ub824\uc918-UNKNOWN]
+tests/unit/test_parser.py::test_not_help[\uc774 \uc0ac\uc774\ud2b8\uc5d0\uc11c \ubb58 \ud560 \uc218 \uc788\uc5b4?-ABOUT_SITE]
+tests/unit/test_parser.py::test_not_help[\ub3c4\uc6c0 \uc694\uccad\ud560\ub798-HELP_HUMAN]
+tests/unit/test_parser.py::test_not_help[\uc5b4\ub5bb\uac8c \ud574\uc57c \ub3fc?-UNKNOWN]
+tests/unit/test_parser.py::test_listed_service_is_not_field_explanation
+tests/unit/test_parser.py::test_browsing_commands[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918-expected0]
+tests/unit/test_parser.py::test_browsing_commands[\uc815\ubd8024 \ub4e4\uc5b4\uac00\uc918-expected1]
+tests/unit/test_parser.py::test_browsing_commands[gov.kr \uc5f4\uc5b4\uc918-expected2]
+tests/unit/test_parser.py::test_browsing_commands[\ubaa8\uc758 \uc0ac\uc774\ud2b8 \uc5f4\uc5b4\uc918-expected3]
+tests/unit/test_parser.py::test_browsing_commands[\ubcf8\ubb38 \uc77d\uc5b4\uc918-expected4]
+tests/unit/test_parser.py::test_browsing_commands[\uacc4\uc18d \uc77d\uc5b4\uc918-expected5]
+tests/unit/test_parser.py::test_browsing_commands[\ub9c1\ud06c \ubaa9\ub85d \uc54c\ub824\uc918-expected6]
+tests/unit/test_parser.py::test_browsing_commands[\ub9c1\ud06c \ub354 \uc54c\ub824\uc918-expected7]
+tests/unit/test_parser.py::test_browsing_commands[\uc7a5\uc560\uc778\uc5f0\uae08 \uc548\ub0b4 \ub9c1\ud06c \ub20c\ub7ec\uc918-expected8]
+tests/unit/test_parser.py::test_browsing_commands['\uc790\uc138\ud788 \ubcf4\uae30' \ub20c\ub7ec\uc918-expected9]
+tests/unit/test_parser.py::test_browsing_commands[\uc2e0\uccad\ubc29\ubc95 \ud0ed \ub20c\ub7ec\uc918-expected10]
+tests/unit/test_parser.py::test_browsing_commands[\uc9c0\uc6d0\ub300\uc0c1 \ub20c\ub7ec\uc918-expected11]
+tests/unit/test_parser.py::test_browsing_commands[\ub4a4\ub85c \uac00\uc918-expected12]
+tests/unit/test_parser.py::test_browsing_commands[\uc7a5\uc560\uc778\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-expected13]
+tests/unit/test_parser.py::test_browsing_commands[\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918-expected14]
+tests/unit/test_parser.py::test_browsing_does_not_clash
+tests/unit/test_parser.py::test_resolve_site
+tests/unit/test_parser.py::test_resolve_site_stt_variants
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \ucc3e\uc544\uc918-https://www.bokjiro.go.kr]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[\uae30\ucd08\uc5f0\uae08\uc5d0 \ub300\ud574 \ubcf5\uc9c0\ub85c \ub204\ub9ac\uc9d1\uc5d0\uc11c \ucc3e\uc544\uc918-https://www.bokjiro.go.kr]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[\ub124\uc774\ubc84 \ub274\uc2a4\uc5d0\uc11c \uc624\ub298 \ub274\uc2a4 \uc54c\ub824\uc918-https://news.naver.com]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[127.0.0.1:5174/external.html\uc5d0\uc11c \ucc3e\uc544\uc918-http://127.0.0.1:5174/external.html]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[https://example.org/bokjiro.go.kr\uc5d0\uc11c \ucc3e\uc544\uc918-https://example.org/bokjiro.go.kr]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[\uc9c0\uae08 \ud654\uba74\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \ucc3e\uc544\uc918-None]
+tests/unit/test_parser.py::test_goal_evidence_source_is_the_requested_site[\ubcf5\uc9c0\ub85c\uc5d0\uc11c \ucc3e\uc544\ubcf4\uace0 \uc815\ubd8024\uc5d0\uc11c \ud655\uc778\ud574\uc918-None]
+tests/unit/test_parser.py::test_tiers
+tests/unit/test_parser.py::test_read_only_policy[\ub2e4\ub978 \uc0ac\uc774\ud2b8\ub85c \uc774\ub3d9-action0-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub9c1\ud06c \ud074\ub9ad-action1-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub4a4\ub85c-action2-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9\ucc3d \uc785\ub825-action3-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9 \uc2e4\ud589-action4-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ubc84\ud2bc \ud074\ub9ad-action5-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub85c\uadf8\uc778 \ubc84\ud2bc\uc740 \ubb3b\uace0 \ub204\ub978\ub2e4-action6-NEEDS_CONFIRMATION]
+tests/unit/test_parser.py::test_read_only_policy[\ub85c\uadf8\uc778 \ub9c1\ud06c\ub3c4 \ubb3b\uace0 \ub204\ub978\ub2e4-action7-NEEDS_CONFIRMATION]
+tests/unit/test_parser.py::test_read_only_policy[\ucd08\uc810 \uc62e\uae30\uae30-action8-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub85c\uadf8\uc544\uc6c3\uc740 \ub9c9\ub294\ub2e4-action9-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc2e4\uc81c \uc2e0\uccad\uc740 \ub9c9\ub294\ub2e4-action10-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc815\ubcf4 \uc774\ub984 \ud0ed(safe)-action11-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub3d9\uc791 \uc774\ub984 \ud0ed(safe)-action12-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc815\ubcf4 \uc774\ub984 \uc2a4\ud06c\ub9bd\ud2b8 \ub9c1\ud06c(safe)-action13-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub3d9\uc791 \uc774\ub984 \uc2a4\ud06c\ub9bd\ud2b8 \ub9c1\ud06c(safe)-action14-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc8fc\uc18c \uc788\ub294 \ub9c1\ud06c\ub294 \uc774\ub984\uacfc \uc0c1\uad00\uc5c6\uc774(safe)-action15-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uba54\ub274 \ud56d\ubaa9(safe)-action16-ALLOWED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ub3d9\uc791 \uba54\ub274 \ud56d\ubaa9(safe)-action17-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc5ed\ud560 \uc5c6\ub294 \uc694\uc18c(safe)-action18-NEEDS_CONFIRMATION]
+tests/unit/test_parser.py::test_read_only_policy[\uc774\ub984 \uc5c6\ub294 ref-action19-DENIED_SCHEMA]
+tests/unit/test_parser.py::test_read_only_policy[\uc77c\ubc18 \uc785\ub825\ub780-action20-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uc120\ud0dd-action21-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[Enter \uc678 \ud0a4-action22-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\uac80\uc0c9\uc5b4\uc5d0 \uc8fc\ubbfc\ubc88\ud638-action23-DENIED_SECRET]
+tests/unit/test_parser.py::test_read_only_policy[\uc911\uc694 \ub3d9\uc791-action24-DENIED_READ_ONLY]
+tests/unit/test_parser.py::test_read_only_policy[\ud30c\uc77c \uc8fc\uc18c \uc774\ub3d9-action25-DENIED_ORIGIN]
+tests/unit/test_parser.py::test_read_only_login_click_runs_after_approval
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad\ubc29\ubc95-False]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad \uc548\ub0b4-False]
+tests/unit/test_parser.py::test_action_names[\uc81c\ucd9c\uc11c\ub958-False]
+tests/unit/test_parser.py::test_action_names[\uc9c0\uc6d0\ub300\uc0c1-False]
+tests/unit/test_parser.py::test_action_names[\uc11c\ube44\uc2a4 \ub0b4\uc6a9-False]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad \uc790\uaca9-False]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad\ud558\uae30-True]
+tests/unit/test_parser.py::test_action_names[\uc628\ub77c\uc778 \uc2e0\uccad\ud558\uae30-True]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad-True]
+tests/unit/test_parser.py::test_action_names[\ud68c\uc6d0 \ud0c8\ud1f4-True]
+tests/unit/test_parser.py::test_action_names[\uacb0\uc81c \uc815\ubcf4-True]
+tests/unit/test_parser.py::test_action_names[\ub85c\uadf8\uc778-True]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad\ud558\uae30 \uc0c8\ucc3d-True]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad\ud558\uae30 >-True]
+tests/unit/test_parser.py::test_action_names[\uc2e0\uccad\uc11c \uc81c\ucd9c-True]
+tests/unit/test_parser.py::test_action_names[\uc784\uc2dc \uc800\uc7a5-True]
+tests/unit/test_parser.py::test_action_names[\uc804\uccb4 \ub3d9\uc758-True]
+tests/unit/test_parser.py::test_action_names[\ubcf8\uc778 \uc778\uc99d-True]
+tests/unit/test_parser.py::test_action_names[\uac00\uc785-True]
+tests/unit/test_parser.py::test_action_names[Send-True]
+tests/unit/test_parser.py::test_action_names[Confirm-True]
+tests/unit/test_parser.py::test_action_names[Sign in-True]
+tests/unit/test_parser.py::test_read_only_any_clicks_allows_every_click_but_not_input
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[button-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[button-any]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[link-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[link-any]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[tab-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[tab-any]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[scriptlink-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[scriptlink-any]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[menuitem-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[menuitem-any]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[generic-safe]
+tests/unit/test_parser.py::test_read_only_login_needs_approval_for_each_control[generic-any]
+tests/unit/test_parser.py::test_read_only_off_means_supported_sites_only
+tests/unit/test_parser.py::test_assist_needs_approval
+tests/unit/test_parser.py::test_assist_secret_always_denied
+tests/unit/test_parser.py::test_assist_low_risk_input_denied
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc544, \ud654\uba74 \uc124\uba85\ud574\uc918-\ud654\uba74 \uc124\uba85\ud574\uc918]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc544 \uba48\ucdb0-\uba48\ucdb0]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc774\uc57c \ub2e4\uc74c\uc73c\ub85c-\ub2e4\uc74c\uc73c\ub85c]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c, \ub4a4\ub85c \uac00\uc918-\ub4a4\ub85c \uac00\uc918]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc774! \uc774\ub984\uc740 \uae40\ud558\ub298-\uc774\ub984\uc740 \uae40\ud558\ub298]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc544.-]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c\uc774 \ubb50\uc57c?-\uccad\uc74c\uc774 \ubb50\uc57c?]
+tests/unit/test_parser.py::test_strip_address[\uccad\uc74c-\uccad\uc74c]
+tests/unit/test_parser.py::test_strip_address[\ud654\uba74 \uc124\uba85\ud574\uc918-\ud654\uba74 \uc124\uba85\ud574\uc918]
+tests/unit/test_parser.py::test_intro_replay_and_setup_restart_phrases_parse
+tests/unit/test_picture.py::test_picture_cannot_be_constructed_directly
+tests/unit/test_picture.py::test_sealing_needs_a_mask_report_and_a_png
+tests/unit/test_picture.py::test_sealed_picture_shows_facts_but_not_bytes
+tests/unit/test_picture.py::test_data_url_carries_the_png
+tests/unit/test_picture.py::test_png_size_reads_the_header
+tests/unit/test_picture.py::test_scan_sees_every_way_of_sealing
+tests/unit/test_picture.py::test_only_capture_code_seals_pictures
+tests/unit/test_picture.py::test_answer_schema_is_strict_and_has_no_room_for_actions
+tests/unit/test_picture_speech.py::test_description_is_spoken_as_coming_from_a_picture
+tests/unit/test_picture_speech.py::test_model_echoing_the_lead_does_not_double_it
+tests/unit/test_picture_speech.py::test_pressable_keeps_valid_indexes_once_in_order
+tests/unit/test_picture_speech.py::test_pressable_sentence_follows_the_last_name_and_stops_at_five
+tests/unit/test_picture_speech.py::test_same_name_twice_is_offered_once
+tests/unit/test_picture_speech.py::test_security_screen_answer_is_discarded[captcha]
+tests/unit/test_picture_speech.py::test_security_screen_answer_is_discarded[login]
+tests/unit/test_picture_speech.py::test_security_screen_answer_is_discarded[verification]
+tests/unit/test_picture_speech.py::test_number_seen_only_in_the_picture_is_spoken_with_a_label
+tests/unit/test_picture_speech.py::test_number_that_the_page_text_has_needs_no_label
+tests/unit/test_picture_speech.py::test_personal_detail_is_removed_and_the_rest_is_kept
+tests/unit/test_picture_speech.py::test_only_personal_details_leaves_no_description
+tests/unit/test_picture_speech.py::test_text_addressed_to_an_ai_gets_the_same_caution_as_screen_text
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[None-no-answer]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[\uc0ac\uc9c4 \uc124\uba85-malformed]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[reply2-malformed]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[reply3-malformed]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[reply4-malformed]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[reply5-malformed]
+tests/unit/test_picture_speech.py::test_missing_or_malformed_answer_says_one_fixed_sentence[reply6-malformed]
+tests/unit/test_picture_speech.py::test_long_description_is_cut_at_a_sentence
+tests/unit/test_picture_speech.py::test_request_numbers_the_names_it_sends_and_hides_personal_details
+tests/unit/test_picture_speech.py::test_index_beyond_the_names_sent_is_out_of_range
+tests/unit/test_pii_model.py::test_tier1_found[\uc81c \ube44\ubc00\ubc88\ud638\ub294 A2UfgtKg!W1x \uc785\ub2c8\ub2e4]
+tests/unit/test_pii_model.py::test_tier1_found[\uc8fc\ubbfc\ubc88\ud638 900101-1234567]
+tests/unit/test_pii_model.py::test_tier1_found[\uacc4\uc88c\ubc88\ud638 110-123-456789\ub85c \ubcf4\ub0b4 \uc8fc\uc138\uc694]
+tests/unit/test_pii_model.py::test_ordinary_form_values_not_tier1[\uc5f0\ub77d\ucc98\ub294 010-1234-5678]
+tests/unit/test_pii_model.py::test_ordinary_form_values_not_tier1[\uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10]
+tests/unit/test_pii_model.py::test_ordinary_form_values_not_tier1[\uc774\ub984\uc740 \uae40\ud558\ub298]
+tests/unit/test_pii_model.py::test_ordinary_form_values_not_tier1[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ub3c4\uc640\uc918]
+tests/unit/test_pii_model.py::test_ordinary_form_values_not_tier1[\ub2e4\uc74c\uc73c\ub85c]
+tests/unit/test_pii_model.py::test_offsets_point_at_value
+tests/unit/test_pii_model.py::test_wired_into_privacy
+tests/unit/test_playbook.py::test_help_human_says_cant_speaks_129_then_alternatives
+tests/unit/test_playbook.py::test_help_human_prefers_service_contact_over_129
+tests/unit/test_playbook.py::test_help_human_uses_gov24_playbook_number
+tests/unit/test_playbook.py::test_blocked_bokjiro_ends_with_next_step_and_notice_once
+tests/unit/test_playbook.py::test_policy_denied_ends_with_one_next_step
+tests/unit/test_policy.py::test_allowed_low_risk_fill
+tests/unit/test_policy.py::test_schema_mismatch_denied
+tests/unit/test_policy.py::test_origin_outside_allowlist_denied
+tests/unit/test_policy.py::test_secret_field_and_values_always_denied
+tests/unit/test_policy.py::test_unknown_field_denied
+tests/unit/test_policy.py::test_consequential_needs_prior_approval
+tests/unit/test_policy.py::test_risky_button_on_supported_site_needs_approval_whatever_the_declared_risk
+tests/unit/test_policy.py::test_action_controls_on_supported_site_require_matching_approval[tab]
+tests/unit/test_policy.py::test_action_controls_on_supported_site_require_matching_approval[scriptlink]
+tests/unit/test_policy.py::test_action_controls_on_supported_site_require_matching_approval[menuitem]
+tests/unit/test_policy.py::test_action_controls_on_supported_site_require_matching_approval[generic]
+tests/unit/test_policy.py::test_information_controls_on_supported_site_open_directly[tab]
+tests/unit/test_policy.py::test_information_controls_on_supported_site_open_directly[scriptlink]
+tests/unit/test_policy.py::test_stopped_and_rate_limit
+tests/unit/test_policy.py::test_review_budget_respects_policy_ceiling_and_the_default_turn_limit
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 123456\uc774\uc57c-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 \uc9c1\uc811 \uc785\ub825\ud560\uac8c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc8fc\ubbfc\ubc88\ud638 900101-1234567-True]
+tests/unit/test_policy.py::test_detect_sensitive[9001011234567-True]
+tests/unit/test_policy.py::test_detect_sensitive[OTP 482913-True]
+tests/unit/test_policy.py::test_detect_sensitive[\uacc4\uc88c\ubc88\ud638\ub294 110-123-456789-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc5f0\ub77d\ucc98\ub294 010-1234-5678-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 \uc77c\uc774\uc0bc\uc0ac-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 \uc0ac\uacfc\ub098\ubb34\uc57c-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub294 \uc0ac\uacfc\ub098\ubb34\ub85c \ud560\uac8c-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uc54c\ub824\uc904\uac8c \uc0ac\uacfc\ub098\ubb34-True]
+tests/unit/test_policy.py::test_detect_sensitive[\uc778\uc99d\ubc88\ud638\ub294 \uce60\uce60\uce60\ud314\ud314\ud314-True]
+tests/unit/test_policy.py::test_detect_sensitive[\uc8fc\ubbfc\ubc88\ud638 \uad6c\uacf5\uacf5\uc77c\uacf5\uc77c \uc77c\uc774\uc0bc\uc0ac\uc624\uc721\uce60-True]
+tests/unit/test_policy.py::test_detect_sensitive[\uad6c\uacf5\uacf5\uc77c\uacf5\uc77c \uc77c\uc774\uc0bc\uc0ac\uc624\uc721\uce60-True]
+tests/unit/test_policy.py::test_detect_sensitive[\uad6c\uacf5\uacf5\uc77c\uacf5\uc77c \uc77c\uc774\uc0bc\uc0ac\uc624\uc721\uce60 \uc774\uc5d0\uc694-True]
+tests/unit/test_policy.py::test_detect_sensitive[my password is 1234-True]
+tests/unit/test_policy.py::test_detect_sensitive[\u5bc6\u7801\u662f1234-True]
+tests/unit/test_policy.py::test_detect_sensitive[\u30d1\u30b9\u30ef\u30fc\u30c9\u306f1234\u3067\u3059-True]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uce78\uc774 \uc5b4\ub514\uc57c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\ub97c \uc78a\uc5b4\ubc84\ub838\uc5b4-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uc7ac\uc124\uc815 \ud398\uc774\uc9c0 \uc5f4\uc5b4\uc918-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uc785\ub825\ud574\uc918-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\uac00 \ubb50\uc57c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uc774\uac70 \ubb50\uc57c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638 \uc54c\ub824\uc904\uac8c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\ube44\ubc00\ubc88\ud638\uc694?-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc778\uc99d\ubc88\ud638 \uc5b4\ub514\uc11c \ubc1b\uc544-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc624\ub298 \ube44\ubc88\uc774\uc57c-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc554\ud638\ud654\ud3d0 \uc9c0\uc6d0\uae08 \uc54c\ub824\uc918-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc774\uc0ac \uac00\uace0 \uc2f6\uc5b4-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc0ac\uc774\uc0ac\uc774\uc5d0 \ub123\uc5b4\uc918-False]
+tests/unit/test_policy.py::test_detect_sensitive[\uc5f0\ub77d\ucc98\ub294 \uacf5\uc77c\uacf5 \uc77c\uc774\uc0bc\uc0ac \uc624\uc721\uce60\ud314-False]
+tests/unit/test_policy.py::test_redact
+tests/unit/test_policy.py::test_spoken_digit_spans
+tests/unit/test_policy.py::test_model_union_with_rules
+tests/unit/test_policy.py::test_guard_uses_rules_only
+tests/unit/test_policy.py::test_model_error_falls_back_to_rules
+tests/unit/test_policy.py::test_merge_bio
+tests/unit/test_policy.py::test_mask_phone
+tests/unit/test_policy.py::test_click_tier[button-\ud655\uc778-ask]
+tests/unit/test_policy.py::test_click_tier[button-\uc790\uaca9 \ud655\uc778-ask]
+tests/unit/test_policy.py::test_click_tier[button-\uac80\uc0c9 \uc870\uac74 \ubcc0\uacbd-ask]
+tests/unit/test_policy.py::test_click_tier[button-\ubaa8\uc758\uacc4\uc0b0 \ud655\uc778-ask]
+tests/unit/test_policy.py::test_click_tier[button-\uc2e0\uccad\ubc29\ubc95-ask]
+tests/unit/test_policy.py::test_click_tier[button-\ucde8\uc18c-ask]
+tests/unit/test_policy.py::test_click_tier[button-\uc628\ub77c\uc778 \uc2e0\uccad-hard]
+tests/unit/test_policy.py::test_click_tier[menuitem-\ubcf5\uc9c0\uc11c\ube44\uc2a4 \uc2e0\uccad-hard]
+tests/unit/test_policy.py::test_click_tier[button-\ubcf4\ub0b4\uae30-hard]
+tests/unit/test_policy.py::test_click_tier[button-\ud68c\uc6d0\uac00\uc785-hard]
+tests/unit/test_policy.py::test_click_tier[button-\uc2e0\uccad \ucde8\uc18c-hard]
+tests/unit/test_policy.py::test_click_tier[button--hard]
+tests/unit/test_policy.py::test_click_tier[button-\ub354\ubcf4\uae30-free]
+tests/unit/test_policy.py::test_click_tier[button-\ub2eb\uae30-free]
+tests/unit/test_policy.py::test_click_tier[button-\uac80\uc0c9\ud558\uae30-free]
+tests/unit/test_policy.py::test_click_tier[tab-\uac80\uc0c9\ud558\uae30-ask]
+tests/unit/test_policy.py::test_click_tier[tab-\uc2e0\uccad\ubc29\ubc95-free]
+tests/unit/test_policy.py::test_click_tier[link-\uc2e0\uccad\ud558\uae30-free]
+tests/unit/test_policy.py::test_click_tier[generic-\uc11c\ube44\uc2a4 \ub0b4\uc6a9-ask]
+tests/unit/test_policy.py::test_read_only_ask_tier_needs_then_takes_approval
+tests/unit/test_policy.py::test_approval_cannot_expand_public_lookup_scope[True]
+tests/unit/test_policy.py::test_approval_cannot_expand_public_lookup_scope[False]
+tests/unit/test_profile_storage_failure.py::test_interrupted_save_keeps_confirmed_profile_in_memory_and_on_disk
+tests/unit/test_profile_storage_failure.py::test_parallel_approval_journal_keeps_one_chain
+tests/unit/test_progress.py::test_step_sentence[step0-\ubcf5\uc9c0\ub85c\ub97c \uc5f4\uc5c8\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step1-\uc815\ubd8024\uc5d0\uc11c '\uc11c\ube44\uc2a4 \ucc3e\uae30'\ub97c \ub20c\ub800\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step2-'\uae30\ucd08\uc5f0\uae08'\uc744 \uac80\uc0c9\ud588\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step3-\uc774\uc804 \ud398\uc774\uc9c0\ub85c \ub3cc\uc544\uac14\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step4-\ubcf8\ubb38\uc744 \uc774\uc5b4\uc11c \ubcf4\uace0 \uc788\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step5-\ubcf8\ubb38\uc5d0\uc11c '\uc2e0\uccad \ubc29\ubc95'\uc744 \ucc3e\uc558\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step6-'\ub85c\uadf8\uc778'\uc744 \ub204\ub974\ub824\uace0 \ud588\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step7-'\ubaa8\ub974\ub294\uacf3'\uc744 \uc5f4\ub824\uace0 \ud588\uc5b4\uc694.]
+tests/unit/test_progress.py::test_step_sentence[step8-\ucc3e\uc740 \ub2f5\uc774 \ud654\uba74\uacfc \ub9de\ub294\uc9c0 \ub2e4\uc2dc \ubcf4\uace0 \uc788\uc5b4\uc694.]
+tests/unit/test_progress.py::test_page_text_and_model_text_are_never_spoken
+tests/unit/test_progress.py::test_long_target_name_is_cut
+tests/unit/test_progress.py::test_unknown_site_is_left_out
+tests/unit/test_progress.py::test_site_label
+tests/unit/test_public_search.py::test_refines_empty_results_and_cites_the_matching_official_excerpt
+tests/unit/test_public_search.py::test_unverified_citation_or_date_returns_no_answer[\uc5b4\ub9b0\uc774\ub0a0\uc740 6\uc6d4 20\uc77c\uc785\ub2c8\ub2e4.]
+tests/unit/test_public_search.py::test_unverified_citation_or_date_returns_no_answer[\uc5b4\ub9b0\uc774\ub0a0\uc740 5\uc6d4 5\uc77c\uc785\ub2c8\ub2e4.]
+tests/unit/test_public_search.py::test_private_query_never_reaches_search_provider
+tests/unit/test_public_search.py::test_next_date_can_restate_the_reference_date_and_cite_the_calendar_year
+tests/unit/test_qa_routing.py::test_negated_login_is_not_login[\uc815\ubd8024\uc5d0\uc11c \uc8fc\ubbfc\ub4f1\ub85d\ub4f1\ubcf8 \ubc1c\uae09 \uc548\ub0b4 \ucc3e\uc544\uc918. \ub85c\uadf8\uc778\ud558\uac70\ub098 \uc2e0\uccad\ud558\uc9c0 \ub9d0\uace0]
+tests/unit/test_qa_routing.py::test_negated_login_is_not_login[\uae30\ucd08\uc5f0\uae08 \uc548\ub0b4 \ud654\uba74\uc744 \uc5f4\uc5b4\uc918. \uc2e0\uccad\ud558\uac70\ub098 \ub85c\uadf8\uc778\ud558\uc9c0 \ub9d0\uace0]
+tests/unit/test_qa_routing.py::test_negated_login_is_not_login[\ub85c\uadf8\uc778\uc740 \ud558\uc9c0 \ub9d0\uace0 \ud654\uba74\ub9cc \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_negated_login_is_not_login[\ub85c\uadf8\uc778 \uc5c6\uc774 \ubcfc \uc218 \uc788\ub294 \uc548\ub0b4 \ucc3e\uc544\uc918]
+tests/unit/test_qa_routing.py::test_negated_login_is_not_login[\ub85c\uadf8\uc778\ud558\uc9c0 \ub9c8]
+tests/unit/test_qa_routing.py::test_plain_login_still_login[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4]
+tests/unit/test_qa_routing.py::test_plain_login_still_login[\ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_plain_login_still_login[\ubcf5\uc9c0\ub85c \ub85c\uadf8\uc778 \ub3c4\uc640\uc918]
+tests/unit/test_qa_routing.py::test_plain_login_still_login[\ubcf8\uc778\uc778\uc99d \ud574\uc57c \ud574]
+tests/unit/test_qa_routing.py::test_named_site_goal_keeps_whole_request
+tests/unit/test_qa_routing.py::test_site_named_with_saiteu_is_goal[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uc0ac\uc774\ud2b8\uc5d0\uc11c \uace0\uac1d\uc13c\ud130 \uc804\ud654\ubc88\ud638\uc640 \ud3c9\uc77c \uc0c1\ub2f4 \uc2dc\uac04\uc744 \ucc3e\uc544\uc918. \uac80\uc0c9 \uacb0\uacfc \ub9d0\uace0 \uacf5\uc2dd \ud654\uba74\uc5d0\uc11c \ud655\uc778\ud574\uc918.]
+tests/unit/test_qa_routing.py::test_site_named_with_saiteu_is_goal[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uc0ac\uc774\ud2b8\uc5d0\uc11c \uace0\uac1d\uc13c\ud130 \uc804\ud654\ubc88\ud638 \ucc3e\uc544\uc918.]
+tests/unit/test_qa_routing.py::test_site_named_with_saiteu_is_goal[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \ud648\ud398\uc774\uc9c0\uc5d0\uc11c \uace0\uac1d\uc13c\ud130 \ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_branch_lookup_still_place
+tests/unit/test_qa_routing.py::test_site_named_welfare_words_go_to_site[127.0.0.1:57312/portal2.html\uc5d0\uc11c \uc774\uc758 \uc2e0\uccad \uae30\ud55c\uacfc \uc790\uc138\ud55c \uc2e0\uccad \uc11c\ub958\ub97c \ucc3e\uc544\uc918.]
+tests/unit/test_qa_routing.py::test_site_named_welfare_words_go_to_site[\uc7a5\uc560\uc218\ub2f9 \ub9d0\uace0 \uc7a5\uc560\uc778\uc5f0\uae08\ub9cc \ubcfc\uac8c. \uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad\ud560 \ub54c \ud544\uc694\ud55c \uc11c\ub958\ub791 \uc5b4\ub514\uc5d0 \ubb38\uc758\ud558\uba74 \ub418\ub294\uc9c0 \ubcf5\uc9c0\ub85c\uc5d0\uc11c \ud655\uc778\ud574\uc918.]
+tests/unit/test_qa_routing.py::test_welfare_without_site_stays_welfare
+tests/unit/test_qa_routing.py::test_provenance_question_is_not_place_lookup
+tests/unit/test_qa_routing.py::test_place_lookup_still_detected[\uc8fc\ubbfc\uc13c\ud130 \uc5b4\ub514 \uc788\uc5b4?]
+tests/unit/test_qa_routing.py::test_place_lookup_still_detected[\uac00\uae4c\uc6b4 \ud589\uc815\ubcf5\uc9c0\uc13c\ud130 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_place_lookup_still_detected[\uc6b0\ub9ac \ub3d9\ub124 \uc8fc\ubbfc\uc13c\ud130 \uc804\ud654\ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_place_lookup_still_detected[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uc9c0\uc0ac \uc8fc\uc18c \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_one_time_slow_repeat_is_not_a_setting[\uadf8 \ubc88\ud638\ub97c \ub2e4\uc2dc \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918]
+tests/unit/test_qa_routing.py::test_one_time_slow_repeat_is_not_a_setting[\uc5b4\ub514\uc11c \ud655\uc778\ud588\uc5b4? \uadf8 \ubc88\ud638\ub97c \ub2e4\uc2dc \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918.]
+tests/unit/test_qa_routing.py::test_one_time_slow_repeat_is_not_a_setting[\ud655\uc778\ud55c \uc804\ud654\ubc88\ud638\ub97c \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_one_time_slow_repeat_is_not_a_setting[\ub450 \uae30\uad00 \uc911 \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \uc804\uc5d0 \ubb3c\uc5b4\ubcfc \uacf3\uc740 \uc5b4\ub514\uc57c? \ud655\uc778\ud55c \uc804\ud654\ubc88\ud638\ub97c \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918.]
+tests/unit/test_qa_routing.py::test_one_time_slow_repeat_is_not_a_setting[\ub2e4\uc2dc \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918]
+tests/unit/test_qa_routing.py::test_general_slow_is_a_setting[\ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918]
+tests/unit/test_qa_routing.py::test_general_slow_is_a_setting[\ucc9c\ucc9c\ud788]
+tests/unit/test_qa_routing.py::test_general_slow_is_a_setting[\uc55e\uc73c\ub85c \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918]
+tests/unit/test_qa_routing.py::test_general_slow_is_a_setting[\uc880 \ub354 \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918]
+tests/unit/test_qa_routing.py::test_slow_repeat_routes_to_rephrase
+tests/unit/test_qa_routing.py::test_spell_phone_numbers[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uace0\uac1d\uc13c\ud130\ub294 1355\uc608\uc694.-\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uace0\uac1d\uc13c\ud130\ub294 1 3 5 5\uc608\uc694.]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers[\ubcf4\uac74\ubcf5\uc9c0\uc0c1\ub2f4\uc13c\ud130 129(\ubb34\ub8cc)-\ubcf4\uac74\ubcf5\uc9c0\uc0c1\ub2f4\uc13c\ud130 1 2 9(\ubb34\ub8cc)]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers[\ubb38\uc758\ub294 051-709-4657.-\ubb38\uc758\ub294 0 5 1, 7 0 9, 4 6 5 7.]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers[\ub300\ud45c\ubc88\ud638 1588-1234-\ub300\ud45c\ubc88\ud638 1 5 8 8, 1 2 3 4]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers[\ud3c9\uc77c 09:00~18:00, 2026\ub144 120\ub9cc\uc6d0 100\uba85-\ud3c9\uc77c 09:00~18:00, 2026\ub144 120\ub9cc\uc6d0 100\uba85]
+tests/unit/test_qa_routing.py::test_page_title_is_not_field_read[\uadf8 \uacb0\uacfc\uc758 \uc81c\ubaa9\uacfc \uc9c0\uae08 \ubcf4\uace0 \uc788\ub294 \uc0ac\uc774\ud2b8 \uc774\ub984\uc744 \uc54c\ub824\uc918.]
+tests/unit/test_qa_routing.py::test_page_title_is_not_field_read[\uc11c\ub958\ub098 \uc804\ud654\ubc88\ud638\uc758 \uadfc\uac70\ub97c \ud655\uc778\ud588\ub2e4\uace0 \ub9d0\ud560 \uc218 \uc788\uc5b4? \uadf8 \ud398\uc774\uc9c0 \uc81c\ubaa9\uc774 \ubb50\uc57c?]
+tests/unit/test_qa_routing.py::test_page_title_is_not_field_read[\uc9c0\uae08 \ud398\uc774\uc9c0 \uc81c\ubaa9\uc774 \ubb50\uc57c?]
+tests/unit/test_qa_routing.py::test_field_read_still_works_on_form
+tests/unit/test_qa_routing.py::test_correction_keeps_the_kept_service
+tests/unit/test_qa_routing.py::test_today_is_the_korean_date
+tests/unit/test_qa_routing.py::test_full_url_opens_that_page
+tests/unit/test_qa_routing.py::test_open_official_guide
+tests/unit/test_qa_routing.py::test_prepare_then_open_official_is_two_steps
+tests/unit/test_qa_routing.py::test_server_tts_follows_saved_pace
+tests/unit/test_qa_routing.py::test_pace_from_saved_rate
+tests/unit/test_qa_routing.py::test_national_contact_of_a_named_agency_is_goal[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uace0\uac1d\uc13c\ud130 \uc804\ud654\ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_national_contact_of_a_named_agency_is_goal[\uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \ub300\ud45c\ubc88\ud638 \ucc3e\uc544\uc918]
+tests/unit/test_qa_routing.py::test_national_contact_of_a_named_agency_is_goal[\ubcf4\uac74\ubcf5\uc9c0\ubd80 \ucf5c\uc13c\ud130 \ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_branch_contact_stays_place[\uac00\uae4c\uc6b4 \uad6d\ubbfc\uc5f0\uae08\uacf5\ub2e8 \uc9c0\uc0ac \uc804\ud654\ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_branch_contact_stays_place[\ubd80\uc0b0 \uad6d\ubbfc\uc5f0\uae08 \uc9c0\uc0ac \uc5b4\ub514\uc57c?]
+tests/unit/test_qa_routing.py::test_lookalike_url_is_not_named_as_the_trusted_site
+tests/unit/test_qa_routing.py::test_do_not_submit_is_not_submit[\uc815\ubd8024\uc5d0\uc11c \ub4f1\ubcf8 \ucc3e\uc544\uc918. \ub85c\uadf8\uc778\ud558\uac70\ub098 \uc81c\ucd9c\ud558\uc9c0 \ub9d0\uace0 \ud655\uc778\ub9cc \ud574\uc918]
+tests/unit/test_qa_routing.py::test_do_not_submit_is_not_submit[\ub85c\uadf8\uc778\ud558\uac70\ub098 \uc811\uc218\ud558\uc9c0 \ub9d0\uace0 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_do_not_submit_is_not_submit[\uc811\uc218\ud558\uc9c0 \ub9d0\uace0 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_submit_after_a_login_negation_is_still_submit
+tests/unit/test_qa_routing.py::test_positive_login_after_a_negation_is_login[\uac04\ud3b8\uc778\uc99d \ub9d0\uace0 \ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_positive_login_after_a_negation_is_login[\ub85c\uadf8\uc778 \uc548 \ud558\uba74 \ubabb \ubcf4\ub098? \ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_positive_login_after_a_negation_is_login[\ub85c\uadf8\uc778\ud558\uc9c0 \uc54a\uc73c\uba74 \uc548 \ub418\ub2c8\uae4c \ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_positive_login_after_a_negation_is_login[\ubcf8\uc778\uc778\uc99d \uc5c6\uc774 \ub85c\uadf8\uc778\ub9cc \ud574\uc918]
+tests/unit/test_qa_routing.py::test_positive_login_after_a_negation_is_login[\ub85c\uadf8\uc778 \uc5c6\uc774\ub294 \uc548 \ub418\ub124, \ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_named_official_site_is_not_the_selected_service[\uc0bc\uc131\uc804\uc790 \uacf5\uc2dd \uc0ac\uc774\ud2b8 \uc5f4\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_named_official_site_is_not_the_selected_service[\uc8fc\ubbfc\uc13c\ud130 \uacf5\uc2dd \uc0ac\uc774\ud2b8 \uc5f4\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_named_official_site_is_not_the_selected_service[\uccad\uc640\ub300 \uacf5\uc2dd \ub204\ub9ac\uc9d1 \ub744\uc6cc\uc918]
+tests/unit/test_qa_routing.py::test_named_official_site_is_not_the_selected_service[\ube44\uacf5\uc2dd \uc790\ub8cc \ubcf4\uc5ec\uc918]
+tests/unit/test_qa_routing.py::test_open_official_keeps_the_named_service
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\uc804\ud654\ubc88\ud638\ub294 1355, \ud3c9\uc77c 9\uc2dc\ubd80\ud130\uc608\uc694.-\uc804\ud654\ubc88\ud638\ub294 1 3 5 5, \ud3c9\uc77c 9\uc2dc\ubd80\ud130\uc608\uc694.]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\uad6d\ubc88 \uc5c6\uc774 1355\ubc88\uc73c\ub85c \uac70\uc138\uc694.-\uad6d\ubc88 \uc5c6\uc774 1 3 5 5\ubc88\uc73c\ub85c \uac70\uc138\uc694.]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\ubcf4\uac74\ubcf5\uc9c0\uc0c1\ub2f4\uc13c\ud130\ub294 129\ubc88\uc774\uc5d0\uc694.-\ubcf4\uac74\ubcf5\uc9c0\uc0c1\ub2f4\uc13c\ud130\ub294 1 2 9\ubc88\uc774\uc5d0\uc694.]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[100\ubd84\uc758 50-100\ubd84\uc758 50]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\uc6d4 120\uc2dc\uac04-\uc6d4 120\uc2dc\uac04]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\ucd5c\ub300 100 \ub9cc\uc6d0-\ucd5c\ub300 100 \ub9cc\uc6d0]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[1955-03-02-1955-03-02]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\uc81c102\uc870-\uc81c102\uc870]
+tests/unit/test_qa_routing.py::test_spell_phone_numbers_edges[\uc811\uc218\ubc88\ud638\ub294 20261119-0042\uc608\uc694.-\uc811\uc218\ubc88\ud638\ub294 20261119-0042\uc608\uc694.]
+tests/unit/test_qa_routing.py::test_fuzzy_place_word_is_not_a_named_site[\ubcf5\uc9c0\uad00\uc5d0\uc11c \uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad\ud560 \ub54c \ud544\uc694\ud55c \uc11c\ub958 \uc54c\ub824\uc918]
+tests/unit/test_qa_routing.py::test_fuzzy_place_word_is_not_a_named_site[\uc2e0\ubb38\uc0ac\uc5d0\uc11c \ubcf8 \uc9c0\uc6d0\uae08 \ubc1b\uc744 \uc218 \uc788\ub294\uc9c0 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_general_speed_requests_with_an_object_are_settings[\uc55e\uc73c\ub85c \ub2f5\uc744 \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918-0.9]
+tests/unit/test_qa_routing.py::test_general_speed_requests_with_an_object_are_settings[\ub9d0\uc744 \uc880 \ucc9c\ucc9c\ud788 \ub9d0\ud574\uc918-0.9]
+tests/unit/test_qa_routing.py::test_general_speed_requests_with_an_object_are_settings[\uc548\ub0b4\ub97c \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918-0.9]
+tests/unit/test_qa_routing.py::test_general_speed_requests_with_an_object_are_settings[\ub9d0\uc744 \ube68\ub9ac \ub9d0\ud574\uc918-1.5]
+tests/unit/test_qa_routing.py::test_field_slow_readback_is_field_read[\uc8fc\uc18c \ub2e4\uc2dc \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_field_slow_readback_is_field_read[\uc5f0\ub77d\ucc98 \ub2e4\uc2dc \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_field_edit_with_page_words_is_still_an_edit[\ud55c\uae00 \uc774\ub984 \uc218\uc815\ud574\uc918]
+tests/unit/test_qa_routing.py::test_field_edit_with_page_words_is_still_an_edit[\ud654\uba74 \uc774\ub984 \ud2c0\ub838\uc5b4]
+tests/unit/test_qa_routing.py::test_correction_by_number_keeps_the_kept_number
+tests/unit/test_qa_routing.py::test_asking_when_one_can_apply_is_not_starting_an_application
+tests/unit/test_qa_routing.py::test_l1_whole_request_stays_one_goal
+tests/unit/test_qa_routing.py::test_amounts_are_not_spelled[\uae30\uc900 \uc911\uc704\uc18c\ub4dd 100 \uc774\ud558 \uac00\uad6c\uc608\uc694.]
+tests/unit/test_qa_routing.py::test_amounts_are_not_spelled[\uc6d4 1000, \uc5f0 12000\uc774\uc5d0\uc694]
+tests/unit/test_qa_routing.py::test_amounts_are_not_spelled[\uc608\uc0b0 1500.]
+tests/unit/test_qa_routing.py::test_amounts_are_not_spelled[\uae30\ucd08\uc5f0\uae08\uc740 \ucd5c\ub300 334,810\uc6d0\uc774\uc5d0\uc694.]
+tests/unit/test_qa_routing.py::test_more_login_negations[\ub85c\uadf8\uc778\uc740 \uc548 \ud574\ub3c4 \ub3fc \uc548\ub0b4\ub9cc \ubcf4\uc5ec\uc918]
+tests/unit/test_qa_routing.py::test_more_login_negations[\ub85c\uadf8\uc778\ud558\uae30 \uc804\uc5d0 \uc548\ub0b4\ubd80\ud130 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_cannot_log_in_asks_for_login_help
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778\uc740 \uc548 \ud560 \uac70\uc57c, \uc548\ub0b4\ub9cc \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778 \uc548 \ud574, \uadf8\ub0e5 \ud654\uba74 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778 \ud544\uc694 \uc5c6\uc5b4, \uc548\ub0b4\ub9cc \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778\ud558\uba74 \uc548 \ub3fc, \uc77d\uae30\ub9cc \ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778 \ubc84\ud2bc \ub204\ub974\uc9c0 \ub9c8]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778 \uc2dc\ud0a4\uc9c0 \ub9c8]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778\ud558\ub77c\ub294 \uac8c \uc544\ub2c8\uace0 \uc548\ub0b4\ub9cc \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778\uc740 \ube7c\uace0 \ucc3e\uc544\uc918]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc9c0 \uc54a\uc544]
+tests/unit/test_qa_routing.py::test_everyday_login_negations[\ub85c\uadf8\uc778 \ub3c4\uc640\uc8fc\uc9c0 \ub9c8]
+tests/unit/test_qa_routing.py::test_login_requests_still_login[\ub85c\uadf8\uc778\uc774 \uc548 \ub3fc, \ub3c4\uc640\uc918]
+tests/unit/test_qa_routing.py::test_login_requests_still_login[\ub85c\uadf8\uc778 \ub3c4\uc640\uc918]
+tests/unit/test_qa_routing.py::test_login_requests_still_login[\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4]
+tests/unit/test_qa_routing.py::test_login_requests_still_login[\ub85c\uadf8\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc811\uc218\ub294 \uc548 \ud560 \uac70\uc57c, \ud655\uc778\ub9cc \ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc81c\ucd9c \uc548 \ud574, \ud655\uc778\ub9cc \ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc544\uc9c1 \uc81c\ucd9c\ud558\uba74 \uc548 \ub3fc, \ub2e4\uc2dc \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc81c\ucd9c\uc740 \ub098\uc911\uc5d0 \ud558\uace0 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc81c\ucd9c \uae08\uc9c0, \ub0b4\uc6a9 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_everyday_submit_negations[\uc811\uc218\ud558\ub294 \uac74 \uc544\ub2c8\uace0 \ud655\uc778\ud574\uc918]
+tests/unit/test_qa_routing.py::test_goal_with_a_trailing_login_refusal_stays_a_goal
+tests/unit/test_qa_routing.py::test_excluded_program_is_not_opened
+tests/unit/test_qa_routing.py::test_correction_forms_keep_the_kept_program[\uc7a5\uc560\uc218\ub2f9 \uc544\ub2c8\uace0 \uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \uc900\ube44\ud574\uc918]
+tests/unit/test_qa_routing.py::test_correction_forms_keep_the_kept_program[\uc7a5\uc560\uc218\ub2f9\uc774 \uc544\ub2c8\ub77c \uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \uc900\ube44\ud574\uc918]
+tests/unit/test_qa_routing.py::test_full_url_followed_by_a_particle[https://www.bokjiro.go.kr\ub85c \ub4e4\uc5b4\uac00\uc918-https://www.bokjiro.go.kr]
+tests/unit/test_qa_routing.py::test_full_url_followed_by_a_particle[https://www.bokjiro.go.kr\uc5d0 \uc811\uc18d\ud574\uc918-https://www.bokjiro.go.kr]
+tests/unit/test_qa_routing.py::test_full_url_followed_by_a_particle[https://www.bokjiro.go.kr/ssis-tbu/index.do\ub97c \uc5f4\uc5b4\uc918-https://www.bokjiro.go.kr/ssis-tbu/index.do]
+tests/unit/test_qa_routing.py::test_amounts_near_cue_words_are_not_spelled[\uae30\uc900 \uc911\uc704\uc18c\ub4dd 100 \uc774\ud558 \uac00\uad6c\ub294 \uc8fc\ubbfc\uc13c\ud130\uc5d0 \ubb38\uc758\ud558\uc138\uc694.]
+tests/unit/test_qa_routing.py::test_amounts_near_cue_words_are_not_spelled[\uc18c\ub4dd\uc774 150\uc744 \ub118\uc73c\uba74 \ud589\uc815\ubcf5\uc9c0\uc13c\ud130\uc5d0 \ubb38\uc758\ud558\uc138\uc694.]
+tests/unit/test_qa_routing.py::test_amounts_near_cue_words_are_not_spelled[\uc62c\ud574 120\uac00\uad6c\uac00 \uc8fc\ubbfc\uc13c\ud130\ub85c \uc2e0\uccad\ud588\uc5b4\uc694.]
+tests/unit/test_qa_routing.py::test_amounts_near_cue_words_are_not_spelled[\uc13c\ud130 \uc774\uc6a9 \uc815\uc6d0\uc740 100\uc774\uc5d0\uc694.]
+tests/unit/test_qa_routing.py::test_amounts_near_cue_words_are_not_spelled[1950-1960\ub144\uc0dd\uc740 \uc8fc\ubbfc\uc13c\ud130\uc5d0 \ubb38\uc758\ud558\uc138\uc694.]
+tests/unit/test_qa_routing.py::test_polite_application_start_is_still_a_start[\uc2e0\uccad \ud654\uba74 \uc5f4\uc5b4\uc904 \uc218 \uc788\uc5b4?]
+tests/unit/test_qa_routing.py::test_polite_application_start_is_still_a_start[\uc2e0\uccad \uc2dc\uc791\ud574\uc904 \uc218 \uc788\uc5b4\uc694?]
+tests/unit/test_qa_routing.py::test_field_readback_on_the_form_with_just_said_words[\ubc29\uae08 \uc785\ub825\ud55c \uc8fc\uc18c \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_field_readback_on_the_form_with_just_said_words[\uc544\uae4c \uc4f4 \uc5f0\ub77d\ucc98 \ucc9c\ucc9c\ud788 \uc77d\uc5b4\uc918]
+tests/unit/test_qa_routing.py::test_do_not_open_the_official_page
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ubcf5\uc9c0\uad00\uc5d0\uc11c \ud558\ub294 \ud504\ub85c\uadf8\ub7a8 \uc54c\ub824\uc918-\ubcf5\uc9c0\ub85c]
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ub124\uc774\ubcf4 \uc5f4\uc5b4\uc918-\ub124\uc774\ubc84]
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ubcf5\uc9c0\ub8e8\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \ucc3e\uc544\uc918-\ubcf5\uc9c0\ub85c]
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \ucc3e\uc544\uc918-None]
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ubcf4\uac74\ubcf5\uc9c0\ubd80 \uc0ac\uc774\ud2b8\uc5d0\uc11c \uc0c1\ub2f4 \ubc88\ud638 \ucc3e\uc544\uc918-None]
+tests/unit/test_qa_routing.py::test_near_site_guess_only_for_a_near_miss_destination[\ub124\uc774\ubc84\uc5d0\uc11c \ubcf5\uc9c0\uad00 \ud504\ub85c\uadf8\ub7a8 \ucc3e\uc544\uc918-None]
+tests/unit/test_recovery.py::test_dropped_response_replays_inflight_operation_once
+tests/unit/test_recovery.py::test_detached_grace_expires_and_restart_cannot_recover
+tests/unit/test_registry.py::test_one_row_per_type_with_two_examples
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_SITE:\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_SITE:\uc815\ubd8024 \ub4e4\uc5b4\uac00\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[START_APPLICATION:\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ub3c4\uc640\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[START_APPLICATION:\uc2e0\uccad \ud398\uc774\uc9c0\ub97c \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[GOAL:\ub124\uc774\ubc84\uc5d0\uc11c \uc624\ub298 \ub274\uc2a4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[GOAL:\ubcf5\uc9c0\ub85c \uac00\uc11c \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_BROWSER:\ud06c\ub86c \ucf1c\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_BROWSER:\ube0c\ub77c\uc6b0\uc800 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[POLICY_QUESTION:\uae30\ucd08\uc5f0\uae08\uc740 \uba87 \uc0b4\ubd80\ud130 \ubc1b\uc544?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[POLICY_QUESTION:\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uacfc \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DISCOVER:\ub098\ud55c\ud14c \ub9de\ub294 \ubcf5\uc9c0 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DISCOVER:\ubc1b\uc744 \uc218 \uc788\ub294 \ubcf5\uc9c0 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FIND_PLACE:\uc6b0\ub9ac \ub3d9\ub124 \uc8fc\ubbfc\uc13c\ud130 \uc5b4\ub514\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FIND_PLACE:\uad6d\ubbfc\uc5f0\uae08 \uc9c0\uc0ac \uc804\ud654\ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PRECHECK:\uae30\ucd08\uc5f0\uae08 \ubc1b\uc744 \uc218 \uc788\ub294\uc9c0 \ud655\uc778\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PRECHECK:1\ubc88 \uc790\uaca9 \ud655\uc778\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREPARE_APPLY:\uc2e0\uccad\ud558\ub824\uba74 \ubb50\uac00 \ud544\uc694\ud574?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREPARE_APPLY:\uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \uc11c\ub958 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SERVICE_DETAIL:2\ubc88 \uc790\uc138\ud788 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SERVICE_DETAIL:1\ubc88 \uc124\uba85\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_OFFICIAL:\uacf5\uc2dd \uc548\ub0b4 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[OPEN_OFFICIAL:2\ubc88 \uacf5\uc2dd \uc548\ub0b4 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[HELP_HUMAN:\uc0c1\ub2f4\uc6d0 \uc5f0\uacb0\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[HELP_HUMAN:\uc0ac\ub78c\ud55c\ud14c \ub3c4\uc6c0 \ubc1b\uace0 \uc2f6\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_START_GUIDE:\uc2dc\uc791 \uc548\ub0b4 \ub2e4\uc2dc \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_START_GUIDE:\ucc98\uc74c \uc548\ub0b4 \ub2e4\uc2dc \ub4e4\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[INTRO_REPLAY:\uccad\uc74c \uc18c\uac1c \ub2e4\uc2dc \ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[INTRO_REPLAY:\uccad\uc74c \uc18c\uac1c\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SETUP_RESTART:\uc124\uc815 \ub2e4\uc2dc \ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SETUP_RESTART:\ucc98\uc74c \uc124\uc815 \ub2e4\uc2dc \ud560\ub798]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_MAIN:\ubcf8\ubb38 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_MAIN:\uacc4\uc18d \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[LIST_LINKS:\ub9c1\ud06c \ubaa9\ub85d \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[LIST_LINKS:\ub9c1\ud06c \ub354 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FOLLOW_LINK:\uacf5\uc9c0\uc0ac\ud56d \ub20c\ub7ec\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FOLLOW_LINK:\uc7a5\uc560\uc778\uc5f0\uae08 \uc548\ub0b4 \ub9c1\ud06c \ub20c\ub7ec\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SEARCH:\uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[SEARCH:\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREV:\ub4a4\ub85c \uac00\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREV:\uc774\uc804\uc73c\ub85c]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[ABOUT_SITE:\uc5ec\uae30 \ubb34\uc2a8 \uc0ac\uc774\ud2b8\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[ABOUT_SITE:\uc774 \uc0ac\uc774\ud2b8 \ubb50 \ud558\ub294 \uacf3\uc774\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[LOGIN:\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[LOGIN:\ub85c\uadf8\uc778 \ud398\uc774\uc9c0 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[LOGIN:\ub2e4 \uc785\ub825\ud588\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[CLEAR_LOGIN:\ub85c\uadf8\uc544\uc6c3\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[CLEAR_LOGIN:\ub85c\uadf8\uc778 \uae30\ub85d \uc9c0\uc6cc\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_DOWNLOAD:\ub2e4\uc6b4\ub85c\ub4dc \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \ubaa9\ub85d]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \uc694\uc57d\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_DOWNLOAD:\ubc1b\uc740 PDF\uc5d0\uc11c \uc2e0\uccad \uae30\ud55c\uc774 \uc5b8\uc81c\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FILL:\uc774\ub984\uc740 \uae40\ud558\ub298]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[FILL:\uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[NEXT:\ub2e4\uc74c\uc73c\ub85c]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[NEXT:\ub2e4\uc74c \ub2e8\uacc4\ub85c \ub118\uc5b4\uac00\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_FIELD:\uc8fc\uc18c \ub2e4\uc2dc \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[READ_FIELD:\uc774\ub984 \ubb50\uc600\uc9c0?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REVIEW:\uc9c0\uae08\uae4c\uc9c0 \uc4f4 \ub0b4\uc6a9 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REVIEW:\uc785\ub825\ud55c \ub0b4\uc6a9 \uc804\uccb4 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[EXPLAIN:\uc774 \ud56d\ubaa9\uc740 \ubb34\uc2a8 \ub73b\uc774\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[EXPLAIN:\uac00\uad6c\uc6d0 \uc218\uac00 \ubb34\uc2a8 \ub73b\uc774\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[EDIT_FIELD:\uc8fc\uc18c \uc218\uc815\ud560\uac8c]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[EDIT_FIELD:\uc774\ub984 \uace0\uce60\ub798]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[CURRENT_STEP:\uc9c0\uae08 \uc5b4\ub290 \ub2e8\uacc4\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[CURRENT_STEP:\ud604\uc7ac \ub2e8\uacc4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREPARE_SUBMIT:\ucd5c\uc885 \ud655\uc778\ud560\uac8c]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PREPARE_SUBMIT:\ubaa8\uc758 \uc811\uc218 \ub0b4\uc6a9\uc744 \ud655\uc778\ud588\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[STOP:\uba48\ucdb0]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[STOP:\uadf8\ub9cc]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PROGRESS:\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[PROGRESS:\uc5bc\ub9c8\ub098 \ub0a8\uc558\uc5b4?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DESCRIBE_PICTURE:\ud654\uba74 \uc0ac\uc9c4\uc73c\ub85c \uc124\uba85\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DESCRIBE_PICTURE:\ud398\uc774\uc9c0 \uc804\uccb4\ub97c \ucea1\ucc98\ud574\uc11c \uc811\uc218 \uae30\ud55c\uc744 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DESCRIBE_PICTURE:\uc2a4\ud06c\ub9b0\uc0f7\uc73c\ub85c \ucc28\ud2b8\uc758 \ucd94\uc138\ub97c \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DESCRIBE_SCREEN:\ud654\uba74 \uc124\uba85\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[DESCRIBE_SCREEN:\uc9c0\uae08 \ud654\uba74\uc5d0 \ubb50\uac00 \uc788\uc5b4?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REPHRASE:\uc27d\uac8c \ub9d0\ud574\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REPHRASE:\ubb34\uc2a8 \ub9d0\uc774\uc57c?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[RESUME:\ub2e4\uc2dc \uc2dc\uc791]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[RESUME:\uacc4\uc18d \uc9c4\ud589\ud574]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[APPROVE:\ubaa8\uc758\uc811\uc218 \uc2b9\uc778]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[APPROVE:\uc751]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REJECT:\uc2b9\uc778 \uc548 \ud574]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[REJECT:\uc544\ub2c8]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[AUTH_DONE:\uc778\uc99d \ub05d\ub0ac\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[AUTH_DONE:\ub2e4 \ud588\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[AUTH_DONE:\ub85c\uadf8\uc778 \uc644\ub8cc\ud588\uc5b4]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\ubb50\ub77c\uace0 \ub9d0\ud558\uba74 \ub3fc?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\ubb58 \ud560 \uc218 \uc788\uc5b4?]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\ub3c4\uc6c0\ub9d0]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\uc0ac\uc6a9\ubc95 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\uba85\ub839\uc5b4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\ub2e4\ub978 \ub9d0\ub3c4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[WHAT_CAN_I_SAY:\ub3c4\uc6c0\ub9d0 \ub354]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[UNKNOWN:\uc624\ub298 \ub0a0\uc528 \uc5b4\ub54c]
+tests/unit/test_registry.py::test_example_is_understood_by_rules[UNKNOWN:\ube14\ub77c\ube14\ub77c]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-OPEN_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-START_APPLICATION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-GOAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-OPEN_BROWSER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-POLICY_QUESTION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-DISCOVER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-FIND_PLACE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-PRECHECK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-PREPARE_APPLY]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-SERVICE_DETAIL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-OPEN_OFFICIAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-HELP_HUMAN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-READ_MAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-LIST_LINKS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-FOLLOW_LINK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-SEARCH]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-PREV]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-ABOUT_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-CLEAR_LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-READ_DOWNLOAD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-FILL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-NEXT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-READ_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-REVIEW]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-EXPLAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-EDIT_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-CURRENT_STEP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-PREPARE_SUBMIT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-STOP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-PROGRESS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-DESCRIBE_PICTURE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-DESCRIBE_SCREEN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-REPHRASE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[IDLE-RESUME]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-OPEN_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-START_APPLICATION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-GOAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-OPEN_BROWSER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-POLICY_QUESTION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-DISCOVER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-FIND_PLACE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-PRECHECK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-PREPARE_APPLY]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-SERVICE_DETAIL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-OPEN_OFFICIAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-HELP_HUMAN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-READ_MAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-LIST_LINKS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-FOLLOW_LINK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-SEARCH]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-PREV]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-ABOUT_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-CLEAR_LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-READ_DOWNLOAD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-FILL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-NEXT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-READ_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-REVIEW]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-EXPLAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-EDIT_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-CURRENT_STEP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-PREPARE_SUBMIT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-STOP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-PROGRESS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-DESCRIBE_PICTURE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-DESCRIBE_SCREEN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-REPHRASE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[BROWSING-RESUME]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-OPEN_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-START_APPLICATION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-GOAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-OPEN_BROWSER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-POLICY_QUESTION]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-DISCOVER]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-FIND_PLACE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-PRECHECK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-PREPARE_APPLY]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-SERVICE_DETAIL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-OPEN_OFFICIAL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-HELP_HUMAN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-READ_MAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-LIST_LINKS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-FOLLOW_LINK]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-SEARCH]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-PREV]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-ABOUT_SITE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-CLEAR_LOGIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-READ_DOWNLOAD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-FILL]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-NEXT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-READ_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-REVIEW]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-EXPLAIN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-EDIT_FIELD]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-CURRENT_STEP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-PREPARE_SUBMIT]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-STOP]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-PROGRESS]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-DESCRIBE_PICTURE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-DESCRIBE_SCREEN]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-REPHRASE]
+tests/unit/test_registry.py::test_help_example_is_understood_on_any_screen[APPLICATION_OPEN-RESUME]
+tests/unit/test_registry.py::test_fill_examples_name_practice_fields
+tests/unit/test_registry.py::test_derived_lists_follow_the_table
+tests/unit/test_registry.py::test_planner_prompt_describes_exactly_the_llm_types
+tests/unit/test_registry.py::test_every_type_except_unknown_is_routed
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_SITE:\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_SITE:\uc815\ubd8024 \ub4e4\uc5b4\uac00\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[START_APPLICATION:\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \ub3c4\uc640\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[START_APPLICATION:\uc2e0\uccad \ud398\uc774\uc9c0\ub97c \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[GOAL:\ub124\uc774\ubc84\uc5d0\uc11c \uc624\ub298 \ub274\uc2a4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[GOAL:\ubcf5\uc9c0\ub85c \uac00\uc11c \uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \ubc29\ubc95 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_BROWSER:\ud06c\ub86c \ucf1c\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_BROWSER:\ube0c\ub77c\uc6b0\uc800 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[POLICY_QUESTION:\uae30\ucd08\uc5f0\uae08\uc740 \uba87 \uc0b4\ubd80\ud130 \ubc1b\uc544?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[POLICY_QUESTION:\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uacfc \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[DISCOVER:\ub098\ud55c\ud14c \ub9de\ub294 \ubcf5\uc9c0 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[DISCOVER:\ubc1b\uc744 \uc218 \uc788\ub294 \ubcf5\uc9c0 \ucc3e\uc544\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FIND_PLACE:\uc6b0\ub9ac \ub3d9\ub124 \uc8fc\ubbfc\uc13c\ud130 \uc5b4\ub514\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FIND_PLACE:\uad6d\ubbfc\uc5f0\uae08 \uc9c0\uc0ac \uc804\ud654\ubc88\ud638 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PRECHECK:\uae30\ucd08\uc5f0\uae08 \ubc1b\uc744 \uc218 \uc788\ub294\uc9c0 \ud655\uc778\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PRECHECK:1\ubc88 \uc790\uaca9 \ud655\uc778\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREPARE_APPLY:\uc2e0\uccad\ud558\ub824\uba74 \ubb50\uac00 \ud544\uc694\ud574?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREPARE_APPLY:\uae30\ucd08\uc5f0\uae08 \uc2e0\uccad \uc11c\ub958 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[SERVICE_DETAIL:2\ubc88 \uc790\uc138\ud788 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[SERVICE_DETAIL:1\ubc88 \uc124\uba85\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_OFFICIAL:\uacf5\uc2dd \uc548\ub0b4 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[OPEN_OFFICIAL:2\ubc88 \uacf5\uc2dd \uc548\ub0b4 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[HELP_HUMAN:\uc0c1\ub2f4\uc6d0 \uc5f0\uacb0\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[HELP_HUMAN:\uc0ac\ub78c\ud55c\ud14c \ub3c4\uc6c0 \ubc1b\uace0 \uc2f6\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_MAIN:\ubcf8\ubb38 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_MAIN:\uacc4\uc18d \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[LIST_LINKS:\ub9c1\ud06c \ubaa9\ub85d \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[LIST_LINKS:\ub9c1\ud06c \ub354 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FOLLOW_LINK:\uacf5\uc9c0\uc0ac\ud56d \ub20c\ub7ec\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FOLLOW_LINK:\uc7a5\uc560\uc778\uc5f0\uae08 \uc548\ub0b4 \ub9c1\ud06c \ub20c\ub7ec\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[SEARCH:\uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[SEARCH:\ubcf5\uc9c0\ub85c\uc5d0\uc11c \uae30\ucd08\uc5f0\uae08 \uac80\uc0c9\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREV:\ub4a4\ub85c \uac00\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREV:\uc774\uc804\uc73c\ub85c]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[ABOUT_SITE:\uc5ec\uae30 \ubb34\uc2a8 \uc0ac\uc774\ud2b8\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[ABOUT_SITE:\uc774 \uc0ac\uc774\ud2b8 \ubb50 \ud558\ub294 \uacf3\uc774\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[LOGIN:\ub85c\uadf8\uc778\ud558\uace0 \uc2f6\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[LOGIN:\ub85c\uadf8\uc778 \ud398\uc774\uc9c0 \uc5f4\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[LOGIN:\ub2e4 \uc785\ub825\ud588\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[CLEAR_LOGIN:\ub85c\uadf8\uc544\uc6c3\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[CLEAR_LOGIN:\ub85c\uadf8\uc778 \uae30\ub85d \uc9c0\uc6cc\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_DOWNLOAD:\ub2e4\uc6b4\ub85c\ub4dc \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \ubaa9\ub85d]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_DOWNLOAD:\ubc1b\uc740 \ud30c\uc77c \uc694\uc57d\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_DOWNLOAD:\ubc1b\uc740 PDF\uc5d0\uc11c \uc2e0\uccad \uae30\ud55c\uc774 \uc5b8\uc81c\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FILL:\uc774\ub984\uc740 \uae40\ud558\ub298]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[FILL:\uc8fc\uc18c\ub294 \ubd80\uc0b0\uad11\uc5ed\uc2dc \uc608\uc2dc\uad6c \uc608\uc2dc\ub85c 10]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[NEXT:\ub2e4\uc74c\uc73c\ub85c]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[NEXT:\ub2e4\uc74c \ub2e8\uacc4\ub85c \ub118\uc5b4\uac00\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_FIELD:\uc8fc\uc18c \ub2e4\uc2dc \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[READ_FIELD:\uc774\ub984 \ubb50\uc600\uc9c0?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REVIEW:\uc9c0\uae08\uae4c\uc9c0 \uc4f4 \ub0b4\uc6a9 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REVIEW:\uc785\ub825\ud55c \ub0b4\uc6a9 \uc804\uccb4 \uc77d\uc5b4\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[EXPLAIN:\uc774 \ud56d\ubaa9\uc740 \ubb34\uc2a8 \ub73b\uc774\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[EXPLAIN:\uac00\uad6c\uc6d0 \uc218\uac00 \ubb34\uc2a8 \ub73b\uc774\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[EDIT_FIELD:\uc8fc\uc18c \uc218\uc815\ud560\uac8c]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[EDIT_FIELD:\uc774\ub984 \uace0\uce60\ub798]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[CURRENT_STEP:\uc9c0\uae08 \uc5b4\ub290 \ub2e8\uacc4\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[CURRENT_STEP:\ud604\uc7ac \ub2e8\uacc4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREPARE_SUBMIT:\ucd5c\uc885 \ud655\uc778\ud560\uac8c]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[PREPARE_SUBMIT:\ubaa8\uc758 \uc811\uc218 \ub0b4\uc6a9\uc744 \ud655\uc778\ud588\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[DESCRIBE_SCREEN:\ud654\uba74 \uc124\uba85\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[DESCRIBE_SCREEN:\uc9c0\uae08 \ud654\uba74\uc5d0 \ubb50\uac00 \uc788\uc5b4?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REPHRASE:\uc27d\uac8c \ub9d0\ud574\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REPHRASE:\ubb34\uc2a8 \ub9d0\uc774\uc57c?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[RESUME:\ub2e4\uc2dc \uc2dc\uc791]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[RESUME:\uacc4\uc18d \uc9c4\ud589\ud574]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REJECT:\uc2b9\uc778 \uc548 \ud574]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[REJECT:\uc544\ub2c8]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[AUTH_DONE:\uc778\uc99d \ub05d\ub0ac\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[AUTH_DONE:\ub2e4 \ud588\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[AUTH_DONE:\ub85c\uadf8\uc778 \uc644\ub8cc\ud588\uc5b4]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\ubb50\ub77c\uace0 \ub9d0\ud558\uba74 \ub3fc?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\ubb58 \ud560 \uc218 \uc788\uc5b4?]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\ub3c4\uc6c0\ub9d0]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\uc0ac\uc6a9\ubc95 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\uba85\ub839\uc5b4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\ub2e4\ub978 \ub9d0\ub3c4 \uc54c\ub824\uc918]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[WHAT_CAN_I_SAY:\ub3c4\uc6c0\ub9d0 \ub354]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[UNKNOWN:\uc624\ub298 \ub0a0\uc528 \uc5b4\ub54c]
+tests/unit/test_registry.py::test_planner_can_express_every_llm_type[UNKNOWN:\ube14\ub77c\ube14\ub77c]
+tests/unit/test_registry.py::test_planner_cannot_approve_stop_or_report_progress[APPROVE]
+tests/unit/test_registry.py::test_planner_cannot_approve_stop_or_report_progress[STOP]
+tests/unit/test_registry.py::test_planner_cannot_approve_stop_or_report_progress[PROGRESS]
+tests/unit/test_registry.py::test_planner_more_and_site_slots
+tests/unit/test_registry.py::test_help_pages_read_every_example_once[lead0]
+tests/unit/test_registry.py::test_help_pages_read_every_example_once[lead1]
+tests/unit/test_registry.py::test_help_pages_read_every_example_once[lead2]
+tests/unit/test_registry.py::test_screen_group_leads_every_page_until_it_runs_out
+tests/unit/test_registry.py::test_help_before_consent_reads_only_what_runs_before_consent
+tests/unit/test_registry.py::test_phrases_the_help_tells_you_to_say[\ubb50\ub77c\uace0 \ub9d0\ud558\uba74 \ub3fc?-False]
+tests/unit/test_registry.py::test_phrases_the_help_tells_you_to_say[\ub2e4\ub978 \ub9d0\ub3c4 \uc54c\ub824\uc918-True]
+tests/unit/test_registry.py::test_phrases_the_help_tells_you_to_say[\ub3c4\uc6c0\ub9d0-False]
+tests/unit/test_result_speech.py::test_press_result_confirmed_moved
+tests/unit/test_result_speech.py::test_press_result_confirmed_changed_with_and_without_reveal
+tests/unit/test_result_speech.py::test_press_result_nothing_changed
+tests/unit/test_result_speech.py::test_unconfirmed_message_is_third_form
+tests/unit/test_result_speech.py::test_click_note_uses_three_way_forms_for_autopilot
+tests/unit/test_result_speech.py::test_fixture_field_speech_says_saved_not_live_api
+tests/unit/test_result_speech.py::test_fixture_policy_speech_says_saved_not_live_api
+tests/unit/test_result_speech.py::test_fixture_catalog_source_not_labelled_live_api
+tests/unit/test_result_speech.py::test_api_fallback_catalog_source_not_labelled_live_api
+tests/unit/test_result_speech.py::test_cite_rewrites_fixture_version_label
+tests/unit/test_setup_clips.py::test_every_manifest_entry_has_a_clip_for_each_of_its_languages
+tests/unit/test_setup_clips.py::test_shared_steps_exist_in_all_four_languages_and_language_options_in_their_own
+tests/unit/test_setup_clips.py::test_stage1_has_every_step_the_wizard_plays
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen0-blocked]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen1-blocked]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen2-captcha]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen3-captcha]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen4-captcha]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen5-login]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen6-login]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen7-login]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen8-verification]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen9-verification]
+tests/unit/test_shot_plan.py::test_screens_that_are_never_photographed[screen10-password]
+tests/unit/test_shot_plan.py::test_every_refusal_has_its_own_sentence
+tests/unit/test_shot_plan.py::test_normal_page_masks_every_input_and_frame_and_hides_the_cursor
+tests/unit/test_shot_plan.py::test_judge_blocks[page0-\uae30\ucd08\uc5f0\uae08 \uc548\ub0b4\n\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638 900101-1234567-expected0]
+tests/unit/test_shot_plan.py::test_judge_blocks[page1-\uae30\ucd08\uc5f0\uae08 \uc548\ub0b4\n\ub9cc 65\uc138 \uc774\uc0c1\uc774\uba74 \uc2e0\uccad\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.-expected1]
+tests/unit/test_shot_plan.py::test_judge_blocks[page2-\uacc4\uc88c\ubc88\ud638 110-123-456789\n\ub2f4\ub2f9 \ubd80\uc11c \ubcf5\uc9c0\uc815\ucc45\uacfc-expected2]
+tests/unit/test_shot_plan.py::test_judge_blocks[page3-\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638\n900101-1234567-expected3]
+tests/unit/test_shot_plan.py::test_judge_blocks[page4-\uae30\ucd08\uc5f0\uae08 \uc548\ub0b4\n\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638 900101-1234567-expected4]
+tests/unit/test_shot_plan.py::test_judge_blocks[page5-\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638 900101-1234567\n\uce74\ub4dc\ubc88\ud638 1234-5678-9012-3456-expected5]
+tests/unit/test_shot_plan.py::test_judge_blocks[page6-\uacc4\uc88c\ubc88\ud638\n110-123-456789-expected6]
+tests/unit/test_shot_plan.py::test_judge_blocks[page7-\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638\n  900101-1234567-expected7]
+tests/unit/test_shot_plan.py::test_judge_blocks[page8-\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638 900101-1234567\uc548\ucabd \ubb38\ub2e8\uc785\ub2c8\ub2e4.-expected8]
+tests/unit/test_shot_plan.py::test_judge_blocks[page9-\uc55e \ubb38\ub2e8\uc785\ub2c8\ub2e4\uc8fc\ubbfc\ub4f1\ub85d\ubc88\ud638 900101-1234567-expected9]
+tests/unit/test_shot_plan.py::test_judge_blocks[page10-\uacc4\uc88c\ubc88\ud638 3\n900101-1234567-expected10]
+tests/unit/test_shot_plan.py::test_judge_blocks[page11--expected11]
+tests/unit/test_shot_plan.py::test_captcha_frame_is_refused[https://www.google.com/recaptcha/api2/anchor?k=site]
+tests/unit/test_shot_plan.py::test_captcha_frame_is_refused[https://newassets.hcaptcha.com/captcha/v1/abc/static/hcaptcha.html]
+tests/unit/test_shot_plan.py::test_captcha_frame_is_refused[https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv0/0/x/]
+tests/unit/test_shot_plan.py::test_ordinary_frame_and_text_pass_with_the_blocks_to_mask
+tests/unit/test_shot_plan.py::test_password_field_seen_at_capture_time_is_refused
+tests/unit/test_shot_plan.py::test_uncovered_secret_is_refused_as_unmaskable
+tests/unit/test_task_review.py::test_review_releases_only_the_completed_grounded_result
+tests/unit/test_task_review.py::test_partial_review_retries_only_the_unanswered_original_fact
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[missing]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[merged]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[wrong-kind]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[fabricated-quote]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[partial-action]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[unsupported-number]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[unsupported-small-number]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[nominal-id]
+tests/unit/test_task_review.py::test_review_does_not_publish_invalid_evidence_or_claims[unknown-route]
+tests/unit/test_task_review.py::test_last_arrival_must_match_current_page_including_repeat_visits
+tests/unit/test_task_review.py::test_requested_order_of_two_page_visits_requires_chronological_observations
+tests/unit/test_task_review.py::test_receipts_require_success_permission_and_matching_id_and_never_contain_field_values
+tests/unit/test_task_review.py::test_twice_needs_two_distinct_matching_action_receipts
+tests/unit/test_task_review.py::test_actions_in_a_sequence_cannot_consume_an_old_receipt_twice_or_out_of_order
+tests/unit/test_task_review.py::test_private_values_are_omitted_from_the_request_requirements_and_evidence
+tests/unit/test_task_review.py::test_only_the_verified_public_office_phone_can_be_spoken
+tests/unit/test_task_review.py::test_each_quote_in_a_comparison_keeps_its_own_verified_source
+tests/unit/test_task_review.py::test_page_visits_and_displayed_tab_contents_follow_actual_clicks
+tests/unit/test_task_review.py::test_tab_visit_with_page_corroboration_and_verified_markdown_reference
+tests/unit/test_task_review.py::test_locked_in_field_needs_exact_readback_to_emit_confirmation
+tests/unit/test_task_review.py::test_stop_cancels_a_pending_review_without_returning_a_result
+tests/unit/test_task_review.py::test_missing_provider_or_schema_failure_cannot_release_a_draft
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uba48\ucdb0-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uba48\ucdb0-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc7a0\uae50, \uc774 \uc0ac\uc774\ud2b8 \ubb50 \ud558\ub294 \uacf3\uc774\uc57c?-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc7a0\uae50, \uc774 \uc0ac\uc774\ud2b8 \ubb50 \ud558\ub294 \uacf3\uc774\uc57c?-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4?-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4?-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ud654\uba74 \uc0ac\uc9c4\uc73c\ub85c \uc124\uba85\ud574\uc918-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ud654\uba74 \uc0ac\uc9c4\uc73c\ub85c \uc124\uba85\ud574\uc918-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc751-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc751-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc544\ub2c8-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc544\ub2c8-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ub2e4 \ud588\uc5b4-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ub2e4 \ud588\uc5b4-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uae30\ucd08\uc5f0\uae08\uc740 \uba87 \uc0b4\ubd80\ud130 \ubc1b\uc544?-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uae30\ucd08\uc5f0\uae08\uc740 \uba87 \uc0b4\ubd80\ud130 \ubc1b\uc544?-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uacf5\uc9c0\uc0ac\ud56d \ub20c\ub7ec\uc918-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uacf5\uc9c0\uc0ac\ud56d \ub20c\ub7ec\uc918-offline]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc774\ub984\uc740 \uae40\ud558\ub298-model]
+tests/unit/test_understanding_cases.py::test_fast_cases_never_call_the_model[\uc774\ub984\uc740 \uae40\ud558\ub298-offline]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uba48\ucdb0-BROWSING-STOP]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uc9c0\uae08 \uc5b4\ub514\uae4c\uc9c0 \ud588\uc5b4?-BROWSING-PROGRESS]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uc751-WAITING_FOR_USER_CONFIRMATION-APPROVE]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uc544\ub2c8-WAITING_FOR_USER_CONFIRMATION-REJECT]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\ub2e4 \ud588\uc5b4-AUTH_HANDOFF-AUTH_DONE]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\ubcf5\uc9c0\ub85c \uc5f4\uc5b4\uc918-IDLE-OPEN_SITE]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uc815\ubd8024-IDLE-OPEN_SITE]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\uacf5\uc9c0\uc0ac\ud56d \ub20c\ub7ec\uc918-BROWSING-FOLLOW_LINK]
+tests/unit/test_understanding_order.py::test_fast_path_skips_model[\ud654\uba74 \uc0ac\uc9c4\uc73c\ub85c \uc124\uba85\ud574\uc918-BROWSING-DESCRIBE_PICTURE]
+tests/unit/test_understanding_order.py::test_model_decides_misread_phrase
+tests/unit/test_understanding_order.py::test_question_while_waiting_never_approves
+tests/unit/test_understanding_order.py::test_planner_unknown_is_final
+tests/unit/test_understanding_order.py::test_planner_error_falls_back
+tests/unit/test_understanding_order.py::test_planner_timeout_falls_back
+tests/unit/test_understanding_order.py::test_bad_plan_falls_back_as_a_whole[steps0]
+tests/unit/test_understanding_order.py::test_bad_plan_falls_back_as_a_whole[APPROVE]
+tests/unit/test_understanding_order.py::test_bad_plan_falls_back_as_a_whole[steps2]
+tests/unit/test_understanding_order.py::test_bad_plan_falls_back_as_a_whole[steps3]
+tests/unit/test_understanding_order.py::test_split_rules_fallback_does_not_grant_approval
+tests/unit/test_understanding_order.py::test_unknown_step_keeps_its_question
+tests/unit/test_understanding_order.py::test_only_duplicate_unknown_steps_leave_one_unknown
+tests/unit/test_understanding_order.py::test_contextual_input_skips_model[\uae40\ud558\ub298-False-awaited0]
+tests/unit/test_understanding_order.py::test_contextual_input_skips_model[\ub450 \ubc88\uc9f8 \ud56d\ubaa9-True-None]
+tests/unit/test_understanding_order.py::test_contextual_input_skips_model[2\ubc88 \ub20c\ub7ec\uc918-False-None]
+tests/unit/test_understanding_order.py::test_compound_picture_commands_keep_both_steps[parts0-None]
+tests/unit/test_understanding_order.py::test_compound_picture_commands_keep_both_steps[parts0-llm1]
+tests/unit/test_understanding_order.py::test_compound_picture_commands_keep_both_steps[parts1-None]
+tests/unit/test_understanding_order.py::test_compound_picture_commands_keep_both_steps[parts1-llm1]
+tests/unit/test_understanding_order.py::test_picture_needs_explicit_words
+tests/unit/test_understanding_order.py::test_later_clause_can_withdraw_picture_request_even_on_failure
+tests/unit/test_vision_llm.py::test_see_sends_one_masked_image_and_a_strict_schema
+tests/unit/test_vision_llm.py::test_detail_comes_from_config
+tests/unit/test_vision_llm.py::test_failed_call_returns_none[response0]
+tests/unit/test_vision_llm.py::test_failed_call_returns_none[response1]
+tests/unit/test_vision_llm.py::test_failed_call_returns_none[response2]
+tests/unit/test_vision_llm.py::test_see_takes_only_a_sealed_picture
+tests/unit/test_vision_llm.py::test_text_model_still_sends_plain_text_and_cannot_see
+tests/unit/test_vision_llm.py::test_no_vision_client_unless_openai_with_model_and_key[cfg0]
+tests/unit/test_vision_llm.py::test_no_vision_client_unless_openai_with_model_and_key[cfg1]
+tests/unit/test_vision_llm.py::test_no_vision_client_unless_openai_with_model_and_key[cfg2]
+tests/unit/test_vision_llm.py::test_no_vision_client_unless_openai_with_model_and_key[cfg3]
+tests/unit/test_vision_llm.py::test_no_vision_client_unless_openai_with_model_and_key[cfg4]
+tests/unit/test_vision_llm.py::test_openai_builds_a_vision_client
+tests/unit/test_vision_llm.py::test_vision_role_is_read_like_the_other_roles
+tests/unit/test_welfare.py::test_period_uses_application_fields_and_preserves_date_provenance
+tests/unit/test_welfare.py::test_list_mapping
+tests/unit/test_welfare.py::test_detail_mapping
+tests/unit/test_welfare.py::test_entity_cleanup
+tests/unit/test_welfare.py::test_official_paths_params_and_cache
+tests/unit/test_welfare.py::test_official_error_falls_back
+tests/unit/test_welfare.py::test_application_guide_requires_an_unambiguous_official_catalog_entry[rows0-expected0]
+tests/unit/test_welfare.py::test_application_guide_requires_an_unambiguous_official_catalog_entry[rows1-None]
+tests/unit/test_welfare.py::test_application_guide_requires_an_unambiguous_official_catalog_entry[rows2-None]
+tests/unit/test_welfare.py::test_application_guide_requires_an_unambiguous_official_catalog_entry[rows3-None]
+tests/unit/test_welfare.py::test_application_guide_requires_an_unambiguous_official_catalog_entry[rows4-None]
+tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc9c0\uc6d0\ub300\uc0c1\uc774 \ub204\uad6c\uc57c?-expected0]
+tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc5bc\ub9c8 \ubc1b\uc544?-expected1]
+tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc2e0\uccad \uc808\ucc28 \uc54c\ub824\uc918-expected2]
+tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \ud544\uc694\ud55c \uc11c\ub958 \uc54c\ub824\uc918-expected3]
+tests/unit/test_welfare.py::test_topic_answers_from_official_data[\uc7a5\uc560\uc778\uc5f0\uae08 \uc5b4\ub514\uc5d0 \ubb38\uc758\ud574?-expected4]
+tests/unit/test_welfare.py::test_chunk_sections
+tests/unit/test_welfare.py::test_retrieval_quality
+tests/unit/test_welfare.py::test_amount_uses_cited_benefit_field_and_preserves_conditions
+tests/unit/test_welfare.py::test_rag_rejects_amount_from_an_uncited_field_or_question
+tests/unit/test_welfare.py::test_rag_not_answerable
+tests/unit/test_welfare.py::test_general_answer_without_number_is_spoken
+tests/unit/test_welfare.py::test_general_answer_with_number_is_not_spoken[\ubcf4\ud1b5 \ub9e4\ub2ec 20\uc77c\uc5d0 \uacc4\uc88c\ub85c \ub4e4\uc5b4\uc640\uc694.]
+tests/unit/test_welfare.py::test_general_answer_with_number_is_not_spoken[\uad50\ud1b5\ube44\ub294 \ud55c \ub2ec\uc5d0 5\ub9cc \uc6d0\uae4c\uc9c0 \ud560\uc778\ub3fc\uc694.]
+tests/unit/test_welfare.py::test_general_answer_with_number_is_not_spoken[\uc2e0\uccad\ud558\uace0 3\uac1c\uc6d4\ucbe4 \uac78\ub824\uc694.]
+tests/unit/test_welfare.py::test_rag_unknown_chunk_ids_replaced
+tests/unit/test_welfare.py::test_rag_follow_up_remembers_service
+tests/unit/test_welfare.py::test_application_context_switches_service
+tests/unit/test_welfare.py::test_rule_answer_without_llm
+tests/unit/test_welfare.py::test_explain_field_has_source
+tests/unit/test_welfare.py::test_explain_unknown_field_no_guess
+tests/unit/test_welfare.py::test_policy_question_has_disclaimer
+tests/unit/test_welfare.py::test_profile_validators
+tests/unit/test_welfare.py::test_contracts
+tests/unit/test_welfare.py::test_scenario_file_and_evaluator
+tests/unit/test_welfare.py::test_validate_name[\uae40\ud558\ub298-True]
+tests/unit/test_welfare.py::test_validate_name[\ub0a8\uad81\ubbfc\uc218-True]
+tests/unit/test_welfare.py::test_validate_name[John Smith-True]
+tests/unit/test_welfare.py::test_validate_name[\uc74c \uadf8\ub0e5 \uc880 \ub3c4\uc640\uc904\ub798-False]
+tests/unit/test_welfare.py::test_validate_name[\uadfc\ub370 \uc774 \uc2e0\uccad\ud558\uba74-False]
+tests/unit/test_welfare.py::test_validate_name[\ub124-False]
+tests/unit/test_welfare.py::test_validate_name[1234-False]
+tests/unit/test_welfare.py::test_deadline_open_from_enforcement_dates
+tests/unit/test_welfare.py::test_deadline_closed_from_enforcement_dates
+tests/unit/test_welfare.py::test_deadline_open_from_year_round_text
+tests/unit/test_welfare.py::test_deadline_unknown_without_period_gives_contact
+tests/unit/test_welfare.py::test_deadline_question_bypasses_llm
+tests/unit/test_welfare.py::test_detail_mapping_extracts_related_sites_and_forms_for_central_and_local
+tests/unit/test_welfare.py::test_catalog_paginates_local_and_central_lists_when_total_count_exceeds_page
+tests/unit/test_welfare.py::test_direct_links_combines_central_api_local_api_and_csv
+tests/unit/test_workflow_store.py::test_claim_cancel_retry_restart_and_isolation[sqlite]
+tests/unit/test_workflow_store.py::test_claim_cancel_retry_restart_and_isolation[postgres]
+tests/unit/test_workflow_store.py::test_semantic_and_keyword_recall_and_forget[sqlite]
+tests/unit/test_workflow_store.py::test_semantic_and_keyword_recall_and_forget[postgres]
+tests/unit/test_workflow_store.py::test_only_explicit_public_inputs_and_verified_results_can_be_saved
+tests/unit/test_zero_shot_prompts.py::test_outgoing_instructions_and_real_user_context
+tests/unit/test_zero_shot_prompts.py::test_live_startup_and_delegation_instructions
+tests/unit/test_zero_shot_prompts.py::test_browser_step_instructions[facts0-browse_step]
+tests/unit/test_zero_shot_prompts.py::test_browser_step_instructions[facts1-public_browse_step]
+
+1834 tests collected in 7.49s

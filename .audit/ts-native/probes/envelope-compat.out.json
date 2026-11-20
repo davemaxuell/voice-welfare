@@ -1,0 +1,15 @@
+{
+  "plaintextBytes": 60,
+  "pythonSealed": true,
+  "tsOpensPythonSealed": true,
+  "pythonOpensTsSealed": true,
+  "controlTsWrongKeyThrows": true,
+  "controlPythonWrongKeyFails": true,
+  "wrongKeyReadReturns": "undefined (treated as no vault)",
+  "vaultFileStillAtOriginalPath": false,
+  "filesInDirAfter": [
+    "personal.json.unreadable-<timestamp>",
+    "py.sealed",
+    "ts.sealed"
+  ]
+}

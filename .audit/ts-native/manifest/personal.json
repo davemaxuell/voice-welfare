@@ -1,0 +1,56 @@
+{
+  "src/personal/atomic.ts": {
+    "python": [
+      "src/cheongeum/personal/atomic.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/personal/store.ts": {
+    "python": [
+      "src/cheongeum/personal/store.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/personal/action_log.ts": {
+    "python": [
+      "src/cheongeum/personal/action_log.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/personal/commands.ts": {
+    "python": [
+      "src/cheongeum/personal/commands.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/personal/dialogue.ts": {
+    "python": [
+      "src/cheongeum/personal/dialogue.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/personal/guardian.ts": {
+    "python": [
+      "src/cheongeum/personal/guardian.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/orchestrator/first_run.ts": {
+    "python": [
+      "src/cheongeum/orchestrator/first_run.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/orchestrator/first_run_text.ts": {
+    "python": [
+      "src/cheongeum/orchestrator/first_run.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/orchestrator/speech_repair.ts": {
+    "python": [
+      "src/cheongeum/orchestrator/speech_repair.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  }
+}

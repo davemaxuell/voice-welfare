@@ -1,4 +1,4 @@
-// 데스크톱 앱 시험 도구: 실제 Electron 앱(메인·대화 창·아바타 창)과 파이썬 서버를 띄우고,
+// 데스크톱 앱 시험 도구: 실제 Electron 앱(메인·대화 창·아바타 창)과 로컬 서비스를 띄우고,
 // 받아쓰기·음성 합성은 이 파일의 가짜 서버가 맡는다(외부로 아무것도 보내지 않음). 마이크는 합성 WAV 파일.
 const fs = require('node:fs');
 const http = require('node:http');
@@ -7,14 +7,11 @@ const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
-const APP_DIR = path.join(ROOT, 'apps', 'desktop');
+// Built by: node apps/desktop/scripts/build.ts app
+const APP_DIR = path.join(ROOT, 'apps', 'desktop', 'out', 'app');
 
 function playwright() {
-  const win = path.join(ROOT, '.venv', 'Lib', 'site-packages', 'playwright', 'driver', 'package');
-  if (fs.existsSync(win)) return require(win);
-  const lib = path.join(ROOT, '.venv', 'lib');
-  const py = fs.readdirSync(lib).find((d) => d.startsWith('python'));
-  return require(path.join(lib, py, 'site-packages', 'playwright', 'driver', 'package'));
+  return require('playwright');
 }
 
 async function freePort() {
@@ -129,7 +126,7 @@ async function fakeVoice() {
 }
 
 /**
- * 앱을 띄운다. 서버는 main.cjs가 늘 하던 대로 .venv 파이썬으로 띄우고, 의도 분석은 규칙(mock), 연습 사이트 모드.
+ * 앱을 띄운다. 서버는 메인 프로세스가 늘 하던 대로 유틸리티 프로세스로 띄우고, 의도 분석은 규칙(mock), 연습 사이트 모드.
  * 반환: { app, controller, overlay, requests, voice, close }
  */
 async function launch({ env: extra = {}, avatarPrefs, mic = {} } = {}) {
@@ -170,10 +167,10 @@ async function launch({ env: extra = {}, avatarPrefs, mic = {} } = {}) {
   };
   delete env.CHEONGEUM_SHOW_WINDOW;
   for (const role of ['', '_UNDERSTAND', '_GOAL', '_WEB', '_FILE', '_VISION']) env[`LLM${role}_PROVIDER`] = 'mock';
-  // CHEONGEUM_DESKTOP_EXE: 설치본의 실행 파일과 내장 Python으로 같은 시나리오를 돌린다.
+  // CHEONGEUM_DESKTOP_EXE: 설치본의 실행 파일과 내장 서비스로 같은 시나리오를 돌린다.
   const packaged = process.env.CHEONGEUM_DESKTOP_EXE;
   const app = await _electron.launch({
-    executablePath: packaged || path.join(APP_DIR, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron'),
+    executablePath: packaged || require('electron'),
     args: [
       ...(packaged ? [] : [APP_DIR]),
       `--user-data-dir=${userData}`,
