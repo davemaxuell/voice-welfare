@@ -642,23 +642,40 @@ export class VoiceEdge {
     const narrate = async (delegate: Delegate, turn: Promise<TurnResultLike>) => {
       let settled = false;
       const done = turn.then(() => { settled = true; }, () => { settled = true; });
-      let spokenSeq = session.progress.snapshot().seq;
       let seenActivity: string | null = null;
+      const show = async () => {
+        const activity = session.progress.snapshot().activity;
+        if (activity !== null && activity !== seenActivity) {
+          seenActivity = activity;
+          await socket.sendJson({ activity });
+        }
+      };
+      const speakQueued = async () => {
+        if (clock() - transcript.updated < 1.5) return;
+        for (;;) {
+          const line = session.progress.shiftSpoken();
+          if (line === undefined) return;
+          await append("commentary", delegate, line);
+          await show();
+        }
+      };
       for (;;) {
         const pause = new AbortController();
         await Promise.race([done, this.#sleep(0.25, AbortSignal.any([signal, pause.signal])).catch(() => {})]);
         pause.abort();
         alive();
-        if (settled) return;
-        const step = session.progress.snapshot();
-        if (step.activity !== null && step.activity !== seenActivity) {
-          seenActivity = step.activity;
-          await socket.sendJson({ activity: step.activity });
+        await show();
+        if (settled) {
+          if (session.progress.hasSpoken()) {
+            while (clock() - transcript.updated < 1.5) {
+              await this.#sleep(0.1, signal).catch(() => {});
+              if (signal.aborted) return;
+            }
+            await speakQueued();
+          }
+          return;
         }
-        if (step.spoken && step.activitySpoken && step.activity !== null && step.seq > spokenSeq && clock() - transcript.updated >= 1.5) {
-          spokenSeq = step.seq;
-          await append("commentary", delegate, step.activity);
-        }
+        await speakQueued();
       }
     };
 

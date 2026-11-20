@@ -313,6 +313,25 @@ it("test_progress_question_is_answered_while_a_task_runs", async () => {
     gate.release(); await run.advance(100); expect(run.appended("commentary", "d1")).toEqual(["찾았어요."]);
   } finally { gate.release(); await run.close(); }
 });
+it("a finished step is still spoken when the next phase is noted immediately", async () => {
+  const done = latch();
+  const progress = new Progress();
+  const run = startMonitor(async () => {
+    progress.start();
+    progress.note("'신청'을 누르려고 했어요.", true);
+    progress.note("생각하는 중이에요.", false);
+    await done.pending;
+    progress.finish();
+    return { state: "BROWSING", speech: "끝" };
+  }, "", "", {}, progress);
+  try {
+    run.enqueue(delta("신청 눌러줘", 0, 400));
+    run.enqueue(delegation("d1", 500));
+    await run.advance(3000);
+    expect(run.appended("commentary", "d1")).toEqual(["'신청'을 누르려고 했어요."]);
+  } finally { done.release(); await run.close(); }
+});
+
 it("finished steps are spoken without the 15 second hold, and a fresh utterance waits", async () => {
   const first = latch(), second = latch(), done = latch();
   const progress = new Progress();
@@ -335,7 +354,7 @@ it("finished steps are spoken without the 15 second hold, and a fresh utterance 
     await run.advance(2000);
     expect(activities()).toEqual([{ activity: "생각하는 중이에요." }]);
     expect(run.appended("commentary", "d1")).toEqual([]);
-    run.enqueue(delta("잠깐", 3000, 3200));
+    run.enqueue(delta("이어서", 3000, 3200));
     first.release();
     await run.advance(400);
     expect(activities().map(packet => packet.activity)).toContain("'신청'을 눌렀어요.");

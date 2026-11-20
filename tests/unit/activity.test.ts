@@ -36,6 +36,11 @@ it("실패한 단계를 열렸다고 하면 고정 문장을 쓴다", async () =
   expect(JSON.parse(user)).toMatchObject({ source: "비".repeat(40), target: "신청", ok: false });
 });
 
+it("실패인데 열렸다고 하면 고정 문장을 쓴다", async () => {
+  const llm: StructuredLlm = { name: "fake", async generate() { return { line: "페이지가 열렸습니다." }; } };
+  expect(await describeActivity(llm, { phase: "step", action: "click", target: "신청", ok: false })).toBe("'신청'을 누르려고 했어요.");
+});
+
 it("늦은 다시 쓰기는 이미 지난 단계의 문장을 덮지 않는다", () => {
   expect(settleActivity(2, 1, "늦은 문장", "생각하는 중이에요.")).toBe("생각하는 중이에요.");
 });

@@ -776,7 +776,7 @@ async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
 /** 몇 초마다 진행 줄을 받아 화면에 두고, 끝난 단계만 말한다. 반환값을 부르면 그친다. */
 function watchProgress(voice?: VoiceLoop) {
   let on = true;
-  let spokenActivity = "";
+  let spokenActivity = 0;
   const timer = setInterval(() => void (async () => {
     const p = await api.progress(ui.sessionId ?? "").catch(() => undefined);
     if (p === undefined) return;
@@ -784,7 +784,7 @@ function watchProgress(voice?: VoiceLoop) {
     const next = progressUpdate(p, spokenActivity);
     set({ activity: next.activity });
     if (!on || next.speak === undefined || userTalking || busyTalking) return;
-    spokenActivity = next.speak;
+    spokenActivity = next.seq;
     push({ role: "assistant", text: next.speak });
     announce(next.speak);
     void sayWhileBusy({ speech: next.speak }, voice);

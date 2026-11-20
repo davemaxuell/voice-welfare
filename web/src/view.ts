@@ -116,12 +116,13 @@ export interface UiState {
 
 /** 진행 응답에서 화면에 보일 줄과, 끝났을 때만 읽을 줄을 고른다. 사실 단계 문장은 읽지 않는다. */
 export function progressUpdate(
-  p: { activity?: string | null; activitySpoken?: boolean; latest?: string | null },
-  previousSpoken: string,
-): { activity: string | null; speak?: string } {
+  p: { activity?: string | null; activitySpoken?: boolean; spoken?: boolean; seq?: number; latest?: string | null },
+  previousSeq: number,
+): { activity: string | null; speak?: string; seq: number } {
   const activity = p.activity ?? null;
-  const speak = p.activitySpoken === true && activity !== null && activity.length > 0 && activity !== previousSpoken ? activity : undefined;
-  return { activity, speak };
+  const seq = p.seq ?? previousSeq;
+  const speak = p.spoken !== false && p.activitySpoken === true && activity !== null && activity.length > 0 && seq > previousSeq ? activity : undefined;
+  return { activity, speak, seq };
 }
 
 export function dictationHelp(lang: string) {
