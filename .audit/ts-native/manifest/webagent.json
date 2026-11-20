@@ -1,0 +1,117 @@
+{
+  "src/agents/web/agent.ts": {
+    "python": [
+      "src/cheongeum/agents/web/agent.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/approval.ts": {
+    "python": [
+      "src/cheongeum/agents/web/approval.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/auth_page.ts": {
+    "python": [
+      "src/cheongeum/agents/web/auth_page.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/autopilot.ts": {
+    "python": [
+      "src/cheongeum/agents/web/autopilot.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/browser/index.ts": {
+    "python": [
+      "src/cheongeum/agents/web/browser/__init__.py",
+      "src/cheongeum/agents/web/browser/waiting.html"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/docs.ts": {
+    "python": [
+      "src/cheongeum/agents/web/docs.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/downloads.ts": {
+    "python": [
+      "src/cheongeum/agents/web/downloads.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/effect.ts": {
+    "python": [
+      "src/cheongeum/agents/web/effect.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/file_answer.ts": {
+    "python": [
+      "src/cheongeum/agents/web/file_answer.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/link_choices.ts": {
+    "python": [
+      "src/cheongeum/agents/web/link_choices.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/playbook.ts": {
+    "python": [
+      "src/cheongeum/agents/web/playbook.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/shot.ts": {
+    "python": [
+      "src/cheongeum/agents/web/shot.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/skills/browse.ts": {
+    "python": [
+      "src/cheongeum/agents/web/skills/browse.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/skills/form.ts": {
+    "python": [
+      "src/cheongeum/agents/web/skills/form.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/skills/guided.ts": {
+    "python": [
+      "src/cheongeum/agents/web/skills/guided.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/skills/screen_context.ts": {
+    "python": [
+      "src/cheongeum/agents/web/skills/browse.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/agents/web/visual_step.ts": {
+    "python": [
+      "src/cheongeum/agents/web/visual_step.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/speech/picture.ts": {
+    "python": [
+      "src/cheongeum/speech/picture.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  },
+  "src/speech/screen.ts": {
+    "python": [
+      "src/cheongeum/speech/screen.py"
+    ],
+    "sha": "77aad3e88704e55be257d443664582a39e23861d"
+  }
+}

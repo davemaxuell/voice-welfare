@@ -1,0 +1,296 @@
+[
+ {
+  "in": "",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": " ",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "www.example.go.kr",
+  "http": "https://www.example.go.kr",
+  "public": "https://www.example.go.kr"
+ },
+ {
+  "in": "http://www.129.go.kr",
+  "http": "http://www.129.go.kr",
+  "public": "http://www.129.go.kr"
+ },
+ {
+  "in": "https;//sub.example.or.kr/guide",
+  "http": "https://sub.example.or.kr/guide",
+  "public": "https://sub.example.or.kr/guide"
+ },
+ {
+  "in": "http;//a.kr",
+  "http": "http://a.kr",
+  "public": "http://a.kr"
+ },
+ {
+  "in": "HTTPS://Example.COM/Path",
+  "http": "HTTPS://Example.COM/Path",
+  "public": "HTTPS://Example.COM/Path"
+ },
+ {
+  "in": "example.com",
+  "http": "https://example.com",
+  "public": "https://example.com"
+ },
+ {
+  "in": "example",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "example.com/a b",
+  "http": null,
+  "public": "https://example.com/a b"
+ },
+ {
+  "in": "https://example.com/a b",
+  "http": null,
+  "public": "https://example.com/a b"
+ },
+ {
+  "in": "ftp://example.com",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "javascript:alert(1)",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://localhost/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "http://127.0.0.1:8080/x",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://user:pw@example.com/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://user@example.com/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://@example.com/",
+  "http": "https://@example.com/",
+  "public": "https://@example.com/"
+ },
+ {
+  "in": "https://example.com:99999/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://example.com:80/",
+  "http": "https://example.com:80/",
+  "public": "https://example.com:80/"
+ },
+ {
+  "in": "https://[::1]/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://[1.2.3.4]/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://[::1/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://exa mple.com",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "www.example.go.kr.",
+  "http": "https://www.example.go.kr",
+  "public": "https://www.example.go.kr"
+ },
+ {
+  "in": "https://example.com/a).",
+  "http": "https://example.com/a",
+  "public": "https://example.com/a"
+ },
+ {
+  "in": "한국.kr",
+  "http": "https://한국.kr",
+  "public": "https://한국.kr"
+ },
+ {
+  "in": "https://한국.kr/가",
+  "http": "https://한국.kr/가",
+  "public": "https://한국.kr/가"
+ },
+ {
+  "in": "bokjiro.go.kr/x?a=1&b=2",
+  "http": "https://bokjiro.go.kr/x?a=1&b=2",
+  "public": "https://bokjiro.go.kr/x?a=1&b=2"
+ },
+ {
+  "in": "https://www.bokjiro.go.kr/a?x=1#f",
+  "http": "https://www.bokjiro.go.kr/a?x=1#f",
+  "public": "https://www.bokjiro.go.kr/a?x=1#f"
+ },
+ {
+  "in": "http://example.com\n",
+  "http": "http://example.com",
+  "public": "http://example.com"
+ },
+ {
+  "in": "example..com",
+  "http": null,
+  "public": "https://example..com"
+ },
+ {
+  "in": "-example.com",
+  "http": "https://-example.com",
+  "public": "https://-example.com"
+ },
+ {
+  "in": "ｅxample.com",
+  "http": null,
+  "public": "https://ｅxample.com"
+ },
+ {
+  "in": "https://ex＠ample.com/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://ex℀ample.com/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://example.com/?a=b@c",
+  "http": "https://example.com/?a=b@c",
+  "public": "https://example.com/?a=b@c"
+ },
+ {
+  "in": "https://a:b@c@example.com/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://:pw@example.com/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "HTTP;//UPPER.kr",
+  "http": "HTTP://UPPER.kr",
+  "public": "HTTP://UPPER.kr"
+ },
+ {
+  "in": "http://example",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "https://exa_mple.com/",
+  "http": "https://exa_mple.com/",
+  "public": "https://exa_mple.com/"
+ },
+ {
+  "in": "www.가나다.kr/경로",
+  "http": "https://www.가나다.kr/경로",
+  "public": "https://www.가나다.kr/경로"
+ },
+ {
+  "in": "  https://example.com/x,;  ",
+  "http": "https://example.com/x",
+  "public": "https://example.com/x"
+ },
+ {
+  "in": "https://example.com,",
+  "http": "https://example.com",
+  "public": "https://example.com"
+ },
+ {
+  "in": "https://v1.x]/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://[v1.x]/",
+  "http": "https://[v1.x]/",
+  "public": "https://[v1.x]/"
+ },
+ {
+  "in": "https://[vz.x]/",
+  "http": {
+   "error": "ValueError"
+  },
+  "public": {
+   "error": "ValueError"
+  }
+ },
+ {
+  "in": "https://[fe80::1%eth0]/",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "http://１２３.com/",
+  "http": "http://１２３.com/",
+  "public": "http://１２３.com/"
+ },
+ {
+  "in": "https://example.com/\t",
+  "http": "https://example.com/",
+  "public": "https://example.com/"
+ },
+ {
+  "in": "ｗｗｗ.example.com",
+  "http": null,
+  "public": "https://ｗｗｗ.example.com"
+ },
+ {
+  "in": "www.example.com:８０/x",
+  "http": null,
+  "public": null
+ },
+ {
+  "in": "www.example.com:80/x\ny",
+  "http": null,
+  "public": "https://www.example.com:80/x\ny"
+ }
+]

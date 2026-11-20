@@ -1,0 +1,2232 @@
+[
+{
+"text": "",
+"state": "none",
+"result": null
+},
+{
+"text": "",
+"state": "stale",
+"result": null
+},
+{
+"text": "",
+"state": "proposed",
+"result": null
+},
+{
+"text": "",
+"state": "recent",
+"result": null
+},
+{
+"text": "",
+"state": "single",
+"result": null
+},
+{
+"text": "네",
+"state": "none",
+"result": null
+},
+{
+"text": "네",
+"state": "stale",
+"result": null
+},
+{
+"text": "네",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "네",
+"state": "recent",
+"result": null
+},
+{
+"text": "네",
+"state": "single",
+"result": null
+},
+{
+"text": "응",
+"state": "none",
+"result": null
+},
+{
+"text": "응",
+"state": "stale",
+"result": null
+},
+{
+"text": "응",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "응",
+"state": "recent",
+"result": null
+},
+{
+"text": "응",
+"state": "single",
+"result": null
+},
+{
+"text": "아니요",
+"state": "none",
+"result": null
+},
+{
+"text": "아니요",
+"state": "stale",
+"result": null
+},
+{
+"text": "아니요",
+"state": "proposed",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아니요",
+"state": "recent",
+"result": null
+},
+{
+"text": "아니요",
+"state": "single",
+"result": null
+},
+{
+"text": "맞아요?",
+"state": "none",
+"result": null
+},
+{
+"text": "맞아요?",
+"state": "stale",
+"result": null
+},
+{
+"text": "맞아요?",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "맞아요?",
+"state": "recent",
+"result": null
+},
+{
+"text": "맞아요?",
+"state": "single",
+"result": null
+},
+{
+"text": "2번 링크 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "두 번째 링크 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "두 번째 링크 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "두 번째 링크 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "두 번째 링크 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "두 번째 링크 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "첫 번째 검색 결과 눌러줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 번째 검색 결과 눌러줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 번째 검색 결과 눌러줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 번째 검색 결과 눌러줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 번째 검색 결과 눌러줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 링크",
+"state": "none",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 링크",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 링크",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 링크",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "첫 링크",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "맨 위 링크 열어",
+"state": "none",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "맨 위 링크 열어",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "맨 위 링크 열어",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "맨 위 링크 열어",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "맨 위 링크 열어",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "３번 링크 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "３번 링크 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "３번 링크 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "３번 링크 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "３번 링크 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "12번 링크",
+"state": "none",
+"result": {
+"action": "open",
+"index": 12,
+"match_description": false
+}
+},
+{
+"text": "12번 링크",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 12,
+"match_description": false
+}
+},
+{
+"text": "12번 링크",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 12,
+"match_description": false
+}
+},
+{
+"text": "12번 링크",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 12,
+"match_description": false
+}
+},
+{
+"text": "12번 링크",
+"state": "single",
+"result": {
+"action": "open",
+"index": 12,
+"match_description": false
+}
+},
+{
+"text": "123번 링크",
+"state": "none",
+"result": null
+},
+{
+"text": "123번 링크",
+"state": "stale",
+"result": null
+},
+{
+"text": "123번 링크",
+"state": "proposed",
+"result": null
+},
+{
+"text": "123번 링크",
+"state": "recent",
+"result": null
+},
+{
+"text": "123번 링크",
+"state": "single",
+"result": null
+},
+{
+"text": "2번호 링크",
+"state": "none",
+"result": null
+},
+{
+"text": "2번호 링크",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번호 링크",
+"state": "proposed",
+"result": null
+},
+{
+"text": "2번호 링크",
+"state": "recent",
+"result": null
+},
+{
+"text": "2번호 링크",
+"state": "single",
+"result": null
+},
+{
+"text": "2번",
+"state": "none",
+"result": null
+},
+{
+"text": "2번",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "2번 열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번?",
+"state": "none",
+"result": null
+},
+{
+"text": "2번?",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번?",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번?",
+"state": "recent",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번?",
+"state": "single",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 뭐야?",
+"state": "none",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 뭐야?",
+"state": "stale",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 뭐야?",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 뭐야?",
+"state": "recent",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 뭐야?",
+"state": "single",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 설명해줘",
+"state": "none",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 설명해줘",
+"state": "stale",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 설명해줘",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 설명해줘",
+"state": "recent",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 설명해줘",
+"state": "single",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 말고 3번 링크 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 말고 3번 링크 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 말고 3번 링크 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 말고 3번 링크 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 말고 3번 링크 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 말고 3번",
+"state": "none",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 말고 3번",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 말고 3번",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 말고 3번",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 말고 3번",
+"state": "single",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크는 누르지 마",
+"state": "none",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크는 누르지 마",
+"state": "stale",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크는 누르지 마",
+"state": "proposed",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크는 누르지 마",
+"state": "recent",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크는 누르지 마",
+"state": "single",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 왜 그래?",
+"state": "none",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 왜 그래?",
+"state": "stale",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 왜 그래?",
+"state": "proposed",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 왜 그래?",
+"state": "recent",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 왜 그래?",
+"state": "single",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이랑 3번 링크",
+"state": "none",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이랑 3번 링크",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이랑 3번 링크",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이랑 3번 링크",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이랑 3번 링크",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아무 링크나 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "아무 링크나 열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "아무 링크나 열어줘",
+"state": "proposed",
+"result": null
+},
+{
+"text": "아무 링크나 열어줘",
+"state": "recent",
+"result": null
+},
+{
+"text": "아무 링크나 열어줘",
+"state": "single",
+"result": null
+},
+{
+"text": "그거 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "그거 열어줘",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그거 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "그거 열어줘",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그거 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "그 링크 눌러줘",
+"state": "none",
+"result": null
+},
+{
+"text": "그 링크 눌러줘",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그 링크 눌러줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "그 링크 눌러줘",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그 링크 눌러줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "이거 좀 열어 주세요",
+"state": "none",
+"result": null
+},
+{
+"text": "이거 좀 열어 주세요",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "이거 좀 열어 주세요",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "이거 좀 열어 주세요",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "이거 좀 열어 주세요",
+"state": "single",
+"result": {
+"action": "open",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 맞아요",
+"state": "none",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 맞아요",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 맞아요",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 맞아요",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 맞아요",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크가 맞아요 그거 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크가 맞아요 그거 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크가 맞아요 그거 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크가 맞아요 그거 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크가 맞아요 그거 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "네, 2번 맞아요",
+"state": "none",
+"result": null
+},
+{
+"text": "네, 2번 맞아요",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "네, 2번 맞아요",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "네, 2번 맞아요",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "네, 2번 맞아요",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아니요 2번 맞지 않아요",
+"state": "none",
+"result": null
+},
+{
+"text": "아니요 2번 맞지 않아요",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아니요 2번 맞지 않아요",
+"state": "proposed",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아니요 2번 맞지 않아요",
+"state": "recent",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "아니요 2번 맞지 않아요",
+"state": "single",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞나요?",
+"state": "none",
+"result": null
+},
+{
+"text": "2번 맞나요?",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞나요?",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 맞나요?",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞나요?",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이 맞아요?",
+"state": "none",
+"result": null
+},
+{
+"text": "2번이 맞아요?",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이 맞아요?",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번이 맞아요?",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번이 맞아요?",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞아요 그런데",
+"state": "none",
+"result": null
+},
+{
+"text": "2번 맞아요 그런데",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞아요 그런데",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞아요 그런데",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 맞아요 그런데",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "3번 맞아요",
+"state": "none",
+"result": null
+},
+{
+"text": "3번 맞아요",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "3번 맞아요",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "3번 맞아요",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "3번 맞아요",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "링크 중 하나 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "링크 중 하나 열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "링크 중 하나 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "링크 중 하나 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "링크 중 하나 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "검색 결과 중에 장애인연금 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "검색 결과 중에 장애인연금 열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "검색 결과 중에 장애인연금 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "검색 결과 중에 장애인연금 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "검색 결과 중에 장애인연금 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": null,
+"match_description": true
+}
+},
+{
+"text": "장애인연금 링크 열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "장애인연금 링크 열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "장애인연금 링크 열어줘",
+"state": "proposed",
+"result": null
+},
+{
+"text": "장애인연금 링크 열어줘",
+"state": "recent",
+"result": null
+},
+{
+"text": "장애인연금 링크 열어줘",
+"state": "single",
+"result": null
+},
+{
+"text": "2번 연금 링크",
+"state": "none",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 연금 링크",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 연금 링크",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 연금 링크",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 연금 링크",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 서류",
+"state": "none",
+"result": null
+},
+{
+"text": "2번 서류",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번 서류",
+"state": "proposed",
+"result": null
+},
+{
+"text": "2번 서류",
+"state": "recent",
+"result": null
+},
+{
+"text": "2번 서류",
+"state": "single",
+"result": null
+},
+{
+"text": "화면에 있는 2번 링크 열어줘",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "화면에 있는 2번 링크 열어줘",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "화면에 있는 2번 링크 열어줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "화면에 있는 2번 링크 열어줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "화면에 있는 2번 링크 열어줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "결과 중에서 두 번째 거 열어",
+"state": "none",
+"result": null
+},
+{
+"text": "결과 중에서 두 번째 거 열어",
+"state": "stale",
+"result": null
+},
+{
+"text": "결과 중에서 두 번째 거 열어",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "결과 중에서 두 번째 거 열어",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "결과 중에서 두 번째 거 열어",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "다섯 번째 결과 클릭해줘",
+"state": "none",
+"result": null
+},
+{
+"text": "다섯 번째 결과 클릭해줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "다섯 번째 결과 클릭해줘",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 5,
+"match_description": false
+}
+},
+{
+"text": "다섯 번째 결과 클릭해줘",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 5,
+"match_description": false
+}
+},
+{
+"text": "다섯 번째 결과 클릭해줘",
+"state": "single",
+"result": {
+"action": "open",
+"index": 5,
+"match_description": false
+}
+},
+{
+"text": "네 번째 항목 선택해줘",
+"state": "none",
+"result": null
+},
+{
+"text": "네 번째 항목 선택해줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "네 번째 항목 선택해줘",
+"state": "proposed",
+"result": null
+},
+{
+"text": "네 번째 항목 선택해줘",
+"state": "recent",
+"result": null
+},
+{
+"text": "네 번째 항목 선택해줘",
+"state": "single",
+"result": null
+},
+{
+"text": "세 번째 거",
+"state": "none",
+"result": null
+},
+{
+"text": "세 번째 거",
+"state": "stale",
+"result": null
+},
+{
+"text": "세 번째 거",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "세 번째 거",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "세 번째 거",
+"state": "single",
+"result": {
+"action": "open",
+"index": 3,
+"match_description": false
+}
+},
+{
+"text": "2번 링크를 열어 줄래요",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크를 열어 줄래요",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크를 열어 줄래요",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크를 열어 줄래요",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크를 열어 줄래요",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "2번 링크로",
+"state": "none",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크로",
+"state": "stale",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크로",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크로",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크로",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "열어줘",
+"state": "none",
+"result": null
+},
+{
+"text": "열어줘",
+"state": "stale",
+"result": null
+},
+{
+"text": "열어줘",
+"state": "proposed",
+"result": null
+},
+{
+"text": "열어줘",
+"state": "recent",
+"result": null
+},
+{
+"text": "열어줘",
+"state": "single",
+"result": null
+},
+{
+"text": "장애인연금 열어줘.",
+"state": "none",
+"result": null
+},
+{
+"text": "장애인연금 열어줘.",
+"state": "stale",
+"result": null
+},
+{
+"text": "장애인연금 열어줘.",
+"state": "proposed",
+"result": null
+},
+{
+"text": "장애인연금 열어줘.",
+"state": "recent",
+"result": null
+},
+{
+"text": "장애인연금 열어줘.",
+"state": "single",
+"result": null
+},
+{
+"text": "  2번 링크 열어줘 ~  ",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "  2번 링크 열어줘 ~  ",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "  2번 링크 열어줘 ~  ",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "  2번 링크 열어줘 ~  ",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "  2번 링크 열어줘 ~  ",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "1번 링크 이름 알려줘",
+"state": "none",
+"result": {
+"action": "read",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "1번 링크 이름 알려줘",
+"state": "stale",
+"result": {
+"action": "read",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "1번 링크 이름 알려줘",
+"state": "proposed",
+"result": {
+"action": "read",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "1번 링크 이름 알려줘",
+"state": "recent",
+"result": {
+"action": "read",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "1번 링크 이름 알려줘",
+"state": "single",
+"result": {
+"action": "read",
+"index": 1,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 취소",
+"state": "none",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 취소",
+"state": "stale",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 취소",
+"state": "proposed",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 취소",
+"state": "recent",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 취소",
+"state": "single",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 안 눌러",
+"state": "none",
+"result": null
+},
+{
+"text": "2번 안 눌러",
+"state": "stale",
+"result": null
+},
+{
+"text": "2번 안 눌러",
+"state": "proposed",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 안 눌러",
+"state": "recent",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 안 눌러",
+"state": "single",
+"result": {
+"action": "decline",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그거 뭐야?",
+"state": "none",
+"result": null
+},
+{
+"text": "그거 뭐야?",
+"state": "stale",
+"result": null
+},
+{
+"text": "그거 뭐야?",
+"state": "proposed",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그거 뭐야?",
+"state": "recent",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "그거 뭐야?",
+"state": "single",
+"result": {
+"action": "clarify",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 눌러도 돼?",
+"state": "none",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 눌러도 돼?",
+"state": "stale",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 눌러도 돼?",
+"state": "proposed",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 눌러도 돼?",
+"state": "recent",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "2번 링크 눌러도 돼?",
+"state": "single",
+"result": {
+"action": "question",
+"index": null,
+"match_description": false
+}
+},
+{
+"text": "누가 운영해?",
+"state": "none",
+"result": null
+},
+{
+"text": "누가 운영해?",
+"state": "stale",
+"result": null
+},
+{
+"text": "누가 운영해?",
+"state": "proposed",
+"result": null
+},
+{
+"text": "누가 운영해?",
+"state": "recent",
+"result": null
+},
+{
+"text": "누가 운영해?",
+"state": "single",
+"result": null
+},
+{
+"text": "응, 2번 링크",
+"state": "none",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "응, 2번 링크",
+"state": "stale",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "응, 2번 링크",
+"state": "proposed",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "응, 2번 링크",
+"state": "recent",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+},
+{
+"text": "응, 2번 링크",
+"state": "single",
+"result": {
+"action": "open",
+"index": 2,
+"match_description": false
+}
+}
+]

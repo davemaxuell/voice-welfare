@@ -52,7 +52,7 @@ async function testRelease(app) {
   feed.listen(0, '127.0.0.1');
   await once(feed, 'listening');
   try {
-    const { NsisUpdater } = require(path.join(asar, 'node_modules', 'electron-updater'));
+    const { NsisUpdater, createUpdates } = require(path.join(asar, 'updates.cjs'));
     const updater = new NsisUpdater();
     updater.forceDevUpdateConfig = true;
     updater.disableDifferentialDownload = true;
@@ -64,7 +64,6 @@ async function testRelease(app) {
       prompts.push(options);
       return { response: choices.shift() };
     } };
-    const { createUpdates } = require(path.join(asar, 'updates.cjs'));
     const updates = createUpdates(updater, dialog, () => {}, () => false);
     await updates.check(false);
     assert.equal(prompts.length, 1);

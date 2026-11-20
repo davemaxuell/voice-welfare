@@ -1,0 +1,29 @@
+{
+  "asShipped": {
+    "vaultOpened": false,
+    "vaultMovedAside": true,
+    "pythonsKeyUntouched": true
+  },
+  "production": {
+    "vaultOpened": true,
+    "vaultStayedPut": true,
+    "pythonsKeyUntouched": true
+  },
+  "freshInstall": {
+    "pythonOpensTypescriptVault": true,
+    "typescriptReopens": true
+  },
+  "legacyTsBuild": {
+    "pythonNameOnlyOpensIt": false,
+    "pythonNameOnlyMovedItAside": true,
+    "tryingBothNamesOpensIt": true,
+    "tryingBothNamesLeftItInPlace": true,
+    "pythonCanReadTheAdoptedKey": true
+  },
+  "win32ViaKoffi": {
+    "vaultOpened": true,
+    "vaultStayedPut": true,
+    "pythonsKeyUntouched": true
+  },
+  "leftover": 0
+}
