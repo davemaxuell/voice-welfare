@@ -642,19 +642,22 @@ export class VoiceEdge {
     const narrate = async (delegate: Delegate, turn: Promise<TurnResultLike>) => {
       let settled = false;
       const done = turn.then(() => { settled = true; }, () => { settled = true; });
-      let seen = session.progress.snapshot().seq, last = clock();
+      let spokenSeq = session.progress.snapshot().seq;
+      let seenActivity: string | null = null;
       for (;;) {
         const pause = new AbortController();
         await Promise.race([done, this.#sleep(0.25, AbortSignal.any([signal, pause.signal])).catch(() => {})]);
         pause.abort();
         alive();
         if (settled) return;
-        const step = session.progress.snapshot(), now = clock();
-        if (step.running && step.spoken && step.latest !== null && step.latest !== "" && step.seq > seen
-          && now - last >= timing.progressGapS && now - transcript.updated >= 1.5) {
-          seen = step.seq;
-          last = now;
-          await append("commentary", delegate, step.latest);
+        const step = session.progress.snapshot();
+        if (step.activity !== null && step.activity !== seenActivity) {
+          seenActivity = step.activity;
+          await socket.sendJson({ activity: step.activity });
+        }
+        if (step.spoken && step.activitySpoken && step.activity !== null && step.seq > spokenSeq && clock() - transcript.updated >= 1.5) {
+          spokenSeq = step.seq;
+          await append("commentary", delegate, step.activity);
         }
       }
     };

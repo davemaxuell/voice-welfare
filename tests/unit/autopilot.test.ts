@@ -1,9 +1,11 @@
 import { expect, it } from "vitest";
 import { ACTION_TYPES, type Observation } from "../../src/core/actions.ts";
-import { type LlmRequest } from "../../src/core/llm.ts";
+import { type LlmRequest, type StructuredLlm } from "../../src/core/llm.ts";
+import { Progress } from "../../src/core/progress.ts";
 import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
 import { Autopilot, historyLine, isKoreanText, pageForLlm, type AutopilotOptions } from "../../src/agents/web/autopilot.ts";
 import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
+import { stepSentence } from "../../src/agents/web/skills/browse.ts";
 import { PolicyGuard } from "../../src/safety/guard.ts";
 import { REDACTED } from "../../src/safety/privacy.ts";
 
@@ -77,6 +79,46 @@ it("모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 
   // Python 77aad3e: 시간 안에 답하지 않은 결정은 '정하지 못했어요'로 끝난다.
   const result = await pilot(() => new Promise(() => {}), { timeBudgetMs: 30 }).run("알려줘", context());
   expect([result.status, result.speech]).toEqual(["failed", "다음에 무엇을 할지 정하지 못했어요. 조금 더 구체적으로 말씀해 주시겠어요?"]);
+});
+
+it("실패한 누름의 진행 알림에는 화면 글이 들어가지 않고 성공했다고 하지 않는다", async () => {
+  const secret = "비밀번호는 556677";
+  const page: Observation = {
+    ...obs, title: "복지로",
+    outline: {
+      ...obs.outline, mainText: `안내 ${secret}`,
+      items: [
+        { ref: "a", role: "button", name: "신청", region: "main", disabled: false },
+        { ref: "b", role: "button", name: "신청", region: "main", disabled: false },
+      ],
+    },
+  };
+  const users: string[] = [];
+  const activityLlm: StructuredLlm = {
+    name: "utility",
+    async generate(request) {
+      if (request.schemaName === "activity_line") users.push(String(request.user));
+      return { line: "복지로를 열었어요." };
+    },
+  };
+  const profile = createMockWelfareProfile("http://localhost:5174");
+  const guard = new PolicyGuard({ allowedOrigins: [profile.origin], allowedActionTypes: ACTION_TYPES, allowedFieldIds: [],
+    secretFieldIds: [], maxActionsPerTurn: 12, readOnlyWeb: true });
+  const web = new WebExecutionAgent({ observe: async () => page, async execute() { throw new Error("예상 밖의 조작"); }, async close() {} }, guard, profile);
+  const progress = new Progress();
+  progress.start();
+  let calls = 0;
+  const auto = new Autopilot(web, { name: "test", async generate() {
+    calls++;
+    return calls === 1 ? { action: "click", target: "신청" } : { action: "ask_user", answer: "어느 버튼을 누를까요?" };
+  } }, { searchUrl: query => query, progress, activityLlm });
+  const result = await auto.run("신청 눌러줘", context(), step => progress.add(stepSentence(step, "", "")));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(result.steps[0]).toMatchObject({ action: "click", ok: false, target: "신청" });
+  expect(progress.latest).toBe("'신청'을 누르려고 했어요.");
+  expect(users.join("")).not.toContain(secret);
+  expect(users.some(user => JSON.parse(user).ok === false && JSON.parse(user).action === "click")).toBe(true);
+  expect(progress.snapshot().activity).not.toBe("복지로를 열었어요.");
 });
 
 it("보류 중인 모델이 멈춘 뒤 답을 보내도 브라우저 조작은 실행하지 않는다", async () => {

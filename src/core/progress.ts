@@ -29,6 +29,11 @@ export class Progress {
     this.#seq++;
   }
 
+  /** 같은 단계의 문장만 바꾼다. 번호와 말하기 여부는 그대로라 한 번 더 읽지 않는다. */
+  revise(text: string): void {
+    this.#activity = text;
+  }
+
   finish(): void { this.#running = false; }
 
   /** 검토가 끝날 때까지 자동 음성 안내만 보류한다. 사용자가 물으면 최신 단계는 그대로 읽을 수 있다. */

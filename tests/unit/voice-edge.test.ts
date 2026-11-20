@@ -313,16 +313,51 @@ it("test_progress_question_is_answered_while_a_task_runs", async () => {
     gate.release(); await run.advance(100); expect(run.appended("commentary", "d1")).toEqual(["찾았어요."]);
   } finally { gate.release(); await run.close(); }
 });
+it("finished steps are spoken without the 15 second hold, and a fresh utterance waits", async () => {
+  const first = latch(), second = latch(), done = latch();
+  const progress = new Progress();
+  const run = startMonitor(async () => {
+    progress.start();
+    progress.note("생각하는 중이에요.", false);
+    await first.pending;
+    progress.note("'신청'을 눌렀어요.", true);
+    await second.pending;
+    progress.note("'다음'을 눌렀어요.", true);
+    await done.pending;
+    progress.finish();
+    return { state: "BROWSING", speech: "끝" };
+  }, "", "", {}, progress);
+  const activities = () => run.socket.sendJson.mock.calls.map(call => call[0]).filter(packet =>
+    typeof packet === "object" && packet !== null && "activity" in packet);
+  try {
+    run.enqueue(delta("복지로에서 신청 눌러줘", 0, 800));
+    run.enqueue(delegation("d1", 900));
+    await run.advance(2000);
+    expect(activities()).toEqual([{ activity: "생각하는 중이에요." }]);
+    expect(run.appended("commentary", "d1")).toEqual([]);
+    run.enqueue(delta("잠깐", 3000, 3200));
+    first.release();
+    await run.advance(400);
+    expect(activities().map(packet => packet.activity)).toContain("'신청'을 눌렀어요.");
+    expect(run.appended("commentary", "d1")).toEqual([]);
+    await run.advance(1600);
+    expect(run.appended("commentary", "d1")).toEqual(["'신청'을 눌렀어요."]);
+    second.release();
+    await run.advance(3000);
+    expect(run.appended("commentary", "d1")).toEqual(["'신청'을 눌렀어요.", "'다음'을 눌렀어요."]);
+  } finally { done.release(); await run.close(); }
+});
+
 it("test_long_task_speaks_each_new_progress_step_once", async () => {
   const gate = latch(), progress = new Progress();
   const run = startMonitor(async () => {
-    progress.start(); progress.add("복지로를 열었어요."); await gate.pending; progress.finish();
+    progress.start(); progress.note("복지로를 열었어요.", true); await gate.pending; progress.finish();
     return { state: "BROWSING", speech: "찾았어요." };
   }, "", "", { progressGapS: 0.3 }, progress);
   try {
     run.enqueue(delta("복지로에서 기초연금 찾아줘", 0, 1000)); run.enqueue(delegation("d1", 1050)); await run.advance(1800);
     expect(run.appended("commentary", "d1")).toEqual(["복지로를 열었어요."]);
-    progress.add("'신청 방법'을 눌렀어요."); await run.advance(1400); gate.release(); await run.advance(300);
+    progress.note("'신청 방법'을 눌렀어요.", true); await run.advance(1400); gate.release(); await run.advance(300);
     expect(run.appended("commentary", "d1")).toEqual(["복지로를 열었어요.", "'신청 방법'을 눌렀어요.", "찾았어요."]);
   } finally { gate.release(); await run.close(); }
 });

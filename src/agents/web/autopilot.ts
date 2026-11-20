@@ -3,6 +3,7 @@ import { z } from "zod";
 import { raceAbort } from "../../core/abort.ts";
 import type { Action } from "../../core/actions.ts";
 import { redactedJson, type Redacted, type StructuredLlm } from "../../core/llm.ts";
+import type { Progress } from "../../core/progress.ts";
 import { PUBLIC_ORIGINS } from "../../core/sites.ts";
 import { strip } from "../../core/text.ts";
 import { todayIso } from "../../core/time.ts";
@@ -19,6 +20,7 @@ import { guideSection } from "./playbook.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import { choices, type VisualChoice } from "./visual_step.ts";
 import type { WebObservation } from "./view.ts";
+import { describeActivity, fixedActivity, settleActivity, type ActivityFact } from "../../speech/activity.ts";
 
 export type AutopilotActionType =
   'open_url' | 'click' | 'search' | 'back' | 'find' | 'find_links' | 'more_links' | 'read_more' | 'answer' | 'ask_user' | 'fail';
@@ -85,6 +87,8 @@ export interface AutopilotOptions {
   searchUrl: (q: string) => string;
   recoveryLlm?: StructuredLlm;
   offerVisual?: boolean;
+  progress?: Progress;
+  activityLlm?: StructuredLlm;
 }
 
 export interface RunOptions {
@@ -303,6 +307,19 @@ export class Autopilot {
     this.opts = opts;
   }
 
+  phase(fact: ActivityFact, speak: boolean): void {
+    const progress = this.opts.progress;
+    if (progress === undefined) return;
+    const fixed = fixedActivity(fact);
+    progress.note(fixed, speak);
+    const request = progress.snapshot().seq;
+    const llm = this.opts.activityLlm;
+    if (llm === undefined) return;
+    void describeActivity(llm, fact).then(line => {
+      if (progress.snapshot().seq === request) progress.revise(settleActivity(request, request, line, fixed));
+    });
+  }
+
   async run(goal: string, ctx: ExecContext, onStep?: (s: AutopilotStep) => void, options: RunOptions = {}): Promise<AutopilotResult> {
     const { siteUrl, startUrl, conversation: given, requestedFacts = [], checkpoint, visualControl, allowedUrls = [] } = options;
     const deadline = performance.now() + (checkpoint?.remainingMs ?? this.opts.timeBudgetMs ?? 75_000);
@@ -386,6 +403,7 @@ export class Autopilot {
       const step: AutopilotStep = { n: steps.length + 1, at: decidedAt, ...s };
       steps.push(step);
       onStep?.(step);
+      this.phase({ phase: "step", action: step.action, target: step.target, ok: step.ok }, true);
       ctx.trace('EXECUTING', this.web.id, `자율 ${step.n}: ${step.action}${step.target !== undefined && step.target.length > 0 ? `(${step.target})` : ''} ${step.ok ? '✓' : '✗'} ${step.note}`);
     };
     const done = (status: AutopilotResult["status"], speech: string, more: { pending?: Action; sources?: PageSource[]; quotes?: readonly string[] } = {}): AutopilotResult => {
@@ -432,6 +450,7 @@ export class Autopilot {
         }
         if (performance.now() > deadline) break;
         iterations++;
+        this.phase({ phase: "thinking" }, false);
         ctx.trace('PLANNING', this.web.id, `자율 ${i + 1}단계 결정`);
         let passages = new Map<number, string>();
         const lastTwo = steps.slice(-2);
@@ -439,6 +458,8 @@ export class Autopilot {
         const useRecovery = this.opts.recoveryLlm !== undefined && !recoveryUsed && seenText.size > 0 && (groundingFailures >= 2 || stalledRead);
 
         const ask = async (): Promise<Decision | undefined> => {
+          const host = tryUrl(urlOf() ?? "")?.host.replace(/^www\./u, "");
+          this.phase({ phase: "pulling", ...(host === undefined ? {} : { source: host }) }, false);
           let page: Record<string, unknown> | null = null;
           if (view !== undefined && view.pageId !== "blank") {
             if (evidence !== undefined && onRequestedSite(view.url)) [page, passages] = await publicPage(view, mainOffset, this.opts.scanner);
@@ -556,6 +577,7 @@ export class Autopilot {
           continue;
         }
         if (action === 'answer') {
+          this.phase({ phase: "checking" }, true);
           // 검증 담당: 근거 문장이 실제로 본 화면에 있고, 답의 숫자가 화면(또는 목표 문장)에 있는지 확인한다.
           const quotesGiven = Array.isArray(raw.evidence) ? raw.evidence : undefined;
           const quoted = [...seenFooter.values()].filter(footer => footer.length > 0 &&
@@ -577,6 +599,7 @@ export class Autopilot {
         }
         if (action === "ask_user") return done("asked", text.length > 0 ? text : "조금 더 자세히 말씀해 주시겠어요?");
         if (action === "fail") return done("failed", text.length > 0 ? text : "이 목표는 제가 할 수 없어요.");
+        this.phase({ phase: "tool", action, ...(target === undefined ? {} : { target }) }, false);
         if (action === "find_links" || action === "more_links") {
           if (action === "find_links") {
             controlQuery = target ?? "";
