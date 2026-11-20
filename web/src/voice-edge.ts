@@ -37,7 +37,7 @@ const ChannelEventSchema = z.object({
 });
 const SocketMessageSchema = z.object({
   error: z.string().optional(), message: z.string().optional(), sdp: z.string().optional(),
-  result: z.unknown().optional(), exact: z.boolean().optional(),
+  result: z.unknown().optional(), exact: z.boolean().optional(), activity: z.string().optional(),
 });
 
 export interface LiveCallbacks {
@@ -47,6 +47,7 @@ export interface LiveCallbacks {
   caption(event: Caption): void;
   result(result: unknown, exact: boolean | undefined): Promise<void>;
   failure(message: string): void;
+  activity?(text: string): void;
 }
 
 const LIVE_LANGS = ["ko", "en", "ja", "zh"];
@@ -153,6 +154,7 @@ export class LiveConversation {
           const msg = SocketMessageSchema.parse(JSON.parse(String(data)));
           if (msg.error !== undefined && msg.error.length > 0) { fail(msg.message ?? ""); return; }
           if (msg.sdp !== undefined && msg.sdp.length > 0) await peer.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+          if (msg.activity !== undefined && msg.activity.length > 0) this.callbacks.activity?.(msg.activity);
           if (msg.result != null && !this.closed) await this.callbacks.result(msg.result, msg.exact);
         } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
       };

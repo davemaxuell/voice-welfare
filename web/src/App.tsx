@@ -208,7 +208,7 @@ function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s
   </form>;
 }
 
-function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) => string }) {
+export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) => string }) {
   const s = view.status;
   const progress = useRef<HTMLProgressElement>(null);
   useEffect(() => { if (s.progress !== undefined) progress.current?.style.setProperty("--p", String(s.progress.ratio)); }, [s.progress?.ratio]);
@@ -216,6 +216,7 @@ function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) => strin
     <h2 id="status-title"><span className="panel-icon status-icon" aria-hidden="true"></span>{t("현재 작업")}</h2>
     <progress id="step-progress" aria-label="신청 진행률" hidden={s.progress === undefined} max={s.progress?.max} value={s.progress?.value} ref={progress}></progress>
     <dl className="status work-status">
+      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" aria-live="polite">{s.activity}</dd></div>
       <div className="st-state-row"><dt>{t("진행 상태")}</dt><dd><span id="st-state" data-state={s.state}>{s.stateLabel}</span></dd></div>
       <div className="st-step-row" hidden={s.step === undefined}><dt>{t("신청 단계")}</dt><dd id="st-step">{s.step ?? "없음"}</dd></div>
       <div className="st-title-row" hidden={s.title === undefined}><dt>{t("현재 화면")}</dt><dd id="st-title">{s.title ?? "아직 열지 않음"}</dd></div>

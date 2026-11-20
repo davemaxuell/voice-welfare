@@ -107,9 +107,21 @@ export interface UiState {
   conversationMode: "native" | "dictate";
   intro?: { text: string; pose: IntroPose } | undefined;
   liveCaption: string;
+  /** 긴 일이 진행되는 동안 보여주는 한 줄. 없으면 칸을 숨긴다. */
+  activity?: string | null;
   messages: LogEntry[];
   announcement: { text: string; seq: number };
   focus?: FocusRequest | undefined;
+}
+
+/** 진행 응답에서 화면에 보일 줄과, 끝났을 때만 읽을 줄을 고른다. 사실 단계 문장은 읽지 않는다. */
+export function progressUpdate(
+  p: { activity?: string | null; activitySpoken?: boolean; latest?: string | null },
+  previousSpoken: string,
+): { activity: string | null; speak?: string } {
+  const activity = p.activity ?? null;
+  const speak = p.activitySpoken === true && activity !== null && activity.length > 0 && activity !== previousSpoken ? activity : undefined;
+  return { activity, speak };
 }
 
 export function dictationHelp(lang: string) {
@@ -277,6 +289,7 @@ export function viewOf(ui: UiState, env: Env) {
       accessMode: last?.accessMode ?? "none",
       access: last?.accessMode === "full" ? "지원 사이트(연습 신청 가능)" : last?.accessMode === "read-only" ? "읽기 전용(읽기·이동·검색만)" : undefined,
       fields: (obs?.fields.filter((f) => f.visible && f.type !== "checkbox") ?? []).map(fieldRow),
+      activity: ui.activity ?? null,
     },
     confirm: pending !== undefined ? {
       approveLabel: t(pending.kind !== undefined ? APPROVE_LABELS[pending.kind] : "이 동작 승인"),
