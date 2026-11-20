@@ -1,7 +1,15 @@
 // 대화 창 상태 → 보일 것(view.ts). Python app.js render()가 하던 판단을 화면 없이 확인한다.
-import { expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { expect, it, vi } from "vitest";
 import { TurnSchema } from "../../web/src/api.ts";
-import { consentText, viewOf, type UiState } from "../../web/src/view.ts";
+import { StatusPanel } from "../../web/src/App.tsx";
+import { consentText, progressUpdate, viewOf, type UiState } from "../../web/src/view.ts";
+
+vi.hoisted(() => {
+  Object.defineProperty(globalThis, "location", { value: { search: "" }, configurable: true });
+  Object.defineProperty(globalThis, "window", { value: {}, configurable: true });
+});
 
 const env = { background: false, mac: false };
 function ui(patch: Partial<UiState> = {}): UiState {
@@ -121,4 +129,22 @@ it("동의 안내는 화면 사진·외부 인공지능·키 입력 방법을 �
   expect(text.endsWith("동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.")).toBe(true);
   expect(consentText(ui(), { background: true, mac: true })).toContain("커맨드, 시프트, 스페이스 키를 함께 눌러 주세요.");
   expect(consentText(ui({ lang: "en" }), env)).toMatch(/^With your consent, Cheongeum opens websites/);
+});
+
+it("activity line shows the phase and speaks only a finished step", () => {
+  const shown = viewOf(ui({ activity: "내용을 가져오는 중이에요." }), env);
+  const hidden = viewOf(ui(), env);
+  expect(shown.status.activity).toBe("내용을 가져오는 중이에요.");
+  expect(hidden.status.activity).toBeNull();
+  const markup = (activity: string | null) => renderToStaticMarkup(createElement(StatusPanel, {
+    view: viewOf(ui({ ...(activity === null ? {} : { activity }) }), env), t: (text: string) => text,
+  }));
+  expect(markup("내용을 가져오는 중이에요.")).toContain('id="st-activity"');
+  expect(markup("내용을 가져오는 중이에요.")).toContain("내용을 가져오는 중이에요.");
+  expect(markup(null)).toContain('hidden=""');
+  const quiet = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: false }, "");
+  expect(quiet).toEqual({ activity: "요청한 일을 실행하는 중이에요.", speak: undefined });
+  const said = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, "");
+  expect(said.speak).toBe("요청한 일을 실행하는 중이에요.");
+  expect(said.speak).not.toBe("이전 문장");
 });

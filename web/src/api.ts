@@ -90,7 +90,10 @@ const CheckpointSchema = z.object({
   authHandoff: opt(AuthHandoffSchema),
 });
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
-const ProgressSchema = z.object({ running: z.boolean(), seq: z.number(), spoken: z.boolean(), latest: z.string().nullish() });
+const ProgressSchema = z.object({
+  running: z.boolean(), seq: z.number(), spoken: z.boolean(), latest: z.string().nullish(),
+  activity: z.string().nullish(), activitySpoken: z.boolean().optional(),
+});
 const JobSchema = z.object({
   id: text, prompt: text, state: text,
   result: opt(z.object({ text: opt(text), sources: opt(z.array(z.object({ url: text, title: text }))) })),

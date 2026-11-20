@@ -9,12 +9,12 @@ import { currentDecision, desktopView, turnNotice, type Consent, type Decision }
 import { createFirstRun } from "./first-run.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
 import {
-  applySpeechPrefs, earcon, onSpeaking, preloadCues, progressVoice, serverTts, speakOnDevice, speechPrefs,
+  applySpeechPrefs, earcon, onSpeaking, preloadCues, serverTts, speakOnDevice, speechPrefs,
   takeInterruptedSpeech, transitionCue, type CueKind,
 } from "./speaker.ts";
 import { LiveConversation } from "./voice-edge.ts";
 import {
-  consentText as consentTextFor, dictationHelp, GREETINGS, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
+  consentText as consentTextFor, dictationHelp, GREETINGS, progressUpdate, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
 } from "./view.ts";
 import { workspaceText } from "./workspace-language.ts";
 
@@ -550,6 +550,10 @@ export async function startConversation() {
     const approvalId = ui.last?.pendingConfirmation?.actionId ?? "";
     const current: LiveConversation = new LiveConversation(sessionId, {
       offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: setError,
+      activity(text) {
+        if (ticket !== conversationStarts) return;
+        set({ activity: text });
+      },
       caption(event) {
         if (ticket !== conversationStarts || event.delta === undefined || event.delta.length === 0) return;
         const previous = event.start_ms - captionEnd > 1100 ? "" : ui.liveCaption;
@@ -769,19 +773,21 @@ async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
   }
 }
 
-/** 몇 초마다 진행 상황을 물어, 말할 단계가 있으면 한 문장 말한다(간격과 조용히 할 때는 progressVoice가 정함). 반환값을 부르면 그친다. */
+/** 몇 초마다 진행 줄을 받아 화면에 두고, 끝난 단계만 말한다. 반환값을 부르면 그친다. */
 function watchProgress(voice?: VoiceLoop) {
   let on = true;
-  progressVoice.start();
+  let spokenActivity = "";
   const timer = setInterval(() => void (async () => {
     const p = await api.progress(ui.sessionId ?? "").catch(() => undefined);
-    if (recoverable && p !== undefined) tabStore(PROGRESS_KEY, String(p.seq));
-    // 묻는 사이에 일이 끝났으면 말하지 않는다(답을 끊지 않게)
-    const text = on && p !== undefined ? progressVoice.pick(p, userTalking || busyTalking) : undefined;
-    if (text === undefined || text.length === 0) return;
-    push({ role: "assistant", text });
-    announce(text);
-    void sayWhileBusy({ speech: text }, voice);
+    if (p === undefined) return;
+    if (recoverable) tabStore(PROGRESS_KEY, String(p.seq));
+    const next = progressUpdate(p, spokenActivity);
+    set({ activity: next.activity });
+    if (!on || next.speak === undefined || userTalking || busyTalking) return;
+    spokenActivity = next.speak;
+    push({ role: "assistant", text: next.speak });
+    announce(next.speak);
+    void sayWhileBusy({ speech: next.speak }, voice);
   })(), PROGRESS_POLL_MS);
   return () => {
     on = false;

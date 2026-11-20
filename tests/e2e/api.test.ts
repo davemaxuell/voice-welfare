@@ -131,7 +131,7 @@ it("test_stop_supersedes_a_wake_waiting_on_the_session_lock", async () => {
 it("test_progress_endpoint_reports_code_built_steps", async () => {
   const id = await sessionId();
   const url = "/api/session/" + id + "/progress";
-  expect(await (await app.request(url)).json()).toEqual({ running: false, seq: 0, latest: null, spoken: true });
+  expect(await (await app.request(url)).json()).toEqual({ running: false, seq: 0, latest: null, spoken: true, activity: null, activitySpoken: false });
   const gate = new Gate(
     [
       step("open_url", "http://127.0.0.1:5174/external.html"),
