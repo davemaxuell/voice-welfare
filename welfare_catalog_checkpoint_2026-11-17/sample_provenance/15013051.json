@@ -1,0 +1,38 @@
+{
+  "id": "15013051",
+  "source": "https://www.data.go.kr/data/15013051/fileData.do",
+  "retrieved_at": "2026-11-17T16:54:14.568947+00:00",
+  "rows": [
+    [
+      "법정동시도",
+      "지역소득신고자",
+      "지역납부예외자",
+      "임의가입자",
+      "임의계속가입자"
+    ],
+    [
+      "서울특별시",
+      "683115",
+      "741458",
+      "77236",
+      "106441"
+    ],
+    [
+      "부산광역시",
+      "233178",
+      "255864",
+      "21722",
+      "30773"
+    ],
+    [
+      "대구광역시",
+      "171272",
+      "173451",
+      "18177",
+      "24346"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15013051&publicDataDetailPk=uddi%3A8cc4efb5-f0aa-4de8-a20f-c79035bfb149",
+  "sample_type": "official public file preview"
+}

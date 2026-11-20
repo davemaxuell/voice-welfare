@@ -1,0 +1,34 @@
+{
+  "id": "15023583",
+  "source": "https://www.data.go.kr/data/15023583/fileData.do",
+  "retrieved_at": "2026-11-17T17:02:18.444230+00:00",
+  "rows": [
+    [
+      "구분",
+      "수급자(가구)",
+      "수급자(인원)",
+      "데이터기준일"
+    ],
+    [
+      "남천1동",
+      "522",
+      "712",
+      "2026-06-30"
+    ],
+    [
+      "남천2동",
+      "323",
+      "541",
+      "2026-06-30"
+    ],
+    [
+      "수영동",
+      "1116",
+      "1392",
+      "2026-06-30"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15023583&publicDataDetailPk=uddi%3Ad14cf5c0-2c9d-41bc-9799-dc3a5ccede86",
+  "sample_type": "official public file preview"
+}

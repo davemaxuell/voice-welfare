@@ -1,0 +1,38 @@
+{
+  "id": "15005238",
+  "source": "https://www.data.go.kr/data/15005238/fileData.do",
+  "retrieved_at": "2026-11-17T16:44:05.667480+00:00",
+  "rows": [
+    [
+      "연번",
+      "읍면동",
+      "경로당명칭",
+      "경로당 주소",
+      "데이터기준일"
+    ],
+    [
+      "1",
+      "함창읍",
+      "함창읍분회",
+      "경상북도 상주시 함창읍 함창중앙로 130",
+      "2018-06-30"
+    ],
+    [
+      "2",
+      "함창읍",
+      "구향1리경로당",
+      "경상북도 상주시 함창읍 구향로 126-1",
+      "2018-06-30"
+    ],
+    [
+      "3",
+      "함창읍",
+      "구향2리경로당",
+      "경상북도 상주시 함창읍 구향2길 23",
+      "2018-06-30"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15005238&publicDataDetailPk=uddi%3Abd87a5b3-801b-4376-b941-f959227755bd",
+  "sample_type": "official public file preview"
+}

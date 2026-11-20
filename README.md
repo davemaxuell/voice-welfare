@@ -1,8 +1,17 @@
-# 청음 · 시각장애인을 위한 공공서비스 음성 에이전트
+# 청음 — 정보취약계층 공공서비스 신청 완주 음성 에이전트 (Python)
 
-청음은 시각장애인이 PC에서 말로 웹을 탐색하고 공공서비스 신청서를 작성하도록 돕습니다. 화면에서 찾은 내용을 읽어 주고, 중요한 조작은 먼저 확인합니다. 실제 신청서 제출, 로그인 정보 입력, 본인인증은 사용자가 직접 합니다.
+고령층·장애인·저소득층·농어민·결혼이민자 등 정보취약계층이 **말로** 웹을 읽고 찾고, 복지로 같은 공공 사이트에서 **신청을 끝까지 하도록** 돕는 PC 음성 에이전트입니다.
+화면을 보지 않고 소리만으로도 끝까지 쓸 수 있어 시각장애인도 쓸 수 있습니다.
+신청을 몰래 대신 해 주는 것이 아니라, 화면과 사람 사이를 통역하고 **중요한 동작은 확인받고, 제출·로그인·본인인증은 사람에게 넘깁니다.**
 
-서버와 에이전트는 Node.js에서 TypeScript로 실행합니다. 웹과 Electron 데스크톱 앱은 같은 React 화면을 사용합니다. [아키텍처 그림과 구현 대조](docs/architecture-check.md)
+**Windows에서 쓰려면** GitHub Releases에서 `Cheongeum-Setup-버전.exe`를 받아 실행하세요. 설치할 때 관리자 권한 사용 여부를 선택하고, 시작 메뉴에서 **청음**을 여세요. 첫 실행의 이용 설정에서 OpenAI API 키, 언어, 거주 시·도, 말 빠르기를 정합니다. 브라우저는 설치본에 포함됩니다. 새 버전이 나오면 앱에서 다운로드와 설치 시점을 고를 수 있습니다. [릴리스](https://github.com/davemaxuell/voice-welfare/releases) · [설치와 첫 사용](docs/install.md)
+
+이 저장소는 TypeScript 모노레포(`voice-welfare-agent`)를 **Python으로 옮긴 것**입니다. 서버·에이전트·정책·브라우저 조작·평가·테스트는 모두 Python이고,
+브라우저 안에서 도는 코드(웹 UI, 모의 사이트 스크립트)는 **빌드 없는 바닐라 JS**, 데스크톱 셸은 Electron(파이썬 서버를 자식 프로세스로 띄움)입니다.
+
+- 아키텍처 그림과 구현 대조: [`docs/architecture-check.md`](docs/architecture-check.md)
+- [정보취약계층을 위한 OpenBot 활용 조사와 구현 계획](docs/openbot/README.md)
+- [데스크톱 UI 인수인계](docs/desktop-ui-handoff.md) · [파일럿 검증 결과](docs/pilot-engineering-results.md)
 
 ![아키텍처](docs/architecture.png)
 
@@ -15,168 +24,166 @@
 | **아무 사이트 열기·읽기** | "네이버 열어줘", "화면 설명해줘", "본문 읽어줘", "계속 읽어줘", "링크 목록 알려줘" → "3번", "뒤로 가줘", "이 사이트 뭐야?" | 브라우저로 열고, 메뉴 글자 대신 **본문 요점부터** 짧게 말함. 받아쓰기 오타("네이보", "Naver")도 알아들음 |
 | **목표 수행(여러 단계 자동)** | "네이버에서 오늘 주요 뉴스 알려줘", "국민연금공단 사이트에서 고객센터 번호 찾아줘" | 관찰 → 다음 행동 결정 → 실행을 최대 10단계 반복(읽기·이동·검색만). 답은 화면 근거가 확인될 때만 말함 |
 | **복지 질문(공식 데이터)** | "기초연금은 몇 살부터 받아?", "그럼 얼마야?", "몇 살부터고 얼마 받아?" | 한국사회보장정보원 공식 API 원문을 근거로만 답함. 없으면 "찾지 못했어요" |
-| **맞춤 복지 찾기** | "나한테 맞는 복지 찾아줘" → 나이·장애·소득·지역 → "1번 자세히", "1번 자격 확인해줘" | 중앙(461개)+지자체 목록에서 후보를 찾고 선정기준과 조건별 비교(최종 판정은 안 함) |
+| **맞춤 복지 찾기** | "나한테 맞는 복지 찾아줘" → 나이·장애·소득·지역 → "1번 자세히", "1번 자격 확인해줘" | 중앙·지자체 목록과 공공데이터포털의 민간 사업 자료에서 후보를 찾습니다. 민간 사업은 따로 표시하고 원자료의 기관·기준일·신청 방법을 안내합니다. |
+| **기관 위치와 전화번호** | "강남구 개포동 주민센터 어디야?", "서대문구 국민연금 지사 전화번호 알려줘" | 내려받은 공식 주소록으로 답합니다. 후보가 여럿이면 지역을 다시 묻습니다. 교통약자 이동지원센터는 해당 자료를 추가한 뒤 이용할 수 있습니다. |
 | **신청 시작** | "기초연금 신청 도와줘" | 공식 안내 페이지를 열고 요점 한 줄. 본문은 지원 대상 → 서비스 내용 → 신청 방법 순서로 읽음 |
 | **실제 사이트 칸 채우기** | "입력 칸 하나씩 채워줘" → "홍길동" / "응" / "건너뛰기" / "그만" | 칸을 하나씩 묻고 넣은 뒤 화면 값을 다시 읽어 확인. 비밀번호·인증·동의 칸 제외, **제출 버튼은 누르지 않음** |
 | **개인 정보 금고** | "내 이름은 김하늘이고 주소는 …라고 저장해줘", "내 정보 알려줘/지워줘" | 확인 후 이 컴퓨터에만 저장(이름·주소·연락처·이메일·생년월일만) |
+| **보호자 문자** | "보호자 김하늘 전화번호 공일공 일이삼사 오육칠팔 등록해줘", "보호자한테 연락해줘", "보호자 연락처 지워줘" | 보호자의 수신 동의를 확인하고 등록합니다. 도움 요청 때마다 받을 분과 문구를 읽고 '네'를 기다립니다. 기본은 모의 발송이며 긴급 신고 기능은 없습니다. |
 | **신청 후 추적** | "기초연금 신청했어, 접수번호는 …", "보완 서류는 12월 3일까지래", "신청한 거 어떻게 됐어?" | 신청·기한을 기억, 기한 3일 전부터 알림 |
 | **로그인 인계** | "로그인 눌러줘, 그 뒤는 내가 할게" | 로그인 페이지 링크까지만 열고 사람에게 넘김 |
 | **연습용 신청서** | "장애인연금 연습 신청 도와줘" | 모의 신청서에서 입력·검증·요약·승인 후 모의 접수(실제 전송 없음) |
 | **다국어** | "영어로 말해줘", "Speak English", "说中文", "日本語で話して", "Korean please" | 그 언어로 듣고 답함(LLM 필요). 한국 고유 용어는 원어와 짧은 풀이 |
 | **멈춤·대화 습관** | "멈춰"(stop/停止/止めて), "알았어", "아니", "쉽게 말해줘" | 멈춤은 무엇보다 먼저 즉시. 맞장구·부정은 입력값으로 넣지 않음 |
 
-## 2. 빠른 시작
+## 2. 소스에서 실행하기
 
-### 브라우저로 실행하기
-
-Node.js 24 이상과 npm을 설치한 뒤 저장소 루트에서 실행하세요. API 키 없이 규칙 기반 명령과 샘플 복지 데이터를 쓸 수 있습니다.
+개발 환경에는 Python 3.12+와 uv가 필요합니다. Electron 개발 실행에는 Node.js 22.12+도 필요합니다. 기본 브라우저는 Playwright Chromium입니다. 키가 없으면 규칙 기반 응답과 저장된 복지 자료를 사용합니다.
 
 ```bash
-npm ci
-npx playwright install chromium
-npm start
+cd voice-welfare
+uv sync                                   # 의존성 + 프로젝트(편집 가능 설치)
+uv run playwright install chromium        # Playwright용 Chromium
+# 프로젝트 루트에 .env (키·설정, 커밋 금지)
+uv run cheongeum-server                   # http://localhost:8787 : 웹 UI + API (+ 모의 사이트 :5174 자동)
 ```
 
-`npm start`는 React 화면을 `dist/web/`에 빌드하고 서버를 시작합니다. 브라우저에서 [청음 웹 화면](http://localhost:8787)을 여세요. **안내 듣고 시작하기**에서 동의한 뒤 “장애인연금 연습 신청 도와줘”를 입력해 보세요. 기본 서버는 연습 사이트도 5174번 포트에 엽니다. 연습 사이트만 실행하려면 `npm run mock`을 사용하세요.
+- 웹 UI는 빌드 없이 같은 포트에서 바로 서빙됩니다(`src/cheongeum/web/static`). 편집 후 새로고침만 하면 됩니다.
+- 모의 사이트만: `uv run cheongeum-mock` (http://localhost:5174, 외부 포털 테스트는 http://127.0.0.1:5174/external.html)
 
-UI를 편집할 때는 서버를 켜 두고 다른 터미널에서 `npm run dev:web`을 실행하세요. 터미널에 표시된 Vite 주소로 접속하면 화면 변경이 바로 반영됩니다. API 키와 사용하려는 공급자는 루트의 `.env`에서 설정하고 서버를 다시 시작하세요.
+처음 실행하면 **이용 설정**에서 OpenAI API 키, 대화 언어, 선택 사항인 시·도, 안내 속도를 저장합니다. 기본 속도는 1.35배입니다. 같은 키로 받아쓰기, 음성 안내, 요청 이해와 공공서비스 탐색을 연결합니다. 키를 비우면 글로 이용할 수 있습니다.
 
-### 로컬 한국어 받아쓰기 설정하기
-
-한국어 음성을 이 컴퓨터에서 받아쓰려면 Python 3.12 이상과 uv를 설치하세요. 아래 명령은 Python 환경을 준비하고, 처음 한 번 학습 모델을 내려받아 `models/`에 저장합니다.
+**데스크톱 앱(Electron)** — 기본 백그라운드(창 없이 트레이 '청음', Cmd/Ctrl+Shift+Space = 말하기·동의)
 
 ```bash
-uv sync --project python
-npm run setup-models
+npm --prefix apps/desktop ci              # 처음 한 번(Electron)
+npm --prefix apps/desktop start           # 실제 사이트 모드. CHEONGEUM_SHOW_WINDOW=1이면 창, PRACTICE_MODE=true면 연습 사이트 기본
 ```
 
-루트의 `.env`에 다음 값을 넣고 서버를 다시 시작하세요.
+개발 실행은 `CHEONGEUM_PYTHON`, `.venv`, `uv run` 순서로 Python을 찾습니다. 설치본은 내장 Python을 실행합니다. 종료하면 서버가 브라우저와 세션을 정리합니다. [설치 파일 빌드](docs/install.md#설치-파일-만들기)
 
-```dotenv
-STT_PROVIDER=local
-STT_LOCAL_MODEL=models/whisper-small-komixv2-ct2
-PII_MODEL=models/koelectra-ko-pii-ner
-```
+“이 부분이 무슨 뜻이야?”라고 하면 청음은 먼저 선택한 글이나 가리킨 항목, 페이지 본문에서 답을 찾습니다. 글만으로 답할 수 있으면 사진을 찍지 않습니다. 차트의 색이나 그림 속 안내처럼 눈으로 확인해야 할 때는 현재 탭의 전체 페이지 사진을 가려서 본문, 질문, 개인정보를 걸러 낸 최근 요청 최대 세 개와 함께 OpenAI 시각 모델에 보냅니다. “사진 없이 화면 설명해줘”라고 하면 글로 확인할 수 있는 내용만 설명합니다.
 
-로컬 한국어 모델은 녹음을 컴퓨터 안에서 처리합니다. 외국어 음성을 OpenAI에서 받아쓰려면 `STT_MODEL`과 음성 API 키도 설정하세요.
-
-### 데스크톱에서 단축키로 말하기
-
-루트에서 `npm ci`와 Chromium 설치를 마친 뒤 다음 명령을 실행하세요.
-
-```bash
-npm --prefix apps/desktop ci
-npm --prefix apps/desktop start
-```
-
-음성 대화에는 서버 받아쓰기가 필요합니다. 위의 로컬 모델이나 `STT_PROVIDER=openai`를 설정하세요. 청음은 트레이에서 동의 안내를 읽습니다. Windows에서는 **Ctrl+Shift+Space**, macOS에서는 **Cmd+Shift+Space**로 동의하고 말할 수 있습니다. 데스크톱은 실제 사이트 모드로 시작합니다. 창을 보려면 시작 전에 `CHEONGEUM_SHOW_WINDOW=1`을 환경 변수로 설정하세요. 연습 사이트로 시작하려면 `.env`에 `PRACTICE_MODE=true`를 넣으세요.
-
-Electron은 `CHEONGEUM_NODE` 또는 `PATH`의 `node`로 `src/server/main.ts --desktop`을 실행합니다. 트레이 메뉴의 **청음 종료**를 선택하면 자식 서버와 브라우저 세션도 닫힙니다. [설치 및 빌드 안내](docs/install.md)
+“스크린샷으로 차트의 추세를 알려줘”처럼 사진에 대해 직접 물을 수도 있습니다. 청음은 지연 로딩되는 내용을 불러오고 전체 페이지를 한 장으로 촬영한 뒤 스크롤 위치를 복원합니다. 입력란과 내장 문서, 감지된 민감정보를 가립니다. 그림에 포함된 개인정보는 남을 수 있습니다. 사진만 보고 읽은 숫자는 따로 알려 줍니다. 끝없이 늘어나거나 이미지 크기 한도를 넘는 페이지에서는 촬영을 중단합니다.
 
 <details>
 <summary>그 밖의 설정(.env)</summary>
 
+사이트에서 파일을 받은 뒤 “받은 파일 요약해줘” 또는 “받은 PDF에서 신청 기한이 언제야?”라고 물을 수 있습니다. 청음은 파일 이름과 전송할 곳을 읽고 매번 확인을 받습니다. PDF·PNG·JPEG·WebP는 파일 전체를, HWPX는 추출한 본문을 보냅니다. 파일당 20MB, PDF 100쪽, HWPX 본문 12만 자까지 지원합니다. “받은 파일 읽어줘”는 PDF·HWPX의 글을 이 컴퓨터에서 읽습니다.
+
 | 변수 | 기본 | 설명 |
 | --- | --- | --- |
-| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_REASONING_EFFORT` | `mock` | `openai` / `ollama`(로컬 Qwen) / `qwen`·`openai-compatible`. 모델 ID는 코드에 없음 |
-| `STT_PROVIDER`, `STT_MODEL`, `STT_BASE_URL` | `mock` | `openai` 또는 `local`. `local` + `STT_BASE_URL` = OpenAI 호환 로컬 받아쓰기 서버, `local` + `STT_LOCAL_MODEL` = 로컬 Python 프로세스(faster-whisper) |
-| `STT_LOCAL_MODEL`, `STT_LOCAL_THREADS`, `STT_LOCAL_BEAM`, `STT_LOCAL_PROMPT` | —, `0`(자동), `1`, `false` | 한국어는 로컬 모델, 다른 언어는 OpenAI(`STT_MODEL`과 키가 있을 때, 없으면 로컬). 모델이 없으면 서버 받아쓰기를 끔(OpenAI로 몰래 보내지 않음) |
+| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_REASONING_EFFORT` | 키가 있으면 `openai`, 없으면 규칙 | 기본 업무 모델은 `gpt-6.2-sol`. 다른 공급자와 역할별 키를 직접 설정할 수 있습니다. |
+| `LLM_UNDERSTAND_MODEL`, `LLM_GOAL_MODEL`, `PUBLIC_SERVICE_ROUTER` | 새 OpenAI 설정에서는 `gpt-6.2-sol`, 라우터 켜짐 | 요청 이해와 탐색 계획에 사용합니다. 직접 지정한 모델이 우선합니다. `PUBLIC_SERVICE_ROUTER=false`로 이전 경로를 선택할 수 있습니다. |
+| `LLM_VISION_MODEL`, `LLM_VISION_DETAIL` | `gpt-6.1-terra`, `high` | 화면 사진 설명과 사용자가 허용한 시각 탐색에 사용합니다. |
+| `LLM_WEB_MODEL`, `LLM_RECOVERY_MODEL` | `gpt-6-luna`, `gpt-6.2-astra` | 짧은 요약·재표현과, 근거 확인에 반복해서 실패한 업무의 재계획을 맡습니다. |
+| `LLM_FILE_PROVIDER`, `LLM_FILE_MODEL`, `LLM_FILE_BASE_URL`, `LLM_FILE_API_KEY`, `LLM_FILE_REASONING_EFFORT` | 각각 기본 LLM 설정 | 파일 분석은 `openai`에서 사용합니다. PDF와 이미지를 지원하는 상위 모델 ID를 `LLM_FILE_MODEL`에 지정하세요. 시간 제한은 120초입니다. |
+| `OPENAI_API_KEY`, `VOICE_API_KEY`, `VOICE_LIVE_MODEL` | 키 없음, `gpt-live-1` | 대화 모드의 WebRTC 음성 모델. 한 번씩 말하는 받아쓰기에는 `gpt-live-transcribe`를 사용합니다. |
+| `STT_MODEL` | `gpt-transcribe` | 사용자가 직접 선택한 녹음 파일을 받아씁니다. |
+| `CHEONGEUM_DATABASE_URL` | 로컬 SQLite | PostgreSQL 연결 문자열을 지정하면 개인 기기의 백그라운드 조사와 명시적으로 저장한 메모를 PostgreSQL과 pgvector에 보관합니다. |
 | `PII_MODEL`, `PII_THRESHOLD` | —, `0.5` | 로컬 개인정보 인식 모델 폴더. 민감정보 판정 = 규칙 ∪ 모델(비밀번호·주민번호·계좌·카드·신분증 번호) |
-| `TTS_PROVIDER`, `TTS_MODEL`, `TTS_VOICE`, `TTS_SPEED`, `TTS_INSTRUCTIONS` | `mock` | `openai` 또는 `browser`(무료 OS 음성) |
+| `TTS_MODEL`, `TTS_VOICE`, `TTS_SPEED`, `TTS_INSTRUCTIONS` | `gpt-4o-mini-tts`, `coral`, `1.35` | API 음성 안내와 기본 빠르기 |
 | `WELFARE_DATA_MODE`, `WELFARE_API_KEY`, `WELFARE_API_BASE_URL` | fixture | `official-api`면 공식 API(실패 시 fixture) |
+| `DATASETS_DIR` | 패키지에 포함된 주소록·민간 사업 자료 | 별도 스냅샷 폴더를 지정할 수 있습니다. 서버가 시작할 때 한 번 읽습니다. |
 | `PRACTICE_MODE` | 서버 `true` / 데스크톱 `false` | `false` = 실제 사이트 모드 |
-| `CHEONGEUM_DATA_DIR` | 데스크톱 `~/.cheongeum` | 금고·신청 기록과 조작 기록. OS 자격 증명 저장소의 키로 파일을 암호화 |
-| `REQUIRE_CONSENT` | `true` | 동의 후 사이트를 관찰하고 음성 대화를 시작 |
+| `CHEONGEUM_DATA_DIR` | 데스크톱 `~/.cheongeum` | 금고·신청 기록(`personal.json`, 권한 600) |
+| `GUARDIAN_SMS_PROVIDER` | `mock` | `mock`은 문자 미리보기입니다. `solapi`는 승인 후 실제 유료 SMS 한 건을 요청합니다. |
+| `SOLAPI_API_KEY`, `SOLAPI_API_SECRET`, `SOLAPI_SENDER_NUMBER` | — | 실제 SMS 사용 시 API 자격 증명과 SOLAPI에 등록한 발신번호를 설정합니다. 보호자는 이 서비스 번호로 문자를 받습니다. [SOLAPI 발송 API](https://solapi.com/developers/api/messages) |
+| `REQUIRE_CONSENT` | `true` | 동의 전에는 화면·음성을 쓰지 않음 |
 | `BROWSER_MODE`, `CHROME_PROFILE_DIR` | `chromium`, `~/.cheongeum/chrome-profile` | `chrome` = 설치된 크롬 + 영구 프로필 |
 | `HEADLESS`, `VISUAL_CURSOR`, `BROWSER_SLOWMO_MS` | 창 보임, 창이 보이면 켬, `0` | 시연용 |
 | `READ_ONLY_WEB`, `WEB_SEARCH_URL` | `true`, 네이버 | 지원 사이트 밖은 읽기 전용, 검색 주소 틀(`{q}`) |
-| `READ_ONLY_CLICKS` | `any` | 읽기 전용 사이트에서 누를 수 있는 것: `any` 무엇이든(개발 중), `safe` 링크, 동작 이름이 아닌 탭(신청방법 O, 신청하기 X), 이름이 위험하지 않은 버튼만. 모르는 값은 `safe` |
-| `PORT`, `DESKTOP_PORT` | `8787`, `8790` | 서버 포트 |
-| `QWEN_MODEL`, `EVAL_MODELS` | — | `scripts/eval-agent.ts` 비교용 |
-| `EVAL_STT`, `EVAL_STT_RECORDINGS` | `local,openai`, `recordings/` | `scripts/eval-stt.ts` 비교용 |
+| `TAVILY_API_KEY` | 선택 | 공휴일 등 공개 정보는 창을 열지 않고 검색해 대화에서 바로 답합니다. 공개 검색어만 Tavily에 전송합니다. 사이트를 열거나 화면에 보여 달라는 요청은 브라우저에서 실행합니다. |
+| `READ_ONLY_CLICKS` | `safe` | 읽기 전용 사이트에서는 링크, 동작 이름이 아닌 탭, 위험한 이름이 없는 버튼만 허용합니다. `any`는 합성 환경에서 정책을 비교할 때 선택할 수 있습니다. |
+| `PILOT_PROFILE` | `unidentified` | 확인된 개인 OS 프로필은 `personal`로 실행하고 시작 화면에서 같은 탭 복구를 선택할 수 있습니다. `shared`와 미확인 프로필은 세션별 임시 금고와 격리된 브라우저를 사용합니다. |
+| `PORT`, `DESKTOP_PORT` | 개발 서버 `8787`, 개발 앱 `8790` | 설치본은 실행할 때 빈 로컬 포트를 자동 선택합니다. |
+| `QWEN_MODEL`, `EVAL_MODELS` | — | `scripts/eval_agent.py` 비교용 |
+| `EVAL_STT`, `EVAL_STT_RECORDINGS` | `local,openai`, `recordings/` | `scripts/eval_stt.py` 비교용 |
 
 </details>
 
-## 3. 폴더 구조
+공공데이터포털 자료는 `uv run python scripts/sync_datasets.py --check`로 기준일과 행 수를 확인하고, `uv run python scripts/sync_datasets.py`로 갱신합니다. 교통약자 이동지원센터 CSV는 `--csv 15028207=centers.csv --reference-date 15028207=YYYY-MM-DD`로 추가합니다. 갱신 후 서버를 다시 시작하세요. [민간복지서비스](https://www.data.go.kr/data/15116392/fileData.do) · [읍면동 기관](https://www.data.go.kr/data/15059715/fileData.do) · [국민연금 지사](https://www.data.go.kr/data/15010814/fileData.do) · [교통약자 이동지원센터](https://www.data.go.kr/data/15028207/standard.do)
+
+## 3. 폴더 구조 (파이프라인 단계별)
+
+①~⑥은 `docs/architecture.png`의 상자 번호입니다.
 
 ```text
-src/
-  voice/               받아쓰기·음성 합성 공급자와 로컬 음성 프로세스 연결
-  understanding/       규칙 파서, 여러 질문 분리, LLM 의도 분류, 사이트 이름
-  language/            다국어 입력과 응답 번역
-  orchestrator/        대화 순서, 동의, 멈춤, 승인, 두 에이전트 간 인계
-  agents/web/          브라우저 실행, 화면 정리, 목표 수행, 로그인 인계
-    skills/            웹 탐색·읽기, 신청서 입력, 승인한 입력값 확인
-    browser/           Playwright 어댑터와 화면 관찰 스크립트
-  agents/welfare/      복지 API·샘플 데이터, 공식 근거 검색, 맞춤 찾기
-  safety/              정책, 민감정보 탐지·가리기, 인용과 숫자 검증
-  speech/              한국어 조사와 날짜, 화면·입력 칸 음성 안내
-  personal/            개인 정보 금고, 신청 기록, 기한 알림
-  core/                액션·의도·응답 스키마, 대화 상태, 모델 입력 계약
-  server/              Hono HTTP 서버, 세션 생성과 자원 정리
-  practice_site/site/  연습 신청서와 외부 사이트용 테스트 페이지
-  evaluation/data/     평가 시나리오와 근거 검색 평가 문항
-web/src/               React 화면, 듣기·말하기, REST 클라이언트
-web/public/cues/       브라우저에서 재생할 안내음
-python/                로컬 모델 실행 환경, 받아쓰기 프로세스와 CT2 변환기
-apps/desktop/          Electron 창, 트레이 메뉴, 전역 단축키
-scripts/               평가, 모델 설치, 외부 서비스 연결 확인
-tests/unit/            단위 테스트
-tests/e2e/             실제 Chromium을 사용하는 종단 간 테스트
-tests/fixtures/        기준 응답, 정규식 결과, 화면 관찰, 대화 기록
-docs/                  기획·아키텍처, 접근성 사용자 테스트, 받아쓰기 평가 문장
+src/cheongeum/
+  voice/             음성 API 받아쓰기(stt.py)와 합성(tts.py), 공급자 설정(config.py)
+  understanding/     ②  의도 이해: 규칙 파서(rules.py, 먼저), LLM 의도 계획(llm_planner.py, 보조), 둘을 묻는 순서(understand.py),
+                         이해 전 거르기(filters.py: 맞장구·군말·두루뭉술한 요청·여러 질문), 자유 대화 분류(chat.py), 사이트 이름(sites.py)
+  language/          ②⑥ 다국어(i18n.py): 외국어 → 한국어 흐름 → 다시 번역
+  orchestrator/      ③  턴 순서·동의·멈춤 문·라우팅·B→A 인계(session.py의 SessionOrchestrator)
+  agents/web/        ④  Agent A 웹 탐색·실행(agent.py) + 화면 이해 담당(digest.py) + 사이트 프로필(profile.py) + 목표 수행(autopilot.py)
+    skills/               대화 기술: 모의 신청서·실제 사이트 한 칸 채우기(form.py), 웹 읽기·이동·검색(browse.py), 실제 사이트 칸 하나씩 채우기(guided.py)
+    browser/              Playwright(async) 실행, observe.js(관찰 스크립트), 가상 커서
+  agents/welfare/    ④  Agent B 복지 정보·대화(agent.py), RAG(rag.py), 맞춤 찾기(discovery.py)
+    data/                 복지 API 클라이언트 + 대체용 샘플 데이터(fixtures/)
+  safety/            ⑤  PolicyGuard(guard.py), 동의·멈춤 문(gates.py), 민감정보 탐지·가리기(privacy.py, 규칙 + 로컬 모델 pii_model.py), 검증 담당(verify.py)
+  speech/            ⑥  말할 문장: 조사·날짜·항목 이름 읽기(phrasing.py), 화면 설명(screen.py의 Narrator)
+  personal/              개인 정보 금고·신청 기록(store.py) + 명령 이해·기한 알림(commands.py) + 확인·명령 실행(dialogue.py)
+  core/                  공통: Action/Observation 계약(actions.py), 의도·TurnResult 스키마(turn.py), 대화 상태(dialogue.py), LLM 호출(llm.py),
+                         비식별 이벤트(events.py), JS 동작 맞춤 도우미(jsutil.py: ASCII \b 정규식, JSON.stringify, URL, AbortController)
+  server/                FastAPI REST(app.py) + 런타임 조립(runtime.py), `python -m cheongeum.server`
+  web/static/        ①⑥ 접근성 웹 UI(바닐라 JS: app.js, mic.js 듣기, speaker.js 말하기, audio.js 공용, api.js), 빌드 없음
+  practice_site/         모의 신청 사이트(site/, 바닐라 JS) + 정적 서버(serve.py). 서버가 기본으로 띄운다
+  evaluation/            시나리오 평가·지표·RAG 정확도, 받아쓰기 지표(asr.py), data/(demo_scenarios.json 등, 수정 금지)
+apps/desktop/        Electron 셸(main.cjs, preload.cjs) — 파이썬 서버를 자식 프로세스로 실행
+scripts/             run_scenarios.py(평가), eval_agent.py(목표 수행 QA), eval_stt.py(받아쓰기 비교), setup_local_models.py(로컬 모델 준비),
+                     check_llm/voice/welfare.py, vendor/axe.min.js
+tests/unit, tests/e2e   pytest 단위 / 실제 Chromium E2E(인터넷 없이 동작), fixtures/(실제 API 응답 저장본)
+docs/                기획 요약, 아키텍처 그림, 사용자 테스트 자료, stt-eval/(받아쓰기 평가 문장 목록)
+models/, recordings/ (git 제외) 로컬 모델, 받아쓰기 평가용 녹음
 ```
-
-`src/evaluation/data/demo_scenarios.json`은 이전 버전과 같은 발화를 비교하는 기준입니다. 모델(`models/`)과 평가용 개인 녹음(`recordings/`)은 Git에 올리지 않습니다.
 
 ## 4. 동작 구조
 
 ```text
-말(음성) → 받아쓰기 → 비식별화 → [멈춤은 즉시] → (외국어면 한국어로)
-  → 의도 이해(규칙 먼저, 모르면 LLM) → 오케스트레이터 라우팅
-     ├─ Agent B 복지 정보: 공식 API 근거 검색 → LLM이 근거 안에서만 답 → 검증 담당(숫자 대조)
-     └─ Agent A 웹 실행: 관찰 → 화면 이해 담당(정리) → 계획 → PolicyGuard → Playwright 실행 → 재관찰 확인
-  → 짧은 한국어 답(필요하면 사용자 언어로 번역, 숫자 바뀌면 원문) → 음성 합성
+대화 모드 ↔ GPT-Live (음성 대화)
+               └─ 작업 위임 ID + 해당 발화 ─┐
+한 번 말하기 · 직접 입력 ──────────────────┴→ 세션 · 민감정보 확인 · 즉시 멈춤
+  ├─ 동의·승인·인증·명확한 조작 → 해당 기능
+  └─ 공공서비스 질문 → 원래 언어로 업무·기관·필요한 사실·제외 조건 해석
+       ├─ 불분명한 선택 → 한 가지 질문 → 답변·정정과 앞선 맥락으로 다시 판단
+       └─ 확인된 업무 → 복지 자료·공공기관 목록 또는 공식 웹 탐색
+            → 관찰된 근거 대조 → 확인한 항목과 남은 항목 → 사용자 언어로 안내
 ```
 
-- **규칙 먼저, LLM은 보조**: 자주 쓰는 명령은 규칙으로 빠르고 결정적으로. 승인·멈춤은 LLM이 만들 수 없음.
+- **공공업무 대화**는 한국어·영어·중국어·일본어의 원문을 처리합니다. 같은 업무로 이어지는 질문은 기관, 문서, 로그인 제외 같은 조건을 유지합니다. 멈춤과 승인은 세션이 직접 처리합니다. [구현과 검증 기준](docs/public-service-agent-architecture.md)
 - **화면 이해 담당**(규칙): 페이지를 종류·본문·내용 링크·메뉴·할 수 있는 일로 정리해 AI 입력을 줄임.
 - **검증 담당**(규칙): 말하기 전에 근거 문장이 실제 화면·자료에 있는지, 숫자가 맞는지 대조.
-- 서버와 화면은 camelCase 키의 JSON으로 통신합니다. Zod 스키마는 요청, 모델이 선택한 의도, 브라우저 액션과 관찰, 턴 응답의 구조를 검사합니다.
+- 데이터는 JSON과 같은 camelCase dict로 오가고, 경계(액션·의도·TurnResult·관찰)에서 Pydantic으로 검증합니다(원본의 Zod 역할). REST 응답 모양은 TS 버전과 같아서 웹 UI·데스크톱 앱이 그대로 붙습니다.
 
 ## 5. 안전 원칙
 
 - **제출·로그인·본인인증은 사람이**: 실제 사이트에서 제출 버튼을 누르지 않고, 입력은 사용자가 말한 값·확인한 값만.
-- **PolicyGuard**: 지원 사이트 밖은 읽기 전용이며 `READ_ONLY_CLICKS`가 클릭할 수 있는 대상을 정합니다. `safe`에서는 위험한 동작 이름을 검사합니다. 비밀번호는 청음으로 입력할 수 없습니다.
+- **PolicyGuard**: 지원 사이트 밖은 읽기 전용(링크·이동·검색). 신청·결제·동의 같은 동작 버튼과 비밀번호 칸은 항상 차단.
 - **민감정보**: 비밀번호·주민번호·계좌·카드 번호는 처리 전에 `[비공개]`로 가려 기록·모델 입력·응답에 남지 않음.
   규칙은 한글로 읽은 숫자("일이삼사"), 낱말 비밀번호("비밀번호는 사과나무야"), 외국어 키워드(password·密码·パスワード)도 잡고, `PII_MODEL`이 있으면 로컬 개인정보 인식 모델과 함께 봄(둘 중 하나라도 걸리면 막음).
   로그인 화면·본인인증 중·직전에 비밀번호를 언급한 뒤의 짧은 낯선 말은 비밀값일 수 있어 LLM·기록에 넘기지 않음. 외국어 비밀값은 번역 전에 막음.
-- **음성**: `STT_PROVIDER=local`이면 한국어 음성은 이 컴퓨터 안에서 받아써 밖으로 나가지 않음(다른 언어만 OpenAI). 안내 음성(TTS)은 별도 설정.
+- **음성**은 등록한 키로 API에 전송합니다. 청음은 녹음을 저장하지 않습니다.
 - **화면 글은 신뢰하지 않음**: 페이지 속 지시를 따르지 않음(E2E로 확인). 보안문자·접속 차단은 우회하지 않고 알림.
 - **동의 먼저**: 동의 전에는 화면을 읽거나 음성을 외부로 보내지 않음. 녹음은 저장하지 않음.
 
 ## 6. 테스트·평가
 
-| 명령 | 확인하는 내용 |
+| 명령 | 내용 |
 | --- | --- |
-| `npm run typecheck`, `npm run lint` | TypeScript 타입과 ESLint 규칙 |
-| `npm test` | 단위 테스트와 실제 Chromium을 사용하는 E2E |
-| `npm run test:unit`, `npm run test:e2e` | 단위 또는 E2E만 실행 |
-| `npx vitest run tests/unit/parser.test.ts` | 지정한 파일 실행. `-t`로 테스트 이름 선택 |
-| `npm --silent run test-parity` | 동결한 pytest 수집 목록과 Vitest 테스트 이름 대조. 빠진 이름이 없으면 출력 없음 |
-| `npm run eval` | 시나리오 완료, 필드 정확도, 승인, 근거 검색, axe 접근성 결과를 `reports/evaluation-report.md`에 기록 |
-| `npm run eval-agent` | 실제 사이트에서 목표 수행 과제를 실행하고 모델별 결과를 `reports/agent-qa.md`에 기록 |
-| `npm run check-llm`, `npm run check-voice`, `npm run check-welfare` | `.env`에 설정한 모델·음성·복지 API 연결 확인 |
-| `npm run eval-stt` | `docs/stt-eval/sentences.csv`와 `recordings/`의 녹음으로 로컬 모델과 OpenAI의 글자 오류율·명령 인식·지연을 비교해 `reports/stt-eval.md`에 기록 |
+| `uv run pytest` | 단위 테스트와 실제 Chromium E2E를 실행합니다. 로컬 모델 테스트에는 `models/` 자료가 필요합니다. 브라우저 창을 보려면 `HEADED=1`을 설정하세요. |
+| `uv run pytest tests/unit/test_parser.py` / `-k 검색` | 파일 하나 / 이름으로 고르기 |
+| `uv run python scripts/eval_pictures.py` | 합성 화면 10개를 로컬 브라우저와 모의 모델 응답으로 확인합니다. `--live`를 붙이면 촬영이 허용된 7개 화면만 실제 OpenAI에 보내며 요금이 발생할 수 있습니다. 결과는 `reports/picture-qa-*.json`에 저장합니다. |
+| `uv run python scripts/run_scenarios.py` | 시나리오 35개 + PRD 지표 + RAG Recall/MRR + 접근성(axe) → `reports/evaluation-report.md` |
+| `uv run python scripts/eval_agent.py` | 실제 사이트 목표 수행 10과제, Qwen(로컬)·OpenAI 비교 → `reports/agent-qa.md` |
+| `uv run python scripts/check_llm.py` / `check_voice.py` / `check_welfare.py` | `.env`의 실제 OpenAI·음성·복지 API 연결 확인 |
+| `uv run python scripts/eval_stt.py` | 녹음(`recordings/<id>.webm` 등, 문장 목록 `docs/stt-eval/sentences.csv`)을 로컬 모델·OpenAI로 받아써 비교: 글자 오류율, 명령 이해 일치, 숫자, 멈춤, 무음, 지연 → `reports/stt-eval.md` |
 
-Python 버전의 동작은 마지막 기준 커밋 `14400191400610a80a7d6fa1d2318635208d4a1f`에 보관했습니다. 같은 입력에 대한 함수 결과, 정규식 일치, 대화 결과는 `tests/fixtures/`에 남아 정기 테스트에서 검사합니다. 기준 버전을 별도 체크아웃에서 재현하는 방법은 [개발 안내](CLAUDE.md)에 있습니다.
-
-실사용자(시각장애인) 테스트는 아직 0명입니다. 과제, 동의서, 기록지는 [사용자 테스트 자료](docs/user-test/)에 있습니다.
+TS 버전과 같은 결과: 시나리오 35/35, 필드 정확도 15/15, 승인 준수 100%, 무단 제출·읽기 전용 위반·비밀값 노출 0건, RAG Recall@3 100%·MRR 0.950, axe 위반 0건(7개 화면).
+**실사용자 테스트는 아직 0명**입니다(`docs/user-test/`에 1차 시각장애인 대상 계획·과제·동의서·기록지 준비, 다른 집단은 아직 계획 없음).
 
 ## 7. 비용(OpenAI, 측정 기반 추정)
 
-기존 측정에서는 한 턴에 약 $0.006(약 8원)이 들었습니다. 음성 합성이 약 85%, LLM이 약 10%(입력 1.6k·출력 0.1k 토큰), 받아쓰기가 약 5%였습니다.
-`TTS_PROVIDER=browser`(무료 OS 음성)로 바꾸면 비용 대부분이 사라지고, `STT_PROVIDER=local`이면 한국어 음성이 컴퓨터 밖으로 나가지 않고 받아쓰기 비용도 없습니다.
+대화 모드는 GPT-Live 세션 시간에 따라 과금됩니다. 공공서비스 탐색을 위임하면 실제 호출된 업무 모델 비용이 추가됩니다. 녹음 파일 받아쓰기와 별도 음성 안내도 각 API 사용량에 따라 과금됩니다. 키 없이 글로도 쓸 수 있습니다. [GPT-Live 모델](https://developers.openai.com/api/docs/models/gpt-live-1)
 
 ## 8. 알려진 한계
 
@@ -184,7 +191,5 @@ Python 버전의 동작은 마지막 기준 커밋 `14400191400610a80a7d6fa1d231
 - 정부24 등 일부 사이트는 자동화 브라우저 접속을 차단(우회하지 않음).
 - 끼어들기·말 끝 판단은 마이크·스피커 환경에 따라 다름(단축키가 확실한 대안).
 - 외국어 모드는 번역 때문에 턴마다 3~8초 느림. 고정 UI 문구는 한국어.
-- 세션과 이벤트 로그는 메모리에 있어 서버 재시작 시 사라집니다. 저장 폴더를 설정한 경우 금고·신청 기록과 조작 기록은 파일에 남습니다.
+- 대화와 이벤트는 세션 메모리에 보관합니다. 이용 설정과 금고·신청 기록은 이 PC에 보관하고, 사용자가 선택하면 마지막 공공기관과 업무 이름도 기억합니다.
 - 한국어 이름 정렬은 유니코드 순서(ICU 콜레이션 대신) — 한글 음절은 가나다 순서와 같다.
-- 로컬 받아쓰기(whisper-small-komixv2)는 CPU에서 한 마디에 약 1.5초 이상 걸리고(컴퓨터 부하에 따라 더), 합성 음성 기준으로는 OpenAI보다 덜 정확했다(명령 이해 일치 79% 대 89%). 실제 목소리 녹음으로 `npm run eval-stt`를 실행해 비교할 수 있다.
-- 로컬 받아쓰기는 한국어 전용 모델이라 한국어 모드에서 영어로 "English please"라고 하면 "잉글리쉬 플리즈"로 적힌다(언어 바꾸기는 인식). 외국어 모드는 OpenAI로 받아쓴다.

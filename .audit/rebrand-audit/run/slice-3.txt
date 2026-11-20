@@ -1,0 +1,10 @@
+drafts/sound-cues/_src/snd01.json
+drafts/sound-cues/audition.html
+drafts/sound-cues/bake_start_done.py
+drafts/sound-cues/build.py
+drafts/sound-cues/manifest.js
+drafts/sound-cues/synth.js
+pyproject.toml
+research_notes/피클 AI 에이전트 청음 적용 검토/cheongeum_current_build.md
+research_notes/피클 AI 에이전트 청음 적용 검토/pickle_features_ux.md
+research_notes/피클 AI 에이전트 청음 적용 검토/pickle_safety_privacy.md

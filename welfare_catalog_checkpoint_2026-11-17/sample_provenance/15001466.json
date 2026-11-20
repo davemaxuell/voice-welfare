@@ -1,0 +1,30 @@
+{
+  "id": "15001466",
+  "source": "https://www.data.go.kr/data/15001466/fileData.do",
+  "retrieved_at": "2026-11-17T16:39:53.955044+00:00",
+  "rows": [
+    [
+      "구분",
+      "전체 어린이집 수",
+      "평가완료 어린이집 수"
+    ],
+    [
+      "국공립",
+      "6841",
+      "6503"
+    ],
+    [
+      "사회복지법인",
+      "1064",
+      "1048"
+    ],
+    [
+      "법인,단체 등",
+      "438",
+      "429"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15001466&publicDataDetailPk=uddi%3Ac531894e-d954-4ad3-8f46-c41d3f11f46e",
+  "sample_type": "official public file preview"
+}

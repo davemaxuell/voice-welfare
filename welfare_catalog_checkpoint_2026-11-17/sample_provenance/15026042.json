@@ -1,0 +1,38 @@
+{
+  "id": "15026042",
+  "source": "https://www.data.go.kr/data/15026042/fileData.do",
+  "retrieved_at": "2026-11-17T17:07:00.094707+00:00",
+  "rows": [
+    [
+      "배치기관",
+      "기관유형",
+      "주소",
+      "연락처",
+      "배치인원(명)"
+    ],
+    [
+      "건축과",
+      "구청",
+      "부산광역시 북구 낙동대로1570번길 33 (구포동)",
+      "051-309-4851",
+      "1"
+    ],
+    [
+      "공창종합사회복지관",
+      "사회복지 관련 기관",
+      "부산광역시 북구 효열로 268",
+      "051-363-2063",
+      "1"
+    ],
+    [
+      "교통행정과",
+      "구청",
+      "부산광역시 북구 낙동대로1570번길 33 (구포동)",
+      "051-309-4517",
+      "1"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026042&publicDataDetailPk=uddi%3A4c4802a2-7ab8-410e-ad87-bf2cfa1aca1f",
+  "sample_type": "official public file preview"
+}

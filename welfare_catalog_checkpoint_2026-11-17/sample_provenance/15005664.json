@@ -1,0 +1,30 @@
+{
+  "id": "15005664",
+  "source": "https://www.data.go.kr/data/15005664/fileData.do",
+  "retrieved_at": "2026-11-17T16:45:19.611252+00:00",
+  "rows": [
+    [
+      "번호",
+      "구분",
+      "위탁운용사명"
+    ],
+    [
+      "1",
+      "국내주식",
+      "교보악사자산운용"
+    ],
+    [
+      "2",
+      "국내주식",
+      "그로쓰힐자산운용"
+    ],
+    [
+      "3",
+      "국내주식",
+      "더제이자산운용"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15005664&publicDataDetailPk=uddi%3A77f0331c-e7cf-4d3a-b2b2-b8bf9f014f22",
+  "sample_type": "official public file preview"
+}

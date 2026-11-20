@@ -1,0 +1,38 @@
+{
+  "id": "15009570",
+  "source": "https://www.data.go.kr/data/15009570/fileData.do",
+  "retrieved_at": "2026-11-17T16:49:02.144262+00:00",
+  "rows": [
+    [
+      "사업명",
+      "기준년월",
+      "시도",
+      "수급권자수",
+      "수급가구수"
+    ],
+    [
+      "기초생활보장(맞춤형급여) - 중복제거",
+      "2025-01",
+      "서울특별시",
+      "444230",
+      "338706"
+    ],
+    [
+      "기초생활보장(맞춤형급여) - 중복제거",
+      "2025-01",
+      "부산광역시",
+      "243241",
+      "184033"
+    ],
+    [
+      "기초생활보장(맞춤형급여) - 중복제거",
+      "2025-01",
+      "대구광역시",
+      "161987",
+      "119543"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15009570&publicDataDetailPk=uddi%3A6e4dc8cc-c096-443d-8b19-adf928131389",
+  "sample_type": "official public file preview"
+}

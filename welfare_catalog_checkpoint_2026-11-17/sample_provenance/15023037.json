@@ -1,0 +1,50 @@
+{
+  "id": "15023037",
+  "source": "https://www.data.go.kr/data/15023037/fileData.do",
+  "retrieved_at": "2026-11-17T17:00:28.307676+00:00",
+  "rows": [
+    [
+      "남",
+      "여",
+      "지체",
+      "뇌병변",
+      "시각",
+      "청각(언어)",
+      "지적",
+      "자폐성",
+      "정신",
+      "신장",
+      "심장",
+      "호흡",
+      "간",
+      "안면",
+      "장루요루",
+      "뇌전증",
+      "심한장애",
+      "심하지않은장애"
+    ],
+    [
+      "3418",
+      "2037",
+      "2326",
+      "510",
+      "526",
+      "825",
+      "524",
+      "240",
+      "125",
+      "249",
+      "11",
+      "20",
+      "44",
+      "9",
+      "36",
+      "10",
+      "2030",
+      "3425"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15023037&publicDataDetailPk=uddi%3A4d3ed590-fcb8-4f47-9269-80d9f693ce81_201909161718",
+  "sample_type": "official public file preview"
+}

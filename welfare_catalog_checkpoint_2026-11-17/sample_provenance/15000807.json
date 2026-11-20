@@ -1,0 +1,38 @@
+{
+  "id": "15000807",
+  "source": "https://www.data.go.kr/data/15000807/fileData.do",
+  "retrieved_at": "2026-11-17T16:39:24.131772+00:00",
+  "rows": [
+    [
+      "연번",
+      "기관명",
+      "급여종류",
+      "기관주소",
+      "기관전화번호"
+    ],
+    [
+      "1",
+      "성심주야간보호센터",
+      "방문요양,방문목욕,주야간보호",
+      "충청남도 서산시 석림4로 26-15 (석림동)",
+      "041-668-5502"
+    ],
+    [
+      "2",
+      "효드림방문요양센터",
+      "방문요양,방문목욕",
+      "충청남도 서산시 서령로 4, 2층 (동문동)",
+      "041-665-2266"
+    ],
+    [
+      "3",
+      "민들레복지요양센터",
+      "방문요양,방문목욕",
+      "충청남도 서산시 대사동12로 3 (동문동)",
+      "041-669-9906"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15000807&publicDataDetailPk=uddi%3Ab479d653-2166-4c69-847b-bf623a0a8244",
+  "sample_type": "official public file preview"
+}

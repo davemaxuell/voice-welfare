@@ -1,0 +1,34 @@
+{
+  "id": "15003701",
+  "source": "https://www.data.go.kr/data/15003701/fileData.do",
+  "retrieved_at": "2026-11-17T16:42:12.951638+00:00",
+  "rows": [
+    [
+      "시설명",
+      "위치",
+      "면적",
+      "규모"
+    ],
+    [
+      "전주승화원",
+      "전주시 완산구 콩쥐팥쥐로 1705-138",
+      "1870.72",
+      "화장로수 : 8기"
+    ],
+    [
+      "전주승화원 유족편의시설",
+      "전주시 완산구 콩쥐팥쥐로 1705-138",
+      "753.69",
+      "편의시설 : 민원실, 식당, 카페, 매점, 유족대기실"
+    ],
+    [
+      "전주승화원 유택동산",
+      "전주시 완산구 콩쥐팥쥐로 1705-138",
+      "64.22",
+      "안치기수: 17건"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15003701&publicDataDetailPk=uddi%3Aa4368708-c3c3-4ab4-9f37-d1db6659ce00",
+  "sample_type": "official public file preview"
+}

@@ -1,0 +1,30 @@
+{
+  "id": "15014357",
+  "source": "https://www.data.go.kr/data/15014357/fileData.do",
+  "retrieved_at": "2026-11-17T16:55:22.665569+00:00",
+  "rows": [
+    [
+      "시설명",
+      "소재지",
+      "전화번호"
+    ],
+    [
+      "시립손소리복지관",
+      "동구 대전천동로 508 (원동)",
+      "042-345-9900"
+    ],
+    [
+      "밀알복지관",
+      "동구 우암로 48 (삼성동)",
+      "042-627-0900"
+    ],
+    [
+      "아름다운복지관",
+      "동구 안골로 49 (구도동)",
+      "042-282-9600"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15014357&publicDataDetailPk=uddi%3Ab4de9b32-30f5-41aa-8760-a3f9d2c1e32b",
+  "sample_type": "official public file preview"
+}

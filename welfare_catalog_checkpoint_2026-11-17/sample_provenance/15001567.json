@@ -1,0 +1,38 @@
+{
+  "id": "15001567",
+  "source": "https://www.data.go.kr/data/15001567/fileData.do",
+  "retrieved_at": "2026-11-17T16:40:16.699595+00:00",
+  "rows": [
+    [
+      "연번",
+      "업체명",
+      "소재지도로명주소",
+      "전화번호",
+      "데이터기준일자"
+    ],
+    [
+      "1",
+      "조선대학교병원",
+      "필문대로 303 (서석동)",
+      "062-220-3352",
+      "2026-06-05"
+    ],
+    [
+      "2",
+      "금호장례식장",
+      "남문로 697 (학동)",
+      "062-227-4000",
+      "2026-06-05"
+    ],
+    [
+      "3",
+      "남도장례식장",
+      "중앙로 283-1 (계림동)",
+      "062-223-7715",
+      "2026-06-05"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15001567&publicDataDetailPk=uddi%3Ae06e35ef-33db-472f-b596-fb90e68d6ac3",
+  "sample_type": "official public file preview"
+}

@@ -2,7 +2,7 @@
 
 ## Intent
 
-A blind user should know what 청음 is doing without waiting for speech: the mic turned on or off, it's your turn, it heard you, it's thinking, it's still working, it needs your OK, you have to do something yourself, it succeeded, something went wrong, it stopped. Short, friendly, modern sounds, one per moment.
+A user who listens instead of watching the screen should know what 청음 is doing without waiting for speech: the mic turned on or off, it's your turn, it heard you, it's thinking, it's still working, it needs your OK, you have to do something yourself, it succeeded, something went wrong, it stopped. Short, friendly, modern sounds, one per moment.
 
 ## Goals, non-goals, anti-goals
 

@@ -1,0 +1,38 @@
+{
+  "id": "15023630",
+  "source": "https://www.data.go.kr/data/15023630/fileData.do",
+  "retrieved_at": "2026-11-17T17:02:29.524047+00:00",
+  "rows": [
+    [
+      "항목",
+      "65세이상 1인가구",
+      "65세이상 1인가구 국민기초생활보장 수급자",
+      "65세이상 차상위 1인가구",
+      "일반독거노인"
+    ],
+    [
+      "기장읍",
+      "5031",
+      "844",
+      "1717",
+      "2470"
+    ],
+    [
+      "장안읍",
+      "1097",
+      "152",
+      "56",
+      "889"
+    ],
+    [
+      "정관읍",
+      "2944",
+      "608",
+      "260",
+      "2076"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15023630&publicDataDetailPk=uddi%3Aa4fe86b0-6c4f-442b-a20a-d23e55aac8d5",
+  "sample_type": "official public file preview"
+}

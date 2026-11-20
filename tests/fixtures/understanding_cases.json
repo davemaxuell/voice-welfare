@@ -1,0 +1,207 @@
+[
+  {
+    "text": "멈춰",
+    "state": "BROWSING",
+    "expect": [
+      "STOP"
+    ],
+    "fast": true,
+    "why": "즉시 멈춤"
+  },
+  {
+    "text": "잠깐, 이 사이트 뭐 하는 곳이야?",
+    "state": "BROWSING",
+    "expect": [
+      "STOP"
+    ],
+    "fast": true,
+    "why": "잠깐이라는 중단 요청"
+  },
+  {
+    "text": "지금 어디까지 했어?",
+    "state": "BROWSING",
+    "expect": [
+      "PROGRESS"
+    ],
+    "fast": true,
+    "why": "진행 상황 확인"
+  },
+  {
+    "text": "화면 사진으로 설명해줘",
+    "state": "BROWSING",
+    "expect": [
+      "DESCRIBE_PICTURE"
+    ],
+    "fast": true,
+    "why": "명시적인 사진 요청"
+  },
+  {
+    "text": "응",
+    "state": "WAITING_FOR_USER_CONFIRMATION",
+    "expect": [
+      "APPROVE"
+    ],
+    "fast": true,
+    "why": "대기 중인 조작 승인"
+  },
+  {
+    "text": "아니",
+    "state": "WAITING_FOR_USER_CONFIRMATION",
+    "expect": [
+      "REJECT"
+    ],
+    "fast": true,
+    "why": "대기 중인 조작 거절"
+  },
+  {
+    "text": "다 했어",
+    "state": "AUTH_HANDOFF",
+    "expect": [
+      "AUTH_DONE"
+    ],
+    "fast": true,
+    "why": "인증 인계 완료"
+  },
+  {
+    "text": "복지로 열어줘",
+    "state": "IDLE",
+    "expect": [
+      "OPEN_SITE"
+    ],
+    "fast": true,
+    "why": "등록된 사이트 열기"
+  },
+  {
+    "text": "기초연금은 몇 살부터 받아?",
+    "state": "IDLE",
+    "expect": [
+      "POLICY_QUESTION"
+    ],
+    "fast": true,
+    "why": "등록된 정책 질문"
+  },
+  {
+    "text": "공지사항 눌러줘",
+    "state": "BROWSING",
+    "expect": [
+      "FOLLOW_LINK"
+    ],
+    "fast": true,
+    "why": "등록된 링크 누르기"
+  },
+  {
+    "text": "이름은 김하늘",
+    "state": "APPLICATION_OPEN",
+    "expect": [
+      "FILL"
+    ],
+    "fast": true,
+    "why": "등록된 이름 입력"
+  },
+  {
+    "text": "신청하지 마시고 필요한 서류만 알려줘",
+    "state": "BROWSING",
+    "expect": [
+      "PREPARE_APPLY",
+      "POLICY_QUESTION"
+    ],
+    "fast": false,
+    "why": "신청을 제외하고 서류만 요청"
+  },
+  {
+    "text": "이 버튼 눌러도 돼?",
+    "state": "BROWSING",
+    "expect": [
+      "UNKNOWN",
+      "DESCRIBE_SCREEN"
+    ],
+    "fast": false,
+    "why": "누르기 전 질문"
+  },
+  {
+    "text": "이 버튼 눌러도 돼?",
+    "state": "WAITING_FOR_USER_CONFIRMATION",
+    "expect": [
+      "UNKNOWN",
+      "DESCRIBE_SCREEN"
+    ],
+    "fast": false,
+    "why": "승인 대기 중 질문"
+  },
+  {
+    "text": "어떻게 클릭해야 돼?",
+    "state": "BROWSING",
+    "expect": [
+      "UNKNOWN",
+      "DESCRIBE_SCREEN",
+      "LIST_LINKS",
+      "WHAT_CAN_I_SAY"
+    ],
+    "fast": false,
+    "why": "누르는 방법 질문"
+  },
+  {
+    "text": "그거 말고 다른 거 찾아줘",
+    "state": "BROWSING",
+    "expect": [
+      "UNKNOWN"
+    ],
+    "fast": false,
+    "why": "찾을 대상이 빠짐"
+  },
+  {
+    "text": "취소 수수료 얼마야?",
+    "state": "BROWSING",
+    "expect": [
+      "UNKNOWN",
+      "POLICY_QUESTION"
+    ],
+    "fast": false,
+    "why": "취소 비용 질문"
+  },
+  {
+    "text": "로그인하지 말고 정부24에서 등본 발급 방법 찾아줘",
+    "state": "IDLE",
+    "expect": [
+      "GOAL"
+    ],
+    "fast": false,
+    "why": "로그인을 제외한 민원 안내"
+  },
+  {
+    "text": "제출은 나중에 하고 지금 쓴 내용 읽어줘",
+    "state": "APPLICATION_OPEN",
+    "expect": [
+      "REVIEW"
+    ],
+    "fast": false,
+    "why": "제출을 미루고 내용 확인"
+  },
+  {
+    "text": "아니 네이버 말고 다음 열어줘",
+    "state": "IDLE",
+    "expect": [
+      "OPEN_SITE"
+    ],
+    "fast": false,
+    "why": "다음 사이트로 정정"
+  },
+  {
+    "text": "신청 화면 열지 말고 자격만 확인해줘",
+    "state": "BROWSING",
+    "expect": [
+      "PRECHECK"
+    ],
+    "fast": false,
+    "why": "신청 없이 자격만 확인"
+  },
+  {
+    "text": "확인 버튼 눌러줘",
+    "state": "BROWSING",
+    "expect": [
+      "FOLLOW_LINK"
+    ],
+    "fast": false,
+    "why": "확인 버튼을 명시"
+  }
+]

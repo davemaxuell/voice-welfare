@@ -1,0 +1,42 @@
+{
+  "id": "15004649",
+  "source": "https://www.data.go.kr/data/15004649/fileData.do",
+  "retrieved_at": "2026-11-17T16:43:36.340350+00:00",
+  "rows": [
+    [
+      "연번",
+      "시 설 명",
+      "소재지",
+      "연 락 처",
+      "시설장",
+      "인원수"
+    ],
+    [
+      "1",
+      "장애인종합복지관",
+      "경상북도 영천시 보목2길 10(야사동)",
+      "054-333-3535",
+      "권○종",
+      "300"
+    ],
+    [
+      "2",
+      "영천팔레스",
+      "경상북도 영천시 북안면 신평탑골길 16-8(도천리)",
+      "054-332-2841",
+      "강○순",
+      "45"
+    ],
+    [
+      "3",
+      "마야예림원",
+      "경상북도 영천시 북안면 고지길 42-5(고지리)",
+      "054-331-0073",
+      "박○혜",
+      "27"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15004649&publicDataDetailPk=uddi%3A40b5829e-a9a8-41a0-87ae-c27063e4370a",
+  "sample_type": "official public file preview"
+}

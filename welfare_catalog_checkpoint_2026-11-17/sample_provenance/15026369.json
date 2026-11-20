@@ -1,0 +1,42 @@
+{
+  "id": "15026369",
+  "source": "https://www.data.go.kr/data/15026369/fileData.do",
+  "retrieved_at": "2026-11-17T17:07:51.799836+00:00",
+  "rows": [
+    [
+      "사업수행기관",
+      "사업유형",
+      "사업명",
+      "사업량",
+      "사업시작",
+      "사업종료"
+    ],
+    [
+      "대한노인회 부산 중구지회",
+      "공익활동형",
+      "포그니노노케어",
+      "30",
+      "2026-01-02",
+      "2026-12-31"
+    ],
+    [
+      "대한노인회 부산 중구지회",
+      "공익활동형",
+      "거리환경지킴이",
+      "100",
+      "2026-01-02",
+      "2026-12-31"
+    ],
+    [
+      "대한노인회 부산 중구지회",
+      "공익활동형",
+      "골목길문화재지킴이",
+      "40",
+      "2026-01-02",
+      "2026-12-31"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026369&publicDataDetailPk=uddi%3A8f2a9b43-6982-40ea-9799-af62e4c73e85",
+  "sample_type": "official public file preview"
+}

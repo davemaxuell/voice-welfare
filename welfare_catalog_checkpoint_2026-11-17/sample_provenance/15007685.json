@@ -1,0 +1,38 @@
+{
+  "id": "15007685",
+  "source": "https://www.data.go.kr/data/15007685/fileData.do",
+  "retrieved_at": "2026-11-17T16:47:34.077646+00:00",
+  "rows": [
+    [
+      "지역별",
+      "전화번호",
+      "도로명주소",
+      "지번주소",
+      "데이터기준일자"
+    ],
+    [
+      "상동1리경로당",
+      "033-461-1335",
+      "강원도 인제군 인제읍 인제로225번길 10-3",
+      "강원도 인제군 인제읍 상동리 29-1",
+      "2022-09-06"
+    ],
+    [
+      "상동2리경로당",
+      "033-461-2256",
+      "강원도 인제군 인제읍 인제로199번길 13",
+      "강원도 인제군 인제읍 상동리 356-2",
+      "2022-09-06"
+    ],
+    [
+      "기룡경로당",
+      "033-462-2388",
+      "강원도 인제군 인제읍 인제로178번길 12",
+      "강원도 인제군 인제읍 상동리 289",
+      "2022-09-06"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15007685&publicDataDetailPk=uddi%3Abcd1ce10-b3e0-4c5e-b8eb-9308ba60c028",
+  "sample_type": "official public file preview"
+}

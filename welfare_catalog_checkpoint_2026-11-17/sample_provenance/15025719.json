@@ -1,0 +1,38 @@
+{
+  "id": "15025719",
+  "source": "https://www.data.go.kr/data/15025719/fileData.do",
+  "retrieved_at": "2026-11-17T17:05:25.775135+00:00",
+  "rows": [
+    [
+      "일련번호",
+      "구분",
+      "시설명",
+      "소재지",
+      "연락처"
+    ],
+    [
+      "1",
+      "장애인직업재활시설",
+      "한마음직업재활원",
+      "사상구 광장로103번길 31, 1층(괘법동)",
+      "051-325-7300"
+    ],
+    [
+      "2",
+      "장애인직업재활시설",
+      "사상구 장애인근로작업장",
+      "사상구 모라로192번길 2, 1층/2층(모라동)",
+      "051-304-9747"
+    ],
+    [
+      "3",
+      "장애인직업재활시설",
+      "지원직업재활원",
+      "사상구 사상로 운산로 77(덕포동)",
+      "051-327-7720"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025719&publicDataDetailPk=uddi%3A25a39399-e8ea-4e59-829c-f8deea3bb931",
+  "sample_type": "official public file preview"
+}

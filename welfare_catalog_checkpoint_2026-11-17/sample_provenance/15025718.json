@@ -1,0 +1,34 @@
+{
+  "id": "15025718",
+  "source": "https://www.data.go.kr/data/15025718/fileData.do",
+  "retrieved_at": "2026-11-17T17:05:15.699051+00:00",
+  "rows": [
+    [
+      "프로그램대상",
+      "프로그램명",
+      "내용",
+      "대상"
+    ],
+    [
+      "아동기",
+      "언어치료",
+      "발달지연 아동의 언어발달지원",
+      "만2~13세 아동"
+    ],
+    [
+      "아동기",
+      "감각통합치료",
+      "아동의 신체 및 적응발달",
+      "만2~13세 아동"
+    ],
+    [
+      "아동기",
+      "인지 및 전산화인지치료",
+      "아동의 인지 발달 및 사회성 향상",
+      "만2~18세 아동"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025718&publicDataDetailPk=uddi%3A8dbb7a4c-46a1-43d1-b0f2-bcd49d756104",
+  "sample_type": "official public file preview"
+}
