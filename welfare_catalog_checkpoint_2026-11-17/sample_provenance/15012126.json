@@ -1,0 +1,30 @@
+{
+  "id": "15012126",
+  "source": "https://www.data.go.kr/data/15012126/fileData.do",
+  "retrieved_at": "2026-11-17T16:53:04.669434+00:00",
+  "rows": [
+    [
+      "연번",
+      "연구과제명",
+      "예산액(천원)"
+    ],
+    [
+      "1",
+      "광주광역시 스토킹 피해 실태 및 대응 체계 강화 방안",
+      "32000"
+    ],
+    [
+      "2",
+      "광주지역 다양한 가족에 대한 인식조사",
+      "28000"
+    ],
+    [
+      "3",
+      "광주지역 기후위기 취약 가족 지원 방안 연구",
+      "12000"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15012126&publicDataDetailPk=uddi%3A31e69a28-9f00-44f1-b684-93cdccaa7c17",
+  "sample_type": "official public file preview"
+}

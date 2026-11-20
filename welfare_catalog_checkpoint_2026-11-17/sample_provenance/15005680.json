@@ -1,0 +1,42 @@
+{
+  "id": "15005680",
+  "source": "https://www.data.go.kr/data/15005680/fileData.do",
+  "retrieved_at": "2026-11-17T16:45:38.746847+00:00",
+  "rows": [
+    [
+      "번호",
+      "소속",
+      "연구분야",
+      "연구과제명",
+      "연구자",
+      "발간시기"
+    ],
+    [
+      "1",
+      "국민연금연구원",
+      "연금제도",
+      "집합적 확정기여형 퇴직연금 비교 분석",
+      "유호선 이예인",
+      "2025"
+    ],
+    [
+      "2",
+      "국민연금연구원",
+      "기초연금",
+      "기초연금 미수급자 현황 및 특성에 관한 연구",
+      "오종석 홍성운",
+      "2025"
+    ],
+    [
+      "3",
+      "국민연금연구원",
+      "연금제도",
+      "공적연금 수급에 따른 여성 노인의 소득구성과 소비수준 변화 분석",
+      "김만수 안준홍 이예인",
+      "2025"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15005680&publicDataDetailPk=uddi%3A0c8ed4c7-0edc-44a5-a467-94c02e5b9583",
+  "sample_type": "official public file preview"
+}

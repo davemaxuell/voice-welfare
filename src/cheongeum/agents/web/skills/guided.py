@@ -127,11 +127,14 @@ class GuidedFill:
         self.dialogue.ask_approval(
             {
                 "kind": "assist",
+                "url": view["url"],
                 "guided": True,
                 "action": action,
                 "actions": [action],
                 "confirmation": {
                     "actionId": action["id"],
+                    "kind": "field-entry",
+                    "description": speech,
                     "purpose": "실제 사이트 입력란 채우기(제출은 하지 않음)",
                     "site": site,
                     "values": [{"label": label, "value": value}],

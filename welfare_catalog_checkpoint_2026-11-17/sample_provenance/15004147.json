@@ -1,0 +1,34 @@
+{
+  "id": "15004147",
+  "source": "https://www.data.go.kr/data/15004147/fileData.do",
+  "retrieved_at": "2026-11-17T16:42:23.167461+00:00",
+  "rows": [
+    [
+      "도서명",
+      "저자",
+      "출판사",
+      "페이지"
+    ],
+    [
+      "제국의 암살자들 김구암살 공작의 전말",
+      "윤대원",
+      "태학사",
+      "416"
+    ],
+    [
+      "불, 에너지, 재료의 역사",
+      "이경우",
+      "일조각",
+      "234"
+    ],
+    [
+      "예보에 없던 비가 내립니다",
+      "최은비",
+      "책과나무",
+      "76"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15004147&publicDataDetailPk=uddi%3A5eb8df14-32c2-45ef-ac12-9a4d92cf8e02",
+  "sample_type": "official public file preview"
+}

@@ -25,8 +25,10 @@ class PolicyConfig:
     readOnlyWeb: bool = False
     # 지원 사이트에서 이름이 RISKY_BUTTON에 걸려도 그냥 누르는 버튼(사이트 프로필의 다음·이전·팝업 닫기)
     safeButtons: Sequence[str] = ()
-    # 직접 만든 설정은 닫힌 쪽이 기본. 제품 기본값(any)은 server.runtime.load_config가 정한다.
+    # 직접 만든 설정은 닫힌 쪽이 기본. 제품 기본값(safe)은 server.runtime.load_config가 정한다.
     readOnlyClicks: Literal["any", "safe"] = "safe"
+    publicLookupOnly: bool = False
+    defaultActionsPerTurn: int | None = None
 
 
 @dataclass
@@ -35,6 +37,8 @@ class PolicyContext:
     stopped: bool = False
     approvals: AbstractSet[str] = field(default_factory=set)
     actionsThisTurn: int = 0
+    public_lookup: bool = False
+    action_limit: int | None = None
 
 
 def decision(allowed: bool, code: str, reason: str) -> dict:
@@ -46,16 +50,20 @@ def deny(code: str, reason: str) -> dict:
 
 
 INPUT_TYPES = ("fill", "select", "check")
-READ_ONLY_TYPES = ("navigate", "back", "click", "fill", "press", "scroll", "read", "focus")
+READ_ONLY_TYPES = ("navigate", "back", "click", "fill", "press", "scroll", "read", "focus", "capture")
 SECRET_LABEL = rx(r"(비밀\s*번호|password|OTP|인증\s*번호|주민\s*(등록)?\s*번호|계좌|카드\s*번호)", I)
 WEB_SCHEMES = ("http:", "https:")
 # 실제 사이트에서도 사용자에게 묻고 누를 수 있는 이름(로그인 화면 열기·로그인 누르기). 로그아웃은 아니다.
 LOGIN_NAME = rx(r"(로그인|log\s*-?\s*in|sign\s*-?\s*in)", I)
-# 읽기 전용 사이트에서 버튼은 메뉴·더보기 같은 이동용만 누른다. 이름이 '행동'을 뜻하면 막는다.
+# 실제 사이트에서는 역할과 이름으로 바로 누를 항목, 물어볼 항목, 거부할 항목을 가른다.
 # (이름만 보는 휴리스틱이라 완벽하지 않다 — 문서에 한계로 명시)
 RISKY_BUTTON = rx(
     r"(신청|제출|접수|등록|삭제|결제|송금|이체|구매|주문|동의|승인|확인|저장|보내기|전송|발송|로그인|로그아웃|탈퇴|가입|변경|수정|취소|인증|업로드|첨부|발급|예약|투표|좋아요|구독|submit|send|pay|buy|order|delete|confirm|login|sign)",
     I,
+)
+HARD_ACTION = rx(
+    r"(신청|제출|접수|등록|삭제|결제|송금|이체|구매|주문|동의|승인|저장|보내기|전송|발송|로그아웃|탈퇴|가입|인증|업로드|첨부|발급|예약|투표|좋아요|구독"
+    r"|submit|send|pay|buy|order|delete|sign\s*-?\s*(?:up|out)|log\s*-?\s*out)", I,
 )
 _ACTION_ANYWHERE = rx(
     r"하기(?![가-힣])|탈퇴|결제|송금|이체|삭제|구매|주문|로그인|로그아웃|회원\s*가입"
@@ -74,6 +82,18 @@ _TRAILING_NOISE = rx(r"(\s*(새\s*창(\s*열림)?|[^\w가-힣]+))+$")
 def is_action_name(name: str) -> bool:
     n = _TRAILING_NOISE.sub("", rx(r"\s+").sub(" ", name).strip())
     return bool(_ACTION_ANYWHERE.search(n) or _ACTION_ENDING.search(n))
+
+
+def click_tier(role: str | None, name: str) -> Literal["free", "ask", "hard"]:
+    if role == "link":
+        return "free"
+    if not name.strip() or (HARD_ACTION.search(name) and is_action_name(name)):
+        return "hard"
+    if role in ("tab", "scriptlink"):
+        return "ask" if is_action_name(name) else "free"
+    if role in ("button", "menuitem"):
+        return "ask" if RISKY_BUTTON.search(name) else "free"
+    return "ask"
 
 
 class PolicyGuard:
@@ -107,7 +127,9 @@ class PolicyGuard:
 
         if ctx.stopped:
             return deny("DENIED_STOPPED", "사용자가 중단을 요청했습니다.")
-        if ctx.actionsThisTurn >= self.config.maxActionsPerTurn:
+        limit = ctx.action_limit if ctx.action_limit is not None else self.config.defaultActionsPerTurn
+        ceiling = self.config.maxActionsPerTurn
+        if ctx.actionsThisTurn >= (min(ceiling, limit) if limit is not None else ceiling):
             return deny("DENIED_RATE_LIMIT", "한 번의 요청에서 허용된 조작 횟수를 넘었습니다.")
         if action["type"] not in self.config.allowedActionTypes:
             return deny("DENIED_ACTION_TYPE", f"허용되지 않은 액션 유형({action['type']})입니다.")
@@ -118,6 +140,16 @@ class PolicyGuard:
             return deny("DENIED_ORIGIN", "이동할 주소가 없습니다.")
         if tier == "none":
             return deny("DENIED_ORIGIN", "허용되지 않은 주소라서 열거나 조작하지 않습니다.")
+        if self.config.publicLookupOnly or ctx.public_lookup:
+            target = action.get("target") or {}
+            role, name = target.get("role"), target.get("name") or ""
+            if (action["risk"] != "low" or action["requiresConfirmation"]
+                    or action["type"] in ("capture", "select", "check")
+                    or (action["type"] in ("fill", "press") and role != "searchbox")
+                    or (action["type"] == "click" and (role not in ("link", "tab", "scriptlink", "button", "menuitem")
+                                                        or not name or is_action_name(name) or LOGIN_NAME.search(name)))):
+                return deny("DENIED_TASK_SCOPE", "정보를 찾는 요청으로는 이 동작을 할 수 없어요.")
+            return self._check_read_only(action, ctx)
         if tier == "read-only":
             return self._check_read_only(action, ctx)
 
@@ -135,15 +167,20 @@ class PolicyGuard:
                 return deny("DENIED_SECRET", "입력값에 민감 정보로 보이는 내용이 있어 입력하지 않았습니다.")
 
         # 위험도는 부르는 쪽이 높일 수만 있다: 동작 이름의 버튼은 낮게 적어 와도 승인을 받는다.
-        if action["risk"] != "low" or action["requiresConfirmation"] or (action["type"] == "click" and self._risky_button(target)):
+        if action["risk"] != "low" or action["requiresConfirmation"] or (action["type"] == "click" and self._risky_control(target)):
             if action["id"] in ctx.approvals:
                 return decision(True, "APPROVED", "사용자가 실행 전에 승인했습니다.")
             return deny("NEEDS_CONFIRMATION", "실행 전에 사용자 승인이 필요합니다.")
         return decision(True, "ALLOWED", "허용된 저위험 조작입니다.")
 
-    def _risky_button(self, target: dict) -> bool:
+    def _risky_control(self, target: dict) -> bool:
         name = target.get("name") or ""
-        return target.get("role") == "button" and bool(RISKY_BUTTON.search(name)) and name not in self.config.safeButtons
+        role = target.get("role")
+        if role == "link" or (role == "button" and name in self.config.safeButtons):
+            return False
+        if role in ("tab", "scriptlink"):
+            return is_action_name(name)
+        return bool(RISKY_BUTTON.search(name))
 
     def _check_read_only(self, action: dict, ctx: PolicyContext) -> dict:
         """지원하지 않는 사이트: 읽고 이동하고 검색하는 것까지만."""
@@ -171,20 +208,15 @@ class PolicyGuard:
         if action["type"] == "click":
             role = target.get("role")
             name = target.get("name") or ""
-            # 로그인은 READ_ONLY_CLICKS와 무관하게 늘 사용자의 '눌러' 확인을 받는다.
-            if role in ("button", "link") and LOGIN_NAME.search(name):
+            tier = click_tier(role, name) if self.config.readOnlyClicks == "safe" else "free"
+            if tier == "hard":
+                return read_only("신청·제출·동의 같은 동작은 누르지 않습니다.")
+            if tier == "ask" and (self.config.publicLookupOnly or ctx.public_lookup):
+                return read_only("정보를 찾는 동안에는 확인이 필요한 버튼을 누르지 않습니다.")
+            if tier == "ask" or LOGIN_NAME.search(name):
                 if action["id"] in ctx.approvals:
                     return decision(True, "APPROVED", "사용자가 누르라고 확인했습니다.")
-                return deny("NEEDS_CONFIRMATION", "로그인 버튼은 누르기 전에 사용자 확인이 필요합니다.")
-            if self.config.readOnlyClicks == "safe":
-                if role in ("tab", "scriptlink"):
-                    if not name or is_action_name(name):
-                        return read_only("신청하기·탈퇴 같은 동작 이름은 누르지 않습니다.")
-                elif role in ("button", "menuitem"):
-                    if not name or RISKY_BUTTON.search(name):
-                        return read_only("신청·제출·동의 같은 동작 버튼은 누르지 않습니다.")
-                elif role != "link":
-                    return read_only("링크와 이동용 버튼만 누를 수 있습니다.")
+                return deny("NEEDS_CONFIRMATION", "누르기 전에 사용자 확인이 필요합니다.")
         if action["type"] in ("fill", "press"):
             if target.get("role") != "searchbox":
                 return read_only("검색창에만 입력할 수 있습니다.")

@@ -5,6 +5,7 @@ from cheongeum.safety import PolicyConfig, PolicyContext, PolicyGuard
 from cheongeum.safety.guard import is_action_name
 from cheongeum.understanding import IntentContext, RuleBasedIntentProvider, clean_value, is_progress_question, is_stop_utterance, resolve_site
 from cheongeum.understanding.filters import strip_address
+from cheongeum.understanding.sites import goal_site_request
 
 parser = RuleBasedIntentProvider(field_vocabulary(create_mock_welfare_profile("http://localhost:5174")))
 
@@ -89,6 +90,15 @@ def test_stop_is_rule_based():
     assert is_stop_utterance("잠깐 멈춰")
     assert is_stop_utterance("취소")
     assert not is_stop_utterance("멈추지 마")
+    assert not is_stop_utterance("정부24에서 행정지원 서비스를 찾아줘")
+    assert not is_stop_utterance("재정지원 제도를 알려줘")
+    assert not is_stop_utterance("신청 취소 방법을 알려줘")
+    assert not is_stop_utterance("청음아, 취소?")
+    assert not is_stop_utterance("cancel?")
+    assert not is_stop_utterance("Where is the next bus stop?")
+    assert not is_stop_utterance("停止申请的流程是什么？")
+    for command in ("청음아 지금 작업을 중단해 줘", "please stop now", "请停止", "止めてください", "stop?", "could you cancel?", "취소? 아니, 멈춰"):
+        assert is_stop_utterance(command)
 
 
 @pytest.mark.parametrize("said", ["지금 어디까지 했어?", "청음아, 어디까지 됐어?", "얼마나 남았어?", "아직 멀었어?", "지금 뭐 하고 있어?"])
@@ -223,6 +233,19 @@ def test_resolve_site_stt_variants():
     assert resolve_site("우리동네복지관 열어줘") is None
 
 
+@pytest.mark.parametrize(("goal", "url"), [
+    ("복지로에서 기초연금 신청 방법 찾아줘", "https://www.bokjiro.go.kr"),
+    ("기초연금에 대해 복지로 누리집에서 찾아줘", "https://www.bokjiro.go.kr"),
+    ("네이버 뉴스에서 오늘 뉴스 알려줘", "https://news.naver.com"),
+    ("127.0.0.1:5174/external.html에서 찾아줘", "http://127.0.0.1:5174/external.html"),
+    ("https://example.org/bokjiro.go.kr에서 찾아줘", "https://example.org/bokjiro.go.kr"),
+    ("지금 화면에서 기초연금 찾아줘", None),
+    ("복지로에서 찾아보고 정부24에서 확인해줘", None),
+])
+def test_goal_evidence_source_is_the_requested_site(goal, url):
+    assert goal_site_request(goal)[0] == url
+
+
 # ---------------------------------------------------------------- PolicyGuard 읽기 전용 등급
 
 ALL_TYPES = ["navigate", "back", "click", "fill", "press", "select", "check", "scroll", "read", "focus"]
@@ -271,7 +294,7 @@ def test_tiers():
         ("주소 있는 링크는 이름과 상관없이(safe)", a(target={"role": "link", "name": "회원 탈퇴 안내"}), "ALLOWED_READ_ONLY"),
         ("메뉴 항목(safe)", a(target={"role": "menuitem", "name": "복지서비스"}), "ALLOWED_READ_ONLY"),
         ("동작 메뉴 항목(safe)", a(target={"role": "menuitem", "name": "신청"}), "DENIED_READ_ONLY"),
-        ("역할 없는 요소(safe)", a(target={"ref": "r1", "role": "generic", "name": "체험관 둘러보기"}), "DENIED_READ_ONLY"),
+        ("역할 없는 요소(safe)", a(target={"ref": "r1", "role": "generic", "name": "체험관 둘러보기"}), "NEEDS_CONFIRMATION"),
         ("이름 없는 ref", a(target={"ref": "r1"}), "DENIED_SCHEMA"),
         ("일반 입력란", a(type="fill", target={"label": "이름", "fieldId": "n"}, value="김하늘"), "DENIED_READ_ONLY"),
         ("선택", a(type="select", target={"fieldId": "s"}, value="1"), "DENIED_READ_ONLY"),
@@ -311,10 +334,14 @@ def test_read_only_any_clicks_allows_every_click_but_not_input():
     assert any_guard.check(a(target={"role": "link", "name": "x"}, risk="consequential", requiresConfirmation=True), RO_CTX)["code"] == "DENIED_READ_ONLY"
 
 
-def test_read_only_any_clicks_still_asks_before_login():
-    any_guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": "any"}))
-    for role in ("button", "link"):
-        assert any_guard.check(a(target={"role": role, "name": "로그인"}), RO_CTX)["code"] == "NEEDS_CONFIRMATION"
+@pytest.mark.parametrize("mode", ["safe", "any"])
+@pytest.mark.parametrize("role", ["button", "link", "tab", "scriptlink", "menuitem", "generic"])
+def test_read_only_login_needs_approval_for_each_control(mode, role):
+    guard = PolicyGuard(PolicyConfig(**{**ro_guard.config.__dict__, "readOnlyClicks": mode}))
+    click = a(target={"role": role, "name": "로그인"})
+    assert guard.check(click, RO_CTX)["code"] == "NEEDS_CONFIRMATION"
+    approved = PolicyContext(currentUrl=RO_CTX.currentUrl, approvals={click["id"]})
+    assert guard.check(click, approved)["code"] == "APPROVED"
 
 
 def test_read_only_off_means_supported_sites_only():
@@ -377,3 +404,11 @@ def test_assist_low_risk_input_denied():
 )
 def test_strip_address(said, rest):
     assert strip_address(said) == rest
+
+
+def test_intro_replay_and_setup_restart_phrases_parse():
+    assert parse("청음 소개 다시 해줘", "IDLE")["type"] == "INTRO_REPLAY"
+    assert parse("청음 소개해줘", "IDLE")["type"] == "INTRO_REPLAY"
+    assert parse("설정 다시 해줘", "IDLE")["type"] == "SETUP_RESTART"
+    assert parse("처음 설정 다시 할래", "IDLE")["type"] == "SETUP_RESTART"
+    assert parse("말하기 설정 다시 해줘", "IDLE")["type"] != "SETUP_RESTART"

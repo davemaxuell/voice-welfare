@@ -76,6 +76,52 @@ PLAYBOOKS: dict[str, SitePlaybook] = {
 }
 
 
+def loads_bokjiro_search_results(url: str) -> bool:
+    """통합검색은 헤더 응답 뒤에 결과 목록을 받는다. 두 요청은 오래 걸려도 롱 폴링이 아니다."""
+    request = try_url(url)
+    return bool(request and request.hostname in ("www.bokjiro.go.kr", "bokjiro.go.kr") and request.pathname in (
+        "/ssis-tbu/TWZZ01000M/getHeaderInf.do",
+        "/ssis-tbu/TWZZ01000M/twatzzza/intgSearch/selectTwzzIntgSearchList.do",
+    ))
+
+
+def public_guide_url(site_url: str | None, question: str) -> str | None:
+    """기관이 공개한 업무별 안내 페이지. 사용자가 지정한 상세 주소는 그대로 둔다."""
+    site = try_url(site_url or "")
+    if not site or site.pathname != "/" or site.search:
+        return None
+    words = rx(r"\s").sub("", question)
+    if site.hostname == "www.gov.kr" and rx(r"주민등록(?:표)?(?:등본|초본)|등본발급").search(words):
+        return "https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=13100000015"
+    if site.hostname == "www.kosaf.go.kr" and "국가장학금" in words:
+        page = "scholarship05_12_01_01"
+        if "다자녀" in words:
+            page = "scholarship05_12_10"
+        elif rx(r"(?:2|Ⅱ|ⅱ|II|ii)유형").search(words):
+            page = "scholarship05_12_01_02"
+        if "서류" in words:
+            return f"https://www.kosaf.go.kr/ko/scholar.do?pg={page}&ttab1=3"
+        if rx(r"신청방법|신청절차|어떻게신청|신청하는법").search(words):
+            return f"https://www.kosaf.go.kr/ko/scholar.do?pg={page}&ttab1=2"
+        return "https://www.kosaf.go.kr/ko/scholar.do?pg=scholarship_submain01&naviParam=JH,02,00,00"
+    return None
+
+
+def guide_section(view: dict, question: str) -> dict:
+    """장학재단의 업무별 탭은 공통 일정 배너 뒤에 있다. 절차 질문의 근거는 현재 탭의 본문이다."""
+    page = try_url(view.get("url") or "")
+    if not page or page.hostname != "www.kosaf.go.kr" or page.pathname != "/ko/scholar.do":
+        return view
+    if "ttab1=2" not in page.search or rx(r"언제|기간|기한|일정|마감|날짜").search(question):
+        return view
+    outline = view.get("outline") or {}
+    main = outline.get("mainText") or ""
+    heading = rx(r"(?:^|\n)[ \t]*[^\n]{0,75}국가장학금[^\n]{0,75}지원절차[ \t]*\n").search(main)
+    if not heading:
+        return view
+    return {**view, "outline": {**outline, "mainText": main[heading.start():].strip()}}
+
+
 def _bare_host(url: str | None) -> str:
     u = try_url(url or "")
     return rx(r"^www\.").sub("", u.hostname) if u and u.hostname else ""

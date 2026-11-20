@@ -2,7 +2,7 @@
 import asyncio
 import re
 
-from conftest import FakeLlm, create_test_runtime, field_value, with_llm
+from conftest import flat, FakeLlm, create_test_runtime, field_value, with_llm
 
 from cheongeum.core.jsutil import jdumps
 
@@ -151,7 +151,7 @@ TWO_QUESTIONS = "지금 화면에 뭐가 있어? 그리고 기초연금은 얼�
 
 
 def split_into_two():
-    return FakeLlm({"split_questions": {"questions": ["지금 화면에 뭐가 있어?", "기초연금은 얼마야?"]}})
+    return FakeLlm({"intent_plan": {"steps": [flat("DESCRIBE_SCREEN"), flat("POLICY_QUESTION", topic="기초연금은 얼마야?")]}})
 
 
 def web_agent_ran(r: dict) -> bool:
@@ -237,9 +237,12 @@ async def test_bare_password_on_login_page_not_sent_or_stored(new_session):
     assert done["intentType"] != "SECRET_DISCLOSURE"
     described = await s.handle_turn("화면 설명해줘")
     assert described["intentType"] == "DESCRIBE_SCREEN"
-    # 막힌 말을 바로 한 번 더 하면 명령으로 보고 넘긴다(“명령이었다면 한 번 더 말씀해 주세요”)
-    assert (await s.handle_turn("바다거북"))["intentType"] == "SECRET_DISCLOSURE"
-    assert (await s.handle_turn("바다거북"))["intentType"] != "SECRET_DISCLOSURE"
+    # 인증 중에는 같은 비밀값 후보를 다시 말해도 기록이나 모델에 보내지 않는다.
+    for _ in range(2):
+        repeated = await s.handle_turn("바다거북")
+        assert repeated["intentType"] == "SECRET_DISCLOSURE"
+        assert "바다거북" not in jdumps(repeated)
+    assert "바다거북" not in jdumps(s.snapshot()) and llm.calls == []
 
 
 async def test_bare_word_after_password_mention(new_session):
@@ -467,3 +470,39 @@ async def test_vault_values_hidden_in_history(new_session):
     assistants = [h for h in s.export_history() if h["role"] == "assistant"]
     assert any("박하늘" not in h["text"] and REDACTED in h["text"] for h in assistants if "저장된 정보" in h["text"] or "이름" in h["text"])
     assert all("박하늘" not in h["text"] for h in assistants)
+
+
+async def test_declined_vault_values_stay_out_of_later_model_requests(new_session):
+    s = await new_session()
+    name, address = "별구름", "가상시 달빛로 45"
+    await s.handle_turn(f"내가 읽은 문서에 {name}이라고 적혀 있었어")
+    prompt = await s.handle_turn(f"내 이름은 {name}이고 주소는 {address}라고 저장해줘")
+    assert name in prompt["speech"] and address in prompt["speech"]
+    await s.handle_turn("아니")
+    assert name not in str(s.export_history())
+    llm = FakeLlm()
+    with_llm(s, llm)
+    await s.handle_turn("내가 할 수 있는 일을 설명해 줄래")
+    planner = next(call for call in llm.calls if call["schemaName"] == "intent_plan")
+    for private in (name, address):
+        assert private not in planner["user"]
+        assert private not in str(s.recent_voice_dialogue())
+
+
+async def test_stop_during_private_save_keeps_readback_on_device(new_session):
+    s = await new_session()
+    await s.handle_turn("내 이름은 별구름이라고 저장해줘")
+    stopped = s.cancel()
+    assert "별구름" in stopped["speech"]
+    assert "별구름" not in str(s.recent_voice_dialogue())
+    assert stopped["localSpeechOnly"]
+
+
+async def test_short_speech_keeps_private_addresses_complete_on_device(new_session):
+    s = await new_session()
+    s._personal.save_speech({"length": "short"})
+    address = "47 St. Elms Blvd. Building Seven, Green Arch Apartments near the west entrance, Sample City 00000"
+    s._personal.save_vault({"address": address})
+    read = await s.handle_turn("내 정보 알려줘")
+    assert address in read["speech"] and read["localSpeechOnly"]
+    assert "Elms" not in str(s.recent_voice_dialogue())

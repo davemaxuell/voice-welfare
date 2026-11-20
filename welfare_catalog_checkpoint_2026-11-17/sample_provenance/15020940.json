@@ -1,0 +1,34 @@
+{
+  "id": "15020940",
+  "source": "https://www.data.go.kr/data/15020940/fileData.do",
+  "retrieved_at": "2026-11-17T16:59:26.287385+00:00",
+  "rows": [
+    [
+      "연번",
+      "등록번호",
+      "업체명",
+      "소재지(도로명까지)"
+    ],
+    [
+      "1",
+      "경기-부천-국내-13-0001",
+      "축복결혼정보",
+      "경기도 부천시 소사구 송내대로 28, 207호(송내동)"
+    ],
+    [
+      "2",
+      "경기-부천-국내-19-0002",
+      "동반자결혼",
+      "경기도 부천시 원미구 부일로 519, 201호(심곡동)"
+    ],
+    [
+      "3",
+      "경기-부천-국내-20-0001",
+      "천생연분 남북결혼정보회사",
+      "경기도 부천시 원미구 길주로 91,311호(상동)"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15020940&publicDataDetailPk=uddi%3A55d5c2bc-751f-4b41-a18a-d7555feaadb7",
+  "sample_type": "official public file preview"
+}

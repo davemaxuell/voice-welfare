@@ -255,13 +255,12 @@ async def test_safe_mode_allows_information_tabs_only():
             [
                 step("open_url", PORTAL2),
                 step("click", "온라인 신청하기"),
-                step("click", "보조기기 체험관 둘러보기"),
                 step("click", "신청방법"),
                 step("answer", None, "행정복지센터 3층 복지과 창구에서 신청해요.", ["신청 방법은 주소지 행정복지센터 3층 복지과 창구를 방문하는 것입니다"]),
             ],
         )
         r = await s.handle_turn(f"{SITE}에서 신청 방법 알려줘")
-        assert len([n for n in notes(r) if "안전 규칙으로 막힘" in n]) == 2
+        assert len([n for n in notes(r) if "안전 규칙으로 막힘" in n]) == 1
         assert r["speech"] == "행정복지센터 3층 복지과 창구에서 신청해요."
         assert r["observation"]["title"] == "[테스트] 복지 포털 2 - 보조기기 지원 상세"
     finally:

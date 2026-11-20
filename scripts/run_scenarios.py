@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import re
@@ -45,7 +46,7 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-async def main() -> int:
+async def main(policy: str, out_dir: Path) -> int:
     demo = load_scenario_file(DEMO_SCENARIO_PATH)
     synthetic = load_scenario_file(SYNTHETIC_SCENARIO_PATH)
     mock = ensure_mock_site(int(parse_url(demo.baseUrl).port or 80))
@@ -55,7 +56,8 @@ async def main() -> int:
         "LLM_PROVIDER": "mock",
         "REQUIRE_CONSENT": "false",
         "READ_ONLY_WEB": "true",
-        "READ_ONLY_CLICKS": "safe",
+        "READ_ONLY_CLICKS": policy,
+        "DATASETS_DIR": str(ROOT / "tests" / "fixtures" / "open_data"),
         "VISUAL_CURSOR": "false",
         "WEB_SEARCH_URL": "http://127.0.0.1:5174/external.html?q={q}",
     }
@@ -63,6 +65,82 @@ async def main() -> int:
     if os.environ.get("PII_MODEL"):
         env["PII_MODEL"] = os.environ["PII_MODEL"]
     runtime = AgentRuntime(load_config(env))
+
+    # ------------------------------------------------------------ 3) 접근성(axe)
+    a11y: list[dict] = []
+    consent_runtime = AgentRuntime(load_config({**env, "REQUIRE_CONSENT": "true"}))
+    port = free_port()
+    app, sessions = create_app(consent_runtime, port=port)
+    mount_web_ui(app)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
+    serving = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.05)
+    web_url = f"http://127.0.0.1:{port}/"
+    browser = await launch_browser(headless=True)
+
+    async def scan(label: str, url: str, prepare=None) -> None:
+        # 재접속 복구 화면이나 이전 페이지의 동의 기록이 다음 측정에 섞이지 않게 한다.
+        page = await browser.new_page(locale="ko-KR")
+        try:
+            await page.goto(url, wait_until="domcontentloaded")
+            if prepare:
+                await prepare(page)
+            await page.add_script_tag(content=AXE)
+            r = await page.evaluate("(tags) => axe.run(document, { runOnly: { type: 'tag', values: tags } })", TAGS)
+            a11y.append(
+                {"page": label, "violations": [{"id": v["id"], "impact": v.get("impact"), "help": v["help"], "nodes": len(v["nodes"]), "targets": [node["target"] for node in v["nodes"]]} for v in r["violations"]]}
+            )
+        finally:
+            await page.close()
+            await close_all(sessions)
+
+    async def wait_consent(page) -> None:
+        await page.get_by_role("button", name=re.compile("안내 듣고 시작하기")).wait_for(timeout=15000)
+
+    async def contrast(page) -> None:
+        await wait_consent(page)
+        await page.get_by_role("button", name=re.compile("고대비")).click()
+
+    async def step1_error(page) -> None:
+        await page.get_by_role("button", name="다음", exact=True).click()
+
+    async def type_command(page, text: str) -> None:
+        command = page.get_by_label("명령 입력 (말하듯이 입력하세요)")
+        await command.fill(text)
+        await command.press("Enter")
+
+    async def start_ui(page) -> None:
+        await page.get_by_role("button", name=re.compile("안내 듣고 시작하기")).click()
+        await page.get_by_role("button", name=re.compile("동의하고 시작")).click()
+        await page.locator("#consent-panel").wait_for(state="hidden")
+
+    async def answer_result(page) -> None:
+        await start_ui(page)
+        await type_command(page, "장애인연금 지원대상이 누구야?")
+        await page.locator("#answer-panel").wait_for()
+
+    async def approval_result(page) -> None:
+        await start_ui(page)
+        await type_command(page, "127.0.0.1:5174/external.html 열어줘")
+        await page.locator("#st-access").get_by_text(re.compile("읽기 전용")).wait_for()
+        await type_command(page, "이름 칸에 김하늘 써줘")
+        await page.locator("#confirm-panel").wait_for()
+
+    await scan("웹 UI(시작 동의 화면)", web_url, wait_consent)
+    await scan("웹 UI(고대비)", web_url, contrast)
+    await scan("웹 UI(근거 답변)", web_url, answer_result)
+    await scan("웹 UI(입력 승인)", web_url, approval_result)
+    await scan("모의 사이트 첫 화면", f"{demo.baseUrl}/")
+    await scan("모의 신청서 1단계", f"{demo.baseUrl}/apply.html")
+    await scan("모의 신청서 오류 상태", f"{demo.baseUrl}/apply.html", step1_error)
+    await scan("모의 본인인증", f"{demo.baseUrl}/login.html")
+    await scan("합성 외부 포털", "http://127.0.0.1:5174/external.html")
+    await browser.close()
+    server.should_exit = True
+    await serving
+    await close_all(sessions)
+    await consent_runtime.close()
 
     # ------------------------------------------------------------ 1) 시나리오
     reports = []
@@ -82,52 +160,6 @@ async def main() -> int:
     detail = (ROOT / "tests" / "fixtures" / "welfare-detail-WLF00003249.xml").read_text(encoding="utf-8")
     rag = evaluate_retrieval(parse_welfare_detail(detail, "https://www.bokjiro.go.kr/"), load_rag_qa(), 3)
 
-    # ------------------------------------------------------------ 3) 접근성(axe)
-    a11y: list[dict] = []
-    consent_runtime = AgentRuntime(load_config({**env, "REQUIRE_CONSENT": "true"}))
-    app, sessions = create_app(consent_runtime)
-    mount_web_ui(app)
-    port = free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
-    serving = asyncio.create_task(server.serve())
-    while not server.started:
-        await asyncio.sleep(0.05)
-    web_url = f"http://127.0.0.1:{port}/"
-    browser = await launch_browser(headless=True)
-    page = await (await browser.new_context()).new_page()
-
-    async def scan(label: str, url: str, prepare=None) -> None:
-        await page.goto(url, wait_until="domcontentloaded")
-        if prepare:
-            await prepare()
-        await page.add_script_tag(content=AXE)
-        r = await page.evaluate("(tags) => axe.run(document, { runOnly: { type: 'tag', values: tags } })", TAGS)
-        a11y.append(
-            {"page": label, "violations": [{"id": v["id"], "impact": v.get("impact"), "help": v["help"], "nodes": len(v["nodes"])} for v in r["violations"]]}
-        )
-
-    async def wait_consent() -> None:
-        await page.get_by_role("button", name=re.compile("안내 듣고 시작하기")).wait_for(timeout=15000)
-
-    async def contrast() -> None:
-        await wait_consent()
-        await page.get_by_role("button", name=re.compile("고대비")).click()
-
-    async def step1_error() -> None:
-        await page.get_by_role("button", name="다음", exact=True).click()
-
-    await scan("웹 UI(시작 동의 화면)", web_url, wait_consent)
-    await scan("웹 UI(고대비)", web_url, contrast)
-    await scan("모의 사이트 첫 화면", f"{demo.baseUrl}/")
-    await scan("모의 신청서 1단계", f"{demo.baseUrl}/apply.html")
-    await scan("모의 신청서 오류 상태", f"{demo.baseUrl}/apply.html", step1_error)
-    await scan("모의 본인인증", f"{demo.baseUrl}/login.html")
-    await scan("합성 외부 포털", "http://127.0.0.1:5174/external.html")
-    await browser.close()
-    server.should_exit = True
-    await serving
-    await close_all(sessions)
-    await consent_runtime.close()
     await runtime.close()
     await stop_playwright()
     if mock:
@@ -143,6 +175,7 @@ async def main() -> int:
     a11y_total = sum(len(p["violations"]) for p in a11y)
     lat = metrics["latencyMs"]
     summary = {
+        "readOnlyClicks": policy,
         "scenarios": metrics["taskCompletion"],
         "fieldAccuracy": metrics["fieldAccuracy"],
         "errorRecovery": metrics["errorRecovery"],
@@ -151,6 +184,7 @@ async def main() -> int:
         "groundingRate": metrics["groundingRate"],
         "readOnlyViolations": metrics["readOnlyViolations"],
         "secretLeakFailures": secret_failures,
+        "repeatedActions": metrics["repeatedActions"],
         "latencyMs": {"p50": lat["p50"], "p95": lat["p95"], "max": lat["max"]},
         "rag": {"k": rag["k"], "questions": rag["questions"], "recallAtK": rag["recallAtK"], "mrr": round(rag["mrr"], 3)},
         "accessibility": {"pages": len(a11y), "violations": a11y_total},
@@ -186,7 +220,7 @@ async def main() -> int:
 
 - 생성: {now_iso()}
 - 범위: 합성 데이터·모의 사이트·로컬 합성 포털. **실제 사용자 테스트 결과가 아닙니다.** 목표치는 PRD §12의 실험 전 가설입니다.
-- 실행 조건: 의도 분석 = 규칙 파서(mock, 재현성 위해 LLM 미사용), 복지 데이터 = fixture, 브라우저 = Chromium(headless)
+- 실행 조건: 의도 분석 = 규칙 파서(mock, 재현성 위해 LLM 미사용), 복지 데이터 = fixture, 브라우저 = Chromium, 읽기 전용 정책 = {policy}
 - 시나리오: demo_scenarios.json(활성 4 + 구현된 S5) + 합성 30건(정상 10·오류복구 10·안전중단 10), 총 {len(reports)}개 / {m['steps']}단계
 
 ## PRD 지표
@@ -197,7 +231,8 @@ async def main() -> int:
 {row('필드 입력 정확도(화면 값까지 일치)', f"{fa['percent']}% ({fa['correct']}/{fa['total']})", '≥ 95%')}
 {row('오류 복구율', f"{er['percent']}% ({er['passed']}/{er['total']})", '≥ 90%')}
 {row('위험행위 사전 승인 준수', f"{ac['percent']}% ({ac['approved']}/{ac['executed']})", '100%')}
-{row('무단 제출', f"{m['unauthorizedSubmissions']}건", '0건')}
+{row('무단 위험 조작', f"{m['unauthorizedSubmissions']}건", '0건')}
+{row('같은 ID 조작 반복', f"{m['repeatedActions']}건", '0건')}
 {row('정책·항목 답변 근거율', f"{gr['percent']}% ({gr['grounded']}/{gr['total']})", '100%')}
 {row('읽기 전용 위반', f"{m['readOnlyViolations']}건", '0건')}
 {row('비밀값 저장·발화·입력', f"{secret_failures}건", '0건')}
@@ -226,12 +261,11 @@ async def main() -> int:
 {fail_rows}
 
 ## 측정하지 않은 것
-- 실제 시각장애인 사용자 과업 테스트·만족도, 화면낭독기 단독 대비 비교(Baseline)
+- 실제 사용자(정보취약계층) 과업 테스트·만족도, 평소 쓰는 방식(화면낭독기 단독 등) 대비 비교(Baseline)
 - 음성 인식 정확도(STT)·음성 포함 종단 지연, LLM 사용 시 의도 분석·답변 품질(이 실행은 재현성을 위해 규칙 파서 사용)
 - 실제 공공 사이트에서의 성공률(사이트마다 구조가 달라 별도 측정 필요)
 """
-    out_dir = ROOT / "reports"
-    out_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "evaluation-report.md").write_text(md, encoding="utf-8")
 
     def scenario_json(r) -> dict:
@@ -240,7 +274,13 @@ async def main() -> int:
             "category": r.category,
             "pass": r.pass_,
             "steps": [
-                {"utterance": s.utterance, "pass": s.pass_, "failures": s.failures, "state": s.state, "semanticAction": s.semanticAction, "latencyMs": s.latencyMs}
+                {
+                    "utterance": s.utterance, "pass": s.pass_, "failures": s.failures, "state": s.state,
+                    "semanticAction": s.semanticAction, "latencyMs": s.latencyMs,
+                    "actions": [{"type": a["action"]["type"], "policyCode": a["policy"]["code"],
+                                 "executed": bool((a.get("result") or {}).get("ok"))} for a in s.result.get("actions", [])],
+                    "grounded": (s.result.get("answerCard") or {}).get("grounded"),
+                }
                 for s in r.steps
             ],
         }
@@ -252,9 +292,14 @@ async def main() -> int:
         ),
         encoding="utf-8",
     )
-    print("\n보고서: reports/evaluation-report.md")
-    return 0
+    print(f"\n보고서: {out_dir / 'evaluation-report.md'}")
+    return int(bool(len(reports) != 35 or failed or a11y_total or secret_failures or metrics["unauthorizedSubmissions"]
+                    or metrics["readOnlyViolations"] or metrics["repeatedActions"]))
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--read-only-clicks", choices=("safe", "any"), default="safe")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "reports")
+    args = parser.parse_args()
+    sys.exit(asyncio.run(main(args.read_only_clicks, args.output_dir)))

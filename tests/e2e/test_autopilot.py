@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from conftest import FakeLlm, Gate, scripted, step
 
 PORTAL = "http://127.0.0.1:5174/external.html"
@@ -77,6 +78,46 @@ async def test_rejects_answer_without_visit(new_session):
     r = await s.handle_turn("127.0.0.1:5174/external.html에서 메뉴 뭐 있는지 알려줘")
     assert r["speech"] == "포털에는 뉴스·복지·날씨 메뉴가 있어요."
     assert any("사이트를 열어 보지 않고 답함" in (t.get("note") or "") for t in r["trace"])
+
+
+@pytest.mark.parametrize(("name", "question"), [
+    ("기초연금", "기초연금 신청 방법 찾아줘"),
+    ("장애인연금", "장애인연금을 어떻게 신청하는지 알려줘"),
+])
+async def test_bokjiro_goal_reads_the_named_programs_catalog_page(new_session, name, question):
+    s = await new_session()
+    catalog = await s.deps.welfare.provider.catalog()
+    url = next(row["detailUrl"] for row in catalog if row["servNm"] == name)
+    quote = "가까운 읍면동 주민센터에 방문하여 신청합니다."
+    await s.web.adapter.page.route(url, lambda route: route.fulfill(
+        content_type="text/html; charset=utf-8", body=f"<title>{name} 상세</title><main>{quote}</main>"
+    ))
+    seen = scripted(s, [step("answer", None, quote, [quote])])
+    r = await s.handle_turn(f"복지로에서 {question}")
+    assert seen[0]["page"]["url"] == url
+    # 근거가 있던 화면을 출처로 남기고, 이름 있는 사이트면 짧게 말한다
+    assert r["speech"] == f"{quote} 복지로 화면에서 확인했어요."
+    assert r["sources"][0]["url"] == url
+    assert any("근거 확인" in (t.get("note") or "") for t in r["trace"])
+
+
+async def test_named_site_goal_cannot_use_another_sites_evidence(new_session):
+    s = await new_session()
+    quote = "상담은 보건복지상담센터에서 받을 수 있습니다"
+    scripted(s, [step("open_url", PORTAL), step("answer", None, quote, [quote])])
+    r = await s.handle_turn("복지로에서 상담 어디서 받는지 알려줘")
+    assert r["speech"] != quote
+    assert not any("근거 확인" in (t.get("note") or "") for t in r["trace"])
+
+
+async def test_visiting_the_requested_site_does_not_validate_off_site_quotes(new_session):
+    s = await new_session()
+    quote = "상담은 보건복지상담센터에서 받을 수 있습니다"
+    scripted(s, [step("open_url", MOCK), step("open_url", PORTAL), step("answer", None, quote, [quote])])
+    r = await s.handle_turn(f"{MOCK}에서 상담 어디서 받는지 알려줘")
+    assert r["intentType"] == "GOAL"
+    assert any("근거 부족" in (t.get("note") or "") for t in r["trace"])
+    assert r["speech"] != quote
 
 
 async def test_rewrites_non_korean_answer(new_session):
@@ -177,27 +218,26 @@ async def test_goal_mode_asks_aloud_before_mock_submit(new_session):
     assert "MOCK-" in done["observation"]["status"]
 
 
-async def test_goal_mode_asks_aloud_before_risky_button_and_clicks_after_go(new_session):
+async def test_goal_mode_hands_off_login_before_model_can_attempt_click(new_session):
     s = await new_session()
-    goal_mode(s, [step("open_url", f"{MOCK}/login.html"), step("click", "모의 로그인"), step("fail", None, "더 할 일이 없어요.")])
-    r = await s.handle_turn("남은 거 알아서 마무리해 줘")
-    assert r["state"] == "WAITING_FOR_USER_CONFIRMATION"
-    assert "'모의 로그인'" in r["speech"] and "눌러" in r["speech"]
-    assert any(a["policy"]["code"] == "NEEDS_CONFIRMATION" for a in r["actions"])
-    done = await s.handle_turn("눌러")
-    clicks = [a for a in done["actions"] if (a["action"].get("target") or {}).get("name") == "모의 로그인"]
-    assert clicks and clicks[-1]["policy"]["code"] == "APPROVED" and clicks[-1]["result"]["ok"]
-    assert done["state"] != "WAITING_FOR_USER_CONFIRMATION"
+    goal_mode(s, [step("open_url", f"{MOCK}/login.html"), step("click", "모의 로그인")])
+    result = await s.handle_turn("남은 거 알아서 마무리해 줘")
+    assert result["state"] == "AUTH_HANDOFF"
+    assert result["authHandoff"]["kind"] == "login"
+    assert not result.get("pendingConfirmation")
+    assert len([call for call in s.deps.llm.calls if call["schemaName"] == "browse_step"]) == 1
+    attempted = await s.handle_turn("눌러")
+    assert attempted["state"] == "AUTH_HANDOFF" and not attempted["actions"]
 
 
-async def test_rejecting_a_risky_click_leaves_the_page_alone(new_session):
+async def test_cancelling_goal_login_handoff_leaves_the_page_alone(new_session):
     s = await new_session()
     goal_mode(s, [step("open_url", f"{MOCK}/login.html"), step("click", "모의 로그인")])
     await s.handle_turn("남은 거 알아서 마무리해 줘")
-    r = await s.handle_turn("거절")
-    assert "누르지 않았어요" in r["speech"]
-    assert not [a for a in r["actions"] if (a.get("result") or {}).get("ok")]
-    assert s.dialogue.approval is None
+    result = await s.handle_turn("인증 취소")
+    assert result["authHandoff"]["status"] == "cancelled"
+    assert result["observation"]["url"].endswith("/login.html")
+    assert result["actions"] == [] and s.dialogue.approval is None
 
 
 # ---------------------------------------------------------------- 진행 상황("지금 어디까지 했어?")
@@ -231,6 +271,20 @@ async def test_progress_question_mid_goal_names_the_current_step(new_session):
     assert (await goal)["speech"] == "두 번째 페이지라는 안내 기사예요."
     after = await s.handle_turn("어디까지 됐어?")
     assert after["speech"] == f"지금 하고 있는 일은 없어요. 마지막으로 {CLICKED}"
+
+
+@pytest.mark.parametrize("question", ["어디까지 했어? 뒤로 가줘", "얼마나 남았어 그리고 뒤로 가줘", "어디까지 했어 뒤로 가줘"])
+async def test_status_then_back_answers_and_navigates(new_session, question):
+    s = await new_session()
+    opened = await s.handle_turn(f"{PORTAL} 열어줘")
+    first_url = opened["observation"]["url"]
+    followed = await s.handle_turn("장애인연금 안내 링크 눌러줘")
+    assert followed["observation"]["url"] != first_url
+    reply = await s.handle_turn(question)
+    assert s.web.adapter.page.url == first_url
+    assert "지금 하고 있는 일은 없어요" in reply["speech"]
+    assert reply["semanticAction"] == "back"
+    assert reply["userUtterance"] == question
 
 
 async def test_stop_still_interrupts_a_goal(new_session):

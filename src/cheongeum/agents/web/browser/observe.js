@@ -1,4 +1,4 @@
-(() => {
+((query = null) => {
   const text = (el) => ((el && el.textContent) || '').replace(/\s+/g, ' ').trim();
   const isVisible = (el) => {
     if (!el || el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) return false;
@@ -12,7 +12,7 @@
     if (!c.dataset.cheongeumId) c.dataset.cheongeumId = 'cheongeum-' + (++seq) + '-' + Math.random().toString(36).slice(2, 6);
     return c.dataset.cheongeumId;
   };
-  const controls = Array.from(document.querySelectorAll('input, select, textarea'))
+  const controls = query ? [] : Array.from(document.querySelectorAll('input, select, textarea'))
     .filter((c) => c.type !== 'hidden' && c.type !== 'submit' && c.type !== 'button' && c.type !== 'image' && c.type !== 'reset')
     .filter((c) => c.id || isVisible(c))
     .slice(0, 60);
@@ -52,6 +52,7 @@
     return field;
   });
   const result = {
+    url: location.href,
     title: document.title,
     fields,
     errors: Array.from(document.querySelectorAll('[role="alert"]')).filter(isVisible).map(text).filter(Boolean).slice(0, 5),
@@ -75,7 +76,7 @@
     steps = sibs.map(text);
   }
   const inDialog = (el) => !!el.closest('[role="dialog"], [role="alertdialog"], dialog');
-  const linkEls = Array.from(document.querySelectorAll('a[href], [role="link"]')).filter((a) => isVisible(a) && !a.classList.contains('skip-link'));
+  const linkEls = query ? [] : Array.from(document.querySelectorAll('a[href], [role="link"]')).filter((a) => isVisible(a) && !a.classList.contains('skip-link'));
   const imgAlt = (el) => {
     const img = Array.from(el.querySelectorAll('img[alt]')).find((i) => (i.getAttribute('alt') || '').trim());
     return img ? img.getAttribute('alt').trim() : '';
@@ -83,7 +84,7 @@
   const nameOf = (el) => (text(el) || el.getAttribute('aria-label') || imgAlt(el) || el.getAttribute('title') || (typeof el.value === 'string' ? el.value : '') || '')
     .replace(/\s+/g, ' ').trim().slice(0, 60);
   const linkName = nameOf;
-  const uniq = (arr) => arr.filter((v, i, a) => v && a.indexOf(v) === i);
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
   const linkNames = linkEls.map(linkName).filter(Boolean);
   // 본문: main → article → [role=main] → body 순서. 머리말·탐색·꼬리말·스크립트 제외.
   // 공공 누리집은 접근성 지침상 '본문 바로가기' 링크가 있어, 그 목적지를 본문으로 쓴다(semantic main이 없을 때).
@@ -93,33 +94,93 @@
   if (skip) {
     try { skipTarget = document.getElementById(decodeURIComponent(skip.getAttribute('href').slice(1))); } catch (e) { skipTarget = null; }
   }
-  const usable = (el) => el && (el.innerText || '').trim().length > 30;
-  const mainEl = document.querySelector('main, [role="main"]')
+  const usable = (el) => el && isVisible(el) && (el.innerText || '').trim().length > 30;
+  const firstUsable = (selector) => [...document.querySelectorAll(selector)].find(usable);
+  const mainEl = [...document.querySelectorAll('main, [role="main"]')].find(isVisible)
     || (usable(skipTarget) ? skipTarget : null)
-    || document.querySelector('article')
+    || firstUsable('#contents, #content, #contentArea, #contentsWrap')
+    || firstUsable('article')
     || document.body;
   let mainText = '';
-  if (mainEl) {
-    const clone = mainEl.cloneNode(true);
-    clone.querySelectorAll('script, style, noscript, nav, header, footer, [aria-hidden="true"], [hidden], form, button, select').forEach((n) => n.remove());
-    if (mainEl === document.body) {
-      // semantic main이 없는 사이트: 머리말·메뉴·꼬리말로 흔히 쓰는 id/class 블록을 뺀다(gnb·lnb 등 국내 누리집 관례 포함).
-      clone.querySelectorAll('[role="banner"], [role="navigation"], [role="contentinfo"], [role="search"], [id], [class]').forEach((n) => {
-        const key = ((n.id || '') + ' ' + (typeof n.className === 'string' ? n.className : '')).toLowerCase();
-        if (/(^|[\s_-])(header|gnb|lnb|snb|nav|menu|footer|skip|util|quick|top-?bar|sitemap|family|banner|popup|layer)([\s_-]|$)/.test(key)) n.remove();
-      });
+  const pictureMask = 'input, textarea, select, [contenteditable], iframe, embed, object';
+  const visualSelector = 'canvas, svg, img, video, [role="img"]';
+  const excludedTarget = pictureMask + ', [hidden], [aria-hidden="true"], script, style, template';
+  const accessibleText = (el) => {
+    if (!el || el.closest(excludedTarget) || el.querySelector(pictureMask)) return '';
+    return (el.innerText || (el instanceof SVGElement ? text(el) : '') || '').trim().replace(/\s+/g, ' ').slice(0, 400);
+  };
+  const visualLabel = (el) => {
+    const refText = attr => (el.getAttribute(attr) || '').split(/\s+/).slice(0, 4)
+      .map(id => accessibleText(document.getElementById(id))).filter(Boolean).join(' ');
+    return uniq([refText('aria-labelledby'), el.getAttribute('aria-label'), el.getAttribute('alt'), el.getAttribute('title'),
+      refText('aria-describedby'), accessibleText(el.querySelector(':scope > title')), accessibleText(el.querySelector(':scope > desc')),
+      accessibleText(el.closest('figure')?.querySelector('figcaption'))]).join(' ').trim().slice(0, 400);
+  };
+  const targetOf = (element, kind) => {
+    if (element?.matches('input:not([type="hidden"]), textarea, select') && isVisible(element)) {
+      const label = Array.from(element.labels || []).map(accessibleText).filter(Boolean).join(' ')
+        || visualLabel(element);
+      return label ? {kind, role: element.localName, label: label.slice(0, 400), text: ''} : null;
     }
-    // 분리된 복제본은 innerText가 줄바꿈을 계산하지 않아, 블록 요소 뒤에 줄바꿈을 넣어 낱말이 붙지 않게 한다.
-    clone.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6, tr, td, th, section, article, dt, dd, br, a, span').forEach((el) => {
-      el.append(/^(A|SPAN|TD|TH)$/.test(el.tagName) ? ' ' : '\n');
-    });
-    mainText = (clone.textContent || '')
+    if (!element || element.closest(excludedTarget)) return null;
+    const semantic = element.closest(visualSelector + ', a, button, label, summary, p, li, dt, dd, th, td, figcaption, h1, h2, h3, h4, h5, h6, [role="button"], [role="link"], [tabindex], span');
+    const el = semantic || (element.matches('div') && !element.childElementCount ? element : null);
+    if (!el || el === document.body || !isVisible(el) || el.querySelector(pictureMask)) return null;
+    const label = visualLabel(el);
+    const role = el.getAttribute('role') || el.localName;
+    const targetText = (el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 400);
+    if (!label && !targetText && !el.matches(visualSelector)) return null;
+    const rect = el.getBoundingClientRect();
+    const position = `center x=${Math.round(rect.left + scrollX + rect.width / 2)}, y=${Math.round(rect.top + scrollY + rect.height / 2)} CSS px`;
+    return {kind, role, label, text: targetText, position};
+  };
+  const selectedTarget = () => {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || selection.isCollapsed) return null;
+    const range = selection.getRangeAt(0);
+    const root = range.commonAncestorContainer;
+    const el = root.nodeType === Node.ELEMENT_NODE ? root : root.parentElement;
+    if (!el || !isVisible(el) || el.closest(excludedTarget)) return null;
+    if (Array.from(el.querySelectorAll(excludedTarget)).some(node => range.intersectsNode(node))) return null;
+    const selected = selection.toString().trim().replace(/\s+/g, ' ').slice(0, 400);
+    return selected ? {kind: 'selection', role: el.localName, text: selected, label: ''} : null;
+  };
+  const hovered = document.querySelectorAll(':hover');
+  const screenTarget = query ? null : selectedTarget() || targetOf(document.activeElement, 'focus') || targetOf(hovered[hovered.length - 1], 'hover');
+  const graphics = query ? [] : Array.from((mainEl || document).querySelectorAll(visualSelector)).filter(el => {
+    if (!isVisible(el) || el.closest(excludedTarget) || el.matches('[role="presentation"], [role="none"], img[alt=""]')) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width >= 40 && rect.height >= 40;
+  });
+  if (!query && mainEl) {
+    // 공공 포털은 본문 전체를 form으로 감싸기도 한다. 입력값과 숨은 레이어는 제외하고 화면에 보이는 안내만 읽는다.
+    const skipText = 'script, style, noscript, template, nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"], [hidden], button, ' + pictureMask;
+    const chromeName = /(^|[\s_-])(header|gnb|lnb|snb|nav|menu|footer|skip|util|quick|top-?bar|sitemap|family|banner|popup|layer)([\s_-]|$)/i;
+    const pieces = [];
+    function readText(node) {
+      if (node.nodeType === Node.TEXT_NODE) { pieces.push(node.nodeValue); return; }
+      if (node.nodeType !== Node.ELEMENT_NODE || node.matches(skipText)) return;
+      if (mainEl === document.body && chromeName.test(node.id + ' ' + (typeof node.className === 'string' ? node.className : ''))) return;
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const start = pieces.length;
+      for (const child of node.childNodes) readText(child);
+      // A short definition or table cell is one passage, including its nested list and exceptions.
+      if (node.tagName === 'DD' || node.tagName === 'TD') {
+        const cell = pieces.slice(start).join('').replace(/\s+/g, ' ').trim();
+        if (cell && cell.length <= 500) pieces.splice(start, pieces.length - start, cell);
+      }
+      if (/^(P|DIV|LI|H[1-6]|TR|SECTION|ARTICLE|DT|DD|BR)$/.test(node.tagName)) pieces.push('\n');
+      else if (/^(A|SPAN|TD|TH)$/.test(node.tagName)) pieces.push(' ');
+    }
+    if (!mainEl.closest(pictureMask)) readText(mainEl);
+    mainText = pieces.join('')
       .replace(/<[^>]{0,80}>/g, ' ') // 일부 사이트는 태그 문자열을 그대로 노출한다
       .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 20000);
   }
   // 꼬리말 글: 대표번호·주소 같은 연락처는 흔히 여기에만 있다. 본문(mainText)에서는 빼므로 따로 담고, 메뉴 링크 글자는 뺀다.
   // 사이트 꼬리말만: 기사·카드 안의 <footer>(작성일·조회수)는 제외한다.
-  const footerEls = Array.from(document.querySelectorAll('footer, [role="contentinfo"]'))
+  const footerEls = query ? [] : Array.from(document.querySelectorAll('footer, [role="contentinfo"]'))
     .filter((el) => isVisible(el) && !inDialog(el))
     .filter((el) => el.getAttribute('role') === 'contentinfo' || !(el.parentElement && el.parentElement.closest('article, aside, main, nav, section')));
   const footerText = footerEls
@@ -127,24 +188,31 @@
     .map((el) => {
       const clone = el.cloneNode(true);
       clone.querySelectorAll('script, style, noscript, nav, button, select, [aria-hidden="true"], [hidden], a:not([href^="tel:"])').forEach((n) => n.remove());
-      clone.querySelectorAll('p, div, li, dt, dd, br, span, address').forEach((n) => n.append(' '));
-      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      const rows = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+      while (rows.nextNode()) rows.currentNode.data = rows.currentNode.data.replace(/\s+/g, ' ');
+      clone.querySelectorAll('span').forEach((n) => n.append(' '));
+      clone.querySelectorAll('p, div, li, dt, dd, br, address').forEach((n) => n.append('\n'));
+      return (clone.textContent || '').split('\n').map((row) => row.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
     })
     .filter(Boolean)
     .join(' / ')
     .slice(0, 600);
-  let refSeq = 0;
-  const usedRefs = new Set();
-  const refOf = (el) => {
-    let r = el.dataset.cheongeumRef;
-    // cloneNode로 만든 요소는 원본의 ref까지 복사해 온다
-    if (!r || usedRefs.has(r)) {
-      r = 'r' + (++refSeq) + '-' + Math.random().toString(36).slice(2, 6);
-      el.dataset.cheongeumRef = r;
+  const refs = window.__cheongeumElementRefs ??= new WeakMap();
+  const refOf = (el, context) => {
+    const previous = refs.get(el);
+    const href = el.tagName === 'A' ? el.href : null;
+    if (previous && previous.href === href && el.dataset.cheongeumRef === previous.ref
+      && (context === undefined || previous.context === undefined || previous.context === context)) {
+      if (context !== undefined) previous.context = context;
+      return previous.ref;
     }
-    usedRefs.add(r);
-    return r;
+    window.__cheongeumRefSeq = (window.__cheongeumRefSeq || 0) + 1;
+    const ref = 'r' + window.__cheongeumRefSeq + '-' + Math.random().toString(36).slice(2, 6);
+    el.dataset.cheongeumRef = ref;
+    refs.set(el, { ref, href, context });
+    return ref;
   };
+
   const CANDIDATE = 'a[href], button, summary, input[type="submit"], input[type="button"], [role="link"], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
   const INTERACTIVE = CANDIDATE + ', input, select, textarea, label';
   const TAG_ROLE = { A: 'link', BUTTON: 'button', SUMMARY: 'button', INPUT: 'button' };
@@ -162,6 +230,16 @@
   };
   const MENU_AREA = 'nav, header, [role="navigation"], [role="banner"]';
   const OUT_AREA = 'nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]';
+  // Only title links or result-list entries get a result number. Page navigation has its own order.
+  const resultArea = '#results, #result-list, #search, #rso, #b_results, #main_pack, .search-results, [data-testid="web-vertical"], [aria-label*="검색 결과"], [aria-label*="search results" i]';
+  const resultTitle = 'h2, h3, [role="heading"]';
+  const isSearchResult = (el) => {
+    if (el.tagName !== 'A' || !/^https?:$/.test(el.protocol) || el.closest(OUT_AREA + ', aside, form, [role="search"]')) return false;
+    if (!el.closest(resultArea)) return false;
+    return !!(el.closest(resultTitle) || el.querySelector(resultTitle) ||
+      el.matches('a.title_link, a.link_tit, [data-testid="result-title-a"]') ||
+      el.closest('#results li, #result-list li, .search-results li'));
+  };
   const regionOf = (el) => {
     if (el.closest(MENU_AREA)) return 'menu';
     if (!el.closest(OUT_AREA) && mainEl && (mainEl === document.body || mainEl.contains(el))) return 'main';
@@ -173,7 +251,11 @@
   let links = 0;
   let others = 0;
   let generics = 0;
-  for (const el of document.body ? document.body.getElementsByTagName('*') : []) {
+  let matching = 0;
+  const needle = (query?.text || '').trim().toLocaleLowerCase().replace(/\s+/g, '');
+  const candidates = query?.ref ? document.querySelectorAll('[data-cheongeum-ref="' + CSS.escape(query.ref) + '"]')
+    : (document.body ? document.body.getElementsByTagName('*') : []);
+  for (const el of candidates) {
     if (!el.dataset) continue;
     const standard = el.matches(CANDIDATE);
     if (standard) {
@@ -186,14 +268,32 @@
     }
     const role = standard ? roleOf(el) : 'generic';
     const linkish = role === 'link' || role === 'scriptlink';
-    if (linkish ? links >= 400 : others >= 300) continue;
+    if (!query && (linkish ? links >= 400 : others >= 300)) continue;
     if (!isVisible(el)) continue;
     const name = nameOf(el);
     if (!name) continue;
+    let context = '';
+    if (query) {
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+      // 같은 '자세히 보기' 링크를 어느 제도·표 행에 속하는지로 구분한다. 입력값은 읽지 않는다.
+      const row = el.closest('li, tr, article, [role="row"], [role="listitem"]');
+      if (row && !row.closest(pictureMask)) {
+        const label = row.querySelector('h1, h2, h3, h4, th, [role="heading"]');
+        const detail = accessibleText(label) || (row.querySelectorAll(CANDIDATE).length < 5 ? accessibleText(row) : '');
+        context = detail.slice(0, 120);
+      }
+      const compact = (query.exact ? name : name + ' ' + context).toLocaleLowerCase().replace(/\s+/g, '');
+      if (needle && (query.exact ? compact !== needle : !compact.includes(needle))) continue;
+      if (matching++ < (query.offset || 0)) continue;
+      if (items.length >= (query.limit || 1)) break;
+    }
     if (linkish) links++;
     else others++;
     if (!standard) generics++;
-    const item = { ref: refOf(el), role, name, region: regionOf(el), disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true' };
+    const item = { ref: refOf(el, query ? context : undefined), role, name, region: regionOf(el), disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true' };
+    if (context && context !== name) item.context = context;
+    if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
+    if (role === 'link' && isSearchResult(el)) item.searchResult = true;
     const sel = el.getAttribute('aria-selected');
     const cur = el.getAttribute('aria-current');
     if (sel !== null) item.selected = sel === 'true';
@@ -205,19 +305,22 @@
     else if (el.tagName === 'SUMMARY' && el.parentElement) item.expanded = !!el.parentElement.open;
     items.push(item);
   }
+  if (query) return {url: location.href, items, more: matching > (query.offset || 0) + items.length};
   const landmarkNames = { HEADER: '머리말', NAV: '탐색 메뉴', MAIN: '본문', ASIDE: '보조 영역', FOOTER: '꼬리말', FORM: '입력 양식' };
-  const landmarks = Array.from(document.querySelectorAll('header, nav, main, aside, footer, [role="banner"], [role="navigation"], [role="main"], [role="search"], [role="contentinfo"]'))
+  const landmarks = uniq(Array.from(document.querySelectorAll('header, nav, main, aside, footer, [role="banner"], [role="navigation"], [role="main"], [role="search"], [role="contentinfo"]'))
     .filter(isVisible)
     .map((el) => {
       const role = el.getAttribute('role');
       const base = role === 'search' ? '검색' : role === 'navigation' ? '탐색 메뉴' : role === 'banner' ? '머리말' : role === 'contentinfo' ? '꼬리말' : role === 'main' ? '본문' : (landmarkNames[el.tagName] || el.tagName);
       const name = el.getAttribute('aria-label');
       return name ? base + '(' + name.slice(0, 30) + ')' : base;
-    })
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .slice(0, 10);
+    })).slice(0, 10);
   result.outline = {
-    headings: Array.from(document.querySelectorAll('h1, h2, h3')).filter((h) => isVisible(h) && !inDialog(h))
+    screenTarget,
+    hasVisualContent: graphics.length > 0,
+    visualLabels: uniq(graphics.map(visualLabel)).slice(0, 20),
+    headings: Array.from(document.querySelectorAll('h1, h2, h3')).filter((h) => isVisible(h) && !inDialog(h)
+      && !h.closest(pictureMask) && !h.querySelector(pictureMask))
       .map((h) => ({ level: Number(h.tagName[1]), text: text(h).slice(0, 120) })).filter((h) => h.text).slice(0, 40),
     notices: Array.from(document.querySelectorAll('[role="note"], aside, [role="complementary"]')).filter(isVisible)
       .map((n) => ({ label: n.getAttribute('aria-label') || '', text: text(n).slice(0, 300) })).filter((n) => n.text).slice(0, 5),
@@ -239,4 +342,4 @@
   const status = Array.from(document.querySelectorAll('[role="status"]')).filter(isVisible).map(text).filter(Boolean).join(' ').slice(0, 300);
   if (status) result.status = status;
   return result;
-})()
+})

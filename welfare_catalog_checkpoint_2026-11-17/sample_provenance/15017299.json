@@ -1,0 +1,30 @@
+{
+  "id": "15017299",
+  "source": "https://www.data.go.kr/data/15017299/fileData.do",
+  "retrieved_at": "2026-11-17T16:58:27.322981+00:00",
+  "rows": [
+    [
+      "일자",
+      "메뉴구분",
+      "메뉴명"
+    ],
+    [
+      "2025-01-01",
+      "아침",
+      "북어채계란국"
+    ],
+    [
+      "2025-01-01",
+      "아침",
+      "함박새송이조림"
+    ],
+    [
+      "2025-01-01",
+      "아침",
+      "청경채나물"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15017299&publicDataDetailPk=uddi%3Af4a1c393-06d0-4398-82e1-a4d02245633f",
+  "sample_type": "official public file preview"
+}

@@ -1,29 +1,13 @@
-"""② 말 거르기: 질문 같은 말, 맞장구·부정만 한 짧은 대답, 앞의 군말, 대상이 빠진 두루뭉술한 말, 한 번에 한 여러 질문. 대화 상태는 읽지도 바꾸지도 않는다."""
+"""② 말 거르기: 질문 같은 말, 부름말, 오프라인 명령의 군말, 대상이 빠진 요청. 대화 상태는 읽지도 바꾸지도 않는다."""
 from __future__ import annotations
 
-from typing import Any, Literal
-
-from cheongeum.core.jsutil import AbortSignal, jdumps, rx
+from cheongeum.core.jsutil import rx
 
 _QUESTION_LIKE = rx(r"\?$|(뭐야|뭔가요|무엇|어떻게|왜|언제|얼마|며칠|몇|되나요|돼\?|되나|가능|해야\s*(돼|하나|해)|맞아|알려\s*줘|어때)")
 
 
 def is_question_like(t: str) -> bool:
     return bool(_QUESTION_LIKE.search(t))
-
-
-def short_reply_kind(text: str) -> Literal["ack", "no"] | None:
-    """맞장구("알았어")만 한 말이면 "ack", 부정("아니")만 한 말이면 "no", 둘 다 아니면 None. 끝의 문장부호·공백은 무시한다."""
-    t = rx(r"[.!~?,\s]+$").sub("", text).strip()
-    ack = bool(
-        rx(
-            r"^(응\s*)?(알았어|알았어요|알겠어|알겠어요|알겠습니다|알았습니다|알았고|오케이|오키|그래|그래요|그렇구나|그렇군요|고마워|고마워요|감사합니다|네\s*알겠어요|응\s*그래)$"
-        ).search(t)
-    )
-    no = bool(rx(r"^(아니|아니야|아니요|아뇨|아니에요|아냐|됐어|괜찮아|괜찮아요|아니\s*괜찮아)$").search(t))
-    if not ack and not no:
-        return None
-    return "no" if no else "ack"
 
 
 _ADDRESS = rx(r"^(청음(아|이야)|청음이?(?=\s*[,!.~?]))[\s,!.~?]*")
@@ -62,29 +46,3 @@ def vague_question(text: str) -> str | None:
     if m(r"(?:눌러|클릭해)\s*(?:줘|주세요)?"):
         return "어떤 걸 누를까요? '링크 목록 알려줘'라고 하시면 누를 수 있는 것을 읽어 드려요."
     return None
-
-
-async def split_questions(llm: Any, text: str, recent: list[str], signal: AbortSignal | None) -> list[str]:
-    """
-    한 번에 여러 질문("기초연금은 몇 살부터고 얼마 받아? 그리고 오늘 날씨는?")을 LLM으로 나눈 것(최대 4개, 혼자 읽어도 뜻이 통하게).
-    LLM이 없거나, 짧거나, 질문 낱말이 적으면 LLM을 부르지 않고 빈 목록. 명령이 섞였으면 LLM이 빈 목록을 낸다.
-    """
-    if not llm or len(text) < 12:
-        return []
-    q_words = rx(r"(뭐|무엇|무슨|어떻게|언제|얼마|며칠|몇|어느|어디|왜|누가|어때|있어|있나|되나|돼\?|인가|일까|알려)").findall(text)
-    if len(q_words) < 2 and text.count("?") < 2:
-        return []
-    out = await llm.generate(
-        system="사용자 말에 서로 다른 질문이 몇 개 있는지 보고, 각 질문을 혼자 읽어도 뜻이 통하는 한국어 질문으로 나눈다(앞 질문의 제도·사이트 이름을 뒤 질문에도 채워 넣는다). 질문이 하나뿐이거나 명령(열기·입력·누르기)이 섞였으면 questions를 빈 배열로. 최대 4개.",
-        user=jdumps({"utterance": text, "recent": recent}),
-        schemaName="split_questions",
-        schema={
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["questions"],
-            "properties": {"questions": {"type": "array", "items": {"type": "string"}}},
-        },
-        signal=signal,
-    )
-    raw = out.get("questions") if isinstance(out, dict) else None
-    return [q.strip() for q in (raw or []) if isinstance(q, str) and q.strip()][:4]

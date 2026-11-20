@@ -2,7 +2,7 @@ import json
 import re
 
 import pytest
-from conftest import PORTAL, FakeLlm, create_test_runtime, field_value, with_llm
+from conftest import PORTAL, FakeLlm, create_test_runtime, field_value, flat, with_llm
 
 from cheongeum.agents.web import create_mock_welfare_profile, field_vocabulary
 from cheongeum.core.intents import INTENTS
@@ -151,7 +151,8 @@ async def test_welfare_question_not_in_official_data(new_session):
     await s.handle_turn("장애인연금 신청 도와줘")  # 맥락: 장애인연금
     r = await s.handle_turn("근데 이 신청하면 언제 돈이 지급돼?")
     assert "공식 자료에는 그 내용이 없어요" in r["speech"]
-    assert "보통 매달 정해진 날에 계좌로 들어와요" in r["speech"]
+    assert not r["answerCard"]["grounded"]
+    assert "보통 매달 정해진 날에 계좌로 들어와요" not in r["speech"]
     assert "129" in r["speech"]
 
 
@@ -246,6 +247,8 @@ async def test_no_consecutive_clarify(new_session):
         if schemaName != "chat_route":
             return None
         enums.append(schema["properties"]["route"]["enum"])
+        described = re.findall(r"(?m)^- ([a-z_]+):", system)
+        assert set(described) <= set(enums[-1])
         if len(enums) == 1:
             return {"route": "clarify", "reply": "(1) 이것 (2) 저것 중 무엇인가요?", "searchQuery": None, "language": None}
         return {"route": "general", "reply": "1번으로 할게요.", "searchQuery": None, "language": None}
@@ -269,7 +272,10 @@ async def test_llm_language_route(new_session):
 
 async def test_brief_screen_vs_detailed(new_session):
     s = await new_session()
-    with_llm(s, FakeLlm({"page_summary": {"text": "복지 소식을 전하는 시험용 포털이에요. 장애인연금 기준액 조정과 신청 방법을 안내해요."}}))
+    with_llm(s, FakeLlm({"screen_text_decision": {
+        "decision": "answer", "answer": "복지 소식을 전하는 시험용 포털이에요. 장애인연금 기준액 조정과 신청 방법을 안내해요.",
+        "evidence": ["올해 장애인연금 기초급여 기준액이 조정되었습니다.", "신청은 주소지 행정복지센터나 온라인으로 할 수 있습니다."],
+    }}))
     await s.handle_turn(f"{PORTAL} 열어줘")
     r = await s.handle_turn("화면 설명해줘")
     assert "'[테스트] 외부 포털" in r["speech"]
@@ -282,7 +288,9 @@ async def test_brief_screen_vs_detailed(new_session):
 
 async def test_summary_with_unknown_number_dropped(new_session):
     s = await new_session()
-    with_llm(s, FakeLlm({"page_summary": {"text": "기준액이 50만 원으로 올랐어요."}}))
+    with_llm(s, FakeLlm({"screen_text_decision": {
+        "decision": "answer", "answer": "기준액이 50만 원으로 올랐어요.", "evidence": ["올해 장애인연금 기초급여 기준액이 조정되었습니다."],
+    }}))
     await s.handle_turn(f"{PORTAL} 열어줘")
     r = await s.handle_turn("화면 설명해줘")
     assert "50만" not in r["speech"]
@@ -309,9 +317,16 @@ async def test_real_site_login_moves_explains_asks_then_clicks(new_session):
         for a in opened["actions"]
     )
 
-    submit = await s.handle_turn("다 입력했어")
+    empty = await s.handle_turn("다 입력했어")
+    assert empty["state"] == "AUTH_HANDOFF" and not empty["actions"]
+    await s.web.adapter.page.locator("#loginId").fill("synthetic-id")
+    await s.web.adapter.page.locator("#loginPassword").fill("synthetic-test-password")
+    submit = await s.handle_turn("네, 다 입력했어요.")
     assert submit["state"] == "WAITING_FOR_USER_CONFIRMATION"
     assert "'모의 로그인'" in submit["speech"]
+    keeping = await s.handle_turn("취소하지 마세요")
+    assert (keeping.get("pendingConfirmation") or {}).get("actionId") == submit["pendingConfirmation"]["actionId"]
+    assert keeping["authHandoff"]["status"] == "waiting" and keeping["actions"] == []
     done = await s.handle_turn("눌러")
     clicks = [a for a in done["actions"] if a["action"]["type"] == "click"]
     assert clicks and clicks[-1]["policy"]["code"] == "APPROVED" and clicks[-1]["result"]["ok"]
@@ -343,6 +358,21 @@ async def test_auth_done_stays_while_login_page_unchanged(new_session):
     assert still["state"] == "AUTH_HANDOFF"
     assert "/login.html" in still["observation"]["url"]
     assert "아직" in still["speech"] and ("로그인" in still["speech"] or "인증" in still["speech"])
+
+
+async def test_auth_negation_keeps_the_original_handoff(new_session):
+    s = await new_session()
+    handed = await s.handle_turn("로그인하고 싶어")
+    handoff_id = handed["authHandoff"]["id"]
+    for phrase in ("I'm not done yet", "인증 취소하지 마세요", "Please don't cancel", "cancel?", "취소?"):
+        reply = await s.handle_turn(phrase)
+        assert (reply["state"], reply["authHandoff"]["id"], reply["authHandoff"]["status"]) == (
+            "AUTH_HANDOFF", handoff_id, "waiting",
+        )
+        assert reply["intentType"] != "AUTH_DONE"
+        assert reply["actions"] == []
+    cancelled = await s.handle_turn("인증 취소")
+    assert cancelled["authHandoff"]["status"] == "cancelled"
 
 
 async def test_auth_done_speaks_title_and_resumes_pending_form(new_session):
@@ -416,18 +446,35 @@ async def test_called_by_name(new_session):
 
 async def test_multiple_questions(new_session):
     s = await new_session()
-    with_llm(
-        s,
-        FakeLlm(
-            {
-                "split_questions": {"questions": ["1년은 며칠이야?", "하루는 몇 시간이야?"]},
-                "chat_route": {"route": "general", "reply": "답이에요.", "searchQuery": None, "language": None},
-            }
-        ),
-    )
+    questions = ["1년은 며칠이야?", "하루는 몇 시간이야?"]
+    model = FakeLlm({
+        "intent_plan": {"steps": [flat("UNKNOWN", text=q) for q in questions]},
+        "chat_route": {"route": "general", "reply": "답이에요.", "searchQuery": None, "language": None},
+    })
+    with_llm(s, model)
     r = await s.handle_turn("1년은 며칠이고 하루는 몇 시간이야?")
-    assert r["intentType"] == "MULTI_QUESTION"
+    assert r["intentType"] == "PLAN(UNKNOWN>UNKNOWN)"
     assert r["speech"] == "1. 답이에요. 2. 답이에요."
+    assert [json.loads(c["user"])["utterance"] for c in model.calls if c["schemaName"] == "chat_route"] == questions
+
+
+@pytest.mark.parametrize("includes_placeholder", [False, True])
+async def test_planned_subquestion_is_not_a_numbered_click(new_session, includes_placeholder):
+    s = await new_session()
+    await s.handle_turn(f"{PORTAL} 열어줘")
+    await s.handle_turn("링크 목록 알려줘")
+    page = s.web.adapter.page.url
+    request = "첫 항목의 뜻과 운영자가 궁금해요"
+    second = request if includes_placeholder else "누가 운영하나요?"
+    model = FakeLlm({
+        "intent_plan": {"steps": [flat("UNKNOWN", text="1번은 무슨 뜻인가요?"), flat("UNKNOWN", text=second)]},
+        "chat_route": {"route": "general", "reply": "설명이에요."},
+    })
+    with_llm(s, model)
+    answer = await s.handle_turn(request)
+    assert answer["actions"] == [] and s.web.adapter.page.url == page
+    assert answer["speech"] == ("설명이에요." if includes_placeholder else "1. 설명이에요. 2. 설명이에요.")
+    assert json.loads(next(c["user"] for c in model.calls if c["schemaName"] == "chat_route"))["utterance"] == "1번은 무슨 뜻인가요?"
 
 
 async def test_real_site_mode(new_session):
@@ -575,3 +622,59 @@ async def test_not_understood_points_to_help(new_session):
     s = await new_session()
     r = await s.handle_turn("블라블라")
     assert r["speech"].endswith(HELP_POINTER)
+
+
+async def test_captcha_handoff_blocks_automation_and_checks_expected_screen(new_session):
+    s = await new_session()
+    await s.handle_turn(f"{PORTAL} 열어줘")
+    page = s.web.adapter.page
+    url = "http://127.0.0.1:5174/pilot-captcha.html"
+    await page.route(url, lambda route: route.fulfill(
+        content_type="text/html; charset=utf-8",
+        body="<title>사람 확인</title><h1>보안문자 확인</h1><label>보안문자 <input></label>",
+    ))
+    opened = await s.handle_turn(f"{url} 열어줘")
+    handoff = opened["authHandoff"]
+    assert handoff["kind"] == "captcha" and handoff["status"] == "waiting"
+    for command in ("이름 칸에 김하늘 입력해줘", "화면 사진으로 설명해줘", "신청해줘"):
+        blocked = await s.handle_turn(command)
+        assert blocked["authHandoff"]["id"] == handoff["id"] and not blocked["actions"]
+    await page.goto("http://127.0.0.1:5174/external2.html")
+    wrong = await s.handle_turn("다 했어")
+    assert wrong["authHandoff"]["status"] == "waiting"
+    await page.goto(f"http://{PORTAL}")
+    complete = await s.handle_turn("다 했어")
+    assert complete["authHandoff"]["status"] == "completed"
+
+
+async def test_handoff_expiry_cancellation_and_browser_loss(new_session):
+    s = await new_session()
+    now = 0.0
+    s.deps.clock = lambda: now
+    first = await s.handle_turn("로그인하고 싶어")
+    now = 600.0
+    expired = await s.handle_turn("다 했어")
+    assert expired["authHandoff"]["id"] == first["authHandoff"]["id"]
+    assert expired["authHandoff"]["status"] == "expired" and not expired["actions"]
+    s = await new_session()
+    second = await s.handle_turn("로그인하고 싶어")
+    assert second["authHandoff"]["status"] == "waiting"
+    cancelled = await s.handle_turn("인증 취소")
+    assert cancelled["authHandoff"]["status"] == "cancelled"
+    s = await new_session()
+    third = await s.handle_turn("로그인하고 싶어")
+    assert third["authHandoff"]["status"] == "waiting"
+    await s.web.adapter.page.close()
+    lost = await s.handle_turn("다 했어")
+    assert lost["authHandoff"]["status"] == "interrupted"
+
+
+async def test_genuine_access_block_gives_official_alternative(new_session):
+    s = await new_session()
+    url = "http://127.0.0.1:5174/pilot-access-block.html"
+    await s.web.adapter.page.route(url, lambda route: route.fulfill(
+        content_type="text/html", body="<title>Access denied</title><h1>Access denied</h1>",
+    ))
+    blocked = await s.handle_turn(f"{url} 열어줘")
+    assert "129" in blocked["speech"] and "공식 문의" in blocked["speech"]
+    assert blocked["state"] != "AUTH_HANDOFF"

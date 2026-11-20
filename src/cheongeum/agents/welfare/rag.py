@@ -14,6 +14,7 @@ SECTION_HINTS = {
     "지원내용": rx(r"(얼마|금액|지급|급여|연금액|감액|부가급여|기초급여|매월|65세)"),
     "신청절차": rx(r"(신청|절차|어디|어떻게|방법|주민센터|온라인|심사|결정)"),
     "서식": rx(r"(서류|서식|양식|동의서|신고서|첨부)"),
+    "제출서류": rx(r"(서류|준비물|구비|첨부)"),
     "문의처": rx(r"(문의|전화|연락|상담|129)"),
     "근거법령": rx(r"(법|법령|근거|조항)"),
 }
@@ -29,9 +30,13 @@ def _split_lines(text: str | None) -> list[str]:
 def chunk_service(s: dict) -> list[dict]:
     chunks: list[dict] = []
 
+    field_names = {"개요": "summary", "지원대상": "target", "선정기준": "criteria", "지원내용": "benefit",
+                   "제출서류": "documents", "신청절차": "applySteps" if s.get("applySteps") else "applyMethod",
+                   "서식": "forms", "문의처": "contacts", "근거법령": "laws"}
+
     def push(section: str, text: str) -> None:
         if text.strip():
-            chunks.append({"id": f"{s['servId']}#{len(chunks) + 1}", "section": section, "text": text.strip()})
+            chunks.append({"id": f"{s['servId']}#{len(chunks) + 1}", "section": section, "field": field_names[section], "text": text.strip()})
 
     def grouped(section: str, text: str | None) -> None:
         lines = _split_lines(text)
@@ -42,6 +47,7 @@ def chunk_service(s: dict) -> list[dict]:
     grouped("지원대상", s.get("target"))
     grouped("선정기준", s.get("criteria"))
     grouped("지원내용", s.get("benefit"))
+    grouped("제출서류", s.get("documents"))
     if s.get("applySteps"):
         push("신청절차", "\n".join(f"{a['step']}: {a['detail']}" for a in s["applySteps"]))
     else:

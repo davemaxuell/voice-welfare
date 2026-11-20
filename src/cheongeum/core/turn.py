@@ -1,11 +1,12 @@
 """상태·의도·TurnResult·API 스키마(PC 웹 클라이언트·데스크톱 앱 공용). 원본 @cheongeum/shared."""
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Optional, Protocol, Union
+from typing import Annotated, Any, Literal, Optional, Protocol, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 from cheongeum.core.actions import Action, ActionResult, ObservedField, StepInfo
+from cheongeum.core.choices import ChoiceKey
 from cheongeum.core.intents import INTENTS
 from cheongeum.core.jsutil import AbortSignal, is_valid_url
 
@@ -163,49 +164,8 @@ class ExecutedAction(_M):
     result: Optional[ActionResult] = None
 
 
-SEMANTIC_ACTIONS = (
-    "navigate",
-    "fill",
-    "read",
-    "navigate-next",
-    "navigate-prev",
-    "explain-field",
-    "review",
-    "prepare-submit",
-    "submit",
-    "reject",
-    "stop",
-    "resume",
-    "auth-handoff",
-    "read-state",
-    "agent-handoff",
-    "rephrase",
-    "set-language",
-    "about-site",
-    "goal",
-    "open-browser",
-    "discover",
-    "precheck",
-    "prepare-apply",
-    "chat",
-    "web-answer",
-    "open-site",
-    "follow-link",
-    "confirm-click",
-    "back",
-    "read-main",
-    "list-links",
-    "search",
-    "consent",
-    "describe-screen",
-    "welfare-retrieval",
-    "edit-field",
-    "clarify",
-    "help",
-    "help-list",
-    "none",
-)
 SemanticAction = Literal[
+    "review-before-output",
     "navigate",
     "fill",
     "read",
@@ -227,6 +187,7 @@ SemanticAction = Literal[
     "goal",
     "open-browser",
     "discover",
+    "find-place",
     "precheck",
     "prepare-apply",
     "chat",
@@ -240,6 +201,7 @@ SemanticAction = Literal[
     "search",
     "consent",
     "describe-screen",
+    "describe-picture",
     "welfare-retrieval",
     "edit-field",
     "clarify",
@@ -249,6 +211,9 @@ SemanticAction = Literal[
 ]
 
 
+SEMANTIC_ACTIONS = get_args(SemanticAction)
+
+
 class LabelValue(_M):
     label: str
     value: str
@@ -256,10 +221,41 @@ class LabelValue(_M):
 
 class PendingConfirmation(_M):
     actionId: str
+    kind: Optional[Literal["field-entry", "click", "file-transfer", "visual-navigation", "practice-submission", "public-research",
+                           "vault-save", "vault-clear"]] = None
     purpose: str
     site: str
+    description: Optional[str] = None
     values: list[LabelValue]
     realSubmission: Literal[False]
+
+
+class GroundedAnswerCard(_M):
+    answer: str
+    serviceId: str
+    serviceName: str
+    fields: list[str]
+    grounded: bool
+    source: SourceCitation
+    dataKind: Literal["live", "stored", "private-program"]
+    dataOrigin: str
+    dataDate: Optional[str] = None
+    nextAction: str
+
+
+class HumanAuthHandoff(_M):
+    id: str
+    taskId: str
+    kind: Literal["login", "verification", "captcha"]
+    status: Literal["waiting", "completed", "cancelled", "expired", "interrupted", "blocked"]
+    site: str
+
+
+class OfferedChoice(_M):
+    """서버가 제안한 선택지 하나(core/choices.py). 고를 때는 key와 이 응답의 turnId를 보낸다."""
+
+    key: ChoiceKey
+    label: str
 
 
 class ObservationSummary(_M):
@@ -322,6 +318,23 @@ class SpeechPrefs(_M):
     progressSpoken: bool = True
 
 
+class IntroLine(_M):
+    """청음 소개 한 줄: 말할 문장과 그동안 아바타가 할 동작(cheongeum-avatar.glb의 클립 이름)."""
+
+    text: str
+    pose: Literal["welcome", "listening", "screen-reading", "confirmation", "auth-handoff", "stopped", "complete"]
+    # 건너뛰어도 말할 줄(소개 끝의 연습 신청서 제안)
+    ask: Optional[bool] = None
+
+
+class TaskReviewSummary(_M):
+    status: Literal["completed", "incomplete", "needs_input"]
+    difficulty: Literal["easy", "medium", "hard"]
+    rounds: int = Field(ge=0)
+    maxRounds: int = Field(ge=1)
+    browserIterations: int = Field(ge=0)
+
+
 class TurnResult(_M):
     sessionId: str
     turnId: str
@@ -329,18 +342,23 @@ class TurnResult(_M):
     userUtterance: str
     intentType: str
     state: SessionState
+    stopGeneration: Optional[int] = Field(default=None, ge=0)
     semanticAction: SemanticAction
     field: Optional[str] = None
     value: Optional[str] = None
     page: Optional[str] = None
     speech: str
+    localSpeechOnly: Optional[Literal[True]] = None
     # speech의 언어(음성 합성·인식 언어도 이것을 따른다)
     lang: Lang = "ko"
     trace: list[TraceEntry]
     actions: list[ExecutedAction]
     observation: Optional[ObservationSummary] = None
     verification: Optional[Verification] = None
+    review: Optional[TaskReviewSummary] = None
     pendingConfirmation: Optional[PendingConfirmation] = None
+    authHandoff: Optional[HumanAuthHandoff] = None
+    answerCard: Optional[GroundedAnswerCard] = None
     handoff: Optional[AgentHandoff] = None
     # 현재 화면의 접근 등급: full = 지원 사이트(신청 가능), read-only = 그 외 사이트(읽기·이동·검색만)
     accessMode: Optional[Literal["full", "read-only", "none"]] = None
@@ -351,6 +369,12 @@ class TurnResult(_M):
     flags: Flags
     latencyMs: int = Field(ge=0)
     speechPrefs: Optional[SpeechPrefs] = None
+    # 이 응답 뒤에 고를 수 있는 것(없으면 빠진다. 승인은 pendingConfirmation이 따로 맡는다)
+    offeredChoices: Optional[list[OfferedChoice]] = None
+    # Public catalogue labels for an on-desktop clarification, separate from dictation.
+    publicSuggestions: Optional[list[str]] = Field(default=None, max_length=2)
+    # 청음 소개(첫 실행·'청음 소개 다시 해줘'): 줄마다 아바타 동작과 함께 차례로 말한다
+    introScript: Optional[list[IntroLine]] = None
 
 
 def parse_turn_result(d: dict) -> dict:

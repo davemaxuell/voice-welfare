@@ -1,0 +1,42 @@
+{
+  "id": "15025593",
+  "source": "https://www.data.go.kr/data/15025593/fileData.do",
+  "retrieved_at": "2026-11-17T17:04:22.808701+00:00",
+  "rows": [
+    [
+      "순번(NO)",
+      "지역명",
+      "시군구",
+      "센터명",
+      "주소",
+      "연락처"
+    ],
+    [
+      "1",
+      "서울특별시",
+      "강남구",
+      "강남구 가족센터",
+      "서울시 강남구 개포로 617-8",
+      "02-3412-2222"
+    ],
+    [
+      "2",
+      "서울특별시",
+      "강동구",
+      "강동구 가족센터",
+      "서울시 강동구 양재대로 1634, 3층",
+      "02-471-0812"
+    ],
+    [
+      "3",
+      "서울특별시",
+      "강북구",
+      "강북구 가족센터",
+      "서울시 강북구 한천로 129길 6",
+      "02-987-2567"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025593&publicDataDetailPk=uddi%3Ab4e63aaa-65a5-48bb-b68c-c30b94a237db",
+  "sample_type": "official public file preview"
+}

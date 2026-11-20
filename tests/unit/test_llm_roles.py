@@ -1,5 +1,6 @@
 """역할별 LLM 설정(.env 덮어쓰기)."""
 from cheongeum.core.llm import LlmConfig, overlay_llm
+from cheongeum.core.model_stack import STACK
 from cheongeum.server.runtime import load_config
 
 
@@ -28,4 +29,15 @@ def test_load_config_role_overrides():
     assert cfg.llmGoal.model == "qwen2.5:7b"
     assert cfg.llmUnderstand.model == "gpt-4o"
     assert cfg.llmUnderstand.provider == "openai"
-    assert cfg.llmWeb.model == "gpt-4o-mini"
+    assert cfg.llmWeb.model == STACK.utility
+    assert cfg.llmGoal.apiKey is None
+
+
+def test_single_key_defaults_and_independent_role_endpoints():
+    cfg = load_config({"LLM_API_KEY": "local-test-key"})
+    assert [cfg.voice.liveModel, cfg.llm.model, cfg.llmWeb.model, cfg.llmVision.model, cfg.llmRecovery.model,
+            cfg.voice.sttModel] == [STACK.voice, STACK.agent, STACK.utility, STACK.vision, STACK.recovery, STACK.transcription]
+    assert cfg.voice.apiKey == cfg.llmUnderstand.apiKey == cfg.llmRecovery.apiKey == "local-test-key"
+    mixed = load_config({"OPENAI_API_KEY": "local-test-key", "LLM_WEB_BASE_URL": "https://other.example/v1",
+                         "VOICE_BASE_URL": "https://voice.example/v1"})
+    assert mixed.llmWeb.apiKey is None and mixed.voice.apiKey is None

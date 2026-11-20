@@ -1,0 +1,38 @@
+{
+  "id": "15019509",
+  "source": "https://www.data.go.kr/data/15019509/fileData.do",
+  "retrieved_at": "2026-11-17T16:58:58.113507+00:00",
+  "rows": [
+    [
+      "센 터 명",
+      "소 재 지",
+      "운영주체",
+      "센터장",
+      "전화번호"
+    ],
+    [
+      "충남광역새로일하기센터",
+      "예산군 삽교읍 예학로 10-22 충남건설회관 7층",
+      "(재)충남경제진흥원",
+      "강희택",
+      "041-330-4954"
+    ],
+    [
+      "천안여성새로일하기센터",
+      "천안시 동남구 다가말2길 39",
+      "(사)YWCA",
+      "박미라",
+      "041-576-3060"
+    ],
+    [
+      "보령여성새로일하기센터",
+      "보령시 한내로11(영동빌딩)",
+      "(사)온터두레회",
+      "유영미",
+      "041-935-9663"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15019509&publicDataDetailPk=uddi%3Ad85bcfe0-e121-4b97-96ba-af5f2b838b1e",
+  "sample_type": "official public file preview"
+}

@@ -1,0 +1,30 @@
+{
+  "id": "15005582",
+  "source": "https://www.data.go.kr/data/15005582/fileData.do",
+  "retrieved_at": "2026-11-17T16:44:44.329521+00:00",
+  "rows": [
+    [
+      "번호",
+      "한국영유아보육교육진흥원 발간도서 명",
+      "발간연도"
+    ],
+    [
+      "1",
+      "비전보육 16호",
+      "2015"
+    ],
+    [
+      "2",
+      "비전보육 17호",
+      "2015"
+    ],
+    [
+      "3",
+      "제2회 인성보육포럼 자료집",
+      "2015"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15005582&publicDataDetailPk=uddi%3A35a8ad4c-66e6-4078-97ec-f03e6a685a9d",
+  "sample_type": "official public file preview"
+}

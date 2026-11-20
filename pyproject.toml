@@ -1,7 +1,7 @@
 [project]
 name = "cheongeum-voice-welfare-agent"
 version = "0.1.0"
-description = "청음 — 시각장애인이 음성으로 웹을 읽고 공공서비스 신청을 끝까지 하도록 돕는 PC 음성 에이전트 (Python)"
+description = "청음 — 정보취약계층이 음성으로 웹을 읽고 공공서비스 신청을 끝까지 하도록 돕는 PC 음성 에이전트 (Python)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,14 +12,18 @@ dependencies = [
   "playwright>=1.52",
   "python-dotenv>=1.0",
   "regex>=2024.9.11",
-  "faster-whisper>=1.1",
+  "numpy",
+  "onnxruntime",
+  "tokenizers",
   "cryptography>=50.0.2",
   "keyring>=25.7.0",
   "pypdf>=7.1.0",
+  "websockets>=15,<17",
 ]
 
 [dependency-groups]
 dev = [
+  "faster-whisper>=1.1",
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
 ]
@@ -27,6 +31,11 @@ dev = [
 [project.scripts]
 cheongeum-server = "cheongeum.server.__main__:main"
 cheongeum-mock = "cheongeum.practice_site.serve:main"
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.2,<4",
+]
 
 [build-system]
 requires = ["hatchling"]

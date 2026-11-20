@@ -97,14 +97,18 @@ class FormSkill:
         u = try_url(view["url"])
         site = u.host if u else view["url"]
         listed = ", ".join(f'{v["label"]} 칸에 "{v["value"]}"' for v in values)
-        speech = f"{listed}, 이렇게 넣을까요? 맞으면 '응', 아니면 '아니'라고 해 주세요."
+        description = f"{site}의 {listed}, 이렇게 넣을까요? 맞으면 '응', 아니면 '아니'라고 해 주세요."
+        speech = description
         self.dialogue.ask_approval(
             {
                 "kind": "assist",
+                "url": view["url"],
                 "action": actions[0],
                 "actions": actions,
                 "confirmation": {
                     "actionId": actions[0]["id"],
+                    "kind": "field-entry",
+                    "description": description,
                     "purpose": "실제 사이트 입력란 채우기(제출은 하지 않음)",
                     "site": site,
                     "values": values,
@@ -354,14 +358,18 @@ class FormSkill:
         profile = self.web.profile
         listed = ". ".join(f"{v['label']}: {v['value']}" for v in values)
         speech = (
-            f"검토 단계입니다. 모의접수할 내용: {listed}. "
+            f"검토 단계입니다. {profile.name} ({profile.origin}, 로컬)에 모의접수할 내용: {listed}. "
             + "이 내용으로 모의접수할까요? 실제 복지로 접수가 아니며 어디에도 전송되지 않습니다. 승인하려면 '모의접수 승인', 그만두려면 '거절'이라고 말씀하세요. 항목을 고치려면 해당 항목을 말씀하세요."
         )
         self.dialogue.ask_approval(
             {
+                "kind": "submit",
+                "url": out.view["url"],
                 "action": action,
                 "confirmation": {
                     "actionId": action["id"],
+                    "kind": "practice-submission",
+                    "description": speech,
                     "purpose": "장애인연금 모의 신청서 모의접수 (실제 제출 아님)",
                     "site": f"{profile.name} ({profile.origin}, 로컬)",
                     "values": values,
@@ -413,6 +421,13 @@ class FormSkill:
             return draft(self.dialogue.state, "reject", "거절할 승인 요청이 없어요.")
         kind = self.dialogue.approval.get("kind")
         self.dialogue.clear_approval()
+        if kind == "research":
+            return draft("IDLE", "reject", "자료 조사 요청을 취소했어요.")
+        if kind == "visual":
+            return draft("BROWSING", "reject", "화면 사진을 보내지 않았어요.")
+        if kind == "file":
+            view = self.web.current_view
+            return draft(browse_state(view) if view else "IDLE", "reject", "파일을 보내지 않았어요.")
         if kind == "assist":
             return draft("BROWSING", "reject", "넣지 않았어요. 다시 말씀해 주세요.")
         if kind == "click":

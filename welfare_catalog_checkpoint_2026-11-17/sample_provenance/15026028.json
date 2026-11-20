@@ -1,0 +1,38 @@
+{
+  "id": "15026028",
+  "source": "https://www.data.go.kr/data/15026028/fileData.do",
+  "retrieved_at": "2026-11-17T17:06:18.572065+00:00",
+  "rows": [
+    [
+      "행정동명",
+      "65세_79세_남성",
+      "80세이상_남성",
+      "65세_79세_여성",
+      "80세이상_여성"
+    ],
+    [
+      "구포1동",
+      "510",
+      "85",
+      "705",
+      "306"
+    ],
+    [
+      "구포2동",
+      "649",
+      "102",
+      "875",
+      "309"
+    ],
+    [
+      "구포3동",
+      "572",
+      "63",
+      "751",
+      "253"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15026028&publicDataDetailPk=uddi%3Abde1139e-23b5-4278-b00c-b63c5ea6b421",
+  "sample_type": "official public file preview"
+}

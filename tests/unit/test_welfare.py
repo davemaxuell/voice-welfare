@@ -1,3 +1,19 @@
+
+async def test_period_uses_application_fields_and_preserves_date_provenance():
+    s = _svc(applyMethod="신청 기간: 2026년 9월 1일 ~ 2026년 11월 30일",
+             benefit="지원금 지급 기한은 2027년 1월 1일까지", dataOrigin="fixture", criteriaYear="2026")
+    agent = WelfareInformationAgent(FakeProvider(find=lambda n: s))
+    answer = await agent.answer_question("시험지원금 신청 기한은 2027년 1월 1일이야?", today="2026-11-18")
+    card = answer.card
+    assert card["grounded"] and card["fields"] == ["applyMethod"] and card["dataKind"] == "stored"
+    assert card["dataDate"] == "2026년" and card["source"]["lastCheckedAt"] == "2026-11-18"
+    assert "2026년 11월 30일" in card["answer"] and "2027년" not in card["answer"]
+    assert card["nextAction"]
+
+    s["applyMethod"] = "방문 신청"
+    unknown = await agent.answer_question("시험지원금 신청 기한 알려줘", today="2026-11-18")
+    assert not unknown.card["grounded"] and unknown.card["fields"] == []
+    assert "051-111-2222" in unknown.card["nextAction"]
 import json
 
 import httpx
@@ -84,6 +100,21 @@ async def test_official_error_falls_back(http_mock):
     assert "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" in p.last_error
 
 
+@pytest.mark.parametrize("rows, expected", [
+    ([BOKJIRO], BOKJIRO),
+    ([BOKJIRO, BOKJIRO], None),
+    ([BOKJIRO.replace("WLF00003249", "WLF00001164")], None),
+    ([BOKJIRO.replace("www.bokjiro.go.kr", "example.org")], None),
+    ([], None),
+])
+async def test_application_guide_requires_an_unambiguous_official_catalog_entry(rows, expected):
+    class Provider:
+        async def catalog(self):
+            return [{"servNm": "장애인연금", "servId": "WLF00003249", "detailUrl": url} for url in rows]
+
+    assert await WelfareInformationAgent(Provider()).application_guide_url("장애인 연금") == expected
+
+
 @pytest.mark.parametrize(
     "q,expected",
     [
@@ -152,22 +183,28 @@ def test_retrieval_quality():
     assert r["mrr"] >= 0.8
 
 
-async def test_rag_answer_within_evidence():
-    llm = rag_llm(lambda u: {"answerable": True, "answer": "18세에서 64세는 2026년 기준 매월 최대 349,700원입니다.", "usedChunkIds": [u["근거"][0]["id"]]})
-    a = await WelfareInformationAgent(FakeProvider(), llm).answer_question("장애인연금 한 달에 얼마 받아?")
-    assert a.method == "rag-llm"
-    assert a.grounded
-    assert "349,700원" in a.speech
-    assert "최종 판단" not in a.speech  # 금액 질문엔 자격 안내를 덧붙이지 않음
-    assert a.retrieval["sections"][0] == "지원내용"
+async def test_amount_uses_cited_benefit_field_and_preserves_conditions():
+    def never_called(_):
+        raise AssertionError("금액 질문은 근거 필드로 답한다")
 
-
-async def test_rag_invented_amount_replaced():
-    llm = rag_llm(lambda u: {"answerable": True, "answer": "매월 최대 50만 원을 받아요.", "usedChunkIds": [u["근거"][0]["id"]]})
-    a = await WelfareInformationAgent(FakeProvider(), llm).answer_question("장애인연금 한 달에 얼마 받아?")
+    a = await WelfareInformationAgent(FakeProvider(), rag_llm(never_called)).answer_question("장애인연금 한 달에 50만 원 받아?")
     assert a.method == "topic-rule"
-    assert "50만" not in a.speech
-    assert "50만" in ",".join(a.verification["reasons"])
+    assert a.grounded and a.card["fields"] == ["benefit"]
+    assert a.card["serviceId"] == SERVICE["servId"] and a.card["dataKind"] == "live"
+    assert "349,700원" in a.card["answer"] and "50만" not in a.card["answer"]
+    assert "2026" in a.card["dataDate"]
+    assert "최종 판단" not in a.speech
+
+
+async def test_rag_rejects_amount_from_an_uncited_field_or_question():
+    def invented(u):
+        wrong = next(chunk for chunk in u["근거"] if chunk["항목"] != "지원내용")
+        return {"answerable": True, "answer": "1년에 349,700원을 받아요.", "usedChunkIds": [wrong["id"]]}
+
+    a = await WelfareInformationAgent(FakeProvider(), rag_llm(invented)).answer_question("장애인연금 신청 절차 설명해줘")
+    assert a.method == "topic-rule"
+    assert a.verification and not a.verification["ok"]
+    assert "1년에 349,700원" not in a.speech
 
 
 async def test_rag_not_answerable():
@@ -367,3 +404,92 @@ async def test_deadline_question_bypasses_llm():
     assert a.method == "topic-rule"
     assert "신청할 수 없어요" in a.speech
     assert "바로 신청할 수 있어요" not in a.speech
+
+
+# ---------------------------------------------------------------- 직접 링크 확대(15090532 · 15108347 · 15083323)
+
+
+def test_detail_mapping_extracts_related_sites_and_forms_for_central_and_local():
+    central = parse_welfare_detail(DETAIL, BOKJIRO, "2026-11-16")
+    assert central["relatedSites"] == [{"name": "보건복지상담센터", "url": "http://www.129.go.kr"}]
+    assert len(central["forms"]) == 4
+    assert all(f["url"].startswith("https://bokjiro.go.kr/") for f in central["forms"])
+
+    local_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <wantedDtl>
+      <servId>WLF00006793</servId><servNm>첫째아 출산지원금</servNm><ctpvNm>부산광역시</ctpvNm>
+      <bizChrDeptNm>해운대구 가족복지과</bizChrDeptNm><servDgst>출산지원금 지원</servDgst>
+      <sprtTrgtCn>해운대구 거주 출산 가정</sprtTrgtCn><aplyMtdCn>행정복지센터 방문</aplyMtdCn>
+      <inqplHmpgReldList><wlfareInfoReldNm>해운대구청</wlfareInfoReldNm><wlfareInfoReldCn>www.haeundae.go.kr</wlfareInfoReldCn></inqplHmpgReldList>
+      <basfrmList><wlfareInfoReldNm>출산지원금 신청서.hwpx</wlfareInfoReldNm><wlfareInfoReldCn>https://www.bokjiro.go.kr/ssis-tbu/CmmFileUtil/getDownload.do?atcflId=LOCAL1&amp;atcflSn=1</wlfareInfoReldCn></basfrmList>
+      <resultCode>0</resultCode><resultMessage>SUCCESS</resultMessage>
+    </wantedDtl>"""
+    local_detail = "https://www.bokjiro.go.kr/ssis-tbu/twataa/wlfareInfo/moveTWAT52011M.do?wlfareInfoId=WLF00006793&wlfareInfoReldBztpCd=02"
+    local = parse_welfare_detail(local_xml, local_detail, "2026-11-16")
+    assert local["relatedSites"] == [{"name": "해운대구청", "url": "https://www.haeundae.go.kr"}]
+    assert local["forms"] == [{"name": "출산지원금 신청서.hwpx", "url": "https://www.bokjiro.go.kr/ssis-tbu/CmmFileUtil/getDownload.do?atcflId=LOCAL1&atcflSn=1"}]
+
+
+async def test_catalog_paginates_local_and_central_lists_when_total_count_exceeds_page(http_mock):
+    def xml_page(total, rows, *, local=False):
+        tag = "<ctpvNm>경기도</ctpvNm>" if local else ""
+        items = "".join(
+            f"<servList><servId>{sid}</servId><servNm>{name}</servNm>{tag}"
+            f"<servDtlLink>https://www.bokjiro.go.kr/ssis-tbu/twataa/wlfareInfo/moveTWAT52011M.do?wlfareInfoId={sid}&amp;wlfareInfoReldBztpCd={'02' if local else '01'}</servDtlLink></servList>"
+            for sid, name in rows
+        )
+        return f'<?xml version="1.0" encoding="UTF-8"?><wantedList><totalCount>{total}</totalCount><resultCode>0</resultCode>{items}</wantedList>'
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        page = req.url.params.get("pageNo", "1")
+        if req.url.path.endswith("LcgvWelfarelist"):
+            rows = [("WLF00009001", "경기사업1")] if page == "1" else [("WLF00009002", "경기사업2")]
+            return httpx.Response(200, text=xml_page(2, rows, local=True))
+        return httpx.Response(200, text=xml_page(1, [("WLF00003249", "장애인연금")], local=False))
+
+    calls = http_mock(handler)
+    rows = await official().catalog("경기도")
+    assert {r["servId"] for r in rows} == {"WLF00003249", "WLF00009001", "WLF00009002"}
+    local_pages = [c.url.params["pageNo"] for c in calls if c.url.path.endswith("LcgvWelfarelist")]
+    assert local_pages == ["1", "2"]
+
+
+async def test_direct_links_combines_central_api_local_api_and_csv(http_mock):
+    from cheongeum.agents.welfare.open_data import OpenData
+
+    http_mock(list_or_detail)
+    links = OpenData.load().links
+
+    # 15090532 중앙 API: 복지로 상세 + 관련 사이트 + 다운로드 서식
+    central_agent = WelfareInformationAgent(official(), links=links)
+    bundle = await central_agent.direct_links("장애인연금", include_detail=True)
+    assert bundle and bundle["detailUrl"] == BOKJIRO
+    assert any(s["url"] == "http://www.129.go.kr" for s in bundle["relatedSites"])
+    assert len(bundle["forms"]) == 4
+    prep = await central_agent.prepare("장애인연금")
+    assert prep.sources[0]["url"] == BOKJIRO
+    assert any(s.get("note") == "관련 사이트" and s["url"] == "http://www.129.go.kr" for s in prep.sources)
+    assert any(s.get("note") == "공식 서식 다운로드" and "getDownload.do" in s["url"] for s in prep.sources)
+
+    # 15108347 지자체 API: 시·도·구 단서로 동명 지역 사업 구분, 다른 구·중복 사업은 추측하지 않음
+    local_agent = WelfareInformationAgent(FixtureWelfareDataProvider.from_file(), links=links)
+    busan_url = await local_agent.application_guide_url("부산 해운대구 첫째아 출산지원금")
+    assert busan_url and "wlfareInfoId=WLF00006793" in busan_url
+    inferred_url = await local_agent.application_guide_url("해운대구 첫째아 출산지원금")
+    assert inferred_url == busan_url
+    assert await local_agent.application_guide_url("부산 사상구 첫째아 출산지원금") is None
+    assert await local_agent.application_guide_url("출산축하금", ctpv="부산광역시") is None
+    assert "wlfareInfoId=WLF00006547" in (await local_agent.application_guide_url("부산진구 출산축하금") or "")
+
+    # 15083323 중앙 CSV: API 목록이 비어도 복지로 상세와 관련 사이트를 직접 찾는다
+    class EmptyProvider(FixtureWelfareDataProvider):
+        async def catalog(self, ctpv=None):
+            return []
+
+    csv_agent = WelfareInformationAgent(EmptyProvider(FixtureWelfareDataProvider.from_file().data), links=links)
+    childcare = await csv_agent.direct_links("아이돌봄서비스")
+    assert childcare and "wlfareInfoId=WLF00000024" in childcare["detailUrl"]
+    assert childcare["relatedSites"][0]["url"] == "https://idolbom.go.kr/"
+    assert (await csv_agent.resolve_site_link("문화누리카드 열어줘"))["url"] == "https://www.mnuri.kr"
+    assert (await csv_agent.resolve_site_link("아이돌봄서비스 관련 사이트 열어줘"))["url"] == "https://idolbom.go.kr/"
+    assert (await csv_agent.resolve_guide_target("아이돌봄서비스 관련 사이트 찾아줘"))["url"] == "https://idolbom.go.kr/"

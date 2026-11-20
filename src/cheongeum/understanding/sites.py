@@ -4,73 +4,10 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Sequence
 
+from cheongeum.core.sites import KNOWN_SITES, KnownSite
 from cheongeum.core.jsutil import B, I, rx, try_url
-
-
-@dataclass
-class KnownSite:
-    names: list[str]
-    url: str
-    label: str
-    # "이 사이트 뭐야"에 답할 한 줄 소개(일반적으로 알려진 성격만)
-    about: str | None = None
-
-
-KNOWN_SITES: list[KnownSite] = [
-    # 복지·공공
-    KnownSite(["복지로", "bokjiro", "bokjiro.go.kr"], "https://www.bokjiro.go.kr", "복지로", "보건복지부가 운영하는 복지 포털로, 복지 제도를 찾아보고 온라인으로 신청할 수 있는 곳"),
-    KnownSite(
-        ["정부24", "정부 24", "정부이십사", "민원24", "민원 24", "민원이십사", "gov24", "government24", "government 24"],
-        "https://www.gov.kr",
-        "정부24",
-        "정부 민원 포털로, 각종 증명서 발급과 민원 신청을 온라인으로 하는 곳",
-    ),
-    KnownSite(["홈택스", "손택스", "hometax", "home tax"], "https://www.hometax.go.kr", "홈택스", "국세청의 세금 신고·납부 사이트로, 연말정산과 종합소득세 신고 등을 하는 곳"),
-    KnownSite(["국세청"], "https://www.nts.go.kr", "국세청", "세금을 담당하는 정부 기관의 누리집"),
-    KnownSite(["국민신문고", "신문고"], "https://www.epeople.go.kr", "국민신문고", "정부에 민원·제안·신고를 올리는 사이트"),
-    KnownSite(["고용24", "고용 24", "워크넷", "고용노동부 일자리"], "https://www.work24.go.kr", "고용24", "고용노동부의 일자리·실업급여·직업훈련 통합 사이트"),
-    KnownSite(
-        ["국민건강보험공단", "건강보험공단", "국민건강보험", "건강보험"],
-        "https://www.nhis.or.kr",
-        "국민건강보험공단",
-        "건강보험과 장기요양보험을 운영하는 공단의 누리집으로, 보험료와 건강검진 등을 확인하는 곳",
-    ),
-    KnownSite(["건강보험심사평가원", "심평원"], "https://www.hira.or.kr", "건강보험심사평가원"),
-    KnownSite(
-        ["국민연금공단", "국민연금", "national pension service"],
-        "https://www.nps.or.kr",
-        "국민연금공단",
-        "국민연금을 운영하는 공단의 누리집으로, 연금 가입 내역과 수령 안내를 보는 곳",
-    ),
-    KnownSite(["기초연금"], "https://basicpension.mohw.go.kr", "기초연금", "기초연금 제도를 안내하는 보건복지부 누리집"),
-    KnownSite(
-        ["보건복지부", "복지부", "ministry of health and welfare"],
-        "https://www.mohw.go.kr",
-        "보건복지부",
-        "복지·보건 정책을 맡은 정부 부처의 누리집으로, 정책 소식과 보도자료가 올라오는 곳",
-    ),
-    KnownSite(["행정안전부", "행안부"], "https://www.mois.go.kr", "행정안전부"),
-    KnownSite(["보건복지상담센터", "129"], "https://www.129.go.kr", "보건복지상담센터", "복지 제도 상담을 해 주는 보건복지상담센터 누리집"),
-    KnownSite(["한국장애인고용공단", "장애인고용공단"], "https://www.kead.or.kr", "한국장애인고용공단"),
-    KnownSite(["정책브리핑", "대한민국 정책브리핑"], "https://www.korea.kr", "대한민국 정책브리핑", "정부 정책 소식을 모아 알리는 정부 공식 사이트"),
-    KnownSite(["서울시", "서울특별시"], "https://www.seoul.go.kr", "서울특별시"),
-    KnownSite(["코레일", "레츠코레일", "korail"], "https://www.letskorail.com", "코레일", "기차표를 예매하는 한국철도공사 사이트"),
-    # 포털·일반
-    KnownSite(["네이버 지도", "naver map"], "https://map.naver.com", "네이버 지도", "네이버의 지도·길찾기 서비스"),
-    KnownSite(["네이버 뉴스", "naver news"], "https://news.naver.com", "네이버 뉴스", "여러 언론사 기사를 모아 보여 주는 네이버의 뉴스 서비스"),
-    KnownSite(
-        ["네이버", "naver"],
-        "https://www.naver.com",
-        "네이버",
-        "한국에서 가장 많이 쓰는 포털 사이트로, 검색·뉴스·날씨·쇼핑·지도 등을 한곳에서 쓸 수 있는 곳",
-    ),
-    KnownSite(["구글", "google"], "https://www.google.com", "구글", "세계적으로 많이 쓰는 검색 사이트"),
-    KnownSite(["유튜브", "youtube", "you tube"], "https://www.youtube.com", "유튜브", "동영상을 보고 올리는 사이트"),
-    KnownSite(["다음 사이트", "다음 포털", "다음넷", "daum"], "https://www.daum.net", "다음", "카카오가 운영하는 포털 사이트로, 검색·뉴스·메일 등을 쓸 수 있는 곳"),
-]
 
 
 def site_name_from(text: str) -> str:
@@ -87,9 +24,44 @@ def _norm(s: str) -> str:
     return rx(r"\s").sub("", s).lower()
 
 
-def mentions_known_site(text: str) -> bool:
+def service_topic(site: KnownSite, text: str) -> str:
+    words = _norm(text)
+    if site.label == "한국장학재단" and "국가장학금" in words:
+        if "다자녀" in words:
+            return "다자녀국가장학금"
+        if rx(r"(?:2|Ⅱ|ⅱ|ii)유형").search(words):
+            return "국가장학금2유형"
+        if rx(r"(?:1|Ⅰ|ⅰ|i)유형").search(words):
+            return "국가장학금1유형"
+    return next((term for term in site.services if term in words), "")
+
+
+def public_service_site(text: str) -> KnownSite | None:
+    """명시된 기관이 우선한다. 다른 사이트나 여러 기관을 말했으면 업무 이름만으로 목적지를 정하지 않는다."""
+    words = _norm(text)
+    named = [s for s in KNOWN_SITES if any(_norm(n) in words for n in s.names)]
+    if named:
+        return named[0] if len(named) == 1 and named[0].services else None
+    if DOMAIN.search(text):
+        return None
+    matches = [s for s in KNOWN_SITES if any(term in words for term in s.services)]
+    if len(matches) == 1:
+        return matches[0]
+    if rx(r"^민원(?:사이트|홈페이지|누리집)?(?:에서|으로|로|에|을|좀|열|접속|들어|가|$)").search(words):
+        return next(s for s in KNOWN_SITES if s.label == "정부24")
+    return None
+
+
+def is_site_name(text: str) -> bool:
+    bare = rx(r"(?:사이트|누리집|홈페이지)?(?:요|이요)?[.!?]*$").sub("", _norm(text))
+    return bare == "민원" or any(_norm(n) == bare for s in KNOWN_SITES for n in s.names)
+
+
+def mentions_known_site(text: str, fuzzy: bool = True) -> bool:
+    """fuzzy면 받아쓰기가 한 글자 틀린 이름(near_site)도 친다. '복지관'·'신문사'처럼 낱말이 비슷한 경우가 있어 순위를 바꾸는 규칙은 끈다."""
     t = _norm(text)
-    return any(_norm(n) in t for s in KNOWN_SITES for n in s.names) or bool(DOMAIN.search(text)) or near_site(text) is not None
+    exact = any(_norm(n) in t for s in KNOWN_SITES for n in s.names) or bool(DOMAIN.search(text))
+    return exact or (fuzzy and near_site(text) is not None)
 
 
 def _one_edit_apart(a: str, b: str) -> bool:
@@ -132,6 +104,30 @@ def near_site(text: str, extra: Sequence[KnownSite] = ()) -> KnownSite | None:
     return None
 
 
+def near_site_guess(text: str, extra: Sequence[KnownSite] = ()) -> tuple[KnownSite, str] | None:
+    """
+    정확한 사이트 이름·주소 없이 한 글자 다른 이름만 있으면 (사이트, 그 낱말). '복지관'·'신문사'처럼 진짜 낱말일 수 있어
+    부르는 쪽이 "'복지로' 말씀이세요?" 하고 확인한다(주인 결정 2026-11-19).
+    """
+    # 목적지 자리의 낱말만 본다: '…에서·…로·…가서' 또는 바로 뒤에 '열어·들어가·접속'
+    sites = [*extra, *KNOWN_SITES]
+    exact = {rx(r"\s").sub("", n) for s in sites for n in s.names}
+    words = rx(r"\s+").split(text.strip())
+    for i, raw in enumerate(words):
+        after = words[i + 1] if i + 1 < len(words) else ""
+        if not (rx(r"(에서|으로|로|에|가서)$").search(raw) or rx(r"^(열어|들어가|접속|가\s*줘|켜)").search(after)):
+            continue
+        w = rx(r"(으로|에서|가서|을|를|로|에|좀|이|가)$").sub("", rx(r"[^가-힣]").sub("", raw))
+        # '복지로'는 '복지부'와 한 글자 차이지만 그 자체로 정확한 이름이다
+        if w in exact:
+            continue
+        for s in sites:
+            for n in (rx(r"\s").sub("", name) for name in s.names):
+                if len(n) >= 3 and rx(r"^[가-힣]+$").search(n) and len(w) == len(n) and _one_edit_apart(w, n):
+                    return s, w
+    return None
+
+
 def _bare_host(url: str) -> str:
     u = try_url(url)
     return rx(r"^www\.").sub("", u.hostname) if u else ""
@@ -149,23 +145,64 @@ def site_label(url: str, extra: Sequence[KnownSite] = ()) -> str:
     return here
 
 
+def goal_site_request(goal: str, extra: Sequence[KnownSite] = ()) -> tuple[str | None, str]:
+    """한 사이트에서 찾아 달라는 요청을 사이트 주소와 질문으로 나눈다."""
+    aliases = [(_norm(alias), site.url) for site in [*extra, *KNOWN_SITES] for alias in site.names]
+    aliases.sort(key=lambda entry: len(entry[0]), reverse=True)
+    destinations: list[tuple[str, str]] = []
+    for marker in rx(r"에서|들어가서|가서|열어서|열고|접속해서").finditer(goal):
+        prefix = goal[:marker.start()].strip()
+        if not prefix:
+            continue
+        # '복지로에서 기초연금 ...'의 제도명이나 '이 화면에서'를 목적지로 잡지 않는다.
+        bare = rx(r"(?:으로|로|에|을|를)$").sub("", prefix).strip()
+        bare = rx(r"\s*(?:사이트|홈페이지|누리집)$").sub("", bare).strip()
+        token = (bare or prefix).split()[-1]
+        if DOMAIN.fullmatch(token):
+            site = _address_site(token)
+            url = site["url"] if site else None
+        else:
+            full, short = _norm(prefix), _norm(bare)
+            url = next((url for alias, url in aliases if full.endswith(alias) or short.endswith(alias)), None)
+            if not url:
+                near = near_site(token, extra)
+                url = near.url if near else None
+        if url:
+            destinations.append((url, goal[marker.end():].strip()))
+    if destinations:
+        return destinations[0] if len(destinations) == 1 else (None, goal)
+    agency = public_service_site(goal)
+    return (agency.url, goal) if agency else (None, goal)
+
+
 def resolve_site(target: str, extra: Sequence[KnownSite] = ()) -> dict | None:
     """이름이나 주소를 실제 URL로. 연습용 모의 사이트는 extra로 넘긴다. → {'url', 'label'}"""
     t = _norm(target)
     all_sites = [*extra, *KNOWN_SITES]
     hits = [(s, _norm(n)) for s in all_sites for n in s.names if _norm(n) in t]
-    if hits:
-        s, _ = sorted(hits, key=lambda x: -len(x[1]))[0]
-        return {"url": s.url, "label": s.label}
+    known = sorted(hits, key=lambda x: -len(x[1]))[0][0] if hits else None
+    # 전체 주소를 말했으면 그 화면을 연다(주소 속 'bokjiro'로 사이트 첫 화면을 열지 않는다)
+    explicit = rx(r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+", I).search(target)
+    site = _address_site(explicit.group(0)) if explicit else None
+    if site:
+        # 이름은 주소의 호스트로만 정한다: 'bokjiro.go.kr.evil.example'을 복지로라고 말하지 않는다
+        return {**site, "label": site_label(site["url"], extra) or site["label"]}
+    if known:
+        return {"url": known.url, "label": known.label}
+    agency = public_service_site(target)
+    if agency:
+        return {"url": agency.url, "label": agency.label}
     near = near_site(target, extra)
     if near:
         return {"url": near.url, "label": near.label}
     spoken = rx(r"\s*(닷|점)\s*(컴|com)").sub(".com", target)
     spoken = rx(r"\s*(닷|점)\s*(케이알|kr)").sub(".kr", spoken)
     m = DOMAIN.search(spoken)
-    if not m:
-        return None
-    raw = rx(r"[.,)]+$").sub("", m.group(1))
+    return _address_site(m.group(1)) if m else None
+
+
+def _address_site(address: str) -> dict | None:
+    raw = rx(r"[.,)]+$").sub("", address)
     # 로컬 주소(localhost, IP)는 http, 그 외 도메인은 https로 연다.
     local = bool(rx(r"^(localhost|\d{1,3}(\.\d{1,3}){3})(:|\/|$)", I).search(raw))
     url = raw if rx(r"^https?:\/\/", I).search(raw) else f"{'http' if local else 'https'}://{raw}"

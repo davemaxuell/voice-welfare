@@ -51,6 +51,61 @@ def parse_vault_values(text: str) -> dict:
     return out
 
 
+# Only a direct request to remember labeled personal fields enters the vault.
+# Keep the actual field values on this device in every supported language.
+_SAVE_REQUEST = {
+    "en": rx(r"(?:(?:(?:please|can you|could you|would you)\s+)*(?:save|remember|store|keep)\s+(?:that\s+)?(.+)"
+             r"|(.+?)[,.;!]\s*(?:please\s+)?(?:save|remember|store|keep)\s+(?:it|them|this|that))", I),
+    "zh": rx(r"(?:(?:请|請)?(?:帮我|幫我)?(?:记住|記住|保存|储存|儲存)(?:一下)?(.+)"
+             r"|(?:请|請)?(?:把|将|將)?(.+?)[，。,\s]*(?:请|請)?(?:记住|記住|保存|储存|儲存)(?:下来|下來|一下)?)"),
+    "ja": rx(r"(.+?)(?:です|として|と|を)?[。、,\s]*(?:覚えて|覚えといて|保存して|登録して|記憶して)"
+             r"(?:おいて)?(?:ください|下さい|ほしい|欲しい)?"),
+}
+_VAULT_FIELDS = {
+    "en": rx(r"(?:^my\s+|(?:,\s*(?:and\s+)?|\s+and\s+)(?:my\s+)?)"
+             r"(?:(?P<name>(?:full |legal )?name)|(?P<address>(?:home |street |postal )?address)|"
+             r"(?P<phone>phone(?: number)?)|(?P<email>e-?mail(?: address)?)|(?P<birth>date of birth|birthday))"
+             r"\b\s*(?:(?:is at|is|as)\b\s*|[:：,]\s*)?", I),
+    "zh": rx(r"(?:^我(?:的)?|[，、,和]\s*(?:我的?)?)"
+             r"(?:(?P<name>名字|姓名)|(?P<address>地址|住址)|(?P<phone>手机号码?|手機號碼?|电话号码?|電話號碼?)|"
+             r"(?P<email>电子邮箱|電子郵箱|邮箱|郵箱)|(?P<birth>出生日期|生日))\s*(?:是|叫|为|為|在|[:：])?\s*"),
+    "ja": rx(r"(?:^|[、,と]\s*)(?:私の|わたしの)?"
+             r"(?:(?P<name>名前|氏名)|(?P<address>住所)|(?P<phone>電話番号)|(?P<email>メールアドレス)|"
+             r"(?P<birth>生年月日|誕生日))\s*(?:は|を|が|[:：])?\s*"),
+}
+_PRIVATE_FIELD_REFERENCE = {
+    "en": rx(r"(?:^(?:the|my|a)\s+|\bas\s+(?:the|my)\s+)(?:(?:full|home|street|postal|legal)\s+)?"
+             r"(?:name|address|phone|email|birthday|date of birth|personal (?:information|details))\b", I),
+    "zh": rx(r"(?:我的?|作为|作為|当作|當作)(?:我的?)?(?:姓名|名字|住址|地址|生日|电话|電話|邮箱|郵箱|个人信息|個人資訊)"),
+    "ja": rx(r"(?:私の|わたしの|を)(?:私の|わたしの)?(?:名前|氏名|住所|電話番号|メールアドレス|誕生日|生年月日|個人情報)"),
+}
+
+
+def foreign_vault_save(text: str) -> tuple[str, dict] | None:
+    """Identify the language of the command itself; its name or address can be in another script."""
+    text = text.strip().rstrip(".!?。！？").strip()
+    for lang, pattern in _SAVE_REQUEST.items():
+        if not (request := pattern.fullmatch(text)):
+            continue
+        fields = next(part.strip() for part in request.groups() if part)
+        labels = list(_VAULT_FIELDS[lang].finditer(fields))
+        if not labels or labels[0].start() != 0:
+            if _PRIVATE_FIELD_REFERENCE[lang].search(fields):
+                return lang, {}
+            continue
+        values = {}
+        for index, label in enumerate(labels):
+            end = labels[index + 1].start() if index + 1 < len(labels) else len(fields)
+            value = fields[label.end():end].strip(" ,，、。")
+            if lang == "ja":
+                value = value.removesuffix("です")
+            if not value or SECRET.search(value):
+                return lang, {}
+            values[label.lastgroup] = value
+        return lang, values
+    return None
+
+
 def _fmt(d: date) -> str:
     return d.isoformat()
 
@@ -95,9 +150,11 @@ def parse_speech_pref(text: str) -> dict | None:
         return {"kind": "speech-set", "values": {"progressSpoken": True}}
     if rx(r"(진행\s*상황|중간\s*보고).*(끄|조용|그만)|조용히\s*해").search(t):
         return {"kind": "speech-set", "values": {"progressSpoken": False}}
-    if rx(r"(천천히|느리게)\s*(말해|말해줘|읽어)").search(t) or t in ("천천히", "천천히 말해줘"):
+    # "그 번호를 다시 천천히 말해줘"는 방금 들은 것을 한 번만 다시 듣는 말: 설정을 바꾸지 않는다
+    once = rx(r"다시|(?:번호|그거|그것|이거|부분|내용|그\s*말)\s*(?:을|를|만|도)?\s*(?:좀\s*)?(?:더\s*)?(?:천천히|느리게|빨리|빠르게)").search(t)
+    if not once and (rx(r"(천천히|느리게)\s*(말해|말해줘|읽어)").search(t) or t in ("천천히", "천천히 말해줘")):
         return {"kind": "speech-set", "values": {"rate": 0.9}}
-    if rx(r"(빨리|빠르게)\s*(말해|말해줘|읽어)").search(t) or t in ("빨리", "빨리 말해줘"):
+    if not once and (rx(r"(빨리|빠르게)\s*(말해|말해줘|읽어)").search(t) or t in ("빨리", "빨리 말해줘")):
         return {"kind": "speech-set", "values": {"rate": 1.5}}
     if rx(r"(보통\s*속도|원래\s*속도|속도\s*원래)").search(t):
         return {"kind": "speech-set", "values": {"rate": 1.25}}

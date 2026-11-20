@@ -10,11 +10,11 @@ from cheongeum.voice.errors import VoiceNotSupportedError, VoiceProviderError
 
 
 class UnsupportedTtsProvider:
-    name = "browser-only"
+    name = "unconfigured"
     supported = False
 
-    async def synthesize(self, text: str, *, language: str, signal: AbortSignal | None = None) -> dict:
-        raise VoiceNotSupportedError("서버 TTS가 설정되지 않았습니다. 브라우저 음성 합성을 사용하세요.")
+    async def synthesize(self, text: str, *, language: str, signal: AbortSignal | None = None, pace: float | None = None) -> dict:
+        raise VoiceNotSupportedError("음성 안내를 사용하려면 이용 설정에서 OpenAI API 키를 등록해 주세요.")
 
 
 class OpenAITtsProvider:
@@ -33,6 +33,8 @@ class OpenAITtsProvider:
         speed: float | None = None,
         timeout_ms: int = 20_000,
     ) -> None:
+        if not api_key:
+            raise ValueError("음성 합성 API 키가 필요합니다.")
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
@@ -42,13 +44,15 @@ class OpenAITtsProvider:
         self.timeout = timeout_ms / 1000
         self.name = f"openai({model}, {voice})"
 
-    async def synthesize(self, text: str, *, language: str, signal: AbortSignal | None = None) -> dict:
+    async def synthesize(self, text: str, *, language: str, signal: AbortSignal | None = None, pace: float | None = None) -> dict:
+        """pace: 사용자의 말 빠르기 설정(보통=1). 설정한 기본 속도(TTS_SPEED)에 곱한다."""
         body: dict = {"model": self.model, "voice": self.voice, "input": text, "response_format": "mp3"}
         # 말투 지시(TTS_INSTRUCTIONS)는 한국어용이라 다른 언어에서는 쓰지 않는다
         if self.instructions and language == "ko":
             body["instructions"] = self.instructions
-        if self.speed and self.speed != 1:
-            body["speed"] = self.speed
+        speed = min(4.0, max(0.25, (self.speed or 1) * (pace or 1)))
+        if abs(speed - 1) > 1e-9:
+            body["speed"] = speed
 
         async def go() -> dict:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

@@ -4,12 +4,12 @@ import pytest
 
 from cheongeum.core.jsutil import AbortController, AbortError
 from cheongeum.evaluation.asr import cer, digit_runs
+from cheongeum.server.runtime import load_config
 from cheongeum.voice import (
     LanguageRoutedStt,
     LocalWhisperStt,
     OpenAISttProvider,
     UnsupportedSttProvider,
-    VoiceConfig,
     create_voice_providers,
     is_hallucination,
 )
@@ -41,7 +41,7 @@ async def test_local_prompt_only_for_korean_when_enabled():
     assert [c[2] for c in engine.calls] == [STT_PROMPT, None]
 
 
-@pytest.mark.parametrize("reply", ["시청해 주셔서 감사합니다.", "구독과 좋아요 부탁드립니다", "MBC 뉴스 이덕영입니다.", "성명, 주민등록 주소, 실거주지, 연락처, 모의접수, 멈춰."])
+@pytest.mark.parametrize("reply", ["시청해 주셔서 감사합니다.", "구독과 좋아요 부탁드립니다", "MBC 뉴스 이덕영입니다.", "정부24, 주민등록등본, 국민신문고, 민원, 한국장학재단, 국가장학금."])
 async def test_local_drops_silence_hallucinations_and_prompt_echo(reply):
     out = await LocalWhisperStt("models/x", engine=FakeEngine(reply)).transcribe(b"a", language="ko", mime_type="audio/webm")
     assert out == {"text": ""}
@@ -83,29 +83,14 @@ async def test_routing_without_openai_keeps_every_language_local():
     assert engine.calls[0][1] == "en"
 
 
-def fake_model_dir(tmp_path):
-    (tmp_path / "model.bin").write_bytes(b"x")
-    (tmp_path / "tokenizer.json").write_text("{}", encoding="utf-8")
-    return str(tmp_path)
-
-
-def test_config_precedence(tmp_path):
-    # STT_BASE_URL이 있으면 기존 OpenAI 호환 로컬 서버
-    stt, _ = create_voice_providers(VoiceConfig(stt="local", sttBaseUrl="http://127.0.0.1:8000/v1", sttLocalModel=fake_model_dir(tmp_path)))
-    assert isinstance(stt, OpenAISttProvider) and stt.name == "local(http://127.0.0.1:8000/v1)"
-    # 모델 폴더가 비었으면 끈다: 한국어 음성을 몰래 OpenAI로 보내지 않는다
-    stt, _ = create_voice_providers(VoiceConfig(stt="local", sttLocalModel=str(tmp_path / "missing"), apiKey="sk", sttModel="m"))
-    assert isinstance(stt, UnsupportedSttProvider)
-
-
-def test_config_local_with_and_without_openai(tmp_path):
-    model_dir = fake_model_dir(tmp_path)
-    stt, _ = create_voice_providers(VoiceConfig(stt="local", sttLocalModel=model_dir, apiKey="sk", sttModel="gpt-4o-mini-transcribe", sttLocalBeam=3))
-    assert isinstance(stt, LanguageRoutedStt)
-    assert stt.localLanguages == ["ko"] and isinstance(stt.other, OpenAISttProvider)
-    assert stt.local.beam_size == 3
-    stt, _ = create_voice_providers(VoiceConfig(stt="local", sttLocalModel=model_dir))
-    assert stt.other is None and stt.localLanguages == ["ko", "en", "zh", "ja"]
+@pytest.mark.parametrize("legacy", ["local", "browser", "mock"])
+def test_legacy_settings_use_only_authenticated_voice_apis(legacy):
+    env = {"STT_PROVIDER": legacy, "TTS_PROVIDER": legacy, "STT_LOCAL_MODEL": "old/model", "STT_BASE_URL": "http://localhost:8000/v1"}
+    stt, tts = create_voice_providers(load_config(env).voice)
+    assert isinstance(stt, UnsupportedSttProvider) and not tts.supported
+    stt, tts = create_voice_providers(load_config({**env, "OPENAI_API_KEY": "sk-test"}).voice)
+    assert isinstance(stt, OpenAISttProvider) and tts.supported
+    assert stt.base_url == tts.base_url == "https://api.openai.com/v1"
 
 
 def test_cer_and_digit_runs():

@@ -39,6 +39,7 @@ KEYWORDS = [
 ]
 
 VALUE_PATTERNS = [
+    ("password", rx(r"\btvly-[a-zA-Z0-9_-]{12,}")),
     ("rrn", rx(r"\d{6}\s*-\s*[1-8]\d{6}|(?<!\d)\d{6}[1-8]\d{6}(?!\d)")),
     ("card", rx(r"(?<!\d)(?:\d{4}[- ]){3}\d{4}(?!\d)")),
 ]
@@ -160,6 +161,17 @@ def detect_sensitive(text: str, *, model: bool = True) -> SensitiveDetection:
             kinds[kind] = None
             secret = True
     return SensitiveDetection(kinds=list(kinds), hasSecretValue=secret)
+
+
+# Screen pictures can contain contact information outside a form or in a control label.
+PICTURE_CONTACT = rx(
+    r"(?<!\d)(?:0(?:1[016789]|2|[3-6][1-5]|70)|\+82[- ]?(?:10|2))[- .]?\d{3,4}[- .]?\d{4}(?!\d)"
+    r"|[a-z0-9.!#$%&'*+/=?^_{}|~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+", I,
+)
+
+
+def redact_picture_text(text: str) -> str:
+    return PICTURE_CONTACT.sub(REDACTED, redact_text(text))
 
 
 def redact_text(text: str) -> str:

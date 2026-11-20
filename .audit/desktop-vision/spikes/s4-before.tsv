@@ -1,0 +1,504 @@
+복지로 열어줘	IDLE	OPEN_SITE	{"target": "복지로 열어줘"}
+복지로 열어줘	BROWSING	OPEN_SITE	{"target": "복지로 열어줘"}
+복지로 열어줘	APPLICATION_OPEN	OPEN_SITE	{"target": "복지로 열어줘"}
+복지로 열어줘	WAITING_FOR_USER_CONFIRMATION	OPEN_SITE	{"target": "복지로 열어줘"}
+정부24 들어가줘	IDLE	OPEN_SITE	{"target": "정부24 들어가줘"}
+정부24 들어가줘	BROWSING	OPEN_SITE	{"target": "정부24 들어가줘"}
+정부24 들어가줘	APPLICATION_OPEN	OPEN_SITE	{"target": "정부24 들어가줘"}
+정부24 들어가줘	WAITING_FOR_USER_CONFIRMATION	OPEN_SITE	{"target": "정부24 들어가줘"}
+장애인연금 신청 도와줘	IDLE	START_APPLICATION	{}
+장애인연금 신청 도와줘	BROWSING	START_APPLICATION	{}
+장애인연금 신청 도와줘	APPLICATION_OPEN	START_APPLICATION	{}
+장애인연금 신청 도와줘	WAITING_FOR_USER_CONFIRMATION	START_APPLICATION	{}
+신청 페이지를 열어줘	IDLE	START_APPLICATION	{}
+신청 페이지를 열어줘	BROWSING	START_APPLICATION	{}
+신청 페이지를 열어줘	APPLICATION_OPEN	START_APPLICATION	{}
+신청 페이지를 열어줘	WAITING_FOR_USER_CONFIRMATION	START_APPLICATION	{}
+네이버에서 오늘 뉴스 알려줘	IDLE	GOAL	{"goal": "네이버에서 오늘 뉴스 알려줘"}
+네이버에서 오늘 뉴스 알려줘	BROWSING	GOAL	{"goal": "네이버에서 오늘 뉴스 알려줘"}
+네이버에서 오늘 뉴스 알려줘	APPLICATION_OPEN	GOAL	{"goal": "네이버에서 오늘 뉴스 알려줘"}
+네이버에서 오늘 뉴스 알려줘	WAITING_FOR_USER_CONFIRMATION	APPROVE	{}
+복지로 가서 기초연금 신청 방법 찾아줘	IDLE	GOAL	{"goal": "복지로 가서 기초연금 신청 방법 찾아줘"}
+복지로 가서 기초연금 신청 방법 찾아줘	BROWSING	GOAL	{"goal": "복지로 가서 기초연금 신청 방법 찾아줘"}
+복지로 가서 기초연금 신청 방법 찾아줘	APPLICATION_OPEN	GOAL	{"goal": "복지로 가서 기초연금 신청 방법 찾아줘"}
+복지로 가서 기초연금 신청 방법 찾아줘	WAITING_FOR_USER_CONFIRMATION	GOAL	{"goal": "복지로 가서 기초연금 신청 방법 찾아줘"}
+크롬 켜줘	IDLE	OPEN_BROWSER	{}
+크롬 켜줘	BROWSING	OPEN_BROWSER	{}
+크롬 켜줘	APPLICATION_OPEN	OPEN_BROWSER	{}
+크롬 켜줘	WAITING_FOR_USER_CONFIRMATION	OPEN_BROWSER	{}
+브라우저 열어줘	IDLE	OPEN_BROWSER	{}
+브라우저 열어줘	BROWSING	OPEN_BROWSER	{}
+브라우저 열어줘	APPLICATION_OPEN	OPEN_BROWSER	{}
+브라우저 열어줘	WAITING_FOR_USER_CONFIRMATION	OPEN_BROWSER	{}
+기초연금은 몇 살부터 받아?	IDLE	POLICY_QUESTION	{"topic": "기초연금은 몇 살부터 받아?"}
+기초연금은 몇 살부터 받아?	BROWSING	POLICY_QUESTION	{"topic": "기초연금은 몇 살부터 받아?"}
+기초연금은 몇 살부터 받아?	APPLICATION_OPEN	POLICY_QUESTION	{"topic": "기초연금은 몇 살부터 받아?"}
+기초연금은 몇 살부터 받아?	WAITING_FOR_USER_CONFIRMATION	POLICY_QUESTION	{"topic": "기초연금은 몇 살부터 받아?"}
+장애인연금 지원대상과 신청 절차 알려줘	IDLE	POLICY_QUESTION	{"topic": "장애인연금 지원대상과 신청 절차 알려줘"}
+장애인연금 지원대상과 신청 절차 알려줘	BROWSING	POLICY_QUESTION	{"topic": "장애인연금 지원대상과 신청 절차 알려줘"}
+장애인연금 지원대상과 신청 절차 알려줘	APPLICATION_OPEN	POLICY_QUESTION	{"topic": "장애인연금 지원대상과 신청 절차 알려줘"}
+장애인연금 지원대상과 신청 절차 알려줘	WAITING_FOR_USER_CONFIRMATION	POLICY_QUESTION	{"topic": "장애인연금 지원대상과 신청 절차 알려줘"}
+나한테 맞는 복지 찾아줘	IDLE	DISCOVER	{}
+나한테 맞는 복지 찾아줘	BROWSING	DISCOVER	{}
+나한테 맞는 복지 찾아줘	APPLICATION_OPEN	DISCOVER	{}
+나한테 맞는 복지 찾아줘	WAITING_FOR_USER_CONFIRMATION	DISCOVER	{}
+받을 수 있는 복지 찾아줘	IDLE	DISCOVER	{}
+받을 수 있는 복지 찾아줘	BROWSING	DISCOVER	{}
+받을 수 있는 복지 찾아줘	APPLICATION_OPEN	DISCOVER	{}
+받을 수 있는 복지 찾아줘	WAITING_FOR_USER_CONFIRMATION	DISCOVER	{}
+기초연금 받을 수 있는지 확인해줘	IDLE	PRECHECK	{"service": "기초연금"}
+기초연금 받을 수 있는지 확인해줘	BROWSING	PRECHECK	{"service": "기초연금"}
+기초연금 받을 수 있는지 확인해줘	APPLICATION_OPEN	PRECHECK	{"service": "기초연금"}
+기초연금 받을 수 있는지 확인해줘	WAITING_FOR_USER_CONFIRMATION	PRECHECK	{"service": "기초연금"}
+1번 자격 확인해줘	IDLE	PRECHECK	{"service": "1번"}
+1번 자격 확인해줘	BROWSING	PRECHECK	{"service": "1번"}
+1번 자격 확인해줘	APPLICATION_OPEN	PRECHECK	{"service": "1번"}
+1번 자격 확인해줘	WAITING_FOR_USER_CONFIRMATION	PRECHECK	{"service": "1번"}
+신청하려면 뭐가 필요해?	IDLE	PREPARE_APPLY	{}
+신청하려면 뭐가 필요해?	BROWSING	PREPARE_APPLY	{}
+신청하려면 뭐가 필요해?	APPLICATION_OPEN	PREPARE_APPLY	{}
+신청하려면 뭐가 필요해?	WAITING_FOR_USER_CONFIRMATION	PREPARE_APPLY	{}
+기초연금 신청 서류 알려줘	IDLE	PREPARE_APPLY	{"service": "기초연금"}
+기초연금 신청 서류 알려줘	BROWSING	PREPARE_APPLY	{"service": "기초연금"}
+기초연금 신청 서류 알려줘	APPLICATION_OPEN	PREPARE_APPLY	{"service": "기초연금"}
+기초연금 신청 서류 알려줘	WAITING_FOR_USER_CONFIRMATION	PREPARE_APPLY	{"service": "기초연금"}
+2번 자세히 알려줘	IDLE	SERVICE_DETAIL	{"service": "2번"}
+2번 자세히 알려줘	BROWSING	SERVICE_DETAIL	{"service": "2번"}
+2번 자세히 알려줘	APPLICATION_OPEN	SERVICE_DETAIL	{"service": "2번"}
+2번 자세히 알려줘	WAITING_FOR_USER_CONFIRMATION	SERVICE_DETAIL	{"service": "2번"}
+1번 설명해줘	IDLE	SERVICE_DETAIL	{"service": "1번"}
+1번 설명해줘	BROWSING	SERVICE_DETAIL	{"service": "1번"}
+1번 설명해줘	APPLICATION_OPEN	SERVICE_DETAIL	{"service": "1번"}
+1번 설명해줘	WAITING_FOR_USER_CONFIRMATION	SERVICE_DETAIL	{"service": "1번"}
+상담원 연결해줘	IDLE	HELP_HUMAN	{}
+상담원 연결해줘	BROWSING	HELP_HUMAN	{}
+상담원 연결해줘	APPLICATION_OPEN	HELP_HUMAN	{}
+상담원 연결해줘	WAITING_FOR_USER_CONFIRMATION	HELP_HUMAN	{}
+사람한테 도움 받고 싶어	IDLE	HELP_HUMAN	{}
+사람한테 도움 받고 싶어	BROWSING	HELP_HUMAN	{}
+사람한테 도움 받고 싶어	APPLICATION_OPEN	HELP_HUMAN	{}
+사람한테 도움 받고 싶어	WAITING_FOR_USER_CONFIRMATION	HELP_HUMAN	{}
+본문 읽어줘	IDLE	READ_MAIN	{"more": false}
+본문 읽어줘	BROWSING	READ_MAIN	{"more": false}
+본문 읽어줘	APPLICATION_OPEN	READ_MAIN	{"more": false}
+본문 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_MAIN	{"more": false}
+계속 읽어줘	IDLE	READ_MAIN	{"more": true}
+계속 읽어줘	BROWSING	READ_MAIN	{"more": true}
+계속 읽어줘	APPLICATION_OPEN	READ_MAIN	{"more": true}
+계속 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_MAIN	{"more": true}
+링크 목록 알려줘	IDLE	LIST_LINKS	{"more": false}
+링크 목록 알려줘	BROWSING	LIST_LINKS	{"more": false}
+링크 목록 알려줘	APPLICATION_OPEN	LIST_LINKS	{"more": false}
+링크 목록 알려줘	WAITING_FOR_USER_CONFIRMATION	LIST_LINKS	{"more": false}
+링크 더 알려줘	IDLE	LIST_LINKS	{"more": true}
+링크 더 알려줘	BROWSING	LIST_LINKS	{"more": true}
+링크 더 알려줘	APPLICATION_OPEN	LIST_LINKS	{"more": true}
+링크 더 알려줘	WAITING_FOR_USER_CONFIRMATION	LIST_LINKS	{"more": true}
+공지사항 눌러줘	IDLE	FOLLOW_LINK	{"name": "공지사항"}
+공지사항 눌러줘	BROWSING	FOLLOW_LINK	{"name": "공지사항"}
+공지사항 눌러줘	APPLICATION_OPEN	FOLLOW_LINK	{"name": "공지사항"}
+공지사항 눌러줘	WAITING_FOR_USER_CONFIRMATION	FOLLOW_LINK	{"name": "공지사항"}
+장애인연금 안내 링크 눌러줘	IDLE	FOLLOW_LINK	{"name": "장애인연금 안내"}
+장애인연금 안내 링크 눌러줘	BROWSING	FOLLOW_LINK	{"name": "장애인연금 안내"}
+장애인연금 안내 링크 눌러줘	APPLICATION_OPEN	FOLLOW_LINK	{"name": "장애인연금 안내"}
+장애인연금 안내 링크 눌러줘	WAITING_FOR_USER_CONFIRMATION	FOLLOW_LINK	{"name": "장애인연금 안내"}
+기초연금 검색해줘	IDLE	SEARCH	{"query": "기초연금"}
+기초연금 검색해줘	BROWSING	SEARCH	{"query": "기초연금"}
+기초연금 검색해줘	APPLICATION_OPEN	SEARCH	{"query": "기초연금"}
+기초연금 검색해줘	WAITING_FOR_USER_CONFIRMATION	SEARCH	{"query": "기초연금"}
+복지로에서 기초연금 검색해줘	IDLE	SEARCH	{"query": "기초연금", "site": "복지로"}
+복지로에서 기초연금 검색해줘	BROWSING	SEARCH	{"query": "기초연금", "site": "복지로"}
+복지로에서 기초연금 검색해줘	APPLICATION_OPEN	SEARCH	{"query": "기초연금", "site": "복지로"}
+복지로에서 기초연금 검색해줘	WAITING_FOR_USER_CONFIRMATION	SEARCH	{"query": "기초연금", "site": "복지로"}
+뒤로 가줘	IDLE	PREV	{}
+뒤로 가줘	BROWSING	PREV	{}
+뒤로 가줘	APPLICATION_OPEN	PREV	{}
+뒤로 가줘	WAITING_FOR_USER_CONFIRMATION	PREV	{}
+이전으로	IDLE	PREV	{}
+이전으로	BROWSING	PREV	{}
+이전으로	APPLICATION_OPEN	PREV	{}
+이전으로	WAITING_FOR_USER_CONFIRMATION	PREV	{}
+여기 무슨 사이트야?	IDLE	ABOUT_SITE	{}
+여기 무슨 사이트야?	BROWSING	ABOUT_SITE	{}
+여기 무슨 사이트야?	APPLICATION_OPEN	ABOUT_SITE	{}
+여기 무슨 사이트야?	WAITING_FOR_USER_CONFIRMATION	ABOUT_SITE	{}
+이 사이트 뭐 하는 곳이야?	IDLE	ABOUT_SITE	{}
+이 사이트 뭐 하는 곳이야?	BROWSING	ABOUT_SITE	{}
+이 사이트 뭐 하는 곳이야?	APPLICATION_OPEN	ABOUT_SITE	{}
+이 사이트 뭐 하는 곳이야?	WAITING_FOR_USER_CONFIRMATION	ABOUT_SITE	{}
+로그인하고 싶어	IDLE	LOGIN	{}
+로그인하고 싶어	BROWSING	LOGIN	{}
+로그인하고 싶어	APPLICATION_OPEN	LOGIN	{}
+로그인하고 싶어	WAITING_FOR_USER_CONFIRMATION	LOGIN	{}
+로그인 페이지 열어줘	IDLE	LOGIN	{}
+로그인 페이지 열어줘	BROWSING	LOGIN	{}
+로그인 페이지 열어줘	APPLICATION_OPEN	LOGIN	{}
+로그인 페이지 열어줘	WAITING_FOR_USER_CONFIRMATION	LOGIN	{}
+다 입력했어	IDLE	UNKNOWN	{"text": "다 입력했어"}
+다 입력했어	BROWSING	UNKNOWN	{"text": "다 입력했어"}
+다 입력했어	APPLICATION_OPEN	UNKNOWN	{"text": "다 입력했어"}
+다 입력했어	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "다 입력했어"}
+로그아웃해줘	IDLE	CLEAR_LOGIN	{}
+로그아웃해줘	BROWSING	CLEAR_LOGIN	{}
+로그아웃해줘	APPLICATION_OPEN	CLEAR_LOGIN	{}
+로그아웃해줘	WAITING_FOR_USER_CONFIRMATION	CLEAR_LOGIN	{}
+로그인 기록 지워줘	IDLE	CLEAR_LOGIN	{}
+로그인 기록 지워줘	BROWSING	CLEAR_LOGIN	{}
+로그인 기록 지워줘	APPLICATION_OPEN	CLEAR_LOGIN	{}
+로그인 기록 지워줘	WAITING_FOR_USER_CONFIRMATION	CLEAR_LOGIN	{}
+받은 파일 읽어줘	IDLE	READ_DOWNLOAD	{"list": false}
+받은 파일 읽어줘	BROWSING	READ_DOWNLOAD	{"list": false}
+받은 파일 읽어줘	APPLICATION_OPEN	READ_DOWNLOAD	{"list": false}
+받은 파일 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_DOWNLOAD	{"list": false}
+다운로드 읽어줘	IDLE	READ_DOWNLOAD	{"list": false}
+다운로드 읽어줘	BROWSING	READ_DOWNLOAD	{"list": false}
+다운로드 읽어줘	APPLICATION_OPEN	READ_DOWNLOAD	{"list": false}
+다운로드 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_DOWNLOAD	{"list": false}
+받은 파일 목록	IDLE	READ_DOWNLOAD	{"list": true}
+받은 파일 목록	BROWSING	READ_DOWNLOAD	{"list": true}
+받은 파일 목록	APPLICATION_OPEN	READ_DOWNLOAD	{"list": true}
+받은 파일 목록	WAITING_FOR_USER_CONFIRMATION	READ_DOWNLOAD	{"list": true}
+이름은 김하늘	IDLE	FILL	{"fills": [{"fieldMention": "이름", "value": "김하늘"}]}
+이름은 김하늘	BROWSING	FILL	{"fills": [{"fieldMention": "이름", "value": "김하늘"}]}
+이름은 김하늘	APPLICATION_OPEN	FILL	{"fills": [{"fieldMention": "이름", "value": "김하늘"}]}
+이름은 김하늘	WAITING_FOR_USER_CONFIRMATION	FILL	{"fills": [{"fieldMention": "이름", "value": "김하늘"}]}
+주소는 부산광역시 예시구 예시로 10	IDLE	FILL	{"fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 10"}]}
+주소는 부산광역시 예시구 예시로 10	BROWSING	FILL	{"fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 10"}]}
+주소는 부산광역시 예시구 예시로 10	APPLICATION_OPEN	FILL	{"fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 10"}]}
+주소는 부산광역시 예시구 예시로 10	WAITING_FOR_USER_CONFIRMATION	FILL	{"fills": [{"fieldMention": "주소", "value": "부산광역시 예시구 예시로 10"}]}
+다음으로	IDLE	NEXT	{}
+다음으로	BROWSING	NEXT	{}
+다음으로	APPLICATION_OPEN	NEXT	{}
+다음으로	WAITING_FOR_USER_CONFIRMATION	NEXT	{}
+다음 단계로 넘어가줘	IDLE	NEXT	{}
+다음 단계로 넘어가줘	BROWSING	NEXT	{}
+다음 단계로 넘어가줘	APPLICATION_OPEN	NEXT	{}
+다음 단계로 넘어가줘	WAITING_FOR_USER_CONFIRMATION	NEXT	{}
+주소 다시 읽어줘	IDLE	READ_FIELD	{"fieldMention": "주소"}
+주소 다시 읽어줘	BROWSING	READ_FIELD	{"fieldMention": "주소"}
+주소 다시 읽어줘	APPLICATION_OPEN	READ_FIELD	{"fieldMention": "주소"}
+주소 다시 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_FIELD	{"fieldMention": "주소"}
+이름 뭐였지?	IDLE	READ_FIELD	{"fieldMention": "이름"}
+이름 뭐였지?	BROWSING	READ_FIELD	{"fieldMention": "이름"}
+이름 뭐였지?	APPLICATION_OPEN	READ_FIELD	{"fieldMention": "이름"}
+이름 뭐였지?	WAITING_FOR_USER_CONFIRMATION	READ_FIELD	{"fieldMention": "이름"}
+지금까지 쓴 내용 읽어줘	IDLE	REVIEW	{}
+지금까지 쓴 내용 읽어줘	BROWSING	REVIEW	{}
+지금까지 쓴 내용 읽어줘	APPLICATION_OPEN	REVIEW	{}
+지금까지 쓴 내용 읽어줘	WAITING_FOR_USER_CONFIRMATION	REVIEW	{}
+입력한 내용 전체 읽어줘	IDLE	REVIEW	{}
+입력한 내용 전체 읽어줘	BROWSING	REVIEW	{}
+입력한 내용 전체 읽어줘	APPLICATION_OPEN	REVIEW	{}
+입력한 내용 전체 읽어줘	WAITING_FOR_USER_CONFIRMATION	REVIEW	{}
+이 항목은 무슨 뜻이야?	IDLE	EXPLAIN	{}
+이 항목은 무슨 뜻이야?	BROWSING	EXPLAIN	{}
+이 항목은 무슨 뜻이야?	APPLICATION_OPEN	EXPLAIN	{}
+이 항목은 무슨 뜻이야?	WAITING_FOR_USER_CONFIRMATION	EXPLAIN	{}
+가구원 수가 무슨 뜻이야?	IDLE	EXPLAIN	{"fieldMention": "가구원 수"}
+가구원 수가 무슨 뜻이야?	BROWSING	EXPLAIN	{"fieldMention": "가구원 수"}
+가구원 수가 무슨 뜻이야?	APPLICATION_OPEN	EXPLAIN	{"fieldMention": "가구원 수"}
+가구원 수가 무슨 뜻이야?	WAITING_FOR_USER_CONFIRMATION	EXPLAIN	{"fieldMention": "가구원 수"}
+주소 수정할게	IDLE	EDIT_FIELD	{"fieldMention": "주소"}
+주소 수정할게	BROWSING	EDIT_FIELD	{"fieldMention": "주소"}
+주소 수정할게	APPLICATION_OPEN	EDIT_FIELD	{"fieldMention": "주소"}
+주소 수정할게	WAITING_FOR_USER_CONFIRMATION	EDIT_FIELD	{"fieldMention": "주소"}
+이름 고칠래	IDLE	EDIT_FIELD	{"fieldMention": "이름"}
+이름 고칠래	BROWSING	EDIT_FIELD	{"fieldMention": "이름"}
+이름 고칠래	APPLICATION_OPEN	EDIT_FIELD	{"fieldMention": "이름"}
+이름 고칠래	WAITING_FOR_USER_CONFIRMATION	EDIT_FIELD	{"fieldMention": "이름"}
+지금 어느 단계야?	IDLE	CURRENT_STEP	{}
+지금 어느 단계야?	BROWSING	CURRENT_STEP	{}
+지금 어느 단계야?	APPLICATION_OPEN	CURRENT_STEP	{}
+지금 어느 단계야?	WAITING_FOR_USER_CONFIRMATION	CURRENT_STEP	{}
+현재 단계 알려줘	IDLE	CURRENT_STEP	{}
+현재 단계 알려줘	BROWSING	CURRENT_STEP	{}
+현재 단계 알려줘	APPLICATION_OPEN	CURRENT_STEP	{}
+현재 단계 알려줘	WAITING_FOR_USER_CONFIRMATION	CURRENT_STEP	{}
+최종 확인할게	IDLE	PREPARE_SUBMIT	{}
+최종 확인할게	BROWSING	PREPARE_SUBMIT	{}
+최종 확인할게	APPLICATION_OPEN	PREPARE_SUBMIT	{}
+최종 확인할게	WAITING_FOR_USER_CONFIRMATION	PREPARE_SUBMIT	{}
+모의 접수 내용을 확인했어	IDLE	PREPARE_SUBMIT	{}
+모의 접수 내용을 확인했어	BROWSING	PREPARE_SUBMIT	{}
+모의 접수 내용을 확인했어	APPLICATION_OPEN	PREPARE_SUBMIT	{}
+모의 접수 내용을 확인했어	WAITING_FOR_USER_CONFIRMATION	PREPARE_SUBMIT	{}
+멈춰	IDLE	STOP	{}
+멈춰	BROWSING	STOP	{}
+멈춰	APPLICATION_OPEN	STOP	{}
+멈춰	WAITING_FOR_USER_CONFIRMATION	STOP	{}
+그만	IDLE	STOP	{}
+그만	BROWSING	STOP	{}
+그만	APPLICATION_OPEN	STOP	{}
+그만	WAITING_FOR_USER_CONFIRMATION	STOP	{}
+지금 어디까지 했어?	IDLE	PROGRESS	{}
+지금 어디까지 했어?	BROWSING	PROGRESS	{}
+지금 어디까지 했어?	APPLICATION_OPEN	PROGRESS	{}
+지금 어디까지 했어?	WAITING_FOR_USER_CONFIRMATION	PROGRESS	{}
+얼마나 남았어?	IDLE	PROGRESS	{}
+얼마나 남았어?	BROWSING	PROGRESS	{}
+얼마나 남았어?	APPLICATION_OPEN	PROGRESS	{}
+얼마나 남았어?	WAITING_FOR_USER_CONFIRMATION	PROGRESS	{}
+화면 설명해줘	IDLE	DESCRIBE_SCREEN	{}
+화면 설명해줘	BROWSING	DESCRIBE_SCREEN	{}
+화면 설명해줘	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+화면 설명해줘	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+지금 화면에 뭐가 있어?	IDLE	DESCRIBE_SCREEN	{}
+지금 화면에 뭐가 있어?	BROWSING	DESCRIBE_SCREEN	{}
+지금 화면에 뭐가 있어?	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+지금 화면에 뭐가 있어?	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+쉽게 말해줘	IDLE	REPHRASE	{}
+쉽게 말해줘	BROWSING	REPHRASE	{}
+쉽게 말해줘	APPLICATION_OPEN	REPHRASE	{}
+쉽게 말해줘	WAITING_FOR_USER_CONFIRMATION	REPHRASE	{}
+무슨 말이야?	IDLE	REPHRASE	{}
+무슨 말이야?	BROWSING	REPHRASE	{}
+무슨 말이야?	APPLICATION_OPEN	REPHRASE	{}
+무슨 말이야?	WAITING_FOR_USER_CONFIRMATION	REPHRASE	{}
+다시 시작	IDLE	RESUME	{}
+다시 시작	BROWSING	RESUME	{}
+다시 시작	APPLICATION_OPEN	RESUME	{}
+다시 시작	WAITING_FOR_USER_CONFIRMATION	RESUME	{}
+계속 진행해	IDLE	RESUME	{}
+계속 진행해	BROWSING	RESUME	{}
+계속 진행해	APPLICATION_OPEN	RESUME	{}
+계속 진행해	WAITING_FOR_USER_CONFIRMATION	RESUME	{}
+모의접수 승인	IDLE	APPROVE	{}
+모의접수 승인	BROWSING	APPROVE	{}
+모의접수 승인	APPLICATION_OPEN	APPROVE	{}
+모의접수 승인	WAITING_FOR_USER_CONFIRMATION	APPROVE	{}
+응	IDLE	UNKNOWN	{"text": "응"}
+응	BROWSING	UNKNOWN	{"text": "응"}
+응	APPLICATION_OPEN	UNKNOWN	{"text": "응"}
+응	WAITING_FOR_USER_CONFIRMATION	APPROVE	{}
+승인 안 해	IDLE	REJECT	{}
+승인 안 해	BROWSING	REJECT	{}
+승인 안 해	APPLICATION_OPEN	REJECT	{}
+승인 안 해	WAITING_FOR_USER_CONFIRMATION	REJECT	{}
+아니	IDLE	UNKNOWN	{"text": "아니"}
+아니	BROWSING	UNKNOWN	{"text": "아니"}
+아니	APPLICATION_OPEN	UNKNOWN	{"text": "아니"}
+아니	WAITING_FOR_USER_CONFIRMATION	REJECT	{}
+인증 끝났어	IDLE	AUTH_DONE	{}
+인증 끝났어	BROWSING	AUTH_DONE	{}
+인증 끝났어	APPLICATION_OPEN	AUTH_DONE	{}
+인증 끝났어	WAITING_FOR_USER_CONFIRMATION	AUTH_DONE	{}
+다 했어	IDLE	UNKNOWN	{"text": "다 했어"}
+다 했어	BROWSING	UNKNOWN	{"text": "다 했어"}
+다 했어	APPLICATION_OPEN	UNKNOWN	{"text": "다 했어"}
+다 했어	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "다 했어"}
+로그인 완료했어	IDLE	AUTH_DONE	{}
+로그인 완료했어	BROWSING	AUTH_DONE	{}
+로그인 완료했어	APPLICATION_OPEN	AUTH_DONE	{}
+로그인 완료했어	WAITING_FOR_USER_CONFIRMATION	AUTH_DONE	{}
+뭐라고 말하면 돼?	IDLE	WHAT_CAN_I_SAY	{"more": false}
+뭐라고 말하면 돼?	BROWSING	WHAT_CAN_I_SAY	{"more": false}
+뭐라고 말하면 돼?	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": false}
+뭐라고 말하면 돼?	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": false}
+뭘 할 수 있어?	IDLE	WHAT_CAN_I_SAY	{"more": false}
+뭘 할 수 있어?	BROWSING	WHAT_CAN_I_SAY	{"more": false}
+뭘 할 수 있어?	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": false}
+뭘 할 수 있어?	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": false}
+도움말	IDLE	WHAT_CAN_I_SAY	{"more": false}
+도움말	BROWSING	WHAT_CAN_I_SAY	{"more": false}
+도움말	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": false}
+도움말	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": false}
+사용법 알려줘	IDLE	WHAT_CAN_I_SAY	{"more": false}
+사용법 알려줘	BROWSING	WHAT_CAN_I_SAY	{"more": false}
+사용법 알려줘	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": false}
+사용법 알려줘	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": false}
+명령어 알려줘	IDLE	WHAT_CAN_I_SAY	{"more": false}
+명령어 알려줘	BROWSING	WHAT_CAN_I_SAY	{"more": false}
+명령어 알려줘	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": false}
+명령어 알려줘	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": false}
+다른 말도 알려줘	IDLE	WHAT_CAN_I_SAY	{"more": true}
+다른 말도 알려줘	BROWSING	WHAT_CAN_I_SAY	{"more": true}
+다른 말도 알려줘	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": true}
+다른 말도 알려줘	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": true}
+도움말 더	IDLE	WHAT_CAN_I_SAY	{"more": true}
+도움말 더	BROWSING	WHAT_CAN_I_SAY	{"more": true}
+도움말 더	APPLICATION_OPEN	WHAT_CAN_I_SAY	{"more": true}
+도움말 더	WAITING_FOR_USER_CONFIRMATION	WHAT_CAN_I_SAY	{"more": true}
+오늘 날씨 어때	IDLE	UNKNOWN	{"text": "오늘 날씨 어때"}
+오늘 날씨 어때	BROWSING	UNKNOWN	{"text": "오늘 날씨 어때"}
+오늘 날씨 어때	APPLICATION_OPEN	UNKNOWN	{"text": "오늘 날씨 어때"}
+오늘 날씨 어때	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "오늘 날씨 어때"}
+블라블라	IDLE	UNKNOWN	{"text": "블라블라"}
+블라블라	BROWSING	UNKNOWN	{"text": "블라블라"}
+블라블라	APPLICATION_OPEN	UNKNOWN	{"text": "블라블라"}
+블라블라	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "블라블라"}
+파일 탐색기 열어줘	IDLE	UNKNOWN	{"text": "파일 탐색기 열어줘"}
+파일 탐색기 열어줘	BROWSING	UNKNOWN	{"text": "파일 탐색기 열어줘"}
+파일 탐색기 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "파일 탐색기 열어줘"}
+파일 탐색기 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "파일 탐색기 열어줘"}
+탐색기 열어	IDLE	UNKNOWN	{"text": "탐색기 열어"}
+탐색기 열어	BROWSING	UNKNOWN	{"text": "탐색기 열어"}
+탐색기 열어	APPLICATION_OPEN	UNKNOWN	{"text": "탐색기 열어"}
+탐색기 열어	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "탐색기 열어"}
+내 파일 열어줘	IDLE	UNKNOWN	{"text": "내 파일 열어줘"}
+내 파일 열어줘	BROWSING	UNKNOWN	{"text": "내 파일 열어줘"}
+내 파일 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "내 파일 열어줘"}
+내 파일 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "내 파일 열어줘"}
+메모장 열어줘	IDLE	UNKNOWN	{"text": "메모장 열어줘"}
+메모장 열어줘	BROWSING	UNKNOWN	{"text": "메모장 열어줘"}
+메모장 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "메모장 열어줘"}
+메모장 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "메모장 열어줘"}
+계산기 켜줘	IDLE	UNKNOWN	{"text": "계산기 켜줘"}
+계산기 켜줘	BROWSING	UNKNOWN	{"text": "계산기 켜줘"}
+계산기 켜줘	APPLICATION_OPEN	UNKNOWN	{"text": "계산기 켜줘"}
+계산기 켜줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "계산기 켜줘"}
+카카오톡 열어줘	IDLE	UNKNOWN	{"text": "카카오톡 열어줘"}
+카카오톡 열어줘	BROWSING	UNKNOWN	{"text": "카카오톡 열어줘"}
+카카오톡 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "카카오톡 열어줘"}
+카카오톡 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "카카오톡 열어줘"}
+공동인증서 열어줘	IDLE	UNKNOWN	{"text": "공동인증서 열어줘"}
+공동인증서 열어줘	BROWSING	UNKNOWN	{"text": "공동인증서 열어줘"}
+공동인증서 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "공동인증서 열어줘"}
+공동인증서 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "공동인증서 열어줘"}
+다운로드 폴더 열어줘	IDLE	UNKNOWN	{"text": "다운로드 폴더 열어줘"}
+다운로드 폴더 열어줘	BROWSING	UNKNOWN	{"text": "다운로드 폴더 열어줘"}
+다운로드 폴더 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "다운로드 폴더 열어줘"}
+다운로드 폴더 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "다운로드 폴더 열어줘"}
+다운로드 폴더에 뭐 있어?	IDLE	READ_DOWNLOAD	{"list": true}
+다운로드 폴더에 뭐 있어?	BROWSING	READ_DOWNLOAD	{"list": true}
+다운로드 폴더에 뭐 있어?	APPLICATION_OPEN	READ_DOWNLOAD	{"list": true}
+다운로드 폴더에 뭐 있어?	WAITING_FOR_USER_CONFIRMATION	READ_DOWNLOAD	{"list": true}
+다운로드 폴더 보여줘	IDLE	UNKNOWN	{"text": "다운로드 폴더 보여줘"}
+다운로드 폴더 보여줘	BROWSING	UNKNOWN	{"text": "다운로드 폴더 보여줘"}
+다운로드 폴더 보여줘	APPLICATION_OPEN	UNKNOWN	{"text": "다운로드 폴더 보여줘"}
+다운로드 폴더 보여줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "다운로드 폴더 보여줘"}
+문서 폴더 열어줘	IDLE	UNKNOWN	{"text": "문서 폴더 열어줘"}
+문서 폴더 열어줘	BROWSING	UNKNOWN	{"text": "문서 폴더 열어줘"}
+문서 폴더 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "문서 폴더 열어줘"}
+문서 폴더 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "문서 폴더 열어줘"}
+바탕화면에 뭐 있어?	IDLE	DESCRIBE_SCREEN	{}
+바탕화면에 뭐 있어?	BROWSING	DESCRIBE_SCREEN	{}
+바탕화면에 뭐 있어?	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+바탕화면에 뭐 있어?	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+바탕 화면에 뭐 있어	IDLE	DESCRIBE_SCREEN	{}
+바탕 화면에 뭐 있어	BROWSING	DESCRIBE_SCREEN	{}
+바탕 화면에 뭐 있어	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+바탕 화면에 뭐 있어	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+사진 폴더에 뭐 있어?	IDLE	UNKNOWN	{"text": "사진 폴더에 뭐 있어?"}
+사진 폴더에 뭐 있어?	BROWSING	UNKNOWN	{"text": "사진 폴더에 뭐 있어?"}
+사진 폴더에 뭐 있어?	APPLICATION_OPEN	UNKNOWN	{"text": "사진 폴더에 뭐 있어?"}
+사진 폴더에 뭐 있어?	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "사진 폴더에 뭐 있어?"}
+음악 폴더 열어줘	IDLE	UNKNOWN	{"text": "음악 폴더 열어줘"}
+음악 폴더 열어줘	BROWSING	UNKNOWN	{"text": "음악 폴더 열어줘"}
+음악 폴더 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "음악 폴더 열어줘"}
+음악 폴더 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "음악 폴더 열어줘"}
+동영상 폴더 열어	IDLE	UNKNOWN	{"text": "동영상 폴더 열어"}
+동영상 폴더 열어	BROWSING	UNKNOWN	{"text": "동영상 폴더 열어"}
+동영상 폴더 열어	APPLICATION_OPEN	UNKNOWN	{"text": "동영상 폴더 열어"}
+동영상 폴더 열어	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "동영상 폴더 열어"}
+내 문서 열어줘	IDLE	UNKNOWN	{"text": "내 문서 열어줘"}
+내 문서 열어줘	BROWSING	UNKNOWN	{"text": "내 문서 열어줘"}
+내 문서 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "내 문서 열어줘"}
+내 문서 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "내 문서 열어줘"}
+1번 읽어줘	IDLE	UNKNOWN	{"text": "1번 읽어줘"}
+1번 읽어줘	BROWSING	UNKNOWN	{"text": "1번 읽어줘"}
+1번 읽어줘	APPLICATION_OPEN	UNKNOWN	{"text": "1번 읽어줘"}
+1번 읽어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "1번 읽어줘"}
+2번 열어줘	IDLE	UNKNOWN	{"text": "2번 열어줘"}
+2번 열어줘	BROWSING	UNKNOWN	{"text": "2번 열어줘"}
+2번 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "2번 열어줘"}
+2번 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "2번 열어줘"}
+3번	IDLE	UNKNOWN	{"text": "3번"}
+3번	BROWSING	UNKNOWN	{"text": "3번"}
+3번	APPLICATION_OPEN	UNKNOWN	{"text": "3번"}
+3번	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "3번"}
+신청서 파일 열어줘	IDLE	UNKNOWN	{"text": "신청서 파일 열어줘"}
+신청서 파일 열어줘	BROWSING	UNKNOWN	{"text": "신청서 파일 열어줘"}
+신청서 파일 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "신청서 파일 열어줘"}
+신청서 파일 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "신청서 파일 열어줘"}
+신청서 파일 읽어줘	IDLE	READ_DOWNLOAD	{"list": false}
+신청서 파일 읽어줘	BROWSING	READ_DOWNLOAD	{"list": false}
+신청서 파일 읽어줘	APPLICATION_OPEN	READ_DOWNLOAD	{"list": false}
+신청서 파일 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_DOWNLOAD	{"list": false}
+기초연금 안내 읽어줘	IDLE	UNKNOWN	{"text": "기초연금 안내 읽어줘"}
+기초연금 안내 읽어줘	BROWSING	UNKNOWN	{"text": "기초연금 안내 읽어줘"}
+기초연금 안내 읽어줘	APPLICATION_OPEN	UNKNOWN	{"text": "기초연금 안내 읽어줘"}
+기초연금 안내 읽어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "기초연금 안내 읽어줘"}
+설치 파일 열어줘	IDLE	UNKNOWN	{"text": "설치 파일 열어줘"}
+설치 파일 열어줘	BROWSING	UNKNOWN	{"text": "설치 파일 열어줘"}
+설치 파일 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "설치 파일 열어줘"}
+설치 파일 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "설치 파일 열어줘"}
+목록 더	IDLE	UNKNOWN	{"text": "목록 더"}
+목록 더	BROWSING	UNKNOWN	{"text": "목록 더"}
+목록 더	APPLICATION_OPEN	UNKNOWN	{"text": "목록 더"}
+목록 더	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "목록 더"}
+목록 더 알려줘	IDLE	UNKNOWN	{"text": "목록 더 알려줘"}
+목록 더 알려줘	BROWSING	UNKNOWN	{"text": "목록 더 알려줘"}
+목록 더 알려줘	APPLICATION_OPEN	UNKNOWN	{"text": "목록 더 알려줘"}
+목록 더 알려줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "목록 더 알려줘"}
+더 읽어줘	IDLE	READ_MAIN	{"more": true}
+더 읽어줘	BROWSING	READ_MAIN	{"more": true}
+더 읽어줘	APPLICATION_OPEN	READ_MAIN	{"more": true}
+더 읽어줘	WAITING_FOR_USER_CONFIRMATION	READ_MAIN	{"more": true}
+뒤로	IDLE	PREV	{}
+뒤로	BROWSING	PREV	{}
+뒤로	APPLICATION_OPEN	PREV	{}
+뒤로	WAITING_FOR_USER_CONFIRMATION	PREV	{}
+위 폴더로 가줘	IDLE	UNKNOWN	{"text": "위 폴더로 가줘"}
+위 폴더로 가줘	BROWSING	UNKNOWN	{"text": "위 폴더로 가줘"}
+위 폴더로 가줘	APPLICATION_OPEN	UNKNOWN	{"text": "위 폴더로 가줘"}
+위 폴더로 가줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "위 폴더로 가줘"}
+상위 폴더로	IDLE	UNKNOWN	{"text": "상위 폴더로"}
+상위 폴더로	BROWSING	UNKNOWN	{"text": "상위 폴더로"}
+상위 폴더로	APPLICATION_OPEN	UNKNOWN	{"text": "상위 폴더로"}
+상위 폴더로	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "상위 폴더로"}
+지금 화면 뭐야	IDLE	CURRENT_STEP	{}
+지금 화면 뭐야	BROWSING	CURRENT_STEP	{}
+지금 화면 뭐야	APPLICATION_OPEN	CURRENT_STEP	{}
+지금 화면 뭐야	WAITING_FOR_USER_CONFIRMATION	CURRENT_STEP	{}
+화면 사진으로 설명해줘	IDLE	DESCRIBE_SCREEN	{}
+화면 사진으로 설명해줘	BROWSING	DESCRIBE_SCREEN	{}
+화면 사진으로 설명해줘	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+화면 사진으로 설명해줘	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+사진으로 설명해줘	IDLE	EXPLAIN	{}
+사진으로 설명해줘	BROWSING	EXPLAIN	{}
+사진으로 설명해줘	APPLICATION_OPEN	EXPLAIN	{}
+사진으로 설명해줘	WAITING_FOR_USER_CONFIRMATION	EXPLAIN	{}
+사진 찍어서 설명해줘	IDLE	EXPLAIN	{}
+사진 찍어서 설명해줘	BROWSING	EXPLAIN	{}
+사진 찍어서 설명해줘	APPLICATION_OPEN	EXPLAIN	{}
+사진 찍어서 설명해줘	WAITING_FOR_USER_CONFIRMATION	EXPLAIN	{}
+이 화면 그림으로 설명해줘	IDLE	DESCRIBE_SCREEN	{}
+이 화면 그림으로 설명해줘	BROWSING	DESCRIBE_SCREEN	{}
+이 화면 그림으로 설명해줘	APPLICATION_OPEN	DESCRIBE_SCREEN	{}
+이 화면 그림으로 설명해줘	WAITING_FOR_USER_CONFIRMATION	DESCRIBE_SCREEN	{}
+1번 눌러줘	IDLE	FOLLOW_LINK	{"name": "1번"}
+1번 눌러줘	BROWSING	FOLLOW_LINK	{"name": "1번"}
+1번 눌러줘	APPLICATION_OPEN	FOLLOW_LINK	{"name": "1번"}
+1번 눌러줘	WAITING_FOR_USER_CONFIRMATION	FOLLOW_LINK	{"name": "1번"}
+네이버 열어줘	IDLE	OPEN_SITE	{"target": "네이버 열어줘"}
+네이버 열어줘	BROWSING	OPEN_SITE	{"target": "네이버 열어줘"}
+네이버 열어줘	APPLICATION_OPEN	OPEN_SITE	{"target": "네이버 열어줘"}
+네이버 열어줘	WAITING_FOR_USER_CONFIRMATION	APPROVE	{}
+파일 열어줘	IDLE	UNKNOWN	{"text": "파일 열어줘"}
+파일 열어줘	BROWSING	UNKNOWN	{"text": "파일 열어줘"}
+파일 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "파일 열어줘"}
+파일 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "파일 열어줘"}
+폴더 열어줘	IDLE	UNKNOWN	{"text": "폴더 열어줘"}
+폴더 열어줘	BROWSING	UNKNOWN	{"text": "폴더 열어줘"}
+폴더 열어줘	APPLICATION_OPEN	UNKNOWN	{"text": "폴더 열어줘"}
+폴더 열어줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "폴더 열어줘"}
+창으로 보여줘	IDLE	UNKNOWN	{"text": "창으로 보여줘"}
+창으로 보여줘	BROWSING	UNKNOWN	{"text": "창으로 보여줘"}
+창으로 보여줘	APPLICATION_OPEN	UNKNOWN	{"text": "창으로 보여줘"}
+창으로 보여줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "창으로 보여줘"}
+탐색기 창으로 보여줘	IDLE	UNKNOWN	{"text": "탐색기 창으로 보여줘"}
+탐색기 창으로 보여줘	BROWSING	UNKNOWN	{"text": "탐색기 창으로 보여줘"}
+탐색기 창으로 보여줘	APPLICATION_OPEN	UNKNOWN	{"text": "탐색기 창으로 보여줘"}
+탐색기 창으로 보여줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "탐색기 창으로 보여줘"}
+사진 보여줘	IDLE	UNKNOWN	{"text": "사진 보여줘"}
+사진 보여줘	BROWSING	UNKNOWN	{"text": "사진 보여줘"}
+사진 보여줘	APPLICATION_OPEN	UNKNOWN	{"text": "사진 보여줘"}
+사진 보여줘	WAITING_FOR_USER_CONFIRMATION	UNKNOWN	{"text": "사진 보여줘"}
+진행해	IDLE	UNKNOWN	{"text": "진행해"}
+진행해	BROWSING	UNKNOWN	{"text": "진행해"}
+진행해	APPLICATION_OPEN	UNKNOWN	{"text": "진행해"}
+진행해	WAITING_FOR_USER_CONFIRMATION	APPROVE	{}
+거절	IDLE	REJECT	{}
+거절	BROWSING	REJECT	{}
+거절	APPLICATION_OPEN	REJECT	{}
+거절	WAITING_FOR_USER_CONFIRMATION	REJECT	{}

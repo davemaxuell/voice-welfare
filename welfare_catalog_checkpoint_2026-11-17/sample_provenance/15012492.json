@@ -1,0 +1,30 @@
+{
+  "id": "15012492",
+  "source": "https://www.data.go.kr/data/15012492/fileData.do",
+  "retrieved_at": "2026-11-17T16:53:41.942238+00:00",
+  "rows": [
+    [
+      "연도",
+      "소급통산",
+      "군복무기간산입"
+    ],
+    [
+      "1976",
+      "4000",
+      "0"
+    ],
+    [
+      "1977",
+      "0",
+      "0"
+    ],
+    [
+      "1978",
+      "4934",
+      "0"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15012492&publicDataDetailPk=uddi%3A391d979b-17f5-4ada-b428-f2aab88cd3d9",
+  "sample_type": "official public file preview"
+}

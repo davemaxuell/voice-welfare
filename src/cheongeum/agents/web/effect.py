@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Literal, Mapping, NamedTuple
 
-from cheongeum.core.jsutil import I, rx
+from cheongeum.core.jsutil import I, nz, rx
 from cheongeum.speech.phrasing import chunk_text, josa
 
 Effect = Literal["moved", "changed", "none"]
@@ -75,6 +75,20 @@ def click_note(
 
 def looks_loading(text: str) -> bool:
     return len(text) < LOADING_MAX_CHARS and bool(_LOADING.search(text))
+
+
+def has_content(view: dict) -> bool:
+    """화면에 내용이 그려졌는지(SPA는 주소가 먼저 바뀌고 내용이 나중에 채워진다)."""
+    o = view.get("outline") or {}
+    return (nz(o.get("linkCount"), 0) + len(o.get("buttons") or []) + len(view.get("fields") or [])) > 0 or bool(o.get("mainText"))
+
+
+def still_building(view: dict) -> bool:
+    """아직 채워지는 화면: 그려진 것이 없거나 내용을 받아 오는 중이다. 빈 창(about:blank)은 열리는 중이 아니다."""
+    return view.get("pageId") != "blank" and (bool(view.get("loading")) or not has_content(view))
+
+
+NOT_READY = "화면이 아직 다 열리지 않았어요. 잠시 뒤 '본문 읽어줘'라고 말씀해 주세요."
 
 
 def _lines(view: dict) -> list[str]:

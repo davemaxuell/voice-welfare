@@ -2,7 +2,28 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Callable
+
+from cheongeum.core.jsutil import uuid
+from cheongeum.core.places import PlaceAsk
+
+
+@dataclass
+class AuthHandoff:
+    id: str
+    session_id: str
+    task_id: str
+    browser: object
+    expected_origin: str
+    expected_path: str
+    kind: str
+    deadline: float
+    site: str
+    status: str = "waiting"
+
+    def public(self) -> dict:
+        return {"id": self.id, "taskId": self.task_id, "kind": self.kind, "status": self.status, "site": self.site}
 
 
 class DialogueState:
@@ -20,9 +41,13 @@ class DialogueState:
         "_awaiting",
         "_clarification",
         "_profile_question",
+        "_place_ask",
         "_vault_confirm",
         "_guided",
         "_auth_resume",
+        "_auth_handoff",
+        "_site_guess",
+        "_first_run",
     )
 
     def __init__(self, state: str, clock: Callable[[], float] = time.monotonic) -> None:
@@ -33,10 +58,16 @@ class DialogueState:
         self._awaiting: str | None = None
         self._clarification: dict | None = None
         self._profile_question: str | None = None
+        self._place_ask: PlaceAsk | None = None
         self._vault_confirm: dict | None = None
         self._guided: dict | None = None
         # 본인인증 인계가 끝나면 이어서 할 일({'kind': 'form'|'guided'|…}). 없으면 None.
         self._auth_resume: dict | None = None
+        self._auth_handoff: AuthHandoff | None = None
+        # 한 글자 다른 사이트 이름을 맞게 들었는지 묻는 중 {'text': 고친 말, 'label': 사이트 이름}
+        self._site_guess: dict | None = None
+        # 첫 실행 설정 3단계에서 지금 묻는 것(mic·name·name-confirm·stop·intro·practice). 없으면 None.
+        self._first_run: str | None = None
 
     @property
     def state(self) -> str:
@@ -59,7 +90,7 @@ class DialogueState:
     @property
     def confirmation(self) -> dict | None:
         """승인 대기의 confirmation(snapshot·TurnResult의 pendingConfirmation)"""
-        return (self._approval or {}).get("confirmation")
+        return (self._approval or self._vault_confirm or {}).get("confirmation")
 
     @property
     def expects_confirmation(self) -> bool:
@@ -82,6 +113,18 @@ class DialogueState:
         return self._profile_question
 
     @property
+    def place_ask(self) -> PlaceAsk | None:
+        return self._place_ask
+
+    def ask_place(self, ask: PlaceAsk | None) -> None:
+        self._profile_question = None
+        self._place_ask = ask
+
+    def take_place_ask(self) -> PlaceAsk | None:
+        ask, self._place_ask = self._place_ask, None
+        return ask
+
+    @property
     def vault_confirm(self) -> dict | None:
         """저장·삭제 확인을 기다리는 금고 명령"""
         return self._vault_confirm
@@ -100,7 +143,7 @@ class DialogueState:
         """턴의 결과 상태를 확정한다. (SessionOrchestrator._finish)"""
         self._state = state
 
-    def stop(self) -> None:
+    def stop(self, *, preserve_auth: bool = False) -> None:
         """
         멈춤: 기다리던 여섯 가지를 모두 지운다. 멈춘 뒤의 "응"이 예전 질문의 대답으로 쓰이지 않게.
         (SessionOrchestrator._stop, 락 밖에서)
@@ -109,16 +152,23 @@ class DialogueState:
         self._awaiting = None
         self._clarification = None
         self._profile_question = None
+        self._first_run = None
+        self._place_ask = None
         self._vault_confirm = None
         self._guided = None
-        self._auth_resume = None
+        self._site_guess = None
+        if not preserve_auth:
+            self.finish_auth("cancelled")
 
     def ask_approval(self, approval: dict) -> None:
         """
         실행 직전 승인을 물었다. 다시 물으면 시간도 새로 잰다.
         (FormSkill._assist_fill_request, FormSkill.prepare_submit, BrowseSkill.ask_click, SessionOrchestrator._approve 시간 지남)
         """
+        if self._approval and self.confirmation == approval["confirmation"]:
+            approval = {**approval, "confirmation": {**approval["confirmation"], "actionId": uuid()}}
         self._approval = approval
+        self._vault_confirm = None
         self._approval_at = self._clock()
 
     def clear_approval(self) -> None:
@@ -159,9 +209,37 @@ class DialogueState:
         """되묻기를 접는다. (SessionOrchestrator._route 두 곳, _short_reply)"""
         self._clarification = None
 
+    def ask_site(self, guess: dict) -> None:
+        """'복지루'처럼 한 글자 다른 사이트 이름을 '복지로' 말씀이세요? 하고 물었다. (SessionOrchestrator._route)"""
+        self._site_guess = guess
+
+    def take_site_guess(self) -> dict | None:
+        """사이트 이름 확인 대기를 꺼내면서 지운다. (SessionOrchestrator._process_korean)"""
+        guess, self._site_guess = self._site_guess, None
+        return guess
+
+    @property
+    def has_pending_interaction(self) -> bool:
+        return bool(self._approval or self._awaiting or self._clarification or self._site_guess or self._profile_question
+                    or self._first_run or self._place_ask or self._vault_confirm or self._guided or self.auth_waiting)
+
+    @property
+    def first_run(self) -> str | None:
+        """첫 실행 설정 3단계에서 지금 묻는 것"""
+        return self._first_run
+
+    def ask_first_run(self, step: str) -> None:
+        """첫 실행 설정 단계를 물었다. (FirstRunGuide, SessionOrchestrator._stop의 '멈춰' 연습 뒤)"""
+        self._first_run = step
+
+    def end_first_run(self) -> None:
+        """첫 실행 설정 대화를 접는다. (FirstRunGuide: 끝까지 했거나 다른 명령이 왔을 때)"""
+        self._first_run = None
+
     def ask_profile(self, slot: str) -> None:
         """맞춤 복지 찾기 항목을 물었다. (SessionOrchestrator._discover_step)"""
         self._profile_question = slot
+        self._place_ask = None
 
     def profile_done(self) -> None:
         """맞춤 찾기 질문을 접는다. (SessionOrchestrator._discover_step 다 모임, _process_korean 다른 명령)"""
@@ -169,7 +247,14 @@ class DialogueState:
 
     def ask_vault_confirm(self, command: dict) -> None:
         """금고 저장·삭제를 해도 되는지 물었다. (PersonalDialogue.run 두 곳)"""
+        kind = command["kind"]
+        if kind in ("vault-save", "vault-clear"):
+            command = {**command, "confirmation": {
+                "actionId": uuid(), "kind": kind, "purpose": "내 정보 저장" if kind == "vault-save" else "내 정보 삭제",
+                "site": "청음", "values": [], "realSubmission": False,
+            }}
         self._vault_confirm = command
+        self._approval = None
 
     def take_vault_confirm(self) -> dict | None:
         """확인 대기를 꺼내면서 지운다. (PersonalDialogue.confirm)"""
@@ -184,12 +269,30 @@ class DialogueState:
         """칸 채우기를 접는다. (GuidedFill.active 페이지를 떠남, GuidedFill.answer 네 곳)"""
         self._guided = None
 
-    def hold_auth(self, resume: dict | None = None) -> None:
+    @property
+    def auth_handoff(self) -> AuthHandoff | None:
+        return self._auth_handoff
+
+    @property
+    def auth_waiting(self) -> bool:
+        return self._auth_handoff is not None and self._auth_handoff.status == "waiting"
+
+    def finish_auth(self, status: str) -> None:
+        if self.auth_waiting:
+            self._auth_handoff.status = status
+            self._auth_handoff.browser = None
+        self._auth_resume = None
+
+    def hold_auth(self, resume: dict | None = None, handoff: AuthHandoff | None = None) -> None:
         """
         본인인증을 사용자에게 넘긴다. 끝나면 이어서 할 일(resume)이 있으면 함께 둔다.
         (BrowseSkill._begin_auth_handoff)
         """
         self._auth_resume = resume
+        self._auth_handoff = handoff
+        self.clear_approval()
+        self.drop_value_wait()
+        self._vault_confirm = None
 
     def take_auth_resume(self) -> dict | None:
         """인계 뒤 이어서 할 일을 꺼내면서 지운다. (BrowseSkill.auth_done)"""

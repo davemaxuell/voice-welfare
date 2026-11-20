@@ -3,13 +3,13 @@
 from cheongeum.agents.welfare.agent import GroundedAnswer, WelfareInformationAgent, first_sentence
 from cheongeum.agents.welfare.discovery import (
     PROFILE_ORDER,
-    PROFILE_QUESTIONS,
     Match,
     describe_profile,
     life_stage_of,
     match_services,
     next_profile_slot,
     parse_profile_answer,
+    profile_question,
     targets_of,
 )
 from cheongeum.agents.welfare.rag import SECTION_HINTS, chunk_service, retrieve
@@ -18,7 +18,6 @@ __all__ = [
     "GroundedAnswer",
     "Match",
     "PROFILE_ORDER",
-    "PROFILE_QUESTIONS",
     "SECTION_HINTS",
     "WelfareInformationAgent",
     "chunk_service",
@@ -28,6 +27,7 @@ __all__ = [
     "match_services",
     "next_profile_slot",
     "parse_profile_answer",
+    "profile_question",
     "retrieve",
     "targets_of",
 ]

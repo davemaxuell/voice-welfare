@@ -1,13 +1,21 @@
-"""② 말 이해: 규칙으로 여러 명령 나누기 → 규칙 하나로 이해 → 안 되면 LLM 계획. 무엇이 이해했는지(by)도 함께 돌려준다."""
+"""② 말 이해. 안전 명령과 대화 중인 선택을 먼저 처리하고, 모델이 없거나 계획에 실패하면 규칙을 쓴다."""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, Sequence
 
 from cheongeum.core.jsutil import rx
+from cheongeum.understanding.fastpath import fast_intent, picture_command_parts
 from cheongeum.understanding.filters import is_question_like
 from cheongeum.understanding.llm_planner import plan_with_llm
-from cheongeum.understanding.rules import IntentContext, RuleBasedIntentProvider, clean_value
+from cheongeum.understanding.rules import IntentContext, RuleBasedIntentProvider, clean_value, is_picture_request
+
+PLAN_TIMEOUT_S = 8.0
+
+
+# 목표 하나의 조각일 수 있는 것: 읽기·묻기뿐(입력·신청 시작처럼 따로 할 일이 섞이면 나눈다)
+_GOAL_PARTS = frozenset({"GOAL", "CURRENT_STEP", "DESCRIBE_SCREEN", "READ_MAIN", "ABOUT_SITE", "POLICY_QUESTION", "UNKNOWN"})
 
 
 def merge_fills(intents: list[dict]) -> list[dict]:
@@ -25,7 +33,7 @@ def merge_fills(intents: list[dict]) -> list[dict]:
 @dataclass(frozen=True)
 class Understood:
     intents: list[dict]
-    # 누가 이해했는지: "rules", 의도 공급자 이름, LLM 이름(오케스트레이터의 INTENT_DETECTED 기록)
+    # 오케스트레이터의 INTENT_DETECTED 기록에 남길 이해 경로
     by: str
 
 
@@ -58,32 +66,69 @@ class Understanding:
         page: str | None,
         recent: list[str],
         trace: Callable[[str], None],
+        max_steps: int = 6,
     ) -> Understood:
-        """
-        말 이해: ① 규칙으로 여러 명령 나누기 → ② 규칙 하나로 이해 → ③ 안 되면 LLM 계획(여러 명령·애매한 말).
-        값을 기다리는 중이거나 되묻기·번호 고르기 중이면 LLM을 거치지 않는다(빠르게, 오해 없이).
-        """
+        llm = self.deps.llm
+        if llm is None:
+            result = await self._by_rules(text, ctx, "rules")
+            if result.intents[0]["type"] != "UNKNOWN" or ctx.awaitingFieldId or self._contextual(text, awaited, clarifying):
+                return result
+            provider = self.deps.intent_provider
+            return Understood([await provider.parse(text, ctx)], provider.name)
+
+        fast = fast_intent(text, ctx, self._rules)
+        if fast and fast["type"] != "DESCRIBE_PICTURE":
+            return Understood([fast], "fast")
+        # 사진을 요청한 절은 모델이 대신 만들 수 없다. 함께 요청한 읽기 등도 원래 순서로 처리한다.
+        if parts := picture_command_parts(text, self._rules):
+            intents = []
+            by = "fast"
+            for part in parts:
+                step = await self.understand(part, ctx, awaited=awaited, clarifying=clarifying, page=page, recent=recent, trace=trace)
+                if any(i["type"] == "APPROVE" for i in step.intents):
+                    return Understood([{"type": "UNKNOWN", "text": text}], "rules")
+                intents.extend(step.intents)
+                if step.by != "fast":
+                    by = step.by
+            return Understood(merge_fills(intents), by)
+        if fast:
+            return Understood([fast], "fast")
+        if self._contextual(text, awaited, clarifying):
+            return Understood([await self._rules.parse(text, ctx)], "rules")
+        trace("LLM 계획")
+        try:
+            plan = await asyncio.wait_for(
+                plan_with_llm(llm, text, ctx, self._vocabulary, page=page, history=recent, max_steps=max_steps), PLAN_TIMEOUT_S,
+            )
+        except Exception:
+            plan = None
+        if plan is None:
+            return await self._by_rules(text, ctx, "rules-fallback")
+        if len(plan) == 1:
+            return Understood(plan, llm.name)
+        kept = [i for i in plan if i["type"] != "UNKNOWN" or i["text"] != text]
+        return Understood(merge_fills(kept) or [{"type": "UNKNOWN", "text": text}], llm.name)
+
+    @staticmethod
+    def _contextual(text: str, awaited: AwaitedField | None, clarifying: bool) -> bool:
+        if awaited and not is_question_like(text):
+            if not awaited.validate or awaited.validate(clean_value(text)).ok:
+                return True
+        return clarifying or bool(rx(r"\d{1,2}\s*번(?:이요|요|(?:을|를)?\s*(?:눌러|열어|선택해)(?:\s*(?:줘요?|주세요))?)?[.!。]?").fullmatch(text.strip()))
+
+    async def _by_rules(self, text: str, ctx: IntentContext, by: str) -> Understood:
         parts = self._rules.split_commands(text)
+        single = await self._rules.parse(text, ctx)
         if len(parts) > 1:
             parsed = [await self._rules.parse(p, ctx) for p in parts]
+            # "정부24에서 … 찾아줘. 로그인하지 말고, 어떤 단계부터 … 알려줘"는 목표 하나: 나누면 뒤의 조건·질문을 잃는다
+            if single["type"] == "GOAL" and all(i["type"] in _GOAL_PARTS for i in parsed):
+                return Understood([single], by)
             if all(i["type"] != "UNKNOWN" for i in parsed):
-                return Understood(merge_fills(parsed), "rules")
-        single = await self._rules.parse(text, ctx)
-        if single["type"] != "UNKNOWN":
-            return Understood([single], "rules")
-        # 값을 기다리는 중이고 그 항목 형식에 맞는 말이면 바로 입력(빠르게). 맞지 않으면 LLM이 해석한다.
-        valid_value = (
-            bool(awaited) and not is_question_like(text) and (awaited.validate(clean_value(text)).ok if awaited.validate else True)  # type: ignore[union-attr]
-        )
-        contextual = valid_value or clarifying or rx(r"^\d{1,2}\s*번").search(text) or (ctx.awaitingFieldId and not self.deps.llm)
-        if contextual:
-            return Understood([single], "rules")
-        if not self.deps.llm:
-            by = self.deps.intent_provider.name
-            return Understood([await self.deps.intent_provider.parse(text, ctx)], by)
-        trace("LLM 계획")
-        plan = await plan_with_llm(self.deps.llm, text, ctx, self._vocabulary, page=page, history=recent)
-        by = self.deps.llm.name
-        if plan and not (len(plan) == 1 and plan[0]["type"] == "UNKNOWN"):
-            return Understood(merge_fills([i for i in plan if i["type"] != "UNKNOWN"]), by)
+                # 절을 나누더라도 승인·사진 요청의 범위는 전체 발화로 확인한다.
+                if any(i["type"] == "APPROVE" or (
+                    i["type"] == "DESCRIBE_PICTURE" and not is_picture_request(i["question"], utterance=text)
+                ) for i in parsed):
+                    return Understood([single], by)
+                return Understood(merge_fills(parsed), by)
         return Understood([single], by)

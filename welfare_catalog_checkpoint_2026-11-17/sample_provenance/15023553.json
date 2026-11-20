@@ -1,0 +1,38 @@
+{
+  "id": "15023553",
+  "source": "https://www.data.go.kr/data/15023553/fileData.do",
+  "retrieved_at": "2026-11-17T17:01:39.038827+00:00",
+  "rows": [
+    [
+      "시설유형",
+      "시설명",
+      "시설주소(도로명)",
+      "전화번호",
+      "비고"
+    ],
+    [
+      "장애인공동생활가정",
+      "루비홈",
+      "부산광역시 동구 홍곡로 67, 다동 304호(수정동, 동남아파트)",
+      "051-441-4535",
+      "사)부산광역시지적발달장애인복지협회"
+    ],
+    [
+      "장애인복지관",
+      "동구장애인복지관",
+      "부산광역시 동구 망양로 748(수정동)",
+      "051-469-9757",
+      "사회복지법인 행복한 오늘"
+    ],
+    [
+      "장애인주간보호시설",
+      "동구장애인주간이용시설",
+      "부산광역시 동구 안창로 57, 1층(범일동)",
+      "051-633-3367",
+      "재단법인 한결재단"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15023553&publicDataDetailPk=uddi%3Ab5078730-dbe4-42a4-bfcd-cec07a24d68d",
+  "sample_type": "official public file preview"
+}

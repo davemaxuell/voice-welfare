@@ -10,11 +10,11 @@ from cheongeum.voice.errors import VoiceNotSupportedError, VoiceProviderError
 
 
 class UnsupportedSttProvider:
-    name = "browser-only"
+    name = "unconfigured"
     supported = False
 
     async def transcribe(self, audio: bytes, *, language: str, mime_type: str, signal: AbortSignal | None = None) -> dict:
-        raise VoiceNotSupportedError("서버 STT가 설정되지 않았습니다. 브라우저 음성 인식이나 텍스트 입력을 사용하세요.")
+        raise VoiceNotSupportedError("음성 입력을 사용하려면 이용 설정에서 OpenAI API 키를 등록해 주세요.")
 
 
 EXTENSIONS = {
@@ -25,6 +25,9 @@ EXTENSIONS = {
     "audio/wav": "wav",
     "audio/x-wav": "wav",
     "audio/m4a": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/flac": "flac",
+    "audio/aac": "aac",
 }
 
 
@@ -33,19 +36,14 @@ def audio_extension(mime_type: str) -> str:
 
 
 # 복지 신청 용어 인식을 돕는 힌트. 사용자 발화가 아니라 고정 문구다.
-STT_PROMPT = "장애인연금 신청 대화. 성명, 주민등록 주소, 실거주지, 연락처, 소득·재산 신고, 가구원 수, 모의접수, 다음으로, 이전으로, 멈춰, 청음아."
-PROMPT_TERMS = [t for t in (rx(r"\s+").sub("", x) for x in rx(r"[.,]\s*").split(STT_PROMPT)) if len(t) >= 2]
+STT_PROMPT = "청음아, 정부24, 주민등록등본, 국민신문고, 민원, 한국장학재단, 국가장학금, 고용24, 홈택스, 복지로, 장애인연금, 다음으로, 이전으로, 멈춰."
+PROMPT_TERMS = tuple(t.strip(" .") for t in STT_PROMPT.split(","))
 # 외국어로 말하면 힌트를 영어로 옮겨 내놓기도 한다
 PROMPT_TERMS_EN = [
     rx(p, I)
     for p in (
-        r"pension application",
-        r"resident registration",
-        r"actual residence",
-        r"contact information",
-        r"income and property",
-        r"household members",
-        r"mock application",
+        r"government\s*24", r"resident registration", r"civil (?:petition|complaint)",
+        r"student aid foundation", r"national scholarship", r"employment\s*24", r"hometax", r"bokjiro",
     )
 ]
 
@@ -53,7 +51,9 @@ PROMPT_TERMS_EN = [
 def is_prompt_echo(text: str) -> bool:
     """받아쓴 글이 힌트 낱말을 여러 개 그대로(또는 영어로 옮겨) 담고 있으면 힌트를 되뱉은 것으로 본다."""
     t = rx(r"\s+").sub("", text)
-    return len([term for term in PROMPT_TERMS if term in t]) >= 4 or len([p for p in PROMPT_TERMS_EN if p.search(text)]) >= 3
+    hits = [term for term in PROMPT_TERMS if term in t]
+    # 여러 기관을 한 요청에 말할 수 있다. 힌트가 대부분을 차지하는 나열만 재시도한다.
+    return (len(hits) >= 4 and sum(map(len, hits)) >= len(t) * 0.70) or sum(bool(p.search(text)) for p in PROMPT_TERMS_EN) >= 4
 
 
 # Whisper 계열이 무음·잡음에서 지어내는 글(동영상 자막으로 배운 끝인사 등). 받아쓴 글 전체가 이것뿐이면 버린다.
@@ -82,7 +82,9 @@ class OpenAISttProvider:
         self.base_url = base_url
         self.model = model
         self.timeout = timeout_ms / 1000
-        self.name = f"openai({model})" if api_key else f"local({base_url})"
+        if not api_key:
+            raise ValueError("받아쓰기 API 키가 필요합니다.")
+        self.name = f"openai({model})"
 
     async def transcribe(self, audio: bytes, *, language: str, mime_type: str, signal: AbortSignal | None = None) -> dict:
         text = await self._request(audio, mime_type, language, signal)
@@ -96,12 +98,15 @@ class OpenAISttProvider:
     async def _request(self, audio: bytes, mime_type: str, language: str | None, signal: AbortSignal | None) -> str:
         type_ = mime_type.split(";")[0].strip() or "audio/webm"
         data = {"model": self.model, "response_format": "json"}
-        if language:
+        if language and self.model == "gpt-transcribe":
+            data["languages[]"] = list(dict.fromkeys([language, "ko", "en", "zh", "ja"]))
+            data["keywords[]"] = list(PROMPT_TERMS)
+        elif language:
             data["language"] = language
         # 한국어 용어 힌트는 한국어로 받아쓸 때만(다른 언어에 섞으면 힌트를 그대로 내놓기 쉽다)
-        if language == "ko":
+        if language == "ko" and self.model != "gpt-transcribe":
             data["prompt"] = STT_PROMPT
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
 
         async def go() -> str:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

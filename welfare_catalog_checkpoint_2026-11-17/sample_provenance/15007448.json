@@ -1,0 +1,46 @@
+{
+  "id": "15007448",
+  "source": "https://www.data.go.kr/data/15007448/fileData.do",
+  "retrieved_at": "2026-11-17T16:46:45.321074+00:00",
+  "rows": [
+    [
+      "회관명",
+      "소재지",
+      "연면적(제곱미터)",
+      "층수",
+      "건물구조",
+      "건립연도",
+      "자연부락명"
+    ],
+    [
+      "금락1리",
+      "경산시 하양읍 아낙고개길6길 17-1",
+      "262.44",
+      "3",
+      "철근콘크리트",
+      "1998",
+      "금락리"
+    ],
+    [
+      "금락2리",
+      "경산시 하양읍 하양로27길 14-3",
+      "41.68",
+      "2",
+      "시멘트벽돌",
+      "1985",
+      "금락리"
+    ],
+    [
+      "금락3리",
+      "경산시 하양읍 금호강변로 726-8",
+      "35.37",
+      "1",
+      "시멘트블럭",
+      "1973",
+      "금락리"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15007448&publicDataDetailPk=uddi%3A9bce9adb-9aac-4569-905f-a8ffd48f1d30",
+  "sample_type": "official public file preview"
+}

@@ -1,0 +1,46 @@
+{
+  "id": "15013805",
+  "source": "https://www.data.go.kr/data/15013805/fileData.do",
+  "retrieved_at": "2026-11-17T16:54:50.802341+00:00",
+  "rows": [
+    [
+      "연번",
+      "동별",
+      "구분",
+      "시설명",
+      "소재지",
+      "연락처",
+      "데이터기준일자"
+    ],
+    [
+      "1",
+      "범어1동",
+      "공설",
+      "수성상록경로당",
+      "동대구로50길 66",
+      "0",
+      "2025-09-15"
+    ],
+    [
+      "2",
+      "범어1동",
+      "공설",
+      "범어1동 제1경로당",
+      "동대구로54길 7",
+      "053-743-3288",
+      "2025-09-15"
+    ],
+    [
+      "3",
+      "범어1동",
+      "공설",
+      "범어1동 제2경로당",
+      "청솔로16길 35",
+      "053-765-1330",
+      "2025-09-15"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15013805&publicDataDetailPk=uddi%3Af0cad93a-6de8-40a4-89d1-a2b1784ce927",
+  "sample_type": "official public file preview"
+}

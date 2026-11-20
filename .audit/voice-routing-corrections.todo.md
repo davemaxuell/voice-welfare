@@ -1,0 +1,6 @@
+- [x] Reproduce it yourself on the matching surface. The review used in-memory personal profiles, mock model requests and local Chromium.
+- [x] Binary-search the cause. Followed vault confirmation, model input/output, page choices, sign-in status and progress through the session entry point.
+- [x] Plan the fix. The pending prompt owns consent, the browser owns link identity, and the session owns redacted history. Each action uses its existing policy check.
+- [x] Verify on the same surface. Local Chromium opened the named result for the reported Hi-Korea voice follow-up. Simulated Live events and model-request inspection verified queued confirmations and private dialogue. Independent reviews exercised browser selection, consent, and privacy. All 471 end-to-end tests and 1,239 unit tests passed. Two optional PostgreSQL/pgvector tests require a test database.
+- [x] Stage the commits so the failing repro lands before the fix in git history. Skip: the shared checkout has overlapping pre-existing changes. The regressions were executed before implementation.
+- [x] Run Opening a PR. Skip: the requested change is local and the current checkout includes unpublished work from other tasks.

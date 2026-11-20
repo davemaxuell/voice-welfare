@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 async def main() -> int:
     load_dotenv(ROOT / ".env")
     stt, tts = create_voice_providers(load_config().voice)
-    print(f"STT: {stt.name if stt.supported else '미설정(브라우저 음성 사용)'} · TTS: {tts.name if tts.supported else '미설정(브라우저 음성 사용)'}")
+    live = getattr(stt, "live", None)
+    print(f"마이크 STT {live.model if live else '설정 필요'} · 녹음 파일 STT {stt.name} · TTS {tts.name}")
     if not stt.supported and not tts.supported:
         return 0
     sentence = "주소는 부산광역시 예시구 예시로 10"

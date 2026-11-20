@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from cheongeum.agents.web.browser import stop_playwright  # noqa: E402
 from cheongeum.practice_site import ensure_mock_site  # noqa: E402
 from cheongeum.server.runtime import AgentRuntime, load_config  # noqa: E402
+from cheongeum.understanding.llm_planner import INTENT_JSON_SCHEMA  # noqa: E402
 
 MOCK_URL = "http://localhost:5174"
 PORTAL = "127.0.0.1:5174/external.html"
@@ -35,6 +36,7 @@ def create_test_runtime(env: dict | None = None) -> AgentRuntime:
                 "HEADLESS": "false" if headed else "true",
                 "BROWSER_SLOWMO_MS": "200" if headed else "0",
                 "LLM_PROVIDER": "mock",
+                "DATASETS_DIR": str(FIXTURES / "open_data"),
                 "REQUIRE_CONSENT": "false",
                 "READ_ONLY_WEB": "true",
                 "READ_ONLY_CLICKS": "safe",
@@ -110,6 +112,10 @@ class FakeLlm:
         if self.fn:
             return self.fn(system=system, user=user, schemaName=schemaName, schema=schema)
         return self.answers.get(schemaName)
+
+
+def flat(type_: str, **kw) -> dict:
+    return {**dict.fromkeys(INTENT_JSON_SCHEMA["schema"]["properties"]), "type": type_, **kw}
 
 
 def with_llm(session, llm) -> None:

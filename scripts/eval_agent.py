@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from cheongeum.agents.web import page_for_llm
 from cheongeum.agents.web.autopilot import is_korean_text
 from cheongeum.agents.web.browser import stop_playwright
-from cheongeum.core.jsutil import jdumps, now_iso, uniq
+from cheongeum.core.jsutil import jdumps, now_iso, try_url, uniq
 from cheongeum.practice_site import ensure_mock_site
 from cheongeum.server import AgentRuntime, load_config
 
@@ -42,6 +42,15 @@ def said(r: dict, pattern: str) -> bool:
     return bool(re.search(pattern, r["speech"]))
 
 
+def bokjiro_application_answer(r: dict) -> bool:
+    page = try_url((r.get("observation") or {}).get("url"))
+    verified = any(t["agent"] == "answer-verifier" and (t.get("note") or "").startswith("근거 확인") for t in r["trace"])
+    return bool(
+        page and page.hostname.removeprefix("www.") == "bokjiro.go.kr"
+        and verified and said(r, r"신청") and said(r, r"주민센터|행정복지센터|국민연금공단|온라인")
+    )
+
+
 TASKS = [
     Task("L1-링크따라가서답", "local", f"{PORTAL}에서 장애인연금 안내 기사 내용 알려줘", "기사 내용(기준액 조정·신청 경로 또는 두 번째 페이지)을 화면 근거로 답함", lambda r: said(r, r"기준액|행정복지센터|두 번째|합성")),
     Task("L2-검색결과", "local", f"{PORTAL}에서 기초연금 검색해서 첫 번째 결과 알려줘", "'기초연금 신청 방법'을 답함", lambda r: said(r, r"기초연금 신청 방법")),
@@ -60,7 +69,7 @@ TASKS = [
     Task("L8-그림링크", "local", f"{PORTAL2}에서 복지 상담 센터 화면 찾아줘", "그림만 있는 링크를 눌러 상담 센터 화면을 엶", lambda r: "복지 상담 센터" in (r.get("observation") or {}).get("title", "")),
     Task("R1-네이버뉴스", "real", "네이버에서 오늘 주요 뉴스 알려줘", "뉴스 제목 1개 이상을 말함", lambda r: r["semanticAction"] == "goal" and len(r["speech"]) > 30 and not said(r, r"찾지 못했|할 수 없|맴돌")),
     Task("R2-네이버날씨", "real", "네이버에서 서울 오늘 날씨 알려줘", "기온(°/도) 또는 날씨 상태를 말함", lambda r: said(r, r"°|도(?![가-힣])|맑|흐림|구름|비|눈")),
-    Task("R3-복지로신청방법", "real", "복지로에서 기초연금 신청 방법 찾아줘", "주민센터/국민연금공단/복지로 온라인 등 신청 경로를 말함", lambda r: said(r, r"주민센터|행정복지센터|국민연금|온라인|복지로") and not said(r, r"찾지 못했|맴돌")),
+    Task("R3-복지로신청방법", "real", "복지로에서 기초연금 신청 방법 찾아줘", "복지로 화면에서 근거를 확인해 방문·온라인 신청 경로를 말함", bokjiro_application_answer),
     Task("R4-복지부보도자료", "real", "보건복지부 사이트에서 최신 보도자료 제목 알려줘", "보도자료 제목을 말함", lambda r: len(r["speech"]) > 25 and not said(r, r"찾지 못했|할 수 없|맴돌")),
     Task("R5-국민연금전화", "real", "국민연금공단 사이트에서 고객센터 전화번호 찾아줘", "1355를 말함", lambda r: said(r, r"1355")),
     Task("R6-홈택스메뉴", "real", "홈택스에서 연말정산 관련 메뉴가 있는지 알려줘", "연말정산 메뉴 유무를 말함", lambda r: said(r, r"연말정산") and not said(r, r"맴돌")),
@@ -101,7 +110,7 @@ async def main() -> int:
         print(f"\n=== {m['label']} ({rt.answer_llm.name if rt.answer_llm else 'LLM 없음'}) ===")
         # 목표 수행 호출(browse_step)의 입력 크기를 잰다
         meter = {"calls": 0, "chars": 0}
-        llm = rt.answer_llm
+        llm = rt.goal_llm or rt.answer_llm
         if llm:
             original = llm.generate
 

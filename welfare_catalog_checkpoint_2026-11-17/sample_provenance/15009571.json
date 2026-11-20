@@ -1,0 +1,38 @@
+{
+  "id": "15009571",
+  "source": "https://www.data.go.kr/data/15009571/fileData.do",
+  "retrieved_at": "2026-11-17T16:49:13.113962+00:00",
+  "rows": [
+    [
+      "사업명",
+      "서비스",
+      "기준년월",
+      "지급건수",
+      "지급금액"
+    ],
+    [
+      "기초생활",
+      "생계급여(일반)",
+      "2025-01",
+      "1266219",
+      "771231"
+    ],
+    [
+      "기초생활",
+      "생계급여(일반)",
+      "2025-02",
+      "1277353",
+      "775618"
+    ],
+    [
+      "기초생활",
+      "생계급여(일반)",
+      "2025-03",
+      "1288953",
+      "779677"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15009571&publicDataDetailPk=uddi%3A226d2e29-5383-42a0-9004-ca6b5a26834e",
+  "sample_type": "official public file preview"
+}

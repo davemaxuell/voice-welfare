@@ -73,6 +73,7 @@ class MockSite:
     def start(self) -> "MockSite":
         handler = partial(_Handler, directory=str(SITE_DIR))
         self._servers.append(_Server(("127.0.0.1", self.port), handler))
+        self.port = self._servers[0].server_port  # port 0 selects a free port on this computer
         try:
             self._servers.append(_V6Server(("::1", self.port), handler))
         except OSError as e:

@@ -1,0 +1,38 @@
+{
+  "id": "15025708",
+  "source": "https://www.data.go.kr/data/15025708/fileData.do",
+  "retrieved_at": "2026-11-17T17:05:04.986776+00:00",
+  "rows": [
+    [
+      "연번",
+      "시설명",
+      "소재지",
+      "전화번호",
+      "개설 프로그램"
+    ],
+    [
+      "1",
+      "대한노인회사상구지회부설 노인대학",
+      "사상구 사상로319번길 6(덕포동)",
+      "051-304-2160",
+      "우리춤, 라인댄스"
+    ],
+    [
+      "2",
+      "모라종합사회복지관부설 노인복지대학",
+      "사상구 모라로110번길 129(모라동)",
+      "051-304-9876",
+      "노래교실, 웃음 레크리에이션, 건강체조"
+    ],
+    [
+      "3",
+      "백양종합사회복지관 부설 노인교실",
+      "사상구 모라로192번길 20-33(모라동)",
+      "051-305-4286",
+      "노래교실, 웃음치료, 건강체조교실"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15025708&publicDataDetailPk=uddi%3Af2c98660-cb56-4382-bd7d-aab93f61f6bf",
+  "sample_type": "official public file preview"
+}

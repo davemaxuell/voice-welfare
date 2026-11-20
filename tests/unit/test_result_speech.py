@@ -53,6 +53,7 @@ async def test_fixture_field_speech_says_saved_not_live_api():
 async def test_fixture_policy_speech_says_saved_not_live_api():
     a = await fixture_agent.answer_policy_question("장애인연금 지원대상과 신청 절차 알려줘")
     assert "저장된 자료 기준" in a.speech
+    assert "연습용 예시" in a.speech
     assert "API 실시간" not in a.speech
     assert all(s["version"] == "저장된 자료 기준" for s in a.sources)
 

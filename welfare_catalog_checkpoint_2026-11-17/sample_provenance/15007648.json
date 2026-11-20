@@ -1,0 +1,46 @@
+{
+  "id": "15007648",
+  "source": "https://www.data.go.kr/data/15007648/fileData.do",
+  "retrieved_at": "2026-11-17T16:47:24.430092+00:00",
+  "rows": [
+    [
+      "연번",
+      "시도",
+      "시군구",
+      "읍면동",
+      "시설명",
+      "주소",
+      "데이터기준일"
+    ],
+    [
+      "1",
+      "충청북도",
+      "옥천군",
+      "옥천읍",
+      "죽향1",
+      "충청북도 옥천군 옥천읍 향수2길 46-11",
+      "2026-07-17"
+    ],
+    [
+      "2",
+      "충청북도",
+      "옥천군",
+      "옥천읍",
+      "죽향2",
+      "충청북도 옥천군 옥천읍 성왕로 1274, 옥향@",
+      "2026-07-17"
+    ],
+    [
+      "3",
+      "충청북도",
+      "옥천군",
+      "옥천읍",
+      "죽향3",
+      "충청북도 옥천군 옥천읍 성왕로 1262, 향수마을@ 101",
+      "2026-07-17"
+    ]
+  ],
+  "status": "verified",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15007648&publicDataDetailPk=uddi%3A496a079a-209e-4343-9178-bd460f3bd2e7",
+  "sample_type": "official public file preview"
+}

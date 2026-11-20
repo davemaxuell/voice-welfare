@@ -1,0 +1,10 @@
+{
+  "id": "15002150",
+  "source": "https://www.data.go.kr/data/15002150/fileData.do",
+  "retrieved_at": "2026-11-17T16:40:34.407819+00:00",
+  "rows": null,
+  "status": "unavailable",
+  "preview_url": "https://www.data.go.kr/tcs/dss/selectHistAndCsvData.do?publicDataPk=15002150&publicDataDetailPk=uddi%3Aa892c4d6-2c4b-47db-baf8-8e8c8e7b5637",
+  "sample_type": "official public file preview",
+  "reason": "Only historical dataset versions table exposed, not actual underlying records"
+}
