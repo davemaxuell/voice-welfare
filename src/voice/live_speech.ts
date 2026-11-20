@@ -27,6 +27,7 @@ interface LiveSpeechOptions {
   now?: () => number;
 }
 interface SpeechInput { language: string; signal?: AbortSignal; pace?: number }
+interface Pause { ms: number; sleep?: Promise<void> }
 type Queued = { state: "value"; value: string } | { state: "error"; error: unknown } | { state: "wait" };
 
 export class LiveSpeechProvider implements TtsProvider {
@@ -89,7 +90,7 @@ export class LiveSpeechProvider implements TtsProvider {
 
   async #untilStarted(socket: UpstreamSocket, started: number, signal: AbortSignal | undefined): Promise<void> {
     for (;;) {
-      const event = await this.#next(socket, this.#remaining(started), signal);
+      const event = await this.#next(socket, { ms: this.#remaining(started) }, signal);
       if (event === undefined) {
         if (this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(502);
         continue;
@@ -101,17 +102,20 @@ export class LiveSpeechProvider implements TtsProvider {
   async #readAloud(socket: UpstreamSocket, started: number, signal: AbortSignal | undefined): Promise<Uint8Array> {
     const parts: Uint8Array[] = [];
     let heard = false;
+    const deadline: Pause = { ms: this.#remaining(started) };
+    // 소리가 온 뒤 700ms는 오디오 델타가 올 때만 다시 센다.
+    const silence: Pause = { ms: SILENCE_MS };
     for (;;) {
-      const waitMs = heard ? SILENCE_MS : this.#remaining(started);
-      const event = await this.#next(socket, waitMs, signal);
+      const event = await this.#next(socket, heard ? silence : deadline, signal);
       if (event === undefined) {
         if (heard) return pcmWav(joinPcm(parts));
-        if (waitMs === 0 || this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(502);
+        if (deadline.ms === 0 || this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(502);
         continue;
       }
       if (event.type === "session.output_audio.delta") {
         parts.push(pcmFromDelta(event));
         heard = true;
+        silence.sleep = undefined;
         continue;
       }
       if (event.type === "session.delegation.created") {
@@ -123,7 +127,7 @@ export class LiveSpeechProvider implements TtsProvider {
   }
 
   // 시험의 sleep은 바로 끝나므로, 이미 도착한 사건을 먼저 꺼내고 없을 때만 기다린다.
-  async #next(socket: UpstreamSocket, waitMs: number, signal: AbortSignal | undefined): Promise<Record<string, unknown> | undefined> {
+  async #next(socket: UpstreamSocket, pause: Pause, signal: AbortSignal | undefined): Promise<Record<string, unknown> | undefined> {
     throwIfAborted(signal);
     const pending = socket.recv();
     const queued = await alreadyQueued(pending);
@@ -131,7 +135,7 @@ export class LiveSpeechProvider implements TtsProvider {
     if (queued.state === "value") return liveEvent(queued.value);
     let detach = (): void => {};
     try {
-      const quiet = this.#sleep(waitMs).then(() => undefined as string | undefined);
+      const quiet = (pause.sleep ??= this.#sleep(pause.ms)).then(() => undefined as string | undefined);
       const message = pending.then(value => value);
       if (signal === undefined) {
         const winner = await Promise.race([message, quiet]);
