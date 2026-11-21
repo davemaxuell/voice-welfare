@@ -1050,7 +1050,7 @@ function startReminders() {
 const insideCommandArea = (el: Element | null) =>
   el !== null && (document.getElementById("command-form")?.contains(el) === true || document.getElementById("examples")?.contains(el) === true);
 
-export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "") {
+export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "", controlLabel?: string) {
   const t = text.trim();
   if (t.length === 0 || ui.sessionId === undefined || ui.recovery !== undefined) return;
   if (!await readyForInput()) return;
@@ -1073,7 +1073,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.turn(ui.sessionId, t, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1145,7 +1145,7 @@ async function stopSession() {
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
-    else await applyResult(result, stillSleeping, stillSleeping, { stop: requested });
+    else await applyResult(result, stillSleeping, stillSleeping, { stop: requested, controlLabel: t("[멈춤 버튼]") });
   } catch (e) {
     if (stop !== stoppedGeneration || wake !== desk.wakeCount) return;
     desk.sleeping = false;
@@ -1182,7 +1182,10 @@ async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: stri
     const handoffId = card.ref.handoffId;
     const body = { turnId: card.ref.turnId, key, ...(handoffId !== undefined && handoffId.length > 0 ? { handoffId } : {}) };
     const result = await whileBusy(api.choice(ui.sessionId, body));
-    if (stop === stoppedGeneration && generation === sessionGeneration) await applyResult(result);
+    if (stop === stoppedGeneration && generation === sessionGeneration) {
+      const label = key === "auth-cancel" ? t("인증 취소") : card.choices.find(choice => choice.key === key)?.label;
+      await applyResult(result, true, true, { controlLabel: ui.lang === "ko" ? undefined : label });
+    }
   } catch (e) {
     if (errorCode(e) !== "CHOICE_EXPIRED") setError(errorMessage(e));
     else {
@@ -1238,7 +1241,9 @@ export async function choose(choiceSetId: string, key: string) {
 /** 인증 카드의 단추: 서버가 제안한 선택지가 있으면 그것을, 없으면(이전 작업을 다시 연결한 뒤) 같은 뜻의 말을 보낸다. */
 export function authChoice(cardId: string, key: "auth-done" | "auth-cancel", viaCard: boolean) {
   if (viaCard) return choose(cardId, key);
-  return send(key === "auth-done" ? "다 했어" : "인증 취소");
+  const done = key === "auth-done";
+  const label = done ? t("직접 확인을 마쳤어요") : t("인증 취소");
+  return send(done ? "다 했어" : "인증 취소", undefined, ui.lang === "ko" ? undefined : label);
 }
 
 /** 지금 카드를 '보내는 중'으로 잡는다(이미 잡혀 있으면 undefined). 음성 한 턴도 카드를 잡아 버튼과 함께 나가지 않게 한다. */

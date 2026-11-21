@@ -1,5 +1,6 @@
 /** 한국어만 사용할 때는 내려받지 않는 추가 화면·음성 문구. */
 export const extraCopy: Readonly<Record<string, readonly [string, string, string]>> = {
+  "[멈춤 버튼]": ["[Stop button]", "[停止按钮]", "[停止ボタン]"],
   "[승인 버튼]": ["[Approve button]", "[批准按钮]", "[承認ボタン]"],
   "[거절 버튼]": ["[Decline button]", "[拒绝按钮]", "[拒否ボタン]"],
   "[언어 선택]": ["[Language selection]", "[语言选择]", "[言語選択]"],
