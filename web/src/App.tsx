@@ -165,7 +165,7 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
       <p>{t("실제 접수가 아니며 어떤 기관에도 전송되지 않았어요.")}</p>
     </div>
-    <p className="error" role="alert" id="error" hidden={view.error === undefined}><LiveText sequence={ui.errorSeq} text={view.error ?? ""}/></p>
+    <p className="error" role={ui.backgroundMic === "speech" && ui.tts ? undefined : "alert"} id="error" hidden={view.error === undefined}><LiveText sequence={ui.errorSeq} text={view.error ?? ""}/></p>
     <div className="typing" id="typing" aria-hidden="true" hidden={!view.command.typing}><span className="typing-avatar"></span><span className="typing-dots"><i></i><i></i><i></i></span></div>
   </>;
 }

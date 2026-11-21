@@ -340,6 +340,35 @@ const progressRoute = "**/api/session/*/progress";
 const finishedStep = "연습 누리집에서 안내를 확인했어요.";
 const finishedReport = { running: true, seq: 17, spoken: true, activity: finishedStep, activitySpoken: true, activitySeq: 17 };
 
+it("실시간 대화의 음성을 꺼도 새 진행 문장은 대화 기록에 한 번 남는다", async () => {
+  const native = await startUi(true, { REQUIRE_CONSENT: "false", PRACTICE_MODE: "false" });
+  try {
+    await page.route("**/api/health", async route => {
+      const response = await route.fetch();
+      await route.fulfill({ json: { ...await response.json(), voiceEdge: "연습" } });
+    });
+    await page.route(url => url.pathname === "/src/voice-edge.ts", route => route.fulfill({
+      contentType: "text/javascript",
+      body: `export class LiveConversation {
+        constructor(_, callbacks) { this.callbacks = callbacks; }
+        async start() {
+          this.callbacks.activity("연습 화면을 열었어요.");
+          this.callbacks.activity("연습 화면을 열었어요.");
+        }
+        stop() {} updateAudio() {} setLanguage() {}
+      }`,
+    }));
+    await page.goto(native.url);
+    await browserExpect(page.locator("#send")).toBeEnabled();
+    await page.locator("#tts-toggle").click();
+    await page.locator("#conv-start").click();
+    await browserExpect(page.locator("#st-activity")).toHaveText("연습 화면을 열었어요.");
+    await browserExpect(page.getByRole("log").locator(".assistant").filter({ hasText: "연습 화면을 열었어요." })).toHaveCount(1);
+  } finally {
+    await native.close();
+  }
+});
+
 function holdNext(pattern: string) {
   return new Promise<Route>((resolve, reject) => {
     page.route(pattern, route => { resolve(route); }, { times: 1 }).catch(reject);
