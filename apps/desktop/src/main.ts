@@ -35,7 +35,7 @@ import {
 } from "electron";
 import type { Lang } from "../../../src/core/turn.ts";
 import { desktopText } from "./text.ts";
-import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN } from "./protocol.ts";
+import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN, trayTaskText } from "./protocol.ts";
 import { appUpdater, createUpdates, type Updates } from "./updates.ts";
 
 // The development bundle runs from apps/desktop/out/app, four levels below the checkout.
@@ -81,6 +81,17 @@ let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang } = { 
 
 const copy = () => desktopText[prefs.lang ?? "ko"];
 
+let lastTooltip: string | undefined;
+function updateTooltip() {
+  if (!tray) return;
+  const labels = copy();
+  const task = trayTaskText(lastSnapshot);
+  const next = task === undefined ? labels.tip : `${labels.brand} · ${task}`;
+  if (next === lastTooltip) return;
+  tray.setToolTip(next);
+  lastTooltip = next;
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ height: 20 }));
   if (process.platform === "win32") tray.on("click", showConversation);
@@ -92,7 +103,7 @@ function updateTray() {
   if (!tray) return;
   const labels = copy();
   if (process.platform === "darwin") tray.setTitle(labels.brand);
-  tray.setToolTip(labels.tip);
+  updateTooltip();
   const keyLabel = (ok: boolean, keys: string) => (ok ? ` (${keys})` : labels.shortcutUnavailable);
   const avatarItems: MenuItemConstructorOptions[] = overlay
     ? [
@@ -447,8 +458,9 @@ function bindBridge() {
   // 대화 창 → 아바타: 표시 상태(마지막 것만 기억해 아바타가 새로 뜨면 다시 보낸다)
   ipcMain.on("cheongeum:snapshot", (e, snapshot: unknown) => {
     if (!fromController(e) || !isRecord(snapshot)) return;
-    if (isDesktopLanguage(snapshot.lang) && snapshot.lang !== prefs.lang) savePrefs({ lang: snapshot.lang });
     lastSnapshot = snapshot;
+    if (isDesktopLanguage(snapshot.lang) && snapshot.lang !== prefs.lang) savePrefs({ lang: snapshot.lang });
+    updateTooltip();
     sendOverlay("cheongeum:snapshot", snapshot);
   });
   ipcMain.on("overlay:ready", (e) => {
@@ -657,6 +669,7 @@ async function createWindow() {
   // 대화 창이 새로 고쳐지거나 죽으면 아바타는 그 세션의 버튼을 더 보여 주지 않는다
   const lost = () => {
     lastSnapshot = null;
+    updateTooltip();
     sendOverlay("cheongeum:snapshot", { connected: false });
   };
   window.webContents.on("did-start-loading", lost);

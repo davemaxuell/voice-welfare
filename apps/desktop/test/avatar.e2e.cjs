@@ -370,6 +370,8 @@ const scenarios = {
     assert.match(handoff.prompt, /에서 직접 로그인해 주세요\.$/);
     assert.deepEqual(handoff.choices.map((c) => c.label), ['로그인했어요', '인증 취소']);
     assert.equal(handoff.mic, '마이크 꺼짐');
+    assert.equal(await controller.locator('#capture-label').innerText(), handoff.mic);
+    assert.equal(await controller.locator('#task-label').innerText(), '사이트에서 직접 진행해 주세요.');
     assert.equal(await liveTracks(controller), 0, `mic tracks released at the handoff (${await trackReport(controller)})`);
     assert.equal((await windows(app)).find(isController).visible, false, 'conversation stays collapsed');
 
