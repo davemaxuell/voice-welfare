@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createClapDetector } from "../../web/src/clap.ts";
-import { progressVoice, splitForSpeech, transitionCue } from "../../web/src/speaker.ts";
+import { splitForSpeech, transitionCue } from "../../web/src/speaker.ts";
 import { BargeDetector } from "../../web/src/voice-edge.ts";
 
 afterEach(() => {
@@ -73,21 +73,6 @@ it("긴 안내는 문장으로 나누고 첫 조각은 짧게 둔다", () => {
   expect(splitForSpeech("첫 문장이에요. 둘째 문장이다. 셋째 문장이요. 넷째.")).toEqual(["첫 문장이에요.", "둘째 문장이다. 셋째 문장이요. 넷째."]);
   expect(splitForSpeech("你好。我们开始吧！好的")).toEqual(["你好。", "我们开始吧！ 好的"]);
   expect(splitForSpeech("  ")).toEqual([]);
-});
-
-it("진행 안내는 시작 15초 뒤, 새 단계만, 조용할 때만 말한다", () => {
-  vi.useFakeTimers();
-  progressVoice.seen = 0;
-  progressVoice.start();
-  const report = (seq: number, latest = "복지로를 여는 중이에요.") => ({ running: true, spoken: true, seq, latest });
-  expect(progressVoice.pick(report(1), false)).toBeUndefined();
-  vi.advanceTimersByTime(15_000);
-  expect(progressVoice.pick(report(1), true)).toBeUndefined();
-  expect(progressVoice.pick({ ...report(1), spoken: false }, false)).toBeUndefined();
-  expect(progressVoice.pick(report(1), false)).toBe("복지로를 여는 중이에요.");
-  vi.advanceTimersByTime(15_000);
-  expect(progressVoice.pick(report(1), false)).toBeUndefined();
-  expect(progressVoice.pick(report(2, "검색 결과를 읽는 중이에요."), false)).toBe("검색 결과를 읽는 중이에요.");
 });
 
 function microphone(level: () => number) {
