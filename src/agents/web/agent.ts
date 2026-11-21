@@ -33,6 +33,7 @@ interface ContextOptions {
   publicLookup?: boolean;
   browsingScope?: "personal-inspection";
   actionLimit?: number;
+  approvedGoalRefs?: ReadonlySet<string>;
 }
 export class ExecContext {
   readonly signal: AbortSignal;
@@ -46,10 +47,11 @@ export class ExecContext {
   readonly publicLookup: boolean;
   readonly browsingScope?: "personal-inspection";
   readonly actionLimit?: number;
+  readonly approvedGoalRefs?: ReadonlySet<string>;
 
   constructor({
     signal, approvals = new Set(), isStopped, trace, counter = { actions: 0 }, actor = "resident", sessionId = "", taskId = "",
-    publicLookup = false, browsingScope, actionLimit,
+    publicLookup = false, browsingScope, actionLimit, approvedGoalRefs,
   }: ContextOptions) {
     this.signal = signal;
     this.approvals = approvals;
@@ -62,6 +64,7 @@ export class ExecContext {
     this.publicLookup = publicLookup;
     this.browsingScope = browsingScope;
     this.actionLimit = actionLimit;
+    this.approvedGoalRefs = approvedGoalRefs;
   }
   async granted<T>(ids: readonly string[], work: () => Promise<T>): Promise<T> {
     const added = ids.filter(id => !this.approvals.has(id));
@@ -308,6 +311,9 @@ export class WebExecutionAgent {
         }
       }
       if (item === undefined) return this.notLocated(view, name, located.hits);
+    }
+    if (ctx.approvedGoalRefs?.has(item.ref) === true) {
+      return {status: "failed", actions: log, view, message: "이미 승인받아 누른 항목이에요. 지금 화면에서 다음 단계를 찾아 주세요."};
     }
     const target = { ref: item.ref, role: item.role, name: item.name };
     // 이름이 하나뿐인 안내 팝업의 닫기 단추는 새로 읽은 팝업 사실이 '안내'로 확인될 때만 묻지 않고 누른다(어댑터가 누르기 직전에 한 번 더 확인).

@@ -7,8 +7,8 @@ import { strip } from "../core/text.ts";
 import { AGENT_IDS, draft, type AgentHandoff, type Draft } from "../core/turn.ts";
 import { speakLabel } from "../speech/phrasing.ts";
 import { applicationPatterns } from "./patterns.ts";
-import { REVIEW_LIMITS, ReviewedTask } from "./review_loop.ts";
-import { APPROVAL_TTL_S, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
+import { ReviewedTask } from "./review_loop.ts";
+import { APPROVAL_TTL_S, type SessionOrchestrator, type Turn } from "./session.ts";
 
 // 승인을 받았지만 물어본 뒤 화면이 바뀌어 하지 않은 일(승인 대기 종류별)
 const NOT_DONE = { click: "누르지 않았어요.", assist: "넣지 않았어요.", submit: "모의접수하지 않았어요." };
@@ -151,8 +151,7 @@ export class ApplicationCommands {
     const run = pending !== undefined && "reviewedTask" in pending ? pending.reviewedTask : undefined;
     if (!(run instanceof ReviewedTask)) return this.#execute(turn);
     // 1회 승인과 같은 지문을 확인해야 기존 작업을 이어 간다.
-    turn.ctx = withContext(turn.ctx, { actionLimit: REVIEW_LIMITS[run.difficulty][2], counter: run.counter,
-      ...(run.inspection !== undefined ? { browsingScope: "personal-inspection" } : {}) });
+    turn.ctx = run.context(turn.ctx);
     return s.progress.review(async () => s.review.run(run, turn, await this.#execute(turn)));
   }
 
