@@ -1,3 +1,4 @@
+import type { Lang } from "../../src/core/turn.ts";
 // 자료 조사와 저장한 메모(개인 PC). 패널을 연 동안만 3.5초마다 다시 읽는다.
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
@@ -7,9 +8,8 @@ import { copy, resultCopy, states } from "./workflows-text.ts";
 const LANG_ORDER = ["ko", "en", "zh", "ja"];
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
 
-export function WorkflowPanel({ sessionId, lang: language, onRead }: { sessionId: string | undefined; lang: string; onRead: (text: string) => void }) {
-  const lang = copy[language] !== undefined ? language : "ko";
-  const t = (index: number) => (copy[lang] ?? copy.ko)?.[index] ?? "";
+export function WorkflowPanel({ sessionId, lang, onRead }: { sessionId: string | undefined; lang: Lang; onRead: (text: string) => void }) {
+  const t = (index: number) => copy[lang][index] ?? "";
   const [snapshot, setSnapshot] = useState<Workspace | undefined>(undefined);
   const [filter, setFilter] = useState<Note[] | undefined>(undefined);
   const [feedback, setFeedback] = useState("");

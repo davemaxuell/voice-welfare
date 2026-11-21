@@ -1,3 +1,4 @@
+import type { Lang } from "../../src/core/turn.ts";
 // 녹음 파일 받아쓰기: 파일을 음성 API에 보내 받아쓴 글만 보여 준다(대화로 보내지 않는다).
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api.ts";
@@ -8,8 +9,8 @@ const formats: Readonly<Partial<Record<string, string>>> = {
   ogg: "audio/ogg", webm: "audio/webm", flac: "audio/flac",
 };
 
-export function RecordingReview({ owner, lang }: { owner: string | undefined; lang: string }) {
-  const words = copy[lang] ?? copy.ko ?? [];
+export function RecordingReview({ owner, lang }: { owner: string | undefined; lang: Lang }) {
+  const words = copy[lang];
   const file = useRef<HTMLInputElement>(null);
   const controller = useRef<AbortController | undefined>(undefined);
   const [status, setStatus] = useState<number | undefined>(undefined);

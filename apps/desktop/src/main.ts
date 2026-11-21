@@ -33,7 +33,9 @@ import {
   type UtilityProcess,
   type WebContents,
 } from "electron";
-import { isRecord, readyUrl, SHUTDOWN } from "./protocol.ts";
+import type { Lang } from "../../../src/core/turn.ts";
+import { desktopText } from "./text.ts";
+import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN } from "./protocol.ts";
 import { appUpdater, createUpdates, type Updates } from "./updates.ts";
 
 // The development bundle runs from apps/desktop/out/app, four levels below the checkout.
@@ -47,9 +49,8 @@ app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 const BACKGROUND = process.env.CHEONGEUM_SHOW_WINDOW !== "1";
 const AVATAR = process.env.CHEONGEUM_AVATAR !== "0";
-const CORNERS = { "bottom-right": "오른쪽 아래", "bottom-left": "왼쪽 아래", "top-right": "오른쪽 위", "top-left": "왼쪽 위" };
-type Corner = keyof typeof CORNERS;
-const isCorner = (value: unknown): value is Corner => typeof value === "string" && Object.hasOwn(CORNERS, value);
+type Corner = keyof typeof desktopText.ko.corners;
+const isCorner = (value: unknown): value is Corner => typeof value === "string" && Object.hasOwn(desktopText.ko.corners, value);
 const OVERLAY_MARGIN = 12;
 const FOCUS_TARGETS = ["confirm", "consent", "command"];
 
@@ -76,27 +77,30 @@ let overlayRegions: Rectangle[] = [];
 let appliedShape: string | undefined;
 let overlayInteractive: boolean | undefined;
 const shortcuts = { talk: false, choices: false };
-let prefs: { corner: Corner; still: boolean; hidden: boolean } = { corner: "bottom-right", still: false, hidden: false };
+let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang } = { corner: "bottom-right", still: false, hidden: false };
+
+const copy = () => desktopText[prefs.lang ?? "ko"];
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ height: 20 }));
-  if (process.platform === "darwin") tray.setTitle("청음");
   if (process.platform === "win32") tray.on("click", showConversation);
-  tray.setToolTip("청음 — 음성 도우미 (Cmd/Ctrl+Shift+Space: 지금 말하기)");
   updateTray();
 }
 
 /** 단축키를 잡지 못했으면(다른 프로그램이 쓰는 중) 메뉴에서 알리고 메뉴로만 쓰게 한다. */
 function updateTray() {
   if (!tray) return;
-  const keyLabel = (ok: boolean, keys: string) => (ok ? ` (${keys})` : " (단축키 사용 불가)");
+  const labels = copy();
+  if (process.platform === "darwin") tray.setTitle(labels.brand);
+  tray.setToolTip(labels.tip);
+  const keyLabel = (ok: boolean, keys: string) => (ok ? ` (${keys})` : labels.shortcutUnavailable);
   const avatarItems: MenuItemConstructorOptions[] = overlay
     ? [
-        { label: "아바타 보이기", type: "checkbox", checked: !prefs.hidden, click: (item) => setOverlayHidden(!item.checked) },
-        { label: `선택지 보기${keyLabel(shortcuts.choices, "Cmd/Ctrl+Shift+K")}`, click: focusChoices },
+        { label: labels.showAvatar, type: "checkbox", checked: !prefs.hidden, click: (item) => setOverlayHidden(!item.checked) },
+        { label: `${labels.choices}${keyLabel(shortcuts.choices, "Cmd/Ctrl+Shift+K")}`, click: focusChoices },
         {
-          label: "아바타 위치",
-          submenu: Object.entries(CORNERS).map(([corner, label]): MenuItemConstructorOptions => ({
+          label: labels.position,
+          submenu: Object.entries(labels.corners).map(([corner, label]): MenuItemConstructorOptions => ({
             label,
             type: "radio",
             checked: prefs.corner === corner,
@@ -105,37 +109,37 @@ function updateTray() {
             },
           })),
         },
-        { label: "움직이지 않는 아바타", type: "checkbox", checked: prefs.still, click: (item) => savePrefs({ still: item.checked }) },
+        { label: labels.still, type: "checkbox", checked: prefs.still, click: (item) => savePrefs({ still: item.checked }) },
       ]
     : [];
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: `지금 말하기${keyLabel(shortcuts.talk, "Cmd/Ctrl+Shift+Space")}`, click: () => win?.webContents.send("cheongeum:talk") },
-      { label: "대화 열기", click: showConversation },
+      { label: `${labels.talk}${keyLabel(shortcuts.talk, "Cmd/Ctrl+Shift+Space")}`, click: () => win?.webContents.send("cheongeum:talk") },
+      { label: labels.open, click: showConversation },
       {
-        label: "이용 설정…",
+        label: labels.settings,
         click: () => {
           showConversation();
           controllerAction({ type: "settings" });
         },
       },
-      { label: "멈춰", click: () => controllerAction({ type: "stop" }) },
+      { label: labels.stop, click: () => controllerAction({ type: "stop" }) },
       ...avatarItems,
       { type: "separator" },
       ...(updates ? [updates.menuItem()] : []),
       ...(app.isPackaged
         ? [
-            { label: "기존 서비스 설정 가져오기…", click: () => void importSettings() },
-            { label: "서비스 설정 폴더 열기", click: () => void shell.openPath(app.getPath("userData")) },
+            { label: labels.importSettings, click: () => void importSettings() },
+            { label: labels.settingsFolder, click: () => void shell.openPath(app.getPath("userData")) },
           ]
         : []),
       ...(process.platform === "win32"
         ? [
-            { label: "Windows 마이크 권한 설정", click: () => void shell.openExternal("ms-settings:privacy-microphone") },
-            { label: "Windows 스피커 설정", click: () => void shell.openExternal("ms-settings:sound") },
+            { label: labels.micSettings, click: () => void shell.openExternal("ms-settings:privacy-microphone") },
+            { label: labels.soundSettings, click: () => void shell.openExternal("ms-settings:sound") },
           ]
         : []),
-      { label: "청음 종료", click: () => app.quit() },
+      { label: labels.quit, click: () => app.quit() },
     ]),
   );
 }
@@ -144,7 +148,7 @@ const settingsFile = () => join(app.getPath("userData"), "settings.env");
 
 async function importSettings() {
   const picker = await dialog.showOpenDialog({
-    title: "이 PC에서 사용할 청음 설정 파일 선택 (.env)",
+    title: copy().selectSettings,
     properties: ["openFile", "showHiddenFiles"],
   });
   const source = picker.filePaths[0];
@@ -153,8 +157,8 @@ async function importSettings() {
   if (existsSync(target)) {
     const { response } = await dialog.showMessageBox({
       type: "question",
-      message: "이 PC의 기존 서비스 설정을 교체할까요?",
-      buttons: ["취소", "교체"],
+      message: copy().replaceQuestion,
+      buttons: [copy().cancel, copy().replace],
       defaultId: 0,
       cancelId: 0,
     });
@@ -166,9 +170,9 @@ async function importSettings() {
     await fsp.copyFile(source, tmp);
     await fsp.chmod(tmp, 0o600);
     await fsp.rename(tmp, target);
-    await dialog.showMessageBox({ message: "설정을 저장했어요. 청음을 종료하고 다시 열면 적용돼요." });
+    await dialog.showMessageBox({ message: copy().saved });
   } catch {
-    await dialog.showMessageBox({ type: "error", message: "설정 파일을 저장할 수 없어요. 파일 위치와 권한을 확인해 주세요." });
+    await dialog.showMessageBox({ type: "error", message: copy().saveFailed });
   } finally {
     await fsp.rm(tmp, { force: true }).catch(() => {});
   }
@@ -194,22 +198,30 @@ function loadPrefs() {
   try {
     const saved: unknown = JSON.parse(readFileSync(PREFS_FILE(), "utf8"));
     if (!isRecord(saved)) return;
-    prefs = { ...prefs, corner: isCorner(saved.corner) ? saved.corner : prefs.corner, still: saved.still === true };
+    prefs = {
+      ...prefs,
+      corner: isCorner(saved.corner) ? saved.corner : prefs.corner,
+      still: saved.still === true,
+      ...(isDesktopLanguage(saved.lang) ? { lang: saved.lang } : {}),
+    };
   } catch {
     /* 처음 실행 */
   }
 }
 
-/** 구석·움직임 설정만 저장한다. 숨기기는 이번 실행에만(다음에 켜면 다시 보인다). */
+/** 구석·움직임·언어 설정을 저장한다. 숨기기는 이번 실행에만(다음에 켜면 다시 보인다). */
 function savePrefs(patch: Partial<typeof prefs>) {
   prefs = { ...prefs, ...patch };
   try {
-    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still }));
+    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang }));
   } catch {
     /* 저장하지 못하면 이번 실행에만 */
   }
-  placeOverlay();
-  sendOverlayPrefs();
+  if (patch.corner !== undefined || patch.still !== undefined) {
+    placeOverlay();
+    sendOverlayPrefs();
+  }
+  if (patch.lang !== undefined) overlay?.setTitle(copy().assistant);
   updateTray();
 }
 
@@ -374,7 +386,7 @@ function createOverlay() {
   ses.webRequest.onBeforeRequest((details, cb) => cb({ cancel: !overlayAsset(details.url) }));
   const window = new BrowserWindow({
     ...overlayBounds(),
-    title: "청음 도우미",
+    title: copy().assistant,
     frame: false,
     transparent: true,
     resizable: false,
@@ -435,6 +447,7 @@ function bindBridge() {
   // 대화 창 → 아바타: 표시 상태(마지막 것만 기억해 아바타가 새로 뜨면 다시 보낸다)
   ipcMain.on("cheongeum:snapshot", (e, snapshot: unknown) => {
     if (!fromController(e) || !isRecord(snapshot)) return;
+    if (isDesktopLanguage(snapshot.lang) && snapshot.lang !== prefs.lang) savePrefs({ lang: snapshot.lang });
     lastSnapshot = snapshot;
     sendOverlay("cheongeum:snapshot", snapshot);
   });
@@ -526,7 +539,7 @@ function startService(): Promise<string> {
   const child = utilityProcess.fork(launch.entry, launch.args, {
     cwd: launch.cwd,
     env: { ...process.env, ...launch.env, CHEONGEUM_SETTINGS_DIR: app.getPath("userData") },
-    serviceName: "청음 서비스",
+    serviceName: copy().service,
     stdio: "inherit",
   });
   service = child;
@@ -538,7 +551,7 @@ function startService(): Promise<string> {
     });
   });
   return new Promise((resolveUrl, reject) => {
-    const timeout = setTimeout(() => reject(new Error("시작 시간이 초과됐어요.")), 90_000);
+    const timeout = setTimeout(() => reject(new Error(copy().startTimeout)), 90_000);
     // Only trust a bound address reported over our own child's channel.
     child.on("message", (data: unknown) => {
       const url = readyUrl(data);
@@ -548,8 +561,8 @@ function startService(): Promise<string> {
     });
     child.once("exit", (code) => {
       clearTimeout(timeout);
-      if (base === undefined) reject(new Error(`서비스 종료 코드 ${code}`));
-      else if (!quitting) startupFailed(new Error(`서비스 종료 코드 ${code}`));
+      if (base === undefined) reject(new Error(copy().serviceExit(code)));
+      else if (!quitting) startupFailed(new Error(copy().serviceExit(code)));
     });
   });
 }
@@ -575,7 +588,7 @@ function stopService(): Promise<void> {
 function startupFailed(error: unknown) {
   if (quitting) return;
   const message = error instanceof Error ? error.message : String(error);
-  dialog.showErrorBox("청음을 열 수 없어요", `${message}\n청음을 다시 열어 주세요. 문제가 계속되면 설치 파일을 다시 실행해 주세요.`);
+  dialog.showErrorBox(copy().startFailed, `${message}\n${copy().retryStart}`);
   app.quit();
 }
 
@@ -609,7 +622,7 @@ async function createWindow() {
   const window = new BrowserWindow({
     width: 960,
     height: 860,
-    title: "청음",
+    title: copy().brand,
     icon: ICON,
     autoHideMenuBar: true,
     // 백그라운드 실행이면 창을 띄우지 않는다(음성·전역 단축키로만 사용, 메뉴 막대에서 '창 보기' 가능)
@@ -652,17 +665,21 @@ async function createWindow() {
     lost();
     if (!quitting) window.webContents.reload();
   });
-  await window.loadURL(`${base}/?desktop=1${BACKGROUND ? "&background=1" : ""}`);
+  const url = new URL("/", base);
+  url.searchParams.set("desktop", "1");
+  if (BACKGROUND) url.searchParams.set("background", "1");
+  if (prefs.lang !== undefined) url.searchParams.set("desktopLang", prefs.lang);
+  await window.loadURL(url.href);
 }
 
 async function startApp() {
   if (process.platform === "win32") app.setAppUserModelId("kr.cheongeum.app");
   if (BACKGROUND && process.platform === "darwin") app.dock?.hide();
+  loadPrefs();
   base = await startService();
   bindBridge();
   await createWindow();
   if (AVATAR) {
-    loadPrefs();
     createOverlay();
     const replace = () => {
       appliedShape = undefined;
@@ -676,7 +693,7 @@ async function startApp() {
   shortcuts.talk = globalShortcut.register(TALK_KEY, () => win?.webContents.send("cheongeum:talk"));
   if (AVATAR) shortcuts.choices = globalShortcut.register(CHOICES_KEY, focusChoices);
   if (app.isPackaged && process.platform === "win32") {
-    const checker = createUpdates(appUpdater(), dialog, updateTray, () => quitting);
+    const checker = createUpdates(appUpdater(), dialog, updateTray, () => quitting, () => prefs.lang ?? "ko");
     updates = checker;
     setTimeout(() => void checker.check(false), 15_000).unref();
     setInterval(() => void checker.check(false), 24 * 60 * 60 * 1000).unref();

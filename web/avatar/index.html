@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>청음 도우미</title>
+    <title></title>
   </head>
   <body>
     <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -29,15 +29,15 @@
       </section>
       <div class="dock">
         <div class="panel">
-          <p class="mic" id="mic" data-capture="off"><svg class="icon" aria-hidden="true"><use class="mic-off" href="#i-muted"></use><use class="mic-on" href="#i-mic"></use></svg><span id="mic-text">마이크 꺼짐</span><span id="mic-short" aria-hidden="true"></span></p>
-          <p class="status" id="status" role="status" aria-atomic="true">청음과 연결하는 중이에요.</p>
+          <p class="mic" id="mic" data-capture="off"><svg class="icon" aria-hidden="true"><use class="mic-off" href="#i-muted"></use><use class="mic-on" href="#i-mic"></use></svg><span id="mic-text"></span><span id="mic-short" aria-hidden="true"></span></p>
+          <p class="status" id="status" role="status" aria-atomic="true"></p>
           <div class="controls">
-            <button type="button" id="talk" class="primary" aria-label="말하기" title="말하기" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" disabled><span class="sound-icon" aria-hidden="true"></span></button>
-            <button type="button" id="stop" class="stop" aria-label="멈춰" title="멈춰" hidden><span class="stop-icon" aria-hidden="true"></span></button>
-            <button type="button" id="hide" class="quiet" aria-label="숨기기" title="도우미 숨기기"><svg class="icon" aria-hidden="true"><use href="#i-hide"></use></svg></button>
+            <button type="button" id="talk" class="primary" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space" disabled><span class="sound-icon" aria-hidden="true"></span></button>
+            <button type="button" id="stop" class="stop" hidden><span class="stop-icon" aria-hidden="true"></span></button>
+            <button type="button" id="hide" class="quiet"><svg class="icon" aria-hidden="true"><use href="#i-hide"></use></svg></button>
           </div>
         </div>
-        <button type="button" class="avatar" id="avatar" aria-label="청음 대화 열기" title="청음 대화 열기">
+        <button type="button" class="avatar" id="avatar">
           <span class="figure" id="figure" data-pose="still" data-renderer="image">
             <img class="still" id="still" src="/avatar/poses/ready.webp" alt="" draggable="false" />
             <img class="still" id="sleeping-still" src="/avatar/sleeping.png" alt="" draggable="false" />

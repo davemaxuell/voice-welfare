@@ -1,3 +1,5 @@
+import { workspaceText } from "./workspace-language.ts";
+import { getSpeechLang } from "./audio.ts";
 // 서버와 주고받는 모든 요청. 응답은 여기서 zod로 검증해 화면이 쓰는 모양으로만 넘긴다(Python server/app.py의 계약).
 import { z } from "zod";
 import { LangSchema, SessionStateSchema, type Lang } from "../../src/core/turn.ts";
@@ -141,7 +143,7 @@ async function fetchOnceRetried(path: string, init: RequestInit) {
 async function failure(res: Response): Promise<never> {
   const body = z.object({ message: z.string().optional(), error: z.string().optional() })
     .catch({}).parse(await res.json().catch(() => ({})));
-  throw new ApiError(body.message ?? `요청 실패 (${res.status})`, body.error, res.status);
+  throw new ApiError(body.message ?? workspaceText("요청 실패 ({status})", getSpeechLang(), { status: res.status }), body.error, res.status);
 }
 
 interface CallInit { method?: string; body?: BodyInit | undefined; headers?: Record<string, string>; signal?: AbortSignal }
@@ -167,7 +169,7 @@ function liveAudio(sessionId: string): LiveAudio {
   let reject: (error: Error) => void = () => {};
   const receipt = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
   receipt.catch(() => {}); // The recording may be cancelled before anyone requests its result.
-  const lost = () => reject(new Error("실시간 받아쓰기 연결이 끊겼어요. 다시 말씀해 주세요."));
+  const lost = () => reject(new Error(workspaceText("실시간 받아쓰기 연결이 끊겼어요. 다시 말씀해 주세요.", getSpeechLang())));
   socket.onopen = () => {
     if (cancelled) { socket.close(); return; }
     socket.send(JSON.stringify({ writer: writer ?? "" }));

@@ -1,7 +1,8 @@
+import { workspaceText } from "./workspace-language.ts";
 import { timing, type TimingPoint } from "./perf.ts";
 // ⑥ 말하기: 서버 TTS를 문장 단위로 받아 이어 재생, 신호음.
 import type { SessionState } from "../../src/core/turn.ts";
-import { audioContext } from "./audio.ts";
+import { getSpeechLang, audioContext } from "./audio.ts";
 
 /** 말하기 설정(세션 TurnResult·snapshot의 speechPrefs). 기본은 예전 고정값과 같다. */
 export const speechPrefs: { rate: number; voice: string | null } = { rate: 1.25, voice: null };
@@ -242,7 +243,7 @@ export function preloadCues() {
     await Promise.all(urls.map(async (url) => {
       if (cueBuffers.has(url)) return;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`신호음 파일을 못 읽었습니다: ${url}`);
+      if (!res.ok) throw new Error(workspaceText("신호음 파일을 못 읽었습니다: {name}", getSpeechLang(), { name: url }));
       const buf = await c.decodeAudioData(await res.arrayBuffer());
       cueBuffers.set(url, buf);
     }));
