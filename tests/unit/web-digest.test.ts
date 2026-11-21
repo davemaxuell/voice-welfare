@@ -13,6 +13,11 @@ function view(overrides: WebObservation = {}): WebObservation {
 }
 function body(mainText: string) { return digestPage(view({ outline: { mainText } })); }
 
+it("preserves terse labels next to each value when collecting official evidence", () => {
+  const mainText = "본관\n가능\n별관\n불가\n분관\n가능";
+  expect(digestPage(view({outline: { mainText }}), { preserveRows: true }).main).toBe(mainText);
+});
+
 it("test_digest_menu_and_content", () => {
   const digest = digestPage(view({ outline: {
     headings: [{ level: 1, text: "공지사항" }],

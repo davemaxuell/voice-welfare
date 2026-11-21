@@ -87,7 +87,7 @@ it("test_policy_guard_blocks_action_button", async () => {
 it("test_stops_when_looping", async () => {
   const { result } = await run("끝까지 읽어서 알려줘", [open, step("read_more")]);
   expect(result.speech).toContain("맴돌고 있어서 멈췄어요");
-  expect(result.steps.map(s => s.action)).toEqual(["open_url", "read_more", "read_more"]);
+  expect(result.steps.map(s => s.action)).toEqual(["open_url", "read_more", "read_more", "find_links"]);
 });
 
 it("test_rejects_answer_without_visit", async () => {

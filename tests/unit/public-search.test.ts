@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { z } from "zod";
 import type { LlmRequest } from "../../src/core/llm.ts";
 import { PublicTask } from "../../src/orchestrator/public_task.ts";
 import { AGENCY_DOMAINS, PUBLIC_DOMAINS, TavilySearch } from "../../src/server/public_search.ts";
@@ -29,11 +30,12 @@ it("fetches the vetted notice when document search excerpts lack the requirement
     { results: [official, { ...official, url: PAGE.url + "?session=test" }, { ...official, url: "https://agency.example/" }] },
     { results: [{ url: "https://another.go.kr/notice", raw_content: "잘못된 기관" }, { url: PAGE.url, raw_content: quote }] },
   ]);
-  const model = modelFake([
-    { answer: "", citations: [], retryQuery: null },
-    { answer: quote, citations: [{ index: 0, quote }], retryQuery: null },
-  ]);
-  const result = await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson })
+  const model = { name: "document reader", generate: async (request: LlmRequest) => {
+    const {excerpts} = z.object({excerpts: z.array(z.object({text: z.string()}))}).parse(JSON.parse(request.user));
+    const index = excerpts.findIndex(page => page.text === quote);
+    return index < 0 ? { answer: "", citations: [], retryQuery: null } : { answer: quote, citations: [{index, quote}] };
+  }};
+  const result = await new TavilySearch("test", model, undefined, { postJson: fetch.postJson })
     .search(new PublicTask({ goal: "신청 서류", facts: ["documents"] }), "ko", signal());
   expect(fetch.payloads[1]).toMatchObject({ urls: [PAGE.url] });
   expect(result).toMatchObject({ speech: quote, reviewQuoteSources: { [quote]: [PAGE.url] } });
@@ -56,6 +58,27 @@ it.each(["어린이날은 6월 20일입니다.", PAGE.content])("test_unverified
   const fetch = searchFake([{ results: [PAGE] }, { results: [PAGE] }]);
   const model = modelFake([{ answer: "June 20.", citations: [{ index: 0, quote }], retryQuery: null }]);
   expect(await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson }).search(QUESTION, "en", signal())).toBeUndefined();
+});
+
+it("keeps an agency referral while looking up the receiving office's procedure", async () => {
+  const referral = { url: "https://city.go.kr/reuse", title: "수리 지원", content: "수리 접수는 자원순환센터에서 담당합니다." };
+  const procedure = { url: "https://reuse.go.kr/repair", title: "방문 수리", content: "방문 전에 예약표를 받아 주세요." };
+  const fetch = searchFake([{ results: [referral] }, { results: [procedure] }]);
+  const model = modelFake([{ answer: "", citations: [], retryQuery: "자원순환센터 방문 수리 절차" }, {
+    answer: referral.content + " " + procedure.content, citations: [{ index: 0, quote: referral.content }, { index: 1, quote: procedure.content }],
+  }]);
+  const result = await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson })
+    .search(new PublicTask({ goal: "고장 난 물건을 어디로 가져가고 무엇을 먼저 해야 하나요?", facts: ["procedure"] }), "ko", signal());
+  expect(result?.sources.map(source => source.url)).toEqual([referral.url, procedure.url]);
+  expect(result?.reviewQuoteSources).toEqual({ [referral.content]: [referral.url], [procedure.content]: [procedure.url] });
+});
+
+it("stops a cycle of follow-up searches without claiming an answer", async () => {
+  const fetch = searchFake([{ results: [] }, { results: [] }]);
+  const model = modelFake([{ retryQuery: "다른 공식 자료" }, { retryQuery: QUESTION.goal }]);
+  const result = await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson }).search(QUESTION, "ko", signal());
+  expect(fetch.payloads.map(queryOf)).toEqual([QUESTION.goal, "다른 공식 자료"]);
+  expect(result).toBeUndefined();
 });
 
 it("test_private_query_never_reaches_search_provider", async () => {

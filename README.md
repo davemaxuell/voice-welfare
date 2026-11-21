@@ -91,7 +91,7 @@ npm run start:desktop
 | `BROWSER_MODE`, `CHROME_PROFILE_DIR` | `chromium`, `~/.cheongeum/chrome-profile` | `chrome` = 설치된 크롬 + 영구 프로필 |
 | `HEADLESS`, `VISUAL_CURSOR`, `BROWSER_SLOWMO_MS` | 창 보임, 창이 보이면 켬, `0` | 시연용 |
 | `READ_ONLY_WEB`, `WEB_SEARCH_URL` | `true`, 네이버 | 지원 사이트 밖은 읽기 전용, 검색 주소 틀(`{q}`) |
-| `TAVILY_API_KEY` | 선택 | 공휴일 등 공개 정보는 창을 열지 않고 검색해 대화에서 바로 답합니다. 공개 검색어만 Tavily에 전송합니다. 사이트를 열거나 화면에 보여 달라는 요청은 브라우저에서 실행합니다. |
+| `TAVILY_API_KEY` | 선택 | 공개 검색어로 공식 자료를 찾습니다. 키가 없거나 근거가 부족하면 AI 모델과 읽기 전용 웹 탐색이 설정된 경우 별도의 브라우저에서 공식 사이트를 확인합니다. 검색 화면을 보여 달라고 하면 현재 브라우저에서 진행합니다. |
 | `READ_ONLY_CLICKS` | `safe` | 읽기 전용 사이트에서는 링크, 동작 이름이 아닌 탭, 위험한 이름이 없는 버튼만 허용합니다. `any`는 합성 환경에서 정책을 비교할 때 선택할 수 있습니다. |
 | `PILOT_PROFILE` | `unidentified` | 확인된 개인 OS 프로필은 `personal`로 실행하고 시작 화면에서 같은 탭 복구를 선택할 수 있습니다. `shared`와 미확인 프로필은 세션별 임시 금고와 격리된 브라우저를 사용합니다. |
 | `PORT`, `DESKTOP_PORT` | 개발 서버 `8787`, 개발 앱 `8790` | 설치본은 이전 로컬 포트를 다시 쓰고, 사용 중이면 빈 포트를 선택합니다. |

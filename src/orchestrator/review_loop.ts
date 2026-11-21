@@ -1,6 +1,7 @@
 // 여러 단계를 거치는 요청을 끝까지 하고, 답하기 전에 원래 요청과 대조하는 고리(task_review.ts가 판정한다).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BrowserJourney } from "../agents/web/journey.ts";
+import { accessBlocked, stillNeedsAuth } from "../agents/web/auth_page.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import type { Redacted } from "../core/llm.ts";
@@ -10,10 +11,11 @@ import { todayIso } from "../core/time.ts";
 import { AGENT_IDS, draft, type Draft, type DraftAction, type SourceCitation, type TaskReviewSummary } from "../core/turn.ts";
 import { FIXED, translateIn } from "../language/i18n.ts";
 import { PERSONAL_BROWSE_TEXT } from "../speech/browse_phrases.ts";
+import { HISTORY_DESCRIBED } from "../speech/picture.ts";
 import { redactPictureText, redactText } from "../safety/privacy.ts";
 import { PublicTask, publicDestinations } from "./public_task.ts";
 import { PLAN_STOP_STATES, byLengthDesc, isAbort, replaceValues, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
-import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, type ReviewEvidence, type Route } from "./task_review.ts";
+import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, reviewEvidence, type ReviewEvidence, type Route } from "./task_review.ts";
 
 // 검토 횟수, 전체 탐색 판단 횟수, 실제 브라우저 조작 횟수. 재시도와 승인 후 재개가 함께 사용한다.
 export const REVIEW_LIMITS = { easy: [2, 8, 8], medium: [3, 16, 16], hard: [5, 32, 32] } as const;
@@ -43,6 +45,7 @@ interface ReviewedFields {
   privateValues?: string[];
   background?: boolean;
   inspection?: "answer" | "arrival";
+  publicArrival?: boolean;
 }
 
 /** 검토를 거치는 일 하나. 승인·되물음·본인인증으로 멈췄다 이어 가도 같은 횟수 한도와 근거를 쓴다. */
@@ -66,6 +69,7 @@ export class ReviewedTask {
   readonly background: boolean;
   readonly journey?: BrowserJourney;
   readonly inspection?: "answer" | "arrival";
+  readonly publicArrival: boolean;
   readonly entryOrigin?: string;
 
   constructor(fields: ReviewedFields & { publicFactsOnly?: boolean }) {
@@ -82,6 +86,7 @@ export class ReviewedTask {
     this.privateValues = fields.privateValues ?? [];
     this.background = fields.background ?? false;
     this.inspection = this.background ? undefined : fields.inspection;
+    this.publicArrival = !this.background && fields.publicArrival === true;
     if (this.inspection !== undefined) {
       const supplied = publicDestinations(fields.request).urls;
       if (supplied.size === 1) this.entryOrigin = [...supplied.keys()][0];
@@ -98,14 +103,14 @@ const RETRY_READS: ReadonlySet<string> = new Set(["OPEN_SITE", "FOLLOW_LINK", "G
   "ABOUT_SITE", "CURRENT_STEP", "POLICY_QUESTION", "FIND_PLACE"]);
 const ALLOWED: ReadonlySet<string> = new Set(["OPEN_SITE", "OPEN_OFFICIAL", "OPEN_BROWSER", "FOLLOW_LINK", "GOAL", "SEARCH",
   "START_APPLICATION", "FILL", "NEXT", "PREV", "READ_FIELD", "REVIEW", "PREPARE_SUBMIT",
-  "LOGIN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
+  "LOGIN", "DESCRIBE_SCREEN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
 const EXCLUDED: ReadonlyMap<string, readonly string[]> = new Map([
   ["personal_input", ["FILL"]], ["submission", ["PREPARE_SUBMIT"]], ["login", ["LOGIN"]],
   ["application", ["START_APPLICATION", "FILL", "PREPARE_SUBMIT"]],
 ]);
 const LIMITED_READS = ["login", "application", "submission", "personal_input"];
 const INDEPENDENT_LOOKUPS = new Set<Intent["type"]>(["POLICY_QUESTION", "FIND_PLACE"]);
-const SCREEN_READS = new Set<Intent["type"]>(["READ_MAIN", "ABOUT_SITE", "CURRENT_STEP", "LIST_LINKS", "READ_FIELD", "REVIEW"]);
+const SCREEN_READS = new Set<Intent["type"]>(["DESCRIBE_SCREEN", "READ_MAIN", "ABOUT_SITE", "CURRENT_STEP", "LIST_LINKS", "READ_FIELD", "REVIEW"]);
 const LOOKUP_KINDS = { browser: "GOAL", quiet: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
 const evidenceKey = (e: ReviewEvidence) => JSON.stringify([e.kind, e.text, e.receiptId, e.sources, e.publicPhone, e.valueVerified, e.pageKey]);
 
@@ -135,7 +140,15 @@ export class ReviewLoop {
         errorCode: reason, latencyMs: Date.now() - started, at: new Date().toISOString(), toolCalls: run.counter.actions - previousActions });
       return result;
     };
-    try { return record(await this.#review(run, turn, resumed)); }
+    try {
+      const result = await this.#review(run, turn, resumed);
+      // 사진 속 내용은 검토 모델과 대화 기록에 보내지 않고, 확인한 조작 결과와 함께 한 번 읽어 준다.
+      if (resumed?.semanticAction === "describe-screen" && resumed.pictureHistory === HISTORY_DESCRIBED &&
+          result.state !== "STOPPED" && !turn.ctx.signal.aborted && !this.session.superseded(turn)) {
+        return record({...result, speech: strip(`${resumed.speech} ${result.speech}`), pictureHistory: HISTORY_DESCRIBED, privateHistory: true});
+      }
+      return record(result);
+    }
     catch (error) {
       if (isAbort(error)) return record(this.#stopped());
       throw error;
@@ -162,6 +175,11 @@ export class ReviewLoop {
       }
       for (const source of result.sources ?? []) run.sources.set(source.url, source);
       run.evidence.push(...evidenceFromDraft(result));
+      if (result.semanticAction === "describe-screen" && result.pictureHistory === HISTORY_DESCRIBED) {
+        const captured = result.actions?.find(({action, policy, result: receipt}) => action.type === "capture" && policy.allowed &&
+          receipt?.ok === true && "verified" in receipt && receipt.verified && receipt.actionId === action.id);
+        if (captured) run.evidence.push(reviewEvidence("action", "화면 사진을 확인해 음성 설명을 준비했어요.", {receiptId: captured.action.id}));
+      }
     };
     const summary = (status: TaskReviewSummary["status"]): TaskReviewSummary =>
       ({ status, difficulty: run.difficulty, rounds: run.rounds, maxRounds: rounds, browserIterations: run.browserSteps });
@@ -176,7 +194,8 @@ export class ReviewLoop {
         if (result.state === "WAITING_FOR_USER_CONFIRMATION") run.journey.blockedBy = "approval";
         if (result.state === "AUTH_HANDOFF") run.journey.pause(handoff?.kind === "captcha" ? "captcha" : "auth", handoff?.expectedOrigin);
       }
-      if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
+      if (result.navigationHandoff !== undefined) result.navigationHandoff.reviewedTask = run;
+      else if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
       else if (clarification !== undefined && result.state === "NEEDS_CLARIFICATION") {
         clarification.reviewedTask = run;
         clarification.reviewedUrl = s.web.currentView?.url;
@@ -229,6 +248,11 @@ export class ReviewLoop {
           last = work;
           await record(work);
           if (needsInput(work)) return pause(work);
+          if (!run.background && run.task.searchMode === "visible" && work.view && (work.browserIterations ?? 0) > 0 &&
+              !run.retries.has("blocked-public-entry") && (stillNeedsAuth(work.view) || accessBlocked(work.view))) {
+            run.retries.add("blocked-public-entry");
+            continue;
+          }
         }
         resuming = false;
         if (turn.ctx.signal.aborted) return this.#stopped();
@@ -239,7 +263,8 @@ export class ReviewLoop {
           turn.ctx.trace("VERIFYING", AGENT_IDS.orchestrator, `요청 완료 검토 ${run.rounds}/${rounds}`);
           const correction = repair;
           verdict = await raceAbort(signal => reviewBeforeOutput(s.deps.llm, s.historySpeech(run.request), run.evidence, signal, {
-            language: s.lang, requirements: run.requirements, privateValues, repairReason: correction, inspection: run.inspection,
+            language: s.lang, requirements: run.requirements, exclusions: run.task.exclusions, privateValues, repairReason: correction,
+            inspection: run.inspection, publicArrival: run.publicArrival,
             publicFactsOnly: run.publicFactsOnly, ...(run.publicFactsOnly ? { publicContext: run.task.goal } : {}),
           }), turn.ctx.signal);
           if (repair.length > 0 || run.rounds >= rounds || verdict.repairReason.length === 0) break;
@@ -362,7 +387,7 @@ export class ReviewLoop {
           maxSteps: steps - run.browserSteps, exclusions: run.task.exclusions, requestedSteps: [intent.goal], journey: run.journey,
         });
       } else {
-        last = await s.route(intent, local);
+        last = await s.route(intent, local, {exclusions: run.task.exclusions, confirmPicture: true});
       }
       action.status = this.#needsInput(last) ? "waiting" : this.#actionSucceeded(last) ? "observed" : "unresolved";
       if (action.status === "unresolved") failures.push(kind);
@@ -388,7 +413,7 @@ export class ReviewLoop {
     const goal = run.rounds === 0 ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
     const hidden = [...new Set(run.privateValues.filter(value => value.length > 0))].sort(byLengthDesc);
     let subtask = new PublicTask({ ...run.task, goal: replaceValues(goal, hidden), subject: replaceValues(run.task.subject, hidden) });
-    if (run.rounds > 0 && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
+    if ((run.rounds > 0 || run.publicArrival && subtask.facts.length === 0) && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
     let mode = run.background && run.task.searchMode !== "quiet" ? undefined : run.task.searchMode;
     if (run.route === "quiet" || (mode === "quiet" && run.route === "browser")) mode = "quiet";
     else if (run.route === "browser") mode = "visible";
@@ -400,7 +425,7 @@ export class ReviewLoop {
     const step: Turn = { ...turn, intentType: kind, ctx: withContext(turn.ctx, { publicLookup: true }) };
     return s.planner.execute(subtask, step, mode, {
       research: run.background, maxSteps: Math.max(0, steps - run.browserSteps), continuePage: run.browserSteps > 0, journey: run.journey,
-      requestedSteps: mode === "visible" ? missing.map(part => replaceValues(part, hidden)) : [],
+      requestedSteps: missing.map(part => replaceValues(part, hidden)),
     });
   }
 }

@@ -191,6 +191,12 @@ or research to continue after the user leaves. It proposes a job for review. Wri
 question in goal in the user's language. Omit instructions to delegate or save and unrelated speech.
 
 Use find_information for read-only questions about public facts, requirements or procedures in this turn.
+Infer the outcome the resident wants from their words and current context. Identifying the service,
+finding its official site, and discovering intermediate steps are part of the lookup. When the
+outcome is clear, start with a descriptive goal even if the resident knows none of those names.
+When one source supplies a lead needed to find another, choose review_before_output and keep the
+whole outcome and constraints in goal. Ask only for a choice or personal circumstance that changes
+the answer and cannot be learned from public evidence. Never infer consent or a private fact.
 Use inspect_personal for an explicit request to open or inspect the user's own record, account page,
 or application status in the foreground browser. Infer the requested outcome from the whole conversation
 in its language, on any website. A reference to the user's circumstances alone does not request account
@@ -204,8 +210,9 @@ An inspection authorizes reading only.
 If currentInspectionScreen is true, the last verified personal screen is still open. Interpret a
 request to explain its result as a continuation of inspect_personal. Use the original utterance
 for the new requirements. Choose a fresh task when the user asks for something unrelated.
-Set outcome to arrival when the user only wants a page opened. Set it to answer when they want a
-personal result or an explanation. All other decision kinds use outcome null.
+For inspect_personal set outcome to arrival when the user only wants a page opened, or answer for a
+personal result or explanation. For a reviewed public lookup whose sole deliverable is opening a page,
+use source browser, searchMode visible, outcome arrival, and an empty requestedFacts list. Use outcome null otherwise.
 Use browser for a lookup restricted to a particular website. Otherwise use welfare for a named welfare
 benefit, places to find a local office, and browser for other public facts. Use the explicitly requested
 agency when it matches the catalog.
@@ -221,14 +228,15 @@ these same search-mode rules.
 
 For a lookup about a named service, benefit or document, put its Korean name in subject. Write a concise, self-contained
 Korean goal with all requested facts, the intended action or answer, and relevant conditions, applicant
-group, place, and period. Preserve comparisons, corrections and negation. Resolve relative dates against
-koreaDate and seek a published schedule for the next occurrence of an event. Put every applicable fact
+group, place, and period. Preserve comparisons, corrections and negation. Resolve explicit relative dates
+against koreaDate. Keep recurring weekdays as weekdays unless the request identifies a specific visit date.
+For a requested upcoming event look for its published schedule. Put every applicable fact
 label in requestedFacts and use other for any requested fact outside the named categories.
 Treat completed or excluded actions as context for the remaining request. Put expressly excluded actions
 in exclusions. Use screen_capture for a request to avoid screenshots or transmitting a page image.
 
-Use clarify when a material agency, service, document, applicant group or speech interpretation remains
-ambiguous. Ask one specific question in replyLanguage, with up to two short spoken choices. Preserve
+Use clarify when the user's intended outcome or a material user-specific detail remains
+ambiguous after using context. Ask one specific question in replyLanguage, with up to two short spoken choices. Preserve
 the unresolved request and its conditions in the Korean goal. speechCandidates are tentative spelling
 matches. Use corroborated minor spelling repairs only when the whole utterance supports the same target.
 If a likely speech error would change the service or multiple documents fit, ask which the user means.
@@ -248,7 +256,9 @@ For saved public research, use it when there are several independently answerabl
 document and deadline questions about several programs. Keep each item explicit in requirements.
 Keep short, independent commands on their ordinary routes. For a reviewed task, list every independently
 verifiable requested deliverable in requirements as exact consecutive spans of the user's original utterance,
-in order. Preserve all requested conditions. Set difficulty by the amount of work expected (easy, medium,
+in order. Keep contextual descriptions and prohibitions in the same span as the positive outcome they
+qualify. When the only deliverable is arriving at a page, use one requirement containing the whole
+utterance, including exclusions. Searching for that page is part of arrival. Preserve all requested conditions. Set difficulty by the amount of work expected (easy, medium,
 or hard). For information retrieval set source, searchMode and requestedFacts as for find_information.
 For a sequence that actually interacts with controls or fills fields use null source and null searchMode,
 even when it ends with an information question. Keep the distinction between asking how to act and asking
@@ -335,10 +345,11 @@ export function parseDecision(raw: unknown, spansFor: SpansFor = () => []): Publ
   if (d.kind === "open_agency" && d.agency === undefined) return undefined;
   if (d.kind === "delegate_research" && (d.goal === undefined || d.goal === "")) return undefined;
   if (d.kind === "find_information" && (d.goal === undefined || d.goal === "" || d.source === undefined || d.requestedFacts.length === 0)) return undefined;
-  if (d.kind === "inspect_personal" ? (d.source !== undefined || d.searchMode !== undefined) : d.outcome !== undefined) return undefined;
+  const publicArrival = d.kind === "review_before_output" && d.source === "browser" && d.searchMode === "visible" && d.outcome === "arrival";
+  if (d.kind === "inspect_personal" ? (d.source !== undefined || d.searchMode !== undefined) : d.outcome !== undefined && !publicArrival) return undefined;
   if (d.kind === "review_before_output" || d.kind === "inspect_personal") {
     if (d.goal === undefined || d.goal === "" || d.requirements === undefined || d.requirements.length === 0 || d.requirements.length > 32
-      || (d.source !== undefined && d.requestedFacts.length === 0)) {
+      || (d.source !== undefined && d.requestedFacts.length === 0 && !publicArrival)) {
       return undefined;
     }
     if (d.requirements.some(item => strip(item) === "" || codePoints(item) > 8000)) return undefined;
