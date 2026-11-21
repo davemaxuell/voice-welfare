@@ -863,6 +863,9 @@ export class BrowseSkill {
         }
       }
     }
+    const currentPage = this.web.currentView;
+    const blockedPublicPage = publicTask !== undefined && ctx.publicLookup && !personal && continuePage === true &&
+      currentPage !== undefined && (stillNeedsAuth(currentPage) || accessBlocked(currentPage));
     if (!model) {
       // 현재 탭에서 할 일은 계획 모델이 없어도 실제로 읽은 항목을 번호로 고를 수 있다.
       if (!personal && !publicTask && !ctx.publicLookup && (continuePage === true || (!hasText(siteUrl) && !hasText(startUrl) && !agency))) {
@@ -903,6 +906,7 @@ export class BrowseSkill {
         if (hasText(step.url)) here = step.url;
         if (!personal) this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
       }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, visualControl, journey, privateValues: options.privateValues,
+        retryPublicEntry: blockedPublicPage,
         discoveryAgency: personal && !hasText(siteUrl) ? options.agency : undefined,
         inspectionOutcome: options.inspectionOutcome, replyLanguage: this.#replyLanguage(),
         requestedFacts: publicTask?.facts.filter((fact): fact is PublicFact => Object.hasOwn(PUBLIC_FACT_LABELS, fact)), allowedUrls: relatedSites.map(site => site.url)}));

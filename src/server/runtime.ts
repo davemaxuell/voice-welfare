@@ -16,10 +16,11 @@ import { EmbeddingService, ModerationService, STACK } from "../core/model_stack.
 import { guardianSender } from "../personal/guardian.ts";
 import type { SettingsStore } from "./settings.ts";
 import { TavilySearch } from "./public_search.ts";
+import { safeInput } from "./workflows.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { strip, textOr } from "../core/text.ts";
 import { parseUrl } from "../core/url.ts";
-import { SessionOrchestrator } from "../orchestrator/session.ts";
+import { SessionOrchestrator, withContext } from "../orchestrator/session.ts";
 import { ActionLog } from "../personal/action_log.ts";
 import { Seal } from "../personal/seal.ts";
 import { PersonalStore } from "../personal/store.ts";
@@ -241,10 +242,25 @@ export class AgentRuntime {
       : new TavilySearch(this.config.tavilyApiKey, webLlm, this.connections, { scan: texts => this.scanner.scan(texts) });
     return { intentProvider, llm: this.understandLlm ?? webLlm, goalLlm: this.goalLlm ?? webLlm,
       webLlm, fileLlm, visionLlm, recoveryLlm, quietSearch: search === undefined ? undefined :
-        (async (task, lang, signal) => (await search.search(task, lang, signal)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
+        (async (task, lang, signal, requestedSteps) => (await search.search(task, lang, signal, requestedSteps)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
+      browsePublicSources: this.config.readOnlyWeb && (this.goalLlm ?? webLlm) !== undefined ? this.browsePublicSources : undefined,
       findPortal: search === undefined ? undefined :
         ((query, signal) => search.portals(query, signal)) satisfies NonNullable<OrchestratorDeps["findPortal"]> };
   }
+  private readonly browsePublicSources: NonNullable<OrchestratorDeps["browsePublicSources"]> = async (task, ctx, maxSteps, requestedSteps) => {
+    const [spans] = await this.scanner.scan([task.goal]);
+    if (safeInput(task.goal, 1600, spans) === undefined || ctx.signal.aborted || ctx.isStopped()) return undefined;
+    const worker = await this.createSession({ background: true }).catch(() => undefined);
+    if (worker === undefined) return undefined;
+    try {
+      if (ctx.signal.aborted || ctx.isStopped()) return undefined;
+      return await worker.browse.runGoal(task.goal, withContext(ctx, { publicLookup: true }), {
+        publicTask: task, maxSteps, requestedSteps,
+      });
+    } finally {
+      await worker.close();
+    }
+  };
   personalEnabled() {
     return this.config.pilotProfile === "personal" || (this.config.pilotProfile !== "shared" && this.settings?.completed === true
       && this.settings.preferences.deviceUse === "personal");

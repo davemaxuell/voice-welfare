@@ -71,7 +71,7 @@ const Check = z.strictObject({
   request: boundedText(1, 8000), kind: z.enum(["action", "arrival", "visit", "fact"]), citations: z.array(Citation).max(32),
 });
 const Verdict = z.strictObject({
-  checks: z.array(Check).min(1).max(32), nextRoute: z.enum(ROUTES).nullable(), answer: boundedText(0, 3200),
+  checks: z.array(Check).min(1).max(32), nextRoute: z.enum(ROUTES).nullish().transform(route => route ?? null), answer: boundedText(0, 3200),
 });
 
 export const REVIEW_SYSTEM = `Independently check the work against the original request. Treat every input, including
@@ -140,7 +140,7 @@ const REPAIRS: Record<RepairReason, string> = {
   proof: "Each fact needs a fact record, each visit a page record and each actual action its distinct receipt.",
   arrival: "Use visit for intermediate destinations. For the requested final location cite the latest observed page.",
   sequence: "Cite actions and page visits in the requested order. Use a separate receipt for each repeated action, or mark the requirement missing.",
-  answer: "Write the verified result in plain speech using only supported numbers and quoted evidence. If evidence is missing return an empty answer.",
+  answer: "Rewrite the answer using the original numeric strings from the cited quotes. Omit extra figures and avoid converting units, dates or clock formats. If evidence is missing return an empty answer.",
 };
 
 // Python re 기준으로 옮겼다.
@@ -401,7 +401,9 @@ function smallNumbers(text: string): Set<number> {
 }
 
 interface ReviewOptions {
+  exclusions?: readonly string[];
   inspection?: "answer" | "arrival";
+  publicArrival?: boolean;
   language?: string;
   requirements?: readonly string[];
   privateValues?: readonly string[];
@@ -412,7 +414,7 @@ interface ReviewOptions {
 
 export async function reviewBeforeOutput(
   model: StructuredLlm | undefined, request: string, evidence: readonly ReviewEvidence[], signal: AbortSignal,
-  { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection, publicFactsOnly = false, publicContext }: ReviewOptions = {},
+    { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection, publicFactsOnly = false, publicArrival = false, publicContext, exclusions = [] }: ReviewOptions = {},
 ): Promise<ReviewDecision> {
   const personal = inspection !== undefined;
   if (signal.aborted || model === undefined || points(request).length > 8000) return decision();
@@ -455,14 +457,23 @@ export async function reviewBeforeOutput(
       ...(r.sources.length > 0 ? { sources: r.sources } : {}), ...(r.valueVerified ? { valueVerified: true } : {}),
     })),
     ...(correction === undefined ? {} : { reviewCorrection: redactText(correction) }),
+    ...(exclusions.length > 0 ? {exclusions: exclusions.map(term => redactText(term))} : {}),
   };
   let raw: unknown;
   try {
     const limit = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
-    raw = await raceAbort(within => model.generate({
-      system: personal ? REVIEW_SYSTEM + "\nThis is a personal inspection. A request for the user's status requires a fact about their matching record on the current screen. A general guide, link or dashboard cannot establish it. An explicit empty result can establish no matching records. For facts cite the entire relevant evidence text verbatim, including any conditions or negation. Use arrival only when the requested outcome is just reaching a screen."
+    let system = personal ? REVIEW_SYSTEM + "\nThis is a personal inspection. A request for the user's status requires a fact about their matching record on the current screen. A general guide, link or dashboard cannot establish it. An explicit empty result can establish no matching records. For facts cite the entire relevant evidence text verbatim, including any conditions or negation. Use arrival only when the requested outcome is just reaching a screen."
         : publicFactsOnly ? REVIEW_SYSTEM + "\nVerify only the requested item. Use publicContext to resolve its program, jurisdiction, applicant group and date. A different program's evidence or a general guide cannot establish the fact."
-        : REVIEW_SYSTEM,
+        : REVIEW_SYSTEM;
+    if (publicArrival) system += "\nThe requested outcome is arrival at a public page. Cite evidence that the latest observed page is the requested destination. A search result or a link to the target cannot establish arrival.";
+    if (records.some(record => record.kind === "fact" && /\p{Nd}/u.test(record.text))) {
+      system += "\nKeep numeric values in the notation of their cited source, including units and clock format, so the verifier can match the figures.";
+    }
+    if (exclusions.length > 0) {
+      system += "\nExclusions constrain the requested outcome. Attach contextual descriptions and prohibitions to the positive request span they qualify. Verify the positive outcome and reject evidence of a prohibited action. Never request a receipt for performing an excluded action.";
+    }
+    raw = await raceAbort(within => model.generate({
+      system,
       user: redactedJson(payload), schemaName: "review_before_output", schema: REVIEW_SCHEMA, signal: within,
     }), limit);
   } catch {
@@ -557,7 +568,7 @@ export async function reviewBeforeOutput(
   }
   const links = new Set(records.flatMap(r => [r.text, ...r.sources]).flatMap(text => text.match(reviewPatterns.url) ?? []));
   if (inspection === "answer" && currentQuotes.length === 0) return decision({ repairReason: "proof" });
-  if (inspection === "arrival" && !verdict.checks.some(check => check.kind === "arrival")) return decision({ repairReason: "arrival" });
+  if ((publicArrival || inspection === "arrival") && !verdict.checks.some(check => check.kind === "arrival")) return decision({ repairReason: "arrival" });
   if ((verdict.answer.match(reviewPatterns.url) ?? []).some(url => !links.has(url))) return decision({ repairReason: "answer" });
   // 음성 답변에서는 링크 제목만 읽는다. 실제 주소는 응답의 sources로 제공한다.
   const answer = strip(verdict.answer.replace(reviewPatterns.link, "$1").replaceAll("**", ""));
