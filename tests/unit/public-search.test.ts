@@ -98,6 +98,16 @@ it("bounds evidence across rounds and leaves extraction disabled for ordinary lo
   expect(excerpts.at(-1)?.text).toMatch(/^2-3 /u);
 });
 
+it("explains requestedSteps to the model when it forwards them", async () => {
+  const fetch = searchFake([{ results: [PAGE] }]);
+  const model = modelFake([{ answer: "", citations: [], retryQuery: null }]);
+  const steps = ["어린이날 날짜", "그날이 공휴일인지"];
+  await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson }).search(QUESTION, "ko", signal(), steps);
+  const [request] = model.calls;
+  expect(JSON.parse(request?.user ?? "{}")).toMatchObject({ requestedSteps: steps });
+  expect(request?.system).toContain("requestedSteps");
+});
+
 it("test_private_query_never_reaches_search_provider", async () => {
   const fetch = searchFake([]);
   const task = new PublicTask({ goal: "Search for tvly-" + "private-test-token" });

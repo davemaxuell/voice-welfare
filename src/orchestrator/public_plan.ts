@@ -4,7 +4,7 @@ import type { BrowserJourney } from "../agents/web/journey.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree } from "../core/lexicon.ts";
-import type { Redacted } from "../core/llm.ts";
+import { ModelTransportError, type Redacted } from "../core/llm.ts";
 import { ResearchFinding, ResearchPlan, researchSummary, type ResearchOutcome, type ResearchProgress, type ResearchSource } from "../core/research.ts";
 import type { z } from "zod";
 import { rstripChars, stripChars } from "../core/text.ts";
@@ -358,7 +358,12 @@ export class PublicPlanner {
     if (permitted && browse !== undefined && maxSteps !== 0 && task.facts.length > 0) {
       turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, "공개 웹 자료에서 근거 확인");
       if (research !== true) s.progress.milestone(`official-browser:${turn.id}`, CHECKING_OFFICIAL_SITES[lang]);
-      result = await raceAbort(() => browse(task, turn.ctx, maxSteps, requestedSteps), signal);
+      try { result = await raceAbort(() => browse(task, turn.ctx, maxSteps, requestedSteps), signal); }
+      catch (error) {
+        // 모델 연결 실패는 사용자에게 알리고, 격리된 브라우저 같은 그 밖의 실패는 이 보완 경로만 건너뛴다.
+        if (error instanceof ModelTransportError) throw error;
+        turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, "공개 웹 자료 확인을 건너뜀");
+      }
     }
     if (signal.aborted) return draft("STOPPED", "none", FIXED.stopBusy[lang], { lang });
     if (result?.sources !== undefined && result.sources.length > 0 && (result.reviewQuotes?.length ?? 0) > 0) {
