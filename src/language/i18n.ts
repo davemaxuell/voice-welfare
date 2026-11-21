@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { SIMPLE_TEXT_SCHEMA, redactedJson, type Redacted, type StructuredLlm } from "../core/llm.ts";
+import type { Approval, VaultCommand } from "../core/dialogue.ts";
 import { PUBLIC_SITES } from "../core/sites.ts";
-import { casefold, strip } from "../core/text.ts";
-import type { Lang } from "../core/turn.ts";
+import { casefold, hasText, strip } from "../core/text.ts";
+import type { DraftAction, Lang, PendingConfirmation } from "../core/turn.ts";
 import { redactText } from "../safety/privacy.ts";
 import { extractNumbers, unsupportedNumbers } from "../safety/verify.ts";
 
@@ -75,7 +76,69 @@ export function detectScriptLang(text: string): Lang | undefined {
   return undefined;
 }
 
+const approvalCopy = {
+  fieldPurpose: { ko: "실제 사이트 입력란 채우기(제출은 하지 않음)", en: "Fill in fields without submitting", zh: "填写表单，不提交", ja: "項目を入力し、送信はしません" },
+  fieldQuestion: { ko: "표시한 항목과 값으로 입력할까요? 제출하지 않습니다.", en: "Enter the values shown in these fields? The form will stay unsubmitted.", zh: "要将所示值填入这些字段吗？不会提交表单。", ja: "表示された内容を各項目に入力しますか？フォームは送信しません。" },
+  clickPurpose: { ko: "표시한 버튼 누르기", en: "Press the selected button", zh: "点击所选按钮", ja: "選択したボタンを押す" },
+  linkPurpose: { ko: "표시한 링크 열기", en: "Open the selected link", zh: "打开所选链接", ja: "選択したリンクを開く" },
+  clickQuestion: { ko: "선택한 항목을 누를까요? 신청이나 제출이 진행될 수 있어요.", en: "Activate the selected control? It may start an application, submit a form or sign you in.", zh: "要启用所选控件吗？这可能会开始申请、提交表单或登录。", ja: "選択した項目を操作しますか？申請、送信、ログインが行われる場合があります。" },
+  loginOpen: { ko: "로그인 화면 열기", en: "Open the sign-in page", zh: "打开登录页面", ja: "ログイン画面を開く" },
+  loginOpenQuestion: { ko: "로그인 화면을 열까요? 그 화면에서 직접 로그인 정보를 입력해 주세요.", en: "Open the sign-in page? Enter your credentials there yourself.", zh: "要打开登录页面吗？请在该页面自行输入登录信息。", ja: "ログイン画面を開きますか？その画面でご自身で認証情報を入力してください。" },
+  loginSubmit: { ko: "로그인 버튼 누르기", en: "Press the sign-in button", zh: "点击登录按钮", ja: "ログインボタンを押す" },
+  loginSubmitQuestion: { ko: "입력하신 정보로 로그인할까요?", en: "Sign in using the credentials you entered on the website?", zh: "要使用您在网站上输入的凭据登录吗？", ja: "サイトにご自身で入力した認証情報でログインしますか？" },
+  submitPurpose: { ko: "장애인연금 모의 신청서 모의접수 (실제 제출 아님)", en: "Submit the practice disability pension application", zh: "提交残疾人年金模拟申请", ja: "障害者年金の練習用申請書を模擬提出" },
+  submitQuestion: { ko: "이 내용으로 모의접수할까요? 실제 접수가 아니며 어디에도 전송되지 않습니다.", en: "Submit these details in practice mode? No agency receives the application. You can edit the fields first.", zh: "要模拟提交这些信息吗？不会发送给任何机构。您可以先修改字段。", ja: "この内容で模擬提出しますか？どの機関にも送信されません。先に項目を修正できます。" },
+  filePurpose: { ko: "받은 파일 분석", en: "Analyze the downloaded file", zh: "分析下载的文件", ja: "ダウンロードしたファイルを解析" },
+  fileQuestion: { ko: "개인정보가 포함될 수 있는 파일 전체를 표시한 대상으로 보낼까요?", en: "Send the entire file to the destination shown? It may contain personal information.", zh: "要将整个文件发送到所示接收方吗？文件可能包含个人信息。", ja: "ファイル全体を表示された送信先に送りますか？個人情報が含まれる可能性があります。" },
+  fileTextQuestion: { ko: "개인정보가 포함될 수 있는 파일 본문을 표시한 대상으로 보낼까요?", en: "Send the document text to the destination shown? It may contain personal information.", zh: "要将文档正文发送到所示接收方吗？正文可能包含个人信息。", ja: "文書の本文を表示された送信先に送りますか？個人情報が含まれる可能性があります。" },
+  visualPurpose: { ko: "화면 사진 검토", en: "Review an image of this page", zh: "查看此页面的图像", ja: "このページの画像を確認" },
+  visualDescribe: { ko: "화면 사진으로 현재 페이지 설명", en: "Describe the current page from a screenshot", zh: "通过截图说明当前页面", ja: "画面画像を使って現在のページを説明" },
+  visualOrient: { ko: "화면 사진으로 메뉴 찾기", en: "Find a menu in a screenshot", zh: "通过截图查找菜单", ja: "画面画像でメニューを探す" },
+  visualLink: { ko: "화면 사진으로 안내 링크 찾기", en: "Find a guidance link in a screenshot", zh: "通过截图查找指南链接", ja: "画面画像で案内リンクを探す" },
+  visualQuestion: { ko: "입력란을 가린 화면 사진 한 장을 표시한 대상으로 보낼까요?", en: "Send one screenshot with the input fields masked to the recipient shown?", zh: "要将一张已遮盖输入字段的截图发送给所示接收方吗？", ja: "入力欄を隠した画面画像を一枚、表示された送信先に送りますか？" },
+  researchPurpose: { ko: "공개 자료 조사", en: "Research public sources", zh: "调查公开资料", ja: "公開資料を調査" },
+  researchQuestion: { ko: "질문과 결과를 저장하고 조사할까요? 앱을 다시 열면 이어서 조사해요.", en: "Save the question and its results and research public sources? Research resumes when you reopen the app.", zh: "要保存问题和结果并调查公开资料吗？重新打开应用后会继续调查。", ja: "質問と結果を保存して公開資料を調査しますか？アプリを開き直すと調査を再開します。" },
+  savePurpose: { ko: "내 정보 저장", en: "Save my information", zh: "保存我的信息", ja: "自分の情報を保存" },
+  saveDevice: { ko: "이 정보를 기기에 저장할까요?", en: "Save this information on this device?", zh: "要将这些信息保存在此设备上吗？", ja: "この情報をこの端末に保存しますか？" },
+  saveSession: { ko: "이 정보를 이번 세션 동안 기억할까요?", en: "Remember this information for this session?", zh: "要在本次会话中记住这些信息吗？", ja: "このセッションの間、この情報を記憶しますか？" },
+  clearPurpose: { ko: "내 정보 삭제", en: "Delete my saved information", zh: "删除我保存的信息", ja: "自分の保存情報を削除" },
+  clearQuestion: { ko: "저장된 내 정보를 모두 지울까요?", en: "Delete all your saved information?", zh: "要删除您保存的所有信息吗？", ja: "保存したご自身の情報をすべて削除しますか？" },
+  unverified: { ko: "실행됐는지 확인하지 못했어요. 다시 진행하기 전에 화면을 확인해 주세요.", en: "I could not verify the previous action. It may have gone through. Check the page before deciding whether to try again.", zh: "无法确认上次操作是否成功。操作可能已经完成。请先检查页面，再决定是否重试。", ja: "前の操作の結果を確認できませんでした。すでに実行された可能性があります。再実行する前にページを確認してください。" },
+  expired: { ko: "여쭤본 지 2분이 지나서 다시 여쭤볼게요.", en: "Two minutes have passed. Please review the request again.", zh: "已经过去两分钟。请再次核对请求。", ja: "2分経ちました。もう一度ご確認ください。" },
+  changed: { ko: "확인할 때와 화면이나 항목이 달라져 실행하지 않았어요. 계속하려면 작업을 다시 요청해 주세요.", en: "The page, target or field has changed. I did not carry out the action. Please request it again if you want to continue.", zh: "页面、目标或字段已更改。我没有执行操作。如要继续，请重新提出请求。", ja: "ページ、対象、または入力欄が変わったため実行しませんでした。続けるには、もう一度操作を依頼してください。" },
+  field: { ko: "입력란", en: "Field", zh: "字段", ja: "入力欄" },
+  pageField: { ko: "사이트에 표시된 항목 이름", en: "Field name on the website", zh: "网站上的字段名称", ja: "サイト上の項目名" },
+  pageTitle: { ko: "페이지 제목", en: "Page title", zh: "页面标题", ja: "ページタイトル" },
+  control: { ko: "사이트에 표시된 항목", en: "Control on the website", zh: "网站上的控件", ja: "サイト上の操作項目" },
+  file: { ko: "전송할 파일", en: "File to send", zh: "要发送的文件", ja: "送信するファイル" },
+  recipient: { ko: "전송 대상", en: "Recipient", zh: "接收方", ja: "送信先" },
+  question: { ko: "질문", en: "Question", zh: "问题", ja: "質問" },
+  destination: { ko: "대상", en: "Destination", zh: "目标", ja: "対象" },
+  name: { ko: "이름", en: "Name", zh: "姓名", ja: "氏名" },
+  address: { ko: "주소", en: "Address", zh: "地址", ja: "住所" },
+  registered: { ko: "주민등록 주소", en: "Registered address", zh: "登记地址", ja: "住民登録住所" },
+  residence: { ko: "실거주지 주소", en: "Current address", zh: "实际居住地址", ja: "現住所" },
+  phone: { ko: "연락처", en: "Phone number", zh: "电话号码", ja: "電話番号" },
+  email: { ko: "이메일", en: "Email address", zh: "电子邮箱", ja: "メールアドレス" },
+  birth: { ko: "생년월일", en: "Date of birth", zh: "出生日期", ja: "生年月日" },
+  income: { ko: "소득·재산 신고", en: "Income and asset declaration", zh: "收入和财产申报", ja: "所得・資産の申告" },
+  household: { ko: "가구원 수", en: "Household size", zh: "家庭人数", ja: "世帯人数" },
+  navigate: { ko: "사이트 열기", en: "Open the requested page", zh: "打开请求的页面", ja: "依頼されたページを開く" },
+  back: { ko: "이전 페이지로 돌아가기", en: "Return to the previous page", zh: "返回上一页", ja: "前のページに戻る" },
+  click: { ko: "화면 항목 누르기", en: "Activate a page control", zh: "启用页面控件", ja: "ページ内の項目を操作" },
+  fill: { ko: "입력란에 값 넣기", en: "Enter the requested field value", zh: "填写请求的字段值", ja: "依頼された値を項目に入力" },
+  press: { ko: "키 누르기", en: "Press the requested key", zh: "按下所需的键", ja: "指定されたキーを押す" },
+  select: { ko: "옵션 선택", en: "Select an option", zh: "选择选项", ja: "選択肢を選ぶ" },
+  check: { ko: "체크 상태 바꾸기", en: "Change a checkbox selection", zh: "更改复选框状态", ja: "チェック状態を変更" },
+  scroll: { ko: "화면 스크롤", en: "Scroll the page", zh: "滚动页面", ja: "ページをスクロール" },
+  read: { ko: "화면 내용 읽기", en: "Read the requested content", zh: "朗读请求的内容", ja: "指定された内容を読み上げる" },
+  focus: { ko: "항목으로 이동", en: "Move focus to the selected item", zh: "将焦点移到所选项目", ja: "選択した項目にフォーカスを移す" },
+  capture: { ko: "화면 사진 촬영", en: "Capture the requested page image", zh: "截取所请求的页面图像", ja: "指定されたページの画像を取得" },
+  policyPending: { ko: "사용자 확인 대기", en: "Waiting for your approval", zh: "等待您的批准", ja: "承認をお待ちしています" },
+} satisfies Record<string, Record<Lang, string>>;
+
 export const FIXED = {
+  ...approvalCopy,
   retry: {
     ko: "잘 알아듣지 못했어요. 다시 말씀해 주세요.",
     en: "Sorry, I didn't catch that. Please say it again.",
@@ -278,4 +341,95 @@ export async function translateOut(
     return text;
   }
   return undefined;
+}
+
+type Waiting = Approval | VaultCommand;
+type CopyKey = keyof typeof FIXED;
+type Row = PendingConfirmation["values"][number];
+
+const fields = new Map<string, CopyKey>([
+  ["이름", "name"], ["성명", "name"], ["주소", "address"], ["주민등록 주소", "registered"],
+  ["실거주지 주소", "residence"], ["전화번호", "phone"], ["연락처", "phone"], ["연락처 (선택)", "phone"],
+  ["소득·재산 신고", "income"], ["소득·재산 신고 (선택)", "income"], ["가구원 수", "household"],
+  ["가구원 수 (선택)", "household"], ["이메일", "email"], ["생년월일", "birth"],
+]);
+
+/** 원래 승인과 지문은 세션에 둔다. 화면과 로컬 낭독에는 별도의 사본을 준다. */
+export function approvalPresentation(waiting: Waiting | undefined, lang: Lang, persistent: boolean, pageTitle?: string) {
+  const original = waiting?.confirmation;
+  if (waiting === undefined || original === undefined || lang === "ko") return undefined;
+  const t = (key: CopyKey) => FIXED[key][lang];
+  let purpose: CopyKey, question: CopyKey;
+  let values: Row[] = [];
+  const row = (key: CopyKey, value: string): Row => ({ label: t(key), value });
+  switch (waiting.kind) {
+    case "assist":
+    case "submit":
+    case undefined: {
+      const input = waiting.kind === "assist";
+      purpose = input ? "fieldPurpose" : "submitPurpose";
+      question = input ? "fieldQuestion" : "submitQuestion";
+      values = original.values.flatMap(field => {
+        const key = fields.get(field.label) ?? "field";
+        return [row(key, field.value), row("pageField", field.label)];
+      });
+      break;
+    }
+    case "click": {
+      const target = waiting.action.target;
+      const link = target?.role === "link" || target?.role === "scriptlink";
+      [purpose, question] = waiting.then === "login-open" ? ["loginOpen", "loginOpenQuestion"]
+        : waiting.then === "login-submit" ? ["loginSubmit", "loginSubmitQuestion"]
+        : [link ? "linkPurpose" : "clickPurpose", "clickQuestion"];
+      if (hasText(pageTitle)) values.push(row("pageTitle", pageTitle));
+      if (hasText(target?.name)) values.push(row("control", target.name));
+      break;
+    }
+    case "file":
+      purpose = "filePurpose";
+      question = original.values[0]?.value.toLowerCase().endsWith(".hwpx") === true ? "fileTextQuestion" : "fileQuestion";
+      values = original.values.map(item => row("file", item.value));
+      break;
+    case "visual":
+      purpose = original.purpose === FIXED.visualDescribe.ko ? "visualDescribe" : original.purpose === FIXED.visualOrient.ko ? "visualOrient"
+        : original.purpose === FIXED.visualLink.ko ? "visualLink" : "visualPurpose";
+      question = "visualQuestion";
+      values = original.values.map(item => row("recipient", item.value));
+      break;
+    case "research":
+      purpose = "researchPurpose"; question = "researchQuestion";
+      values = [row("question", waiting.goal)];
+      break;
+    case "vault-save":
+      purpose = "savePurpose"; question = persistent ? "saveDevice" : "saveSession";
+      break;
+    case "vault-clear":
+      purpose = "clearPurpose"; question = "clearQuestion";
+      break;
+    default:
+      return undefined;
+  }
+  const card: PendingConfirmation = { ...original, purpose: t(purpose), description: t(question), values };
+  const readback = [row("destination", card.site), ...values].map(item => item.label + ": " + item.value).join(". ");
+  return { card, speech: [card.purpose, readback, card.description].join(". ") };
+}
+
+/** 일반 답변은 그대로 두고, 승인 요청 또는 재확인으로 만든 응답만 읽는다. */
+export type ApprovalNotice = "ask" | "switch" | "expired" | "changed" | "unverified";
+export function approvalNarration(kind: ApprovalNotice | undefined, lang: Lang, speech: string, summary?: string) {
+  if (lang === "ko" || kind === undefined) return undefined;
+  if (kind === "changed") return FIXED.changed[lang];
+  if (summary === undefined) return undefined;
+  if (kind === "expired" || kind === "unverified") return FIXED[kind][lang] + " " + summary;
+  return kind === "switch" ? speech + " " + summary : summary;
+}
+
+export function approvalAction<T extends Pick<DraftAction, "action" | "policy">>(event: T, lang: Lang) {
+  const { action, policy } = event;
+  const target = action.target?.name ?? action.target?.label;
+  return {
+    ...event,
+    action: { ...action, reason: [FIXED[action.type][lang], target].filter(Boolean).join(" — ") },
+    policy: policy.code === "NEEDS_CONFIRMATION" ? { ...policy, reason: FIXED.policyPending[lang] } : policy,
+  };
 }

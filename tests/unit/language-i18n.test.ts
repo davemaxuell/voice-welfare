@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
+import { fingerprint } from "../../src/agents/web/approval.ts";
+import type { Approval, VaultCommand } from "../../src/core/dialogue.ts";
+import type { Action } from "../../src/core/actions.ts";
+import { LANGS, type PendingConfirmation } from "../../src/core/turn.ts";
 import { foreignApproval } from "../../src/core/lexicon.ts";
-import { detectLangSwitch, detectScriptLang, languagePatterns, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
+import { approvalPresentation, detectLangSwitch, detectScriptLang, languagePatterns, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
 import { unsupportedNumbers } from "../../src/safety/verify.ts";
 import { FakeLlm } from "../helpers.ts";
 import { codePointSpans } from "./python-spans.ts";
@@ -128,4 +132,48 @@ it("번역 모델로 보내는 원문과 웹 인용에서 비밀값을 가린다
   await translateOut(llm, `내용은 "복지 신청 방법과 안내 내용을 확인해 주세요 ${secret}"로 시작해요.`, "en");
   expect(llm.calls.map(c => c.schemaName)).toEqual(["translate_in", "translate_quote", "translate_out"]);
   for (const call of llm.calls) expect(call.user).not.toContain(secret);
+});
+
+const typedValue = "연습 42 / 555-0100 / $&";
+const controlName = "로그인";
+const sampleAction: Action = { id: "fixture", type: "click", target: { name: controlName, role: "button" },
+  reason: "연습 버튼 누르기", risk: "sensitive", requiresConfirmation: true };
+const samplePrint = fingerprint({}, [sampleAction], "원래 승인 문장");
+const sampleCard: PendingConfirmation = { actionId: "fixture", site: "연습 사이트", purpose: "원래 목적",
+  description: "원래 승인 문장", realSubmission: false, values: [{ label: "이름", value: typedValue }] };
+const acting = { action: sampleAction, confirmation: sampleCard, fingerprint: samplePrint };
+const examples: [string, Approval | VaultCommand, string][] = [
+  ["입력", { ...acting, kind: "assist", actions: [sampleAction] }, "Fill in fields without submitting"],
+  ["일반 버튼", { ...acting, kind: "click", url: "http://localhost/" }, "Press the selected button"],
+  ["링크", { ...acting, kind: "click", url: "http://localhost/", action: { ...sampleAction, target: { role: "link", name: controlName } } }, "Open the selected link"],
+  ["로그인 화면", { ...acting, kind: "click", url: "http://localhost/", then: "login-open" }, "Open the sign-in page"],
+  ["로그인 제출", { ...acting, kind: "click", url: "http://localhost/", then: "login-submit" }, "Press the sign-in button"],
+  ["모의접수", { ...acting, kind: "submit" }, "Submit the practice disability pension application"],
+  ["파일", { kind: "file", confirmation: sampleCard, record: {}, digest: "fixture", question: "" }, "Analyze the downloaded file"],
+  ["사진", { kind: "visual", confirmation: sampleCard, goal: "", checkpoint: {} }, "Review an image of this page"],
+  ["화면 설명", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 현재 페이지 설명" }, goal: "", checkpoint: {} }, "Describe the current page from a screenshot"],
+  ["메뉴 찾기", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 메뉴 찾기" }, goal: "", checkpoint: {} }, "Find a menu in a screenshot"],
+  ["안내 링크", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 안내 링크 찾기" }, goal: "", checkpoint: {} }, "Find a guidance link in a screenshot"],
+  ["조사", { kind: "research", confirmation: sampleCard, goal: typedValue }, "Research public sources"],
+  ["금고 저장", { kind: "vault-save", confirmation: { ...sampleCard, values: [] }, values: { name: typedValue } }, "Save my information"],
+  ["금고 삭제", { kind: "vault-clear", confirmation: { ...sampleCard, values: [] } }, "Delete my saved information"],
+];
+it.each(examples)("%s 승인의 네 언어 문구는 원래 승인과 실행값을 바꾸지 않는다", (_label, waiting, english) => {
+  const before = structuredClone(waiting);
+  for (const lang of LANGS) {
+    const shown = approvalPresentation(waiting, lang, false);
+    if (lang === "ko") { expect(shown).toBeUndefined(); continue; }
+    expect(shown?.card.actionId).toBe(sampleCard.actionId);
+    expect(shown?.card.site).toBe(sampleCard.site);
+    expect(shown?.card.purpose).not.toMatch(/[가-힣]/u);
+    expect(shown?.card.description).not.toMatch(/[가-힣]/u);
+    if (lang === "en") expect(shown?.card.purpose).toBe(english);
+    if (waiting.kind === "assist" || waiting.kind === "submit" || waiting.kind === "research") {
+      expect(shown?.card.values.map(row => row.value)).toContain(typedValue);
+      expect(shown?.speech).toContain(typedValue);
+    }
+    if (waiting.kind === "click") expect(shown?.card.values.map(row => row.value)).toContain(controlName);
+    if (waiting.kind === "vault-save") expect(shown?.card.values).toEqual([]);
+  }
+  expect(waiting).toEqual(before);
 });
