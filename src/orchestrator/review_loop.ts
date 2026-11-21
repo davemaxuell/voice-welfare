@@ -137,8 +137,7 @@ export class ReviewLoop {
     const result = await this.run(new ReviewedTask({request, task: new PublicTask({goal, exclusions}), requirements: [request], difficulty,
       route: "existing", counter: turn.ctx.counter, continuation: {request, approvedRefs: new Set(), actionLimit,
         publicLookup: turn.ctx.publicLookup || exclusions.some(item => LIMITED_READS.includes(item))}}), turn);
-    // 중간 확인 없이 끝난 목표는 기존 응답 형식을 유지한다.
-    if (result.review?.status === "needs_input") return result;
+    // 단일 목표의 첫 응답에서는 검토 요약을 생략한다.
     const {review: _review, ...first} = result;
     return first;
   }

@@ -43,7 +43,8 @@ it.each([
   session.deps.llm = session.deps.goalLlm = model;
   const asked = await say(goal);
   expect(asked.intentType).toBe(intent);
-  expect(asked).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}, review: {status: "needs_input"}});
+  expect(asked).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}});
+  expect(asked).not.toHaveProperty("review");
   expect(asked.pendingConfirmation?.description).toContain("확인");
   const target = page.getByRole("button", {name: "확인"});
   expect(await target.getAttribute("data-count")).toBe("0");
@@ -78,7 +79,8 @@ it("음성 목표가 로그인 화면에서 기다렸다가 직접 인증한 뒤
   });
   session.deps.llm = session.deps.goalLlm = model;
   const asked = await say(currentGoal);
-  expect(asked).toMatchObject({intentType: "GOAL", state: "AUTH_HANDOFF", authHandoff: {status: "waiting"}, review: {status: "needs_input"}});
+  expect(asked).toMatchObject({intentType: "GOAL", state: "AUTH_HANDOFF", authHandoff: {status: "waiting"}});
+  expect(asked).not.toHaveProperty("review");
   expect((await say("다 했어")).state).toBe("AUTH_HANDOFF");
   expect(calls).toBe(1);
   signedIn = true;
