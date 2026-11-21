@@ -69,6 +69,24 @@ it("test_only_rule_words_approve", async () => {
   expect(fieldValue(yes, "opinionName")).toBe("김하늘");
 });
 
+it("입력 승인 대기 중 언어를 바꿔도 같은 승인을 한 번만 실행한다", async () => {
+  const { session, page } = await runtime.createBrowserSession();
+  withTranslator(session, {});
+  await session.handleTurn(PORTAL + " 열어줘");
+  const asked = await session.handleTurn("이름 칸에 김하늘 써줘");
+  const approval = asked.pendingConfirmation;
+  if (approval === undefined) throw new Error("입력 승인을 요청하지 않았습니다.");
+  await page.locator("#opinionName").evaluate(field => {
+    field.addEventListener("input", () => { field.dataset.inputs = String(Number(field.dataset.inputs ?? 0) + 1); });
+  });
+  const switched = await session.setLanguage("en");
+  expect(switched.lang).toBe("en");
+  expect(switched.pendingConfirmation?.actionId).toBe(approval.actionId);
+  await session.confirm(true, approval.actionId);
+  expect(await page.locator("#opinionName").inputValue()).toBe("김하늘");
+  expect(await page.locator("#opinionName").getAttribute("data-inputs")).toBe("1");
+});
+
 it("test_changed_numbers_fall_back_to_korean", async () => {
   const session = await newSession();
   const utterance = "Open the practice application form";
