@@ -350,8 +350,8 @@ async function readyForInput() {
 
 // ---------------------------------------------------------------- 응답·음성
 
-type TurnTiming = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint };
-async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnTiming) {
+type TurnOptions = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint; controlLabel?: string };
+async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnOptions) {
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
@@ -406,7 +406,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     recordConsent(ui.consent === "granted" ? r.speech : undefined, r.lang);
     if (ui.consent !== "granted") push({ role: "assistant", text: r.speech, lang: r.lang });
   } else {
-    push({ role: "user", text: r.userUtterance === "[언어 선택]" ? t("[언어 선택]") : r.userUtterance });
+    push({ role: "user", text: trace?.controlLabel ?? r.userUtterance });
     push({ role: "assistant", text: r.speech, lang: r.lang });
   }
   timing?.measure(trace?.sent, "result-applied");
@@ -1163,7 +1163,7 @@ async function confirm(approve: boolean, actionId: string) {
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.confirm(ui.sessionId, approve, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel: approve ? t("[승인 버튼]") : t("[거절 버튼]") });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1397,7 +1397,7 @@ export async function selectLanguage(lang: Lang) {
     if (!current()) return;
     const r = await api.language(sid, lang);
     if (!current()) return;
-    await applyResult(r, !conversationOn);
+    await applyResult(r, !conversationOn, true, { controlLabel: workspaceText("[언어 선택]", lang) });
     if (conversationOn && current()) await speakTurn(r);
   } catch (err) {
     if (current()) setError(err instanceof Error ? err.message : t("언어를 바꾸지 못했습니다."));

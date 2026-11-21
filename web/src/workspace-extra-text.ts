@@ -1,5 +1,7 @@
 /** 한국어만 사용할 때는 내려받지 않는 추가 화면·음성 문구. */
 export const extraCopy: Readonly<Record<string, readonly [string, string, string]>> = {
+  "[승인 버튼]": ["[Approve button]", "[批准按钮]", "[承認ボタン]"],
+  "[거절 버튼]": ["[Decline button]", "[拒绝按钮]", "[拒否ボタン]"],
   "[언어 선택]": ["[Language selection]", "[语言选择]", "[言語選択]"],
   "연습 모드": ["Practice mode", "练习模式", "練習モード"],
   "모의 신청에는 예시 정보만 사용해 주세요. 실제 접수는 이루어지지 않아요.": ["Use sample information in practice applications. No real application is submitted.", "模拟申请请仅使用示例信息。不会实际提交申请。", "練習用の申請には架空の情報を使ってください。実際には申請されません。"],
