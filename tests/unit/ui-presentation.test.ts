@@ -1,8 +1,15 @@
 import { expect, it } from "vitest";
+import { trayTaskText } from "../../apps/desktop/src/protocol.ts";
 import { desktopView, type LiveView } from "../../web/src/companion.ts";
 import { presentationOf, type Capture } from "../../web/src/presentation.ts";
 import { captureKeys, taskKeys } from "../../web/src/workspace-language.ts";
 import { viewOf, type UiState } from "../../web/src/view.ts";
+
+it("트레이는 대화 창이 보낸 고정 상태만 표시하고 창이 사라지면 그 상태를 지운다", () => {
+  expect(trayTaskText({ connected: false, task: "failed", lang: "en" })).toBe("Something went wrong.");
+  expect(trayTaskText({ connected: true, task: "페이지 원문" })).toBeUndefined();
+  expect(trayTaskText(null)).toBeUndefined();
+});
 
 const base: UiState = {
   sessionId: "s", state: "IDLE", lang: "ko", consent: "granted", busy: false, hasTurn: true, practiceMode: true,
