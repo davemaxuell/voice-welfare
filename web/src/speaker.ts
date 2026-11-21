@@ -1,3 +1,4 @@
+import { timing, type TimingPoint } from "./perf.ts";
 // ⑥ 말하기: 서버 TTS를 문장 단위로 받아 이어 재생, 신호음.
 import type { SessionState } from "../../src/core/turn.ts";
 import { audioContext } from "./audio.ts";
@@ -45,7 +46,7 @@ export function splitForSpeech(text: string, max = 140) {
   return chunks;
 }
 export type PlayResult = "played" | "cancelled" | "blocked";
-async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number): Promise<PlayResult> {
+async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number, request?: TimingPoint): Promise<PlayResult> {
   if (token !== playToken) return "cancelled";
   if (c.state === "suspended") await c.resume().catch(() => undefined);
   if (c.state !== "running") return "blocked";
@@ -60,6 +61,7 @@ async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number): Pr
   await new Promise<void>((resolve) => {
     node.onended = () => resolve();
     node.start();
+    timing?.measure(request, "first-audio");
     notifySpeaking();
   });
   if (source === node) source = undefined;
@@ -84,6 +86,7 @@ export const serverTts = {
     this.cancel();
     interrupted = null;
     const token = playToken;
+    const request = timing?.mark("speech-requested");
     const chunks = splitForSpeech(text);
     try {
       const c = audioContext();
@@ -100,7 +103,7 @@ export const serverTts = {
       for (let i = fromChunk; i < chunks.length && next !== undefined; i++) {
         const data = await next;
         next = load(i + 1); // 재생하는 동안 다음 문장 합성
-        const r = await playBuffer(c, data, token);
+        const r = await playBuffer(c, data, token, i === fromChunk ? request : undefined);
         if (r !== "played") {
           next?.catch(() => undefined);
           // 끼어들기로 멈춘 자리(이 조각부터 다시)
@@ -136,6 +139,7 @@ export const serverTts = {
 export type DeviceSpeech = "played" | "cancelled" | "unavailable";
 export async function speakOnDevice(text: string, lang: string, rate = speechPrefs.rate): Promise<DeviceSpeech> {
   serverTts.cancel();
+  const request = timing?.mark("speech-requested");
   interrupted = null;
   const token = playToken;
   const synth = "speechSynthesis" in window ? window.speechSynthesis : undefined;
@@ -176,6 +180,7 @@ export async function speakOnDevice(text: string, lang: string, rate = speechPre
       }
     };
     cancelDeviceSpeech = cancel;
+    if (request !== undefined) line.onstart = () => { timing?.measure(request, "first-audio"); };
     line.onend = () => finish("played");
     line.onerror = () => finish("unavailable");
     // Mute the microphone before the operating system starts speaking.

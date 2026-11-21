@@ -16,6 +16,8 @@
     "test-parity": "node scripts/test-parity.ts",
     "dev:web": "vite",
     "build:web": "vite build",
+    "ux-baseline": "npm run build:web && node scripts/ux-baseline.ts",
+    "ux-screens": "node scripts/ux-screens.ts",
     "start": "node --env-file-if-exists=.env src/server/main.ts",
     "eval": "node scripts/run-scenarios.ts",
     "prestart": "npm run build:web",

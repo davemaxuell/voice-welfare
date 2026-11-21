@@ -1,6 +1,7 @@
 // 아바타 창: 대화 창이 보낸 표시 상태를 그리고, 누른 버튼을 이름으로만 돌려보낸다(세션·마이크·재생은 대화 창이 맡는다).
 // 데스크톱 앱의 시험(apps/desktop/test)이 이 창의 id로 확인하므로 React 없이 이 문서의 요소를 그대로 고친다.
 import { z } from "zod";
+import { timing } from "../perf.ts";
 import type { Character } from "./character.ts";
 import "./overlay.css";
 
@@ -21,6 +22,7 @@ const VisibilitySchema = z.object({ visible: z.boolean(), id: z.unknown(), anima
 const maybeBridge = window.cheongeumOverlay;
 if (maybeBridge === undefined) throw new Error("아바타 창 연결이 없습니다.");
 const bridge = maybeBridge;
+let loaded = timing?.mark("overlay-loaded");
 
 function element<T extends Element>(id: string, type: new () => T): T {
   const el = document.getElementById(id);
@@ -99,6 +101,32 @@ function showSurface(available: boolean) {
   $("character").hidden = !available;
   $("still").hidden = available;
   $("sleeping-still").hidden = available;
+  measureVisibleFigure();
+}
+
+function measureVisibleFigure() {
+  if (loaded === undefined || $("overlay").inert || document.hidden) return;
+  const start = loaded;
+  requestAnimationFrame(() => {
+    if (loaded !== start || $("overlay").inert || document.hidden) return;
+    const figure = $("figure");
+    const visible = { opacityProperty: true, visibilityProperty: true };
+    if (figure.dataset.renderer === "webgl") {
+      if (character?.hasDrawnFrame !== true || !$("character").checkVisibility(visible)) {
+        measureVisibleFigure();
+        return;
+      }
+    } else {
+      const poster = element(figure.dataset.sleeping === "true" ? "sleeping-still" : "still", HTMLImageElement);
+      if (!poster.complete || poster.naturalWidth === 0) return;
+      if (!poster.checkVisibility(visible)) {
+        if ($("overlay").hasAttribute("data-presenting")) measureVisibleFigure();
+        return;
+      }
+    }
+    loaded = undefined;
+    requestAnimationFrame(() => timing?.measure(start, "figure-visible"));
+  });
 }
 
 function animate(prev: Snap, next: Snap) {
@@ -503,6 +531,7 @@ if (bridge.onVisibility !== undefined) {
       if (!visible) bridge.visibilityDone(id);
     });
     if (visible) {
+      measureVisibleFigure();
       reportSize();
       bridge.visibilityDone(id);
     }
@@ -510,6 +539,10 @@ if (bridge.onVisibility !== undefined) {
 }
 
 bridge.onFocus(focusFirst);
+if (timing !== undefined) {
+  document.addEventListener("visibilitychange", measureVisibleFigure);
+  $("figure").addEventListener("load", measureVisibleFigure, true);
+}
 const sizeObserver = new ResizeObserver(reportSize);
 sizeObserver.observe(overlay);
 sizeObserver.observe($("card"));
