@@ -101,6 +101,7 @@ it("멈춘 뒤 늦게 온 응답은 기록하거나 읽지 않는다", async () 
     });
     page.on("request", r => { if (new URL(r.url()).pathname === "/api/audio/speak") speech.push(r.postData() ?? ""); });
     await page.goto(voice.url);
+    await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
     await send("장애인연금이 뭐야");
     await received.promise;
     await page.locator("#stop-all").click();

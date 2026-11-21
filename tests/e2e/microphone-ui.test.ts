@@ -32,6 +32,8 @@ it("듣던 마이크가 끊기면 대화를 끄고 연결 안내를 보여 준�
   try {
     await page.context().grantPermissions(["microphone"], { origin: voice.url });
     await page.goto(voice.url);
+    await screen(page.locator("#conv-start")).toBeEnabled();
+    await screen(page.locator("#tts-toggle")).toHaveText("음성 안내 켜짐");
     await page.locator("#tts-toggle").click();
     const track = await page.evaluateHandle(() => {
       let current: MediaStreamTrack | undefined;
