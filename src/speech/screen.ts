@@ -119,7 +119,7 @@ export class Narrator {
     if (sections.length > 0) parts.push(`소제목${sections.length > 10 ? ` ${sections.length}개 중 앞 10개` : ""}: ${sections.slice(0, 10).join(", ")}.`);
     if (o?.landmarks != null && o.landmarks.length > 0) parts.push(`화면 구성: ${o.landmarks.join(", ")}.`);
     if (view.errors != null && view.errors.length > 0) parts.push(`오류 안내: ${view.errors.join(" ")}`);
-    for (const d of view.dialogs ?? []) parts.push(`팝업 창 '${d.title}'이 떠 있습니다. 내용: ${d.text}. 버튼: ${d.buttons?.join(", ")}.`);
+    for (const d of view.dialogs ?? []) parts.push(`팝업 창 '${d.title}'이 떠 있습니다. 내용: ${d.text}. 버튼: ${d.buttons?.filter(name => name.length > 0).join(", ")}.`);
     const fields = (view.fields ?? []).filter(f => f.visible === true);
     if (fields.length > 0) {
       const shown = fields.slice(0, 10);

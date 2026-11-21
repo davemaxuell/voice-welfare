@@ -1,4 +1,4 @@
-import type { Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
+import type { DialogInfo, Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
 import type { InspectionControl } from "../../../safety/guard.ts";
 
 export interface ControlQuery {
@@ -115,17 +115,7 @@ export function observePage(query: ControlQuery | null = null) {
     title: document.title,
     fields,
     errors: Array.from(document.querySelectorAll('[role="alert"]')).filter(isVisible).map(text).filter(Boolean).slice(0, 5),
-    dialogs: Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]'))
-      .filter(isVisible)
-      .slice(0, 3)
-      .map((d) => {
-        const lid = d.getAttribute('aria-labelledby');
-        return {
-          title: (lid !== null && lid.length > 0 ? text(document.getElementById(lid)) : (d.getAttribute('aria-label') ?? '')).slice(0, 100),
-          text: text(d).slice(0, 300),
-          buttons: Array.from(d.querySelectorAll('button')).filter(isVisible).map(text).filter(Boolean).slice(0, 6),
-        };
-      }),
+    dialogs: [], // 팝업은 본문 영역(mainEl)을 정한 뒤 아래에서 채운다.
   };
   const current = document.querySelector('[aria-current="step"]');
   let steps: string[] = [];
@@ -160,6 +150,75 @@ export function observePage(query: ControlQuery | null = null) {
     || firstUsable('#contents, #content, #contentArea, #contentsWrap')
     || firstUsable('article')
     || body;
+  // 팝업 사실: ARIA 대화상자·<dialog>와 화면 위에 뜬 레이어 팝업을 한 목록(최대 3개)으로 모은다. 조회 전용 질의(query)에서는 만들지 않는다.
+  // 애매하면 팝업으로 세지 않고, 팝업이어도 입력이 있는 쪽으로 기울인다. 확실하지 않을 때는 지금처럼 사용자에게 묻게 하려는 것이다.
+  const BUTTONISH = 'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], input[type="image"]';
+  // 입력 칸·양식. 안을 볼 수 없는 iframe·embed·object도 입력이 있는 것으로 센다.
+  const FIELDISH = 'form, [role="form"], select, textarea, iframe, embed, object, [contenteditable]:not([contenteditable="false"]), '
+    + 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]), '
+    + '[role="textbox"], [role="combobox"], [role="searchbox"], [role="listbox"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="spinbutton"]';
+  // 레이어 팝업의 단서는 닫기 계열 이름뿐이다. '확인'은 하단 고정 줄의 제출 단추와 구분되지 않아 단서로 쓰지 않는다.
+  const CLOSE_NAME = /^(?:x|×|✕|✖|╳|닫기|닫음|close)$|(?:닫기|닫음)$|(?:열지|보지|보이지)(?:않|말)/i;
+  const ariaPopups: Element[] = query ? [] : Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).filter(isVisible);
+  // 레이어의 몸통: 닫기 단추의 조상 가운데 화면 안에서 겹쳐 뜬(fixed·absolute, z-index 1 이상) 상자.
+  // 제목줄 같은 안쪽 상자를 잡으면 입력 칸을 놓치므로 조건을 만족하는 가장 바깥 조상을 쓴다.
+  const layerRoot = (closeControl: Element): Element | null => {
+    let found: Element | null = null;
+    for (let el = closeControl.parentElement; el !== null && el !== body && el !== document.documentElement; el = el.parentElement) {
+      const style = getComputedStyle(el);
+      const absolute = style.position === 'absolute';
+      if ((!absolute && style.position !== 'fixed') || !(parseInt(style.zIndex, 10) > 0)) continue;
+      if (!isVisible(el) || el.closest('header, nav, footer, [role="banner"], [role="navigation"], [role="contentinfo"]')) continue;
+      if (mainEl !== null && mainEl !== body && el.contains(mainEl)) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 100 || rect.height < 50 || rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) continue;
+      if (absolute && rect.width * rect.height > innerWidth * innerHeight * 0.85) continue;
+      found = el;
+    }
+    return found;
+  };
+  const layerPopups: Element[] = [];
+  if (!query) {
+    const closers = Array.from(document.querySelectorAll(BUTTONISH + ', a'))
+      .filter((c) => (c.textContent ?? '').length < 40 && CLOSE_NAME.test(nameOf(c).replace(/\s+/g, '')) && isVisible(c))
+      .slice(0, 40);
+    for (const closer of closers) {
+      const root = layerRoot(closer);
+      if (root !== null && !layerPopups.includes(root)) layerPopups.push(root);
+    }
+  }
+  // 이미 대화상자인 상자(가리개가 감싸는 경우 포함)와 다른 레이어 안에 든 레이어는 따로 세지 않는다.
+  const popups = [...ariaPopups, ...layerPopups.filter((layer) => !ariaPopups.some((d) => d.contains(layer) || layer.contains(d))
+    && !layerPopups.some((other) => other !== layer && other.contains(layer)))].slice(0, 3);
+  const popupTitle = (el: Element) => {
+    const lid = el.getAttribute('aria-labelledby');
+    const named = lid !== null && lid.length > 0 ? text(document.getElementById(lid)) : (el.getAttribute('aria-label') ?? '');
+    return (named.length > 0 || ariaPopups.includes(el) ? named : text(el.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]'))).slice(0, 100);
+  };
+  // 단추가 속한 양식: 팝업 안의 <form> 조상이든 밖의 양식을 가리키는 button[form]이든 그 양식을 보낼 수 있다.
+  // form 속성이 있으면 짝이 아직 없어도(나중에 생길 수 있다) 센다. 보이지 않는 단추도 센다.
+  const formBound = (b: Element) => (b instanceof HTMLButtonElement || b instanceof HTMLInputElement) && (b.form !== null || b.hasAttribute('form'));
+  // 열린 shadow root 안은 querySelector로 볼 수 없다. 안에 무엇이 있는지 모르므로 입력이 있는 것으로 센다(닫힌 root는 알 수 없다).
+  const hasShadow = (d: Element) => d.shadowRoot !== null || Array.from(d.querySelectorAll('*')).some((e) => e.shadowRoot !== null);
+  result.dialogs = popups.map((d): DialogInfo => {
+    const buttonEls = Array.from(d.querySelectorAll(BUTTONISH));
+    return {
+      title: popupTitle(d),
+      text: text(d).slice(0, 300),
+      // 링크 모양 닫기('<a>닫기</a>')는 단추 목록이 아니라 outline.items에서 dialog 번호로 찾는다.
+      // 보이는 단추는 이름이 없어도(빈 문자열), 이름이 같아도 하나씩 남긴다. 6개를 넘으면 앞 6개만 남지만 그래도 둘 이상이다.
+      buttons: buttonEls.filter(isVisible).map(nameOf).slice(0, 6),
+      // 입력 칸·양식·속을 못 보는 요소, 어떤 양식에 속한 단추(앞 6개 밖의 단추 포함)가 하나라도 있으면 입력이 있는 것으로 센다.
+      hasInputs: d.querySelector(FIELDISH) !== null || d.closest('form') !== null || buttonEls.some(formBound) || hasShadow(d),
+      kind: ariaPopups.includes(d) ? 'dialog' : 'layer',
+    };
+  });
+  // 요소가 든 가장 안쪽 팝업의 번호. 팝업 밖이면 -1.
+  const dialogOf = (el: Element) => {
+    let at = -1;
+    popups.forEach((d, i) => { if (d !== el && d.contains(el) && (at < 0 || popups[at]!.contains(d))) at = i; });
+    return at;
+  };
   let mainText = '';
   const pictureMask = 'input, textarea, select, [contenteditable], iframe, embed, object';
   const visualSelector = 'canvas, svg, img, video, [role="img"]';
@@ -379,6 +438,8 @@ export function observePage(query: ControlQuery | null = null) {
     if (query?.inspection === true) item.inspection = inspect(el, context);
     if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
     if (role === 'link' && isSearchResult(el)) item.searchResult = true;
+    const popup = popups.length > 0 ? dialogOf(el) : -1;
+    if (popup >= 0) item.dialog = popup;
     const sel = el.getAttribute('aria-selected');
     const cur = el.getAttribute('aria-current');
     if (sel !== null) item.selected = sel === 'true';

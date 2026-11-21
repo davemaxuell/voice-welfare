@@ -56,7 +56,9 @@ function viewHaystack(view: WebObservation): string {
   const outline = view.outline;
   return [
     view.title ?? "", head(outline?.mainText ?? "", 800),
-    ...(view.dialogs ?? []).flatMap(dialog => [dialog.title ?? "", dialog.text ?? "", ...(dialog.buttons ?? [])]),
+    // 화면 위에 뜬 레이어 팝업(kind "layer")은 간편인증 홍보 같은 안내가 많아 인증 단서로 보지 않는다. 대화상자만 본다.
+    ...(view.dialogs ?? []).filter(dialog => dialog.kind !== "layer")
+      .flatMap(dialog => [dialog.title ?? "", dialog.text ?? "", ...(dialog.buttons ?? [])]),
     ...authItems(outline),
     ...(view.fields ?? []).flatMap(field => field.label !== undefined && field.label.length > 0 && field.visible === true ? [field.label] : []),
   ].join("\n");
