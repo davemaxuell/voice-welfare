@@ -2,6 +2,7 @@
 // authenticates the offer and delivers results from the application's worker.
 import { z } from "zod";
 import { api } from "./api.ts";
+import { timing } from "./perf.ts";
 import { audioContext } from "./audio.ts";
 import { isSpeaking, serverTts } from "./speaker.ts";
 import type { Phase } from "./view.ts";
@@ -79,6 +80,7 @@ export class LiveConversation {
   async start(deviceId?: string) {
     const peer = this.peer = new RTCPeerConnection();
     const signal = (this.abort = new AbortController()).signal;
+    const request = timing?.mark("microphone-requested");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: {
       echoCancellation: true, noiseSuppression: true, ...(deviceId !== undefined && deviceId.length > 0 && { deviceId: { exact: deviceId } }),
     } });
@@ -87,6 +89,7 @@ export class LiveConversation {
       throw new Error("대화가 종료됐어요.");
     }
     this.stream = stream;
+    if (request !== undefined && stream.getAudioTracks().some(track => track.readyState === "live")) timing?.measure(request, "track-live");
     for (const track of stream.getAudioTracks()) {
       peer.addTrack(track, stream);
       track.onended = () => this.fail("마이크 연결이 끊겼어요.");

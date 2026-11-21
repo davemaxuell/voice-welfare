@@ -1,3 +1,4 @@
+import { timing } from "./perf.ts";
 // ① 마이크 녹음과 핸즈프리 VAD. 받아쓰기는 서버의 음성 API가 맡는다.
 import { audioContext } from "./audio.ts";
 import clapWorkletUrl from "./clap-worklet.ts?worker&url";
@@ -71,10 +72,14 @@ async function pcmInput(stream: MediaStream): Promise<PcmInput> {
   }
 }
 
-const openMicrophone = (deviceId: string | undefined, audio: MediaTrackConstraints = {}) =>
-  navigator.mediaDevices.getUserMedia({
+async function openMicrophone(deviceId: string | undefined, audio: MediaTrackConstraints = {}) {
+  const request = timing?.mark("microphone-requested");
+  const stream = await navigator.mediaDevices.getUserMedia({
     audio: deviceId !== undefined && deviceId.length > 0 ? { ...audio, deviceId: { exact: deviceId } } : Object.keys(audio).length > 0 ? audio : true,
   });
+  if (request !== undefined && stream.getAudioTracks().some(track => track.readyState === "live")) timing?.measure(request, "track-live");
+  return stream;
+}
 
 export interface Recording {
   stop(): Promise<LiveAudio>;
