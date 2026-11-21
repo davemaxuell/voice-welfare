@@ -10,10 +10,11 @@ import { todayIso } from "../core/time.ts";
 import { AGENT_IDS, draft, type Draft, type DraftAction, type SourceCitation, type TaskReviewSummary } from "../core/turn.ts";
 import { FIXED, translateIn } from "../language/i18n.ts";
 import { PERSONAL_BROWSE_TEXT } from "../speech/browse_phrases.ts";
+import { HISTORY_DESCRIBED } from "../speech/picture.ts";
 import { redactPictureText, redactText } from "../safety/privacy.ts";
 import { PublicTask, publicDestinations } from "./public_task.ts";
 import { PLAN_STOP_STATES, byLengthDesc, isAbort, replaceValues, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
-import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, type ReviewEvidence, type Route } from "./task_review.ts";
+import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, reviewEvidence, type ReviewEvidence, type Route } from "./task_review.ts";
 
 // 검토 횟수, 전체 탐색 판단 횟수, 실제 브라우저 조작 횟수. 재시도와 승인 후 재개가 함께 사용한다.
 export const REVIEW_LIMITS = { easy: [2, 8, 8], medium: [3, 16, 16], hard: [5, 32, 32] } as const;
@@ -98,14 +99,14 @@ const RETRY_READS: ReadonlySet<string> = new Set(["OPEN_SITE", "FOLLOW_LINK", "G
   "ABOUT_SITE", "CURRENT_STEP", "POLICY_QUESTION", "FIND_PLACE"]);
 const ALLOWED: ReadonlySet<string> = new Set(["OPEN_SITE", "OPEN_OFFICIAL", "OPEN_BROWSER", "FOLLOW_LINK", "GOAL", "SEARCH",
   "START_APPLICATION", "FILL", "NEXT", "PREV", "READ_FIELD", "REVIEW", "PREPARE_SUBMIT",
-  "LOGIN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
+  "LOGIN", "DESCRIBE_SCREEN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
 const EXCLUDED: ReadonlyMap<string, readonly string[]> = new Map([
   ["personal_input", ["FILL"]], ["submission", ["PREPARE_SUBMIT"]], ["login", ["LOGIN"]],
   ["application", ["START_APPLICATION", "FILL", "PREPARE_SUBMIT"]],
 ]);
 const LIMITED_READS = ["login", "application", "submission", "personal_input"];
 const INDEPENDENT_LOOKUPS = new Set<Intent["type"]>(["POLICY_QUESTION", "FIND_PLACE"]);
-const SCREEN_READS = new Set<Intent["type"]>(["READ_MAIN", "ABOUT_SITE", "CURRENT_STEP", "LIST_LINKS", "READ_FIELD", "REVIEW"]);
+const SCREEN_READS = new Set<Intent["type"]>(["DESCRIBE_SCREEN", "READ_MAIN", "ABOUT_SITE", "CURRENT_STEP", "LIST_LINKS", "READ_FIELD", "REVIEW"]);
 const LOOKUP_KINDS = { browser: "GOAL", quiet: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
 const evidenceKey = (e: ReviewEvidence) => JSON.stringify([e.kind, e.text, e.receiptId, e.sources, e.publicPhone, e.valueVerified, e.pageKey]);
 
@@ -135,7 +136,15 @@ export class ReviewLoop {
         errorCode: reason, latencyMs: Date.now() - started, at: new Date().toISOString(), toolCalls: run.counter.actions - previousActions });
       return result;
     };
-    try { return record(await this.#review(run, turn, resumed)); }
+    try {
+      const result = await this.#review(run, turn, resumed);
+      // 사진 속 내용은 검토 모델과 대화 기록에 보내지 않고, 확인한 조작 결과와 함께 한 번 읽어 준다.
+      if (resumed?.semanticAction === "describe-screen" && resumed.pictureHistory === HISTORY_DESCRIBED &&
+          result.state !== "STOPPED" && !turn.ctx.signal.aborted && !this.session.superseded(turn)) {
+        return record({...result, speech: strip(`${resumed.speech} ${result.speech}`), pictureHistory: HISTORY_DESCRIBED, privateHistory: true});
+      }
+      return record(result);
+    }
     catch (error) {
       if (isAbort(error)) return record(this.#stopped());
       throw error;
@@ -162,6 +171,11 @@ export class ReviewLoop {
       }
       for (const source of result.sources ?? []) run.sources.set(source.url, source);
       run.evidence.push(...evidenceFromDraft(result));
+      if (result.semanticAction === "describe-screen" && result.pictureHistory === HISTORY_DESCRIBED) {
+        const captured = result.actions?.find(({action, policy, result: receipt}) => action.type === "capture" && policy.allowed &&
+          receipt?.ok === true && "verified" in receipt && receipt.verified && receipt.actionId === action.id);
+        if (captured) run.evidence.push(reviewEvidence("action", "화면 사진을 확인해 음성 설명을 준비했어요.", {receiptId: captured.action.id}));
+      }
     };
     const summary = (status: TaskReviewSummary["status"]): TaskReviewSummary =>
       ({ status, difficulty: run.difficulty, rounds: run.rounds, maxRounds: rounds, browserIterations: run.browserSteps });
@@ -176,7 +190,8 @@ export class ReviewLoop {
         if (result.state === "WAITING_FOR_USER_CONFIRMATION") run.journey.blockedBy = "approval";
         if (result.state === "AUTH_HANDOFF") run.journey.pause(handoff?.kind === "captcha" ? "captcha" : "auth", handoff?.expectedOrigin);
       }
-      if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
+      if (result.navigationHandoff !== undefined) result.navigationHandoff.reviewedTask = run;
+      else if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
       else if (clarification !== undefined && result.state === "NEEDS_CLARIFICATION") {
         clarification.reviewedTask = run;
         clarification.reviewedUrl = s.web.currentView?.url;
@@ -362,7 +377,7 @@ export class ReviewLoop {
           maxSteps: steps - run.browserSteps, exclusions: run.task.exclusions, requestedSteps: [intent.goal], journey: run.journey,
         });
       } else {
-        last = await s.route(intent, local);
+        last = await s.route(intent, local, {exclusions: run.task.exclusions, confirmPicture: true});
       }
       action.status = this.#needsInput(last) ? "waiting" : this.#actionSucceeded(last) ? "observed" : "unresolved";
       if (action.status === "unresolved") failures.push(kind);

@@ -1,7 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { BrowseCheckpoint } from "../../src/agents/web/autopilot.ts";
-import { readOrientation, type Orientation } from "../../src/agents/web/orient.ts";
+import { orientScreen, readOrientation, type Orientation } from "../../src/agents/web/orient.ts";
+import { MaskReport, Picture } from "../../src/core/picture.ts";
 import { context, page, pilot } from "./fake-browser.ts";
 
 const URL_ = "https://www.hikorea.go.kr/";
@@ -26,6 +27,38 @@ it("화면 사진을 쓰기 전에 이 목표 동안의 동의를 먼저 받고 
   expect(result.checkpoint).toMatchObject({ kind: "orient", orientations: 0, visualOrigins: [], choice: { url: URL_ } });
   expect(result.checkpoint?.choice.controls.size).toBe(0);
   expect(orient).not.toHaveBeenCalled();
+});
+
+it("모델이 화면을 볼 수 없다고 하면 실제 조작 목록을 읽은 뒤 사진 사용을 제안한다", async () => {
+  const orient = vi.fn();
+  const refused = { action: "fail", answer: "제가 화면을 볼 수 없어요." };
+  const run = pilot({ [URL_]: SPARSE }, [refused, refused], { offerVisual: true, orient }, URL_);
+  const lookup = vi.fn(async () => ({ url: URL_, items: [], more: false }));
+  run.auto.web.adapter.controlWindow = lookup;
+  const result = await run.auto.run("자료 메뉴 열어줘", context());
+  expect(result.status).toBe("visual-consent");
+  expect(lookup).toHaveBeenCalledTimes(1);
+  expect(run.requests[1]?.user).toContain("linkMatches");
+  expect(orient).not.toHaveBeenCalled();
+});
+
+it("사용자만 정할 수 있는 선택은 바로 묻고 사진을 요청하지 않는다", async () => {
+  const orient = vi.fn();
+  const run = pilot({ [URL_]: SPARSE }, [{ action: "ask_user", target: "user_choice", answer: "어느 지역에서 찾을까요?" }],
+    { offerVisual: true, orient }, URL_);
+  run.auto.web.adapter.controlWindow = vi.fn();
+  expect(await run.auto.run("자료 메뉴 열어줘", context())).toMatchObject({ status: "asked", speech: "어느 지역에서 찾을까요?" });
+  expect(run.auto.web.adapter.controlWindow).not.toHaveBeenCalled();
+  expect(orient).not.toHaveBeenCalled();
+});
+
+it("사진에서 고른 항목을 누르기 직전 같은 주소가 인증 화면으로 바뀌면 클릭하지 않는다", async () => {
+  const item = {name: "도움말", role: "link", ref: "help", disabled: false, region: "main"} as const;
+  const login = {...SPARSE, outline: {...SPARSE.outline!, items: [item], mainText: "보안문자를 입력하세요."}};
+  const run = pilot({[URL_]: login}, [], {}, URL_);
+  const result = await run.auto.web.followLink(item.name, context(), false, {expected: [URL_, item.ref, item.role], visual: true});
+  expect(result.status).toBe("failed");
+  expect(run.executed).toEqual([]);
 });
 
 it("동의하면 첫 단계에서 사진으로 알아본 것을 다음 결정에 비신뢰 자료로만 준다", async () => {
@@ -100,4 +133,25 @@ it("사진 속 이름은 화면 글의 조작 이름과 같을 때만 누를 수
   expect(readOrientation({ place: "x", menus: "없음" }, URL_, [])).toBeUndefined();
   expect(readOrientation("메뉴", URL_, [])).toBeUndefined();
   expect(readOrientation({ place: `주민번호 ${rrn}`, menus: ["체류민원"] }, URL_, ["체류민원"])?.place).toBe("");
+});
+
+it("화면 요약 밖에 있는 그림 메뉴 이름을 실제 문서 전체에서 찾아 누를 대상에 연결한다", async () => {
+  const names = Array.from({length: 42}, (_, i) => `자료 ${i + 1}`);
+  const target = names.at(-1)!;
+  const items = names.map((name, i) => ({name, role: "link", ref: `ref${i}`, disabled: false, region: "main"} as const));
+  const run = pilot({[URL_]: {...SPARSE, outline: {...SPARSE.outline!, items}}}, [], {}, URL_);
+  const ctx = context();
+  const view = await run.auto.web.observe(ctx);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+  const picture = Picture._sealed(png, {source: "web", width: 1, height: 1, masks: new MaskReport(0, 0, 0, true)});
+  vi.spyOn(run.auto.web, "capturePicture").mockResolvedValue([picture, "", view]);
+  const lookup = vi.fn(async (name?: string) => ({url: URL_, items: items.filter(item => item.name === name), more: false}));
+  run.auto.web.adapter.controlWindow = lookup;
+  const [result] = await orientScreen(run.auto.web, {async see(request) {
+    expect(JSON.parse(request.user).knownControls).not.toContain(target);
+    return {place: "자료실", menus: [target, "결제", "비밀번호"]};
+  }}, "자료 열어줘", URL_, ctx, []);
+  expect(lookup).toHaveBeenCalledWith(target, 0, {exact: true});
+  expect(result).toMatchObject({clickable: [target], imageOnly: []});
+  expect(result?.bindings?.get(target)).toMatchObject({url: URL_, role: "link", ref: "ref41"});
 });

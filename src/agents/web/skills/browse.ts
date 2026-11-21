@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import type { BrowserJourney } from "../journey.ts";
+import { createHash, randomUUID } from "node:crypto";
+import { type BrowserJourney, webOrigin } from "../journey.ts";
 import { extname } from "node:path";
 import { z } from "zod";
 import { raceAbort } from "../../../core/abort.ts";
@@ -33,7 +33,7 @@ import { LinkChoices, resolveDescription, type LinkReference } from "../link_cho
 import { PICTURE_SCHEMA, PICTURE_SCHEMA_NAME, PICTURE_SYSTEM } from "../../../core/picture.ts";
 import { HISTORY_NOT_DESCRIBED, MAX_NAMES, composePictureAnswer, pictureRequest } from "../../../speech/picture.ts";
 import { planShot, ShotRefusal } from "../shot.ts";
-import { orientScreen } from "../orient.ts";
+import { orientScreen, screenKey } from "../orient.ts";
 import { selectControl, type VisionModel } from "../visual_step.ts";
 import { groundedScreenAnswer, sameScreen, screenContext, screenDecision, screenPatterns, screenRedactor, SCREEN_CHANGED, SCREEN_CLARIFY, SCREEN_TEXT_SCHEMA, SCREEN_TEXT_SYSTEM } from "./screen_context.ts";
 import { NOT_READY, stillBuilding } from "../effect.ts";
@@ -136,6 +136,10 @@ const WEB_ANSWER_SCHEMA = {
   properties: {found: {type: "boolean"}, answer: {type: "string"}, evidence: {type: "array", items: {type: "string"}}},
 };
 
+function descriptionKey(view: PageView): string {
+  return createHash("sha256").update(JSON.stringify([screenKey(view), view.outline?.screenTarget])).digest("hex");
+}
+
 export class BrowseSkill {
   readonly web: WebExecutionAgent;
   readonly dialogue: BrowseDialogue;
@@ -150,7 +154,11 @@ export class BrowseSkill {
   linkChoices?: LinkChoices;
   #searched?: {query: string; origin: string; results: string};
   readonly #sourcesSpoken = new Set<string>();
-  readonly #savedVisual = new WeakMap<object, {checkpoint: BrowseCheckpoint; publicTask?: PublicLookup; journey?: BrowserJourney}>();
+  readonly #pausedGoals = new WeakMap<object, {
+    goal: string; options: GoalOptions & {checkpoint: BrowseCheckpoint};
+    page: WebExecutionAgent["adapter"]["page"]; counter: ExecContext["counter"]; actionLimit?: number;
+  }>();
+  readonly #screenRequests = new WeakMap<object, {fingerprint: string; page: WebExecutionAgent["adapter"]["page"]; previousInputs: readonly string[]}>();
   readonly #applicationGuideUrl: Options["applicationGuideUrl"];
   readonly #resolveGuideTarget: Options["resolveGuideTarget"];
   readonly #planningContext: Options["planningContext"];
@@ -513,6 +521,10 @@ export class BrowseSkill {
 
   async listLinks(more: boolean, ctx: ExecContext): Promise<Draft> {
     const view = await this.web.observeReady(ctx);
+    return this.#listLinks(view, more);
+  }
+
+  #listLinks(view: PageView, more: boolean): Draft {
     if (stillBuilding(view)) return draft(browseState(view), "list-links", NOT_READY, {view});
     if (this.#reading.url !== view.url) this.#reading = {url: view.url, main: 0, links: 0};
     const o = view.outline;
@@ -634,7 +646,9 @@ export class BrowseSkill {
     return draft(this.dialogue.state, semantic, speech, {view, actions, pictureHistory: result.history, offersLinks: controls.length > 0, masked: previousInputs !== undefined || undefined});
   }
 
-  async screen(text: string, ctx: ExecContext, {previousInputs, allowPicture = true}: {previousInputs?: readonly string[]; allowPicture?: boolean} = {}): Promise<Draft> {
+  async screen(text: string, ctx: ExecContext, {previousInputs, allowPicture = true, confirmPicture = false}: {
+    previousInputs?: readonly string[]; allowPicture?: boolean; confirmPicture?: boolean;
+  } = {}): Promise<Draft> {
     this.linkChoices = undefined;
     const reply = (speech: string, view?: PageView) => draft(this.dialogue.state, "describe-screen", speech, {view, masked: true});
     const stopped = () => ctx.signal.aborted || ctx.isStopped();
@@ -676,13 +690,21 @@ export class BrowseSkill {
         return reply(answer, current);
       }
     }
-    if (result?.decision === "clarify" || (ambiguous && result?.decision !== "visual")) return reply(SCREEN_CLARIFY, view);
     const targetText = hasText(target.text) ? target.text : target.label;
-    const visual = result?.decision === "visual" || (result === undefined && (screenPatterns.visual.test(text) ||
-      (context.hasVisualContent && context.controlLabels.length === 0 && context.visualLabels.length === 0 &&
-        ["", context.pageTitle, ...context.headings].includes(context.pageText.trim()) && !hasText(targetText))));
+    const imageOnly = !ambiguous && context.hasVisualContent && context.controlLabels.length === 0 && context.visualLabels.length === 0 &&
+      ["", context.pageTitle, ...context.headings].includes(context.pageText.trim()) && !hasText(targetText);
+    if ((result?.decision === "clarify" && !imageOnly) || (ambiguous && result?.decision !== "visual")) return reply(SCREEN_CLARIFY, view);
+    const visual = imageOnly || result?.decision === "visual" || (result === undefined && screenPatterns.visual.test(text));
     if (visual) {
-      if (allowPicture && previousInputs !== undefined && this.deps.visionLlm) return this.picture(text, ctx, {previousInputs, expectedView: view});
+      if (allowPicture && previousInputs !== undefined && this.deps.visionLlm && ctx.browsingScope !== "personal-inspection" && this.web.guard.config.publicLookupOnly !== true) {
+        if (!confirmPicture) return this.picture(text, ctx, {previousInputs, expectedView: view});
+        const site = siteLabel(view.url, this.mockSites());
+        const prompt = `${site} 화면의 글만으로는 설명하기 어려워요. 입력란을 가린 화면 사진 한 장을 OpenAI로 보내 확인할까요?`;
+        const key = {};
+        this.#screenRequests.set(key, {fingerprint: descriptionKey(view), page: this.web.adapter.page, previousInputs});
+        this.#askVisual(text, key, site, prompt, "화면 사진으로 현재 페이지 설명");
+        return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {view, masked: true});
+      }
       const local = this.#localScreen(view, text, []);
       return {...local, speech: "페이지 글만으로는 그 모습을 확인하기 어려워요. " + local.speech};
     }
@@ -748,34 +770,63 @@ export class BrowseSkill {
     return draft(browseState(out.view), "web-answer", `${quoted} 검색해 봤어요. ${answer}`, {actions: out.actions, view: out.view});
   }
 
+  #askVisual(goal: string, checkpoint: object, site: string, prompt: string, purpose: string): void {
+    this.dialogue.askApproval({kind: "visual", goal, checkpoint,
+      confirmation: {actionId: randomUUID(), kind: "visual-navigation", description: prompt, purpose, site,
+        values: [{label: "전송 대상", value: "OpenAI"}], realSubmission: false}});
+  }
+
   async resumeVisual(approval: Extract<Approval, {kind: "visual"}>, ctx: ExecContext): Promise<Draft> {
     this.dialogue.clearApproval();
     const model = this.deps.visionLlm;
-    if (!model) return draft("BROWSING", "goal", "화면 사진을 확인할 모델 설정이 필요해요.");
+    if (!model) return draft("BROWSING", "none", "화면 사진을 확인할 모델 설정이 필요해요.");
     const key = approval.checkpoint;
-    const saved = typeof key === "object" && key !== null ? this.#savedVisual.get(key) : undefined;
+    if (typeof key !== "object" || key === null) return draft("BROWSING", "none", SCREEN_CHANGED);
+    const screen = this.#screenRequests.get(key);
+    if (screen !== undefined) {
+      this.#screenRequests.delete(key);
+      const view = await this.#visiblePage(ctx);
+      if (!view || this.web.adapter.page !== screen.page || screen.page?.isClosed?.() === true || descriptionKey(view) !== screen.fingerprint ||
+          ctx.browsingScope === "personal-inspection" || planShot(view) instanceof ShotRefusal) return draft("BROWSING", "none", SCREEN_CHANGED, {view});
+      const result = await this.picture(approval.goal, ctx, {previousInputs: screen.previousInputs, expectedView: view});
+      return {...result, state: ctx.signal.aborted || ctx.isStopped() ? "STOPPED" : browseState(view),
+        semanticAction: !hasText(result.pictureHistory) || result.pictureHistory === HISTORY_NOT_DESCRIBED ? "none" : result.semanticAction};
+    }
+    const saved = this.#pausedGoals.get(key);
     if (!saved) return draft("BROWSING", "goal", "화면이나 항목이 바뀌었어요. 필요한 업무를 다시 말씀해 주세요.");
-    this.#savedVisual.delete(saved.checkpoint);
-    if (saved.checkpoint.kind === "orient") {
+    const {checkpoint} = saved.options;
+    this.#pausedGoals.delete(checkpoint);
+    if (saved.page !== this.web.adapter.page || saved.page?.isClosed?.() === true) return draft("BROWSING", "goal", "탭이 바뀌었어요. 지금 보고 싶은 페이지를 다시 알려 주세요.");
+    const run = new ExecContext({...ctx, publicLookup: true, counter: saved.counter, actionLimit: saved.actionLimit});
+    if (checkpoint.kind === "orient") {
       // 사진은 이어 가는 목표 수행 안에서 찍는다. 동의는 이 목표와 이 누리집에만 적용된다.
-      const checkpoint = {...saved.checkpoint, remainingMs: Math.max(0, Math.floor(saved.checkpoint.remainingMs))};
-      return this.runGoal(approval.goal, new ExecContext({...ctx, publicLookup: true}), {publicTask: saved.publicTask, journey: saved.journey, checkpoint});
+      return this.runGoal(saved.goal, run, saved.options);
     }
     const actions: WebAction[] = [];
-    const deadline = performance.now() + saved.checkpoint.remainingMs;
-    const timeout = AbortSignal.timeout(Math.max(0, Math.floor(saved.checkpoint.remainingMs)));
+    const deadline = performance.now() + checkpoint.remainingMs;
+    const timeout = AbortSignal.timeout(Math.max(0, Math.floor(checkpoint.remainingMs)));
     const signal = AbortSignal.any([ctx.signal, timeout]);
     let control: string | undefined, reason: string;
     try {
-      [control, reason] = await raceAbort(() => selectControl(this.web, model, approval.goal, saved.checkpoint.choice, new ExecContext({...ctx, signal}), actions), signal);
+      [control, reason] = await raceAbort(() => selectControl(this.web, model, saved.goal, checkpoint.choice, new ExecContext({...ctx, signal, counter: saved.counter, actionLimit: saved.actionLimit}), actions), signal);
     } catch (error) {
       if (!timeout.aborted) throw error;
       reason = "정해진 시간 안에 화면에서 링크를 확인하지 못했어요.";
     }
     if (!hasText(control)) return draft(ctx.signal.aborted ? "STOPPED" : "BROWSING", "goal", reason, {actions});
-    const checkpoint = {...saved.checkpoint, remainingMs: Math.max(0, Math.floor(deadline - performance.now()))};
-    const result = await this.runGoal(approval.goal, new ExecContext({...ctx, publicLookup: true}), {publicTask: saved.publicTask, journey: saved.journey, checkpoint, visualControl: control});
+    const result = await this.runGoal(saved.goal, run, {...saved.options, checkpoint: {...checkpoint, remainingMs: Math.max(0, Math.floor(deadline - performance.now()))}, visualControl: control});
     return {...result, actions: [...actions, ...result.actions ?? []]};
+  }
+
+  async resumeNavigation(handoff: NonNullable<Draft["navigationHandoff"]>, ctx: ExecContext): Promise<Draft> {
+    const saved = this.#pausedGoals.get(handoff);
+    this.#pausedGoals.delete(handoff);
+    const page = this.web.adapter.page;
+    if (saved === undefined || !page || page !== saved.page || page.isClosed?.() === true || webOrigin(page.url()) !== handoff.origin) {
+      return draft("BROWSING", "none", "안내하던 탭이나 사이트가 바뀌었어요. 지금 보고 싶은 페이지를 알려 주세요.");
+    }
+    const run = new ExecContext({...ctx, publicLookup: true, counter: saved.counter, actionLimit: saved.actionLimit});
+    return this.runGoal(saved.goal, run, saved.options);
   }
 
   async runGoal(goal: string, ctx: ExecContext, options: GoalOptions = {}): Promise<Draft> {
@@ -813,6 +864,17 @@ export class BrowseSkill {
       }
     }
     if (!model) {
+      // 현재 탭에서 할 일은 계획 모델이 없어도 실제로 읽은 항목을 번호로 고를 수 있다.
+      if (!personal && !publicTask && !ctx.publicLookup && (continuePage === true || (!hasText(siteUrl) && !hasText(startUrl) && !agency))) {
+        const view = await this.#visiblePage(ctx);
+        if (view?.pageId === "external" && this.web.accessMode(view) !== "none" &&
+            (!hasText(siteUrl) || webOrigin(siteUrl) === webOrigin(view.url))) {
+          if (stillNeedsAuth(view) || accessBlocked(view)) return this.recognizeAuthPage(draft("BROWSING", "goal", "", {view}), undefined, ctx);
+          const links = this.#listLinks(view, false);
+          if (links.offersLinks === true) return {...links, speech: `지금 열린 페이지에서 찾은 항목이에요. ${links.speech}`};
+          return this.#localScreen(view, goal, []);
+        }
+      }
       if (hasText(startUrl)) return this.openSite(startUrl, ctx);
       if (agency && hasText(siteUrl)) {
         const query = strip(question.replace(browsePatterns.goalTail, ""));
@@ -821,7 +883,8 @@ export class BrowseSkill {
       return draft(this.dialogue.state, "goal", "여러 단계를 알아서 하려면 AI 모델 설정이 필요해요. 대신 '네이버 열어줘'처럼 한 단계씩 말씀해 주세요.");
     }
     let here = this.web.currentView?.url ?? "";
-    const offerVisual = !personal && this.deps.visionLlm !== undefined && !exclusions.includes("screen_capture") && publicTask?.exclusions.includes("screen_capture") !== true;
+    const offerVisual = !personal && this.web.guard.config.publicLookupOnly !== true && this.deps.visionLlm !== undefined &&
+      !exclusions.includes("screen_capture") && publicTask?.exclusions.includes("screen_capture") !== true;
     const vision = this.deps.visionLlm;
     const orientWith = offerVisual && vision !== undefined ? (question: string, url: string, run: ExecContext, log: WebAction[]) => orientScreen(this.web, vision, question, url, run, log) : undefined;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
@@ -852,14 +915,21 @@ export class BrowseSkill {
       const auth = await this.#beginAuthHandoff(view, result.actions, ctx, "", undefined, journey?.returnOrigin);
       return {...auth, ...review};
     }
-    if (result.checkpoint && view) {
+    const paused = result.manualCheckpoint ?? result.checkpoint;
+    if (paused && view) {
+      const saved = {goal, page: this.web.adapter.page, counter: ctx.counter, actionLimit: ctx.actionLimit,
+        options: {...options, checkpoint: paused, visualControl: undefined, continuePage: true}};
+      if (result.manualCheckpoint) {
+        const origin = webOrigin(view.url);
+        if (origin === undefined || !saved.page) return draft("BROWSING", "goal", "안내하던 페이지를 다시 열어 주세요.", {view, actions: result.actions, ...review});
+        const navigationHandoff = {origin, prompt: result.speech};
+        this.#pausedGoals.set(navigationHandoff, saved);
+        return draft("NEEDS_CLARIFICATION", "clarify", result.speech, {view, navigationHandoff, actions: result.actions, ...review});
+      }
       const site = siteLabel(view.url, sites);
       const prompt = `${site}에서 ${result.speech}`;
-      const approval: Extract<Approval, {kind: "visual"}> = {kind: "visual", goal, publicTask, checkpoint: result.checkpoint,
-        confirmation: {actionId: randomUUID(), kind: "visual-navigation", description: prompt, purpose: result.checkpoint.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기", site,
-          values: [{label: "전송 대상", value: "OpenAI"}], realSubmission: false}};
-      this.#savedVisual.set(result.checkpoint, {checkpoint: result.checkpoint, publicTask, journey});
-      this.dialogue.askApproval(approval);
+      this.#pausedGoals.set(paused, saved);
+      this.#askVisual(goal, paused, site, prompt, paused.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기");
       return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {actions: result.actions, view, ...review});
     }
     if (publicTask && result.status === "needs-approval") return draft(view ? browseState(view) : this.dialogue.state, "goal", "공개 안내에서 이 정보를 확인하지 못했어요.", {actions: result.actions, view, ...review});

@@ -120,6 +120,19 @@ it("test_chart_with_a_text_equivalent_can_answer_without_vision", async () => {
   expect(calls).toHaveLength(0);
 });
 
+it("글이 없는 캔버스에서 화면 전체를 물으면 글 모델이 포기해도 사진을 확인한다", async () => {
+  const { session, page, calls } = await picture();
+  await page.setContent("<main><canvas width=400 height=120></canvas></main>");
+  await page.evaluate(() => document.querySelector("canvas")?.getContext("2d")?.fillText("접수 마감 23일", 10, 40));
+  session.deps.webLlm = textReader("clarify", "어느 부분인가요?");
+  const reading = await session.handleTurn("본문 읽어줘");
+  expect(reading.speech).toContain("화면 설명해줘");
+  expect(calls).toHaveLength(0);
+  const result = await session.handleTurn("화면 설명해줘");
+  expect(calls).toHaveLength(1);
+  expect(result.speech).toContain(description);
+});
+
 it("test_visual_screen_description_sends_one_masked_page_with_recent_user_context", async () => {
   const { session, page, calls, adapter, sent } = await picture();
   const recent = "신청 마감일을 찾고 있어요.", privateName = "시험용김별님", old = "오래된 입력은 보내지 않아요.";
