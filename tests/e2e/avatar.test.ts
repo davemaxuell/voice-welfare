@@ -139,10 +139,17 @@ it("test_controller_cards_carry_no_values_and_dispatch_once", async () => {
   await check(page.locator("#log li").last()).toContainText(answer.speech);
 });
 
-it("test_avatar_page_renders_cards_as_text_and_passes_axe", async () => {
+it.each(["light", "dark"] as const)("test_avatar_page_renders_cards_as_text_and_passes_axe (%s)", async scheme => {
+  await page.emulateMedia({ colorScheme: scheme });
   await overlay(false); await send("prefs", { corner: "bottom-right", still: true });
   const choice = { ...approval, instance: "a" };
-  await snap(2, choice); await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
+  const start = await page.evaluate(() => performance.timeOrigin);
+  await snap(1, { ...choice, contrast: true });
+  await check(page.locator("#overlay")).toHaveClass(/high-contrast/u);
+  await snap(2, { ...choice, contrast: false });
+  await check(page.locator("#overlay")).not.toHaveClass(/high-contrast/u);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(start);
+  await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
   await check(button("<i>입력 승인</i>")).toBeVisible(); await check(page.locator("#card-site")).toHaveText("대상: 127.0.0.1:5174");
   await snap(1, { instance: "a" }); await check(page.locator("#card")).toBeVisible();
   await button("<i>입력 승인</i>").click(); await button("내용 확인").click();
