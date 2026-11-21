@@ -49,7 +49,7 @@ export interface PageSource { url: string; title: string }
 
 /** 사용자가 직접 진행하거나 승인한 뒤 남은 탐색을 이어 가는 상태. 사진은 담지 않는다. */
 export interface BrowseCheckpoint {
-  /** link는 확인한 링크를 누르고, orient는 사진으로 메뉴를 찾고, manual은 사용자가 연 화면을 새로 읽는다. */
+  /** link는 확인한 링크를 누른다. orient는 사진으로 메뉴를 찾고, manual과 goal은 사용자가 진행한 뒤 화면을 새로 읽는다. */
   kind?: "link" | "orient" | "manual" | "goal";
   choice: VisualChoice;
   /** 이번 목표에서 화면 사진을 보내도 된다고 한 누리집(출처). */
@@ -500,6 +500,7 @@ export class Autopilot {
     const steps: AutopilotStep[] = checkpoint?.steps ?? [];
     const actions: WebAction[] = [];
     let lastView: PageView | undefined;
+    let lastReadableUrl: string | undefined;
     let mainOffset = 0, iterations = 0, controlQuery = "", controlOffset = 0;
     let controlWindow: ControlWindow | undefined;
     let offered = new Map<string, { ref: string; role: string; name: string; context?: string; url: string }>();
@@ -614,7 +615,8 @@ export class Autopilot {
       let { sources, quotes = [] } = more;
       if (status !== "stopped" && !(options.continuation && view && stillNeedsAuth(view))) remember(view);
       if (options.continuation && view && (status === "needs-approval" || stillNeedsAuth(view))) {
-        options.continuation.checkpoint = snapshot({url: view.url, controls: new Map()}, Math.max(0, maxSteps - iterations), {kind: "goal"});
+        const url = stillNeedsAuth(view) ? lastReadableUrl ?? view.url : view.url;
+        options.continuation.checkpoint = snapshot({url, controls: new Map()}, Math.max(0, maxSteps - iterations), {kind: "goal"});
         options.continuation.pendingClickId = more.pending?.id;
       }
       if (evidence !== undefined && (status === "failed" || status === "limit") && evidence.passages.size > 0) {
@@ -704,6 +706,7 @@ export class Autopilot {
         }
         if (i >= maxSteps || (journey?.remaining ?? 1) === 0 || performance.now() > deadline) break;
         const readable = view !== undefined && !stillNeedsAuth(view) && !accessBlocked(view) && (!personal || onRequestedSite(view.url));
+        if (readable && view !== undefined && view.pageId !== "blank") lastReadableUrl = view.url;
         const screen = readable && here !== undefined && view !== undefined && view.pageId !== "blank" ? screenKey(view) : undefined;
         const currentOrientation = screen !== undefined && orientationScreen === screen ? orientation : undefined;
         journey?.observe(readable ? view : undefined, clean, readable && onRequestedSite(view?.url));

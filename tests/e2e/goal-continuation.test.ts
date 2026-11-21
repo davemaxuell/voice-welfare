@@ -5,6 +5,8 @@ import { pageFor, runtimeCases } from "./browser-runtime-cases.ts";
 
 const create = runtimeCases();
 const address = "http://" + PORTAL;
+const currentGoal = "지금 열린 누리집에서 상담하는 요일을 찾아줘";
+const goalPlan = {steps: [{type: "GOAL", topic: currentGoal, site: null, more: null, list: null, text: null, fills: null, fieldMention: null}]};
 const answer = "상담은 수요일에 열립니다.";
 const stt = {name: "연습용 받아쓰기", supported: true, async transcribe(bytes: Uint8Array) {
   return {text: new TextDecoder().decode(bytes).trim()};
@@ -25,7 +27,7 @@ async function openGoal() {
 }
 
 it.each([
-  ["GOAL", PORTAL + "에서 상담 일정을 알려줘"],
+  ["GOAL", currentGoal],
   ["UNKNOWN", "남은 거 알아서 마무리해 줘"],
 ])("%s 음성 목표는 승인된 단추를 한 번만 누르고 화면의 답을 확인한다", async (intent, goal) => {
   const {session, page, say, progress} = await openGoal();
@@ -33,7 +35,11 @@ it.each([
     `<title>상담 일정</title><main><button onclick="this.dataset.count++; document.querySelector('p').textContent='${answer}'" data-count="0">확인</button><p>상담 안내입니다.</p></main>`}));
   await page.goto(address);
   const gate = new Gate([step("click", "확인"), step("click", "확인"), step("answer", null, answer, [answer])], 2);
-  const model = new FakeLlm(call => call.schemaName === "chat_route" ? {route: "web_task"} : gate.generate(call));
+  const model = new FakeLlm(call => {
+    if (call.schemaName === "intent_plan" && goal === currentGoal) return goalPlan;
+    if (call.schemaName === "chat_route") return {route: "web_task"};
+    return gate.generate(call);
+  });
   session.deps.llm = session.deps.goalLlm = model;
   const asked = await say(goal);
   expect(asked.intentType).toBe(intent);
@@ -64,13 +70,15 @@ it("음성 목표가 로그인 화면에서 기다렸다가 직접 인증한 뒤
   await page.route("**/login.html", route => route.fulfill({contentType: "text/html; charset=utf-8",
     body: '<title>로그인</title><main>로그인<input type="password"><button>로그인</button></main>'}));
   await page.goto(address);
-  await say(address + " 열어줘");
   let calls = 0;
-  const model = new FakeLlm(call => call.schemaName !== "browse_step" ? undefined :
-    ++calls === 1 ? step("click", "상담 안내") : step("answer", null, answer, [answer]));
+  const model = new FakeLlm(call => {
+    if (call.schemaName === "intent_plan") return goalPlan;
+    if (call.schemaName === "browse_step") return ++calls === 1 ? step("click", "상담 안내") : step("answer", null, answer, [answer]);
+    return undefined;
+  });
   session.deps.llm = session.deps.goalLlm = model;
-  const asked = await say(PORTAL + "에서 상담 일정을 알려줘");
-  expect(asked).toMatchObject({state: "AUTH_HANDOFF", review: {status: "needs_input"}});
+  const asked = await say(currentGoal);
+  expect(asked).toMatchObject({intentType: "GOAL", state: "AUTH_HANDOFF", authHandoff: {status: "waiting"}, review: {status: "needs_input"}});
   expect((await say("다 했어")).state).toBe("AUTH_HANDOFF");
   expect(calls).toBe(1);
   signedIn = true;

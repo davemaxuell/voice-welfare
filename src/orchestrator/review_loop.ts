@@ -129,14 +129,18 @@ export class ReviewLoop {
   private readonly session: SessionOrchestrator;
   constructor(session: SessionOrchestrator) { this.session = session; }
 
-  goal(goal: string, turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
+  async goal(goal: string, turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
     const request = turn.original ?? turn.text;
     const difficulty = LIVE_DIFFICULTY.getStore() ?? "medium";
     const policy = this.session.web.guard.config;
     const actionLimit = Math.min(REVIEW_LIMITS[difficulty][2], turn.ctx.actionLimit ?? policy.defaultActionsPerTurn ?? policy.maxActionsPerTurn);
-    return this.run(new ReviewedTask({request, task: new PublicTask({goal, exclusions}), requirements: [request], difficulty,
+    const result = await this.run(new ReviewedTask({request, task: new PublicTask({goal, exclusions}), requirements: [request], difficulty,
       route: "existing", counter: turn.ctx.counter, continuation: {request, approvedRefs: new Set(), actionLimit,
         publicLookup: turn.ctx.publicLookup || exclusions.some(item => LIMITED_READS.includes(item))}}), turn);
+    // 중간 확인 없이 끝난 목표는 기존 응답 형식을 유지한다.
+    if (result.review?.status === "needs_input") return result;
+    const {review: _review, ...first} = result;
+    return first;
   }
 
   static intentAllowed(kind: string, exclusions: readonly string[]): boolean {
@@ -238,14 +242,17 @@ export class ReviewLoop {
     if (continuation) {
       const finish = (result: Draft): Draft => {
         if (result.state === "STOPPED") return {...result, actions: logs};
+        // 모의접수는 이 목표의 마지막 조작이다. 전용 승인 흐름이 접수번호까지 직접 확인한다.
+        if (result.semanticAction === "prepare-submit") return {...result, actions: logs, review: summary("needs_input")};
         if (needsInput(result)) return pause(result);
         const verified = result.semanticAction === "goal" && hasText(result.summary) ||
           result.state === "MOCK_SUBMITTED" && hasText(result.verification?.receipt);
         return {...result, actions: logs, review: summary(verified ? "completed" : "incomplete")};
       };
       if (resumed) {
-        const clicked = resumed.actions?.find(({action, result, policy}) => action.type === "click" && action.id === continuation.pendingClickId &&
-          policy.allowed && result?.ok === true && "verified" in result && result.verified && result.actionId === action.id);
+        const clicked = resumed.semanticAction === "confirm-click" && !needsInput(resumed) ? resumed.actions?.find(({action, result, policy}) =>
+          action.type === "click" && action.id === continuation.pendingClickId &&
+          policy.allowed && result?.ok === true && "verified" in result && result.verified && result.actionId === action.id) : undefined;
         if (clicked?.action.target?.ref !== undefined) {
           continuation.approvedRefs.add(clicked.action.target.ref);
           const step = continuation.checkpoint?.steps.at(-1);
@@ -264,7 +271,7 @@ export class ReviewLoop {
       const before = s.web.currentView;
       let work = await s.browse.runGoal(run.task.goal, turn.ctx, {continuation, checkpoint: continuation.checkpoint,
         continuePage: resumed !== undefined, maxSteps: Math.min(10, steps), exclusions: run.task.exclusions});
-      const auth = await s.browse.recognizeAuthPage(work, before, turn.ctx);
+      const auth = await s.browse.recognizeAuthPage(work, continuation.checkpoint?.choice ?? before, turn.ctx);
       work = {...work, ...auth};
       await record(work);
       return finish(work);
