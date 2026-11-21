@@ -656,16 +656,19 @@ async function createWindow() {
     sendOverlay("cheongeum:snapshot", { connected: false });
   };
   window.webContents.on("did-start-loading", lost);
+  const windowUrl = () => {
+    const url = new URL("/", base);
+    url.searchParams.set("desktop", "1");
+    if (BACKGROUND) url.searchParams.set("background", "1");
+    if (prefs.lang !== undefined) url.searchParams.set("desktopLang", prefs.lang);
+    return url.href;
+  };
   // 대화 창 화면이 죽으면 다시 불러온다(새 세션, 동의 안내부터). 그대로 두면 말하기·아바타가 아무것도 하지 않는다.
   window.webContents.on("render-process-gone", () => {
     lost();
-    if (!quitting) window.webContents.reload();
+    if (!quitting) void window.loadURL(windowUrl());
   });
-  const url = new URL("/", base);
-  url.searchParams.set("desktop", "1");
-  if (BACKGROUND) url.searchParams.set("background", "1");
-  if (prefs.lang !== undefined) url.searchParams.set("desktopLang", prefs.lang);
-  await window.loadURL(url.href);
+  await window.loadURL(windowUrl());
 }
 
 async function startApp() {
