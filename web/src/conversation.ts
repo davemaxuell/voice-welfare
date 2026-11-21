@@ -350,8 +350,15 @@ export async function actOnIssue(action: IssueAction) {
   }
   if (pendingResult) return reconcileResult();
   if (ui.sessionId === undefined) { await chooseSession(); return; }
+  const sid = ui.sessionId;
+  const generation = stoppedGeneration;
   try {
-    await api.heartbeat(ui.sessionId);
+    if (action === "check") {
+      const state = await api.sessionState(sid);
+      if (sid !== ui.sessionId || generation !== stoppedGeneration) return;
+      if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
+      set({ state: state.state, last: { pendingConfirmation: state.pendingConfirmation } });
+    } else await api.heartbeat(sid);
     if (ui.cancelUnconfirmed !== true && (ui.error === "expired" || ui.error === "timeout")) set({ error: undefined });
   } catch (error) { setError(kindOf(error)); }
 }

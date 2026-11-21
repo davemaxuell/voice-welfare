@@ -69,6 +69,12 @@ it("처리 중에 승인 카드가 있으면 두 화면 모두 승인 대기 상
   expect([window.taskLabel, avatar.status]).toEqual(["승인을 기다리고 있어요.", "승인을 기다리고 있어요."]);
 });
 
+it("오프라인에서 승인 조작을 잠그고 연결이 회복되면 같은 카드를 다시 쓸 수 있다", () => {
+  const env = { background: false, mac: false };
+  expect(viewOf({ ...base, offline: true, card: approval }, env).decisionDisabled).toBe(true);
+  expect(viewOf({ ...base, offline: false, card: approval }, env).decisionDisabled).toBe(false);
+});
+
 it("마이크를 듣는 중이어도 작업 오류를 두 화면 모두 알린다", () => {
   const { window, avatar } = labels({ phase: "listening", error: "turnFailed", capture: "on" }, { capture: "on" });
   expect([window.taskLabel, avatar.status]).toEqual(["문제가 생겼어요.", "문제가 생겼어요."]);

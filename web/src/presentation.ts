@@ -1,25 +1,25 @@
 import type { DecisionInput } from "./companion.ts";
-import { captureKeys, phaseKeys, taskKeys } from "./workspace-language.ts";
+import { captureKeys, issueActions, issueText, phaseKeys, taskKeys } from "./workspace-language.ts";
 
 export type Capture = keyof typeof captureKeys;
 export type Phase = keyof typeof phaseKeys;
 export type Task = keyof typeof taskKeys;
 type Mode = "starting" | "ended" | "consent" | "auth-handoff" | "choice" | "problem" | "ready" | "working" | "speaking" | "listening" | "offline";
 
-export const issueActions = { reconnect: "다시 연결", stop: "다시 멈춤 요청", microphone: "마이크 설정 열기", type: "글로 입력", check: "현재 상태 확인" } as const;
+export { issueActions };
 export type IssueAction = keyof typeof issueActions;
 export const issues = {
-  offline: ["연결이 끊겼어요", ["reconnect"]],
-  timeout: ["응답 시간이 초과되어 요청 결과를 확인하지 못했어요.", ["check", "type"]],
-  lostTurn: ["요청 결과를 확인하지 못했어요. 요청을 다시 보내지 않았어요.", ["check", "type"]],
-  cancelFailed: ["서버가 멈춤을 확인하지 못했어요. 이 기기에서는 멈췄어요.", ["stop"]],
-  micDenied: ["마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요.", ["microphone", "type"]],
-  micLost: ["마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.", ["microphone", "type"]],
-  voiceDown: ["음성 서비스를 사용할 수 없어요. 글로 입력할 수 있어요.", ["type"]],
-  turnFailed: ["요청을 처리하지 못했어요.", ["type"]],
-  expired: ["요청한 작업이 만료됐어요.", ["check", "type"]],
-  blocked: ["이 사이트에서 이 작업을 할 수 없어요.", ["type"]],
-  consentRequired: ["동의하지 않으셔서 음성 대화를 시작하지 않습니다. 복지 제도 질문은 텍스트로 입력할 수 있습니다.", ["type"]],
+  offline: [issueText.offline, ["reconnect"]],
+  timeout: [issueText.timeout, ["check", "type"]],
+  lostTurn: [issueText.lostTurn, ["check", "type"]],
+  cancelFailed: [issueText.cancelFailed, ["stop"]],
+  micDenied: [issueText.micDenied, ["microphone", "type"]],
+  micLost: [issueText.micLost, ["microphone", "type"]],
+  voiceDown: [issueText.voiceDown, ["type"]],
+  turnFailed: [issueText.turnFailed, ["type"]],
+  expired: [issueText.expired, ["check", "type"]],
+  blocked: [issueText.blocked, ["type"]],
+  consentRequired: [issueText.consentRequired, ["type"]],
 } as const satisfies Record<string, readonly [string, readonly IssueAction[]]>;
 export type IssueKey = keyof typeof issues;
 
