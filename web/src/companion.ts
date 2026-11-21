@@ -126,6 +126,7 @@ export function turnNotice(turn: Turn): string | null {
 }
 
 export interface ViewInput extends DecisionInput {
+  contrast?: boolean;
   busy: boolean;
   phase: string;
   listening: boolean;
@@ -172,6 +173,7 @@ export function desktopView(ui: ViewInput, live: LiveView) {
   const sleeping = live.sleeping && mode === "ready";
   return {
     connected: true,
+    contrast: ui.contrast === true,
     mode,
     capture: live.capture,
     speaking: live.speaking || ui.phase === "speaking",
