@@ -91,6 +91,28 @@ it("서버가 처리한 턴의 응답만 유실되면 현재 상태를 읽되 �
   await browserExpect(command()).toHaveValue("장애인연금이 뭐야");
 });
 
+it("서버가 여전히 기다리는 승인은 새 카드로 확인하고 이전 요청은 자동으로 반복하지 않는다", async () => {
+  await consent();
+  const pending = { actionId: "연습-확인", kind: "field-entry", purpose: "지역 입력", site: "연습 양식", values: [{ label: "지역", value: "예시 지역" }] };
+  await page.route("**/api/turn", async route => {
+    const result = await route.fetch();
+    const turn = await result.json() as Record<string, unknown>;
+    await route.fulfill({ json: { ...turn, state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: pending } });
+  });
+  await send("장애인연금이 뭐야");
+  const approve = page.locator("#confirm-yes");
+  await browserExpect(approve).toBeVisible();
+  let sends = 0;
+  await page.route("**/api/session/*/confirm", route => { sends++; return route.abort("connectionreset"); });
+  await page.route("**/api/session/*/state", route => route.fulfill({ json: { state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: pending } }));
+  await approve.click();
+  await browserExpect(page.locator("#error")).toContainText("요청 결과를 확인하지 못했어요.");
+  await browserExpect(approve).toBeEnabled();
+  expect(sends).toBe(1);
+  await approve.click();
+  await browserExpect.poll(() => sends).toBe(2);
+});
+
 it("멈춤 확인이 두 번 실패하면 이 기기는 멈춰 있고 사용자가 확인을 다시 요청한다", async () => {
   await consent();
   let cancels = 0;
