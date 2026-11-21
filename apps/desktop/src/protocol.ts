@@ -9,7 +9,7 @@ function isTask(value: unknown): value is keyof typeof taskKeys {
 
 /** 트레이에는 앱에서 정한 작업 이름만 내보낸다. */
 export function trayTaskText(snapshot: Record<string, unknown> | null): string | undefined {
-  if (snapshot?.connected !== true || !isTask(snapshot.task)) return undefined;
+  if (snapshot === null || !isTask(snapshot.task)) return undefined;
   return taskText(snapshot.task, isDesktopLanguage(snapshot.lang) ? snapshot.lang : "ko");
 }
 
