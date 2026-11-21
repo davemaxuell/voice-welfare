@@ -59,6 +59,59 @@ async function fillToApproval() {
   await browserExpect(state()).toHaveText("승인 대기", turnTimeout);
 }
 
+it("두 번 끊긴 하트비트는 초안을 보존하고 다시 연결해도 대화를 반복하지 않는다", async () => {
+  await page.clock.install();
+  await consent();
+  await command().fill("입력하던 연습 질문");
+  const count = await page.locator("#log li").count();
+  let beats = 0;
+  await page.route("**/api/session/*/heartbeat", route => { beats++; return route.abort("internetdisconnected"); });
+  await page.clock.fastForward(15_100);
+  await browserExpect.poll(() => beats).toBe(1);
+  await browserExpect(page.locator("#task-label")).not.toContainText("연결이 끊겼");
+  await page.clock.fastForward(15_100);
+  await browserExpect(page.locator("#task-label")).toHaveText("연결이 끊겼어요");
+  await browserExpect(command()).toHaveValue("입력하던 연습 질문");
+  await page.unroute("**/api/session/*/heartbeat");
+  await page.getByRole("button", { name: "다시 연결" }).click();
+  await browserExpect(page.locator("#task-label")).toHaveText("기다리고 있어요.");
+  await browserExpect(command()).toHaveValue("입력하던 연습 질문");
+  await browserExpect(page.locator("#log li")).toHaveCount(count);
+});
+
+it("서버가 처리한 턴의 응답만 유실되면 현재 상태를 읽되 같은 요청은 보내지 않는다", async () => {
+  await consent();
+  let turns = 0, reads = 0;
+  await page.route("**/api/turn", async route => { turns++; await route.fetch(); await route.abort("connectionreset"); });
+  page.on("request", req => { if (new URL(req.url()).pathname.endsWith("/state")) reads++; });
+  await send("장애인연금이 뭐야");
+  await browserExpect(page.locator("#error")).toContainText("요청 결과를 확인하지 못했어요.");
+  await browserExpect.poll(() => reads).toBe(1);
+  expect(turns).toBe(1);
+  await browserExpect(command()).toHaveValue("장애인연금이 뭐야");
+});
+
+it("멈춤 확인이 두 번 실패하면 이 기기는 멈춰 있고 사용자가 확인을 다시 요청한다", async () => {
+  await consent();
+  let cancels = 0;
+  await page.route("**/api/session/*/cancel", async route => {
+    cancels++;
+    if (cancels <= 2) await route.fulfill({ status: 500, json: { message: "연습용 서버 내부 오류" } });
+    else await route.continue();
+  });
+  await page.locator("#stop-all").click();
+  const retry = page.getByRole("button", { name: "다시 멈춤 요청" });
+  await browserExpect(retry).toBeVisible();
+  expect(cancels).toBe(2);
+  await browserExpect(page.locator("#task-label")).toHaveText("멈췄어요.");
+  await browserExpect(page.locator("#error")).not.toContainText("연습용 서버 내부 오류");
+  await browserExpect(page.locator("#send")).toBeDisabled();
+  await retry.click();
+  await browserExpect(retry).toBeHidden();
+  expect(cancels).toBe(3);
+  await browserExpect(state()).toHaveAttribute("data-state", "STOPPED");
+});
+
 it("test_consent_then_text_command", async () => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));

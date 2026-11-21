@@ -6,7 +6,7 @@ export const captureKeys = {
 export const taskKeys = {
   idle: "기다리고 있어요.", working: "처리하는 중이에요.", awaiting_choice: "선택을 기다리고 있어요.",
   awaiting_approval: "승인을 기다리고 있어요.", auth_handoff: "사이트에서 직접 진행해 주세요.",
-  stopping: "멈추는 중이에요.", stopped: "멈췄어요.", failed: "문제가 생겼어요.",
+  stopping: "멈추는 중이에요.", stopped: "멈췄어요.", failed: "문제가 생겼어요.", offline: "연결이 끊겼어요",
 } as const;
 export const phaseKeys = {
   off: { active: "꺼짐", manual: "꺼짐" }, starting: { active: "준비 중", manual: "준비 중" },
@@ -16,6 +16,7 @@ export const phaseKeys = {
   speaking: { active: "안내하는 중…", manual: "음성 안내 중" },
 } as const;
 const taskTranslations = {
+  "연결이 끊겼어요": ["Connection lost.", "连接已断开。", "接続が切れました。"],
   '기다리고 있어요.': ['Ready when you are.', '我在等您。', 'お待ちしています。'],
   '처리하는 중이에요.': ['Working on your request.', '正在处理请求。', '処理中です。'],
   '선택을 기다리고 있어요.': ['Waiting for your choice.', '等待您选择。', '選択をお待ちしています。'],
@@ -32,6 +33,22 @@ export function taskText(task: keyof typeof taskKeys, language: string | undefin
 }
 const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   ...taskTranslations,
+  "다시 연결": ["Reconnect", "重新连接", "再接続"],
+  "다시 멈춤 요청": ["Request Stop again", "再次请求停止", "もう一度停止を要求"],
+  "마이크 설정 열기": ["Open microphone settings", "打开麦克风设置", "マイク設定を開く"],
+  "마이크 설정": ["Microphone settings", "麦克风设置", "マイク設定"],
+  "기기의 개인정보 설정과 브라우저에서 청음의 마이크 사용을 허용한 뒤 마이크 확인을 눌러 주세요.": ["Allow microphone access for Cheongeum in your device privacy settings and browser, then select Check microphone.", "请在设备隐私设置和浏览器中允许青音使用麦克风，然后选择检查麦克风。", "端末のプライバシー設定とブラウザーでマイクを許可し、「マイク確認」を選んでください。"],
+  "글로 입력": ["Type a request", "输入文字", "文字で入力"],
+  "현재 상태 확인": ["Check current status", "查看当前状态", "現在の状態を確認"],
+  "응답 시간이 초과됐어요.": ["The request timed out.", "请求超时。", "応答がタイムアウトしました。"],
+  "응답 시간이 초과되어 요청 결과를 확인하지 못했어요.": ["The request timed out before its result could be confirmed.", "请求超时，未能确认结果。", "応答がタイムアウトしたため、結果を確認できませんでした。"],
+  "요청을 처리하지 못했어요.": ["Your request could not be completed.", "未能完成请求。", "依頼を処理できませんでした。"],
+  "요청한 작업이 만료됐어요.": ["This request has expired.", "请求已过期。", "依頼の期限が切れました。"],
+  "서버가 멈춤을 확인하지 못했어요. 이 기기에서는 멈췄어요.": ["The server did not confirm Stop. Activity on this device has stopped.", "服务器未确认停止。本机操作已停止。", "サーバーが停止を確認できませんでした。この端末では停止しました。"],
+  "요청 결과를 확인하지 못했어요. 요청을 다시 보내지 않았어요.": ["The result could not be confirmed. Your request was not sent again.", "未能确认结果。没有再次发送请求。", "結果を確認できませんでした。依頼は再送していません。"],
+  "이 사이트에서 이 작업을 할 수 없어요.": ["This action is unavailable on this site.", "无法在此网站执行该操作。", "このサイトではこの操作を実行できません。"],
+  "음성 서비스를 사용할 수 없어요. 글로 입력할 수 있어요.": ["Voice service is unavailable. You can type your request.", "语音服务不可用。您可以输入文字。", "音声サービスを利用できません。文字で入力できます。"],
+  "음성을 알아듣지 못했어요. 다시 말씀해 주세요.": ["I did not understand the audio. Please speak again.", "没有听清，请再说一次。", "音声を聞き取れませんでした。もう一度お話しください。"],
   "마이크 꺼짐": ["Mic off", "麦克风已关", "マイクオフ"],
   "마이크 켜짐": ["Mic on", "麦克风已开", "マイクオン"],
   "마이크 준비 중": ["Preparing the microphone", "正在准备麦克风", "マイクを準備中"],

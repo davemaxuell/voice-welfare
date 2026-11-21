@@ -7,7 +7,7 @@ import type { Microphone } from "./mic.ts";
 import { fullGuide } from "./onboarding.ts";
 import { workspaceText } from "./workspace-language.ts";
 
-import { presentationOf, type Capture, type Phase } from "./presentation.ts";
+import { presentationOf, issues, issueActions, type Capture, type Phase, type IssueKey } from "./presentation.ts";
 export type { Phase } from "./presentation.ts";
 
 export const EXAMPLES = [
@@ -85,7 +85,9 @@ export interface UiState {
   voiceMode: VoiceMode;
   tts: boolean;
   contrast: boolean;
-  error?: string | undefined;
+  error?: IssueKey | undefined;
+  offline?: boolean;
+  cancelUnconfirmed?: boolean;
   phase: Phase;
   baseSpeed: number;
   consent: Consent | undefined;
@@ -185,7 +187,8 @@ export function stageOf(ui: UiState) {
 }
 
 export function viewOf(ui: UiState, env: Env) {
-  const { sessionId, state, last, busy, listening, voiceMode, tts, contrast, error, phase, consent, mics, lang, card: decision } = ui;
+  const { sessionId, state, last, listening, voiceMode, tts, contrast, error, phase, consent, mics, lang, card: decision } = ui;
+  const busy = ui.busy && ui.offline !== true && ui.cancelUnconfirmed !== true;
   const t = (text: string) => workspaceText(text, lang);
   const hasSession = sessionId !== undefined;
   const recovering = ui.recovery !== undefined;
@@ -195,6 +198,8 @@ export function viewOf(ui: UiState, env: Env) {
   const { sessionReady, stage } = stageOf(ui);
 
   const display = presentationOf(ui);
+  const actions = error === undefined ? [] : [...issues[error][1]];
+  if (ui.offline === true && !actions.includes("reconnect")) actions.push("reconnect");
   const phaseLabel = display.phase === phase ? t("음성 대화") + ": " + t(display.phaseKey) : t(display.phaseKey);
 
   const obs = last?.observation;
@@ -255,10 +260,12 @@ export function viewOf(ui: UiState, env: Env) {
       native: modeLabels[1] + " · " + voiceMode.edge,
       dictate: modeLabels[2] + " · gpt-live-transcribe",
     } : undefined,
-    error: error !== undefined && error.length > 0 ? error : undefined,
+    error: error === undefined ? undefined : {
+      text: t(issues[error][0]), actions: actions.map(key => ({ key, label: t(issueActions[key]) })),
+    },
     command: {
       disabled: !hasSession || recovering,
-      sendDisabled: !hasSession || busy || recovering,
+      sendDisabled: !hasSession || busy || recovering || ui.offline === true || ui.cancelUnconfirmed === true,
       busy,
       sendLabel: t(busy ? "처리 중…" : "보내기"),
       typing: busy && hasSession,
