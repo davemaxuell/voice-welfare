@@ -64,6 +64,7 @@ it("한 줄 상태는 준비·종료·동의·인증·선택·문제·멈춤·�
   expect(mode({ busy: true }, { speaking: true })).toBe("working");
   expect(mode({}, { speaking: true, recording: true })).toBe("speaking");
   expect(mode({}, { recording: true })).toBe("listening");
+  expect(desktopView({ ...base, consent: "declined" }, live).status).toBe("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.");
   const resting = desktopView(base, live);
   expect(resting).toMatchObject({ mode: "ready", resting: true, status: "기다리고 있어요." });
   expect(desktopView({ ...base, lang: "en" }, { ...live, message: { id: "m1", text: "Hi" } }).message).toEqual({ id: "m1", text: "Hi" });

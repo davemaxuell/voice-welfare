@@ -147,7 +147,9 @@ export function desktopView(ui: ViewInput, live: LiveView) {
   const { mode } = display;
   const t = (key: string) => workspaceText(key, ui.lang);
   const status = mode === "starting" ? t("청음을 준비하는 중이에요.") : mode === "ended" ? t("이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요.")
-    : mode === "consent" ? t("시작 전에 동의가 필요해요.") : t(display.taskKey);
+    : mode === "consent" ? t("시작 전에 동의가 필요해요.")
+    : mode === "ready" && display.task === "idle" && ui.consent === "declined"
+      ? t("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.") : t(display.taskKey);
   const card = live.card;
   const busy = ui.busy || ui.phase === "thinking";
   const sleeping = live.sleeping && mode === "ready";
