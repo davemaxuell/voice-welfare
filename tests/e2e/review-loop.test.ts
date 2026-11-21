@@ -1,7 +1,7 @@
-import { afterAll, afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { StructuredLlm } from "../../src/core/llm.ts";
-import type { SourceCitation } from "../../src/core/turn.ts";
+import { draft, type SourceCitation } from "../../src/core/turn.ts";
 import { parseDecision, PublicTask } from "../../src/orchestrator/public_task.ts";
 import { ReviewedTask } from "../../src/orchestrator/review_loop.ts";
 import { redactText } from "../../src/safety/privacy.ts";
@@ -54,6 +54,19 @@ function source(url: string, title: string): SourceCitation {
 it("test_intake_accepts_all_requested_steps_within_the_hard_budget", () => {
   const requirements = Array.from({ length: 32 }, (_, n) => `Visit the service record labeled ${n}`);
   expect(parseDecision({ ...decision(), difficulty: "hard", requirements })?.requirements).toEqual(requirements);
+});
+
+it("retains a dependent action and continues an independent read after a failed browser step", async () => {
+  const session = await newSession();
+  const text = redactText("본문을 읽고 다음 페이지에서 본문을 읽고 별도 제도를 확인해 줘");
+  const route = vi.spyOn(session, "route").mockImplementation(async intent =>
+    draft("BROWSING", intent.type === "NEXT" ? "none" : "web-answer", "안내"));
+  const task = new ReviewedTask({ request: text, task: new PublicTask(), requirements: [text], route: "existing", difficulty: "medium",
+    remaining: [[{ type: "READ_MAIN", more: false }, text], [{ type: "NEXT" }, text],
+      [{ type: "READ_MAIN", more: false }, text], [{ type: "POLICY_QUESTION", topic: "별도 제도의 서류" }, text]] });
+  for await (const _ of session.review.actions(task, session.beginTurn(text), "", {resuming: false})) { /* 결과는 경로 기록에서 확인한다. */ }
+  expect(route.mock.calls.map(([intent]) => intent.type)).toEqual(["READ_MAIN", "NEXT", "POLICY_QUESTION"]);
+  expect(task.plan.map(step => step.status)).toEqual(["observed", "unresolved", "ready", "observed"]);
 });
 
 it("test_public_retry_keeps_form_values_out_of_the_search", async () => {

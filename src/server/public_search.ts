@@ -4,7 +4,8 @@ import { PUBLIC_AGENCIES } from "../core/sites.ts";
 import { strip } from "../core/text.ts";
 import { todayIso } from "../core/time.ts";
 import type { PublicTask } from "../orchestrator/public_task.ts";
-import { REDACTED, redactPictureText, redactText, type SecretSpan } from "../safety/privacy.ts";
+import { publicResearchSkills, researchSkill } from "../orchestrator/public_skills.ts";
+import { REDACTED, detectSensitive, redactPictureText, redactText, type SecretSpan } from "../safety/privacy.ts";
 import { checkGrounding } from "../safety/verify.ts";
 import { safeInput, splitUrl, urlPort, type Scan } from "./workflows.ts";
 
@@ -86,27 +87,60 @@ export class TavilySearch {
     const agencyDomain = task.agency === undefined ? undefined : AGENCY_DOMAINS.get(task.agency);
     const domains = agencyDomain === undefined ? PUBLIC_DOMAINS : [agencyDomain];
     const today = todayIso();
+    const skill = researchSkill(task.facts, task.goal);
+    const ask = async (pages: readonly Page[], attempt: number, searchQuery: string) => await model.generate({
+        system: skill === undefined ? SYSTEM : SYSTEM + "\n" + publicResearchSkills[skill].instruction,
+        // Excerpts and titles already passed redact_picture_text, the goal and query passed safe_input.
+        user: redactedJson({ question: redactText(task.goal), replyLanguage: redactText(language), today: redactText(today), attempt: attempt + 1,
+          searchQuery: redactText(searchQuery), excerpts: pages.map(page => ({ title: redactText(page.title), text: redactText(page.text) })) }),
+        schemaName: "public_search_answer", schema: ANSWER_SCHEMA, signal,
+      });
     for (let attempt = 0; attempt < 2; attempt++) {
       const pages = await this.excerpts(query, domains, signal);
       if (pages === undefined || signal.aborted) break;
-      const response = await model.generate({
-        system: SYSTEM,
-        // Excerpts and titles already passed redact_picture_text, the goal and query passed safe_input.
-        user: redactedJson({ question: redactText(task.goal), replyLanguage: redactText(language), today: redactText(today), attempt: attempt + 1,
-          searchQuery: redactText(query), excerpts: pages.map(page => ({ title: redactText(page.title), text: redactText(page.text) })) }),
-        schemaName: "public_search_answer", schema: ANSWER_SCHEMA, signal,
-      });
+      const response = await ask(pages, attempt, query);
       if (!isRecord(response) || signal.aborted) break;
       if (truthy(response.answer)) {
         const answer = typeof response.answer === "string" ? response.answer : "";
         const [spans] = await this.#spans([answer]);
         return TavilySearch.sourcedAnswer(response, pages, today, task.goal, spans);
       }
+      if (attempt === 0 && skill !== undefined && publicResearchSkills[skill].tools.includes("fetch")) {
+        const fetched = await this.#extract(pages, query, signal);
+        if (fetched.length > 0 && !signal.aborted) {
+          const checked = await ask(fetched, 1, query);
+          if (isRecord(checked) && typeof checked.answer === "string") {
+            const [spans] = await this.#spans([checked.answer]);
+            const answer = TavilySearch.sourcedAnswer(checked, fetched, today, task.goal, spans);
+            if (answer !== undefined) return answer;
+          }
+        }
+      }
       const alternate = await this.#safe(response.retryQuery, 400);
       if (alternate === undefined || alternate === query || alternate.includes("://")) break;
       query = alternate;
     }
     return undefined;
+  }
+
+  async #extract(pages: readonly Page[], query: string, signal: AbortSignal): Promise<Page[]> {
+    const candidates = new Map(pages.slice(0, 3).filter(page => {
+      const url = URL.parse(page.url);
+      return url !== null && url.hash === "" && [...url.searchParams].every(([name, value]) =>
+        !/token|session|password|secret|auth|credential|email|user|key/i.test(name) && !detectSensitive(value).hasSecretValue);
+    }).map(page => [page.url, page.title]));
+    if (signal.aborted || candidates.size === 0) return [];
+    const result = await this.#postJson("https://api.tavily.com/extract",
+      { Authorization: `Bearer ${this.#key}`, "Content-Type": "application/json" },
+      { urls: [...candidates.keys()], query, chunks_per_source: 3, format: "text", timeout: 10 }, 12, signal, this.#pool);
+    if (!isRecord(result) || !Array.isArray(result.results)) return [];
+    const accepted = result.results.slice(0, 3).flatMap(row => {
+      if (!isRecord(row) || typeof row.url !== "string" || typeof row.raw_content !== "string") return [];
+      const title = candidates.get(row.url);
+      return title === undefined ? [] : [{ url: row.url, title, text: take(row.raw_content, 4500) }];
+    });
+    const spans = await this.#spans(accepted.map(page => page.text));
+    return accepted.map((page, i) => ({ ...page, text: strip(redactPictureText(page.text, spans[i])) })).filter(page => page.text.length > 0);
   }
 
   /** 질문에 맞는 공식 누리집 후보. 공공 도메인 안의 https 주소만 오고, 같은 누리집은 한 번만 나온다. */

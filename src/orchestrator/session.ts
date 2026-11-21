@@ -87,6 +87,7 @@ export interface OrchestratorDeps {
   firstRunProgress?: (step: string) => void;
   recallNotes?: (text: string) => Promise<string[]>;
   delegateResearch?: (id: string, goal: string) => Promise<boolean>;
+  readResearch?: (lang: Lang) => Promise<Draft | undefined>;
   /** 개인 정보 금고·신청 기록 저장소(없으면 이번 대화 메모리에만) */
   personal?: PersonalStore;
   /** 암호화된 조작 기록(없으면 '오늘 한 일'은 비어 있다고 답함) */
@@ -155,7 +156,7 @@ const SiteGuessSchema = z.object({
 });
 
 /** Python dataclasses.replace(ctx, ...): 승인·중단 신호는 그대로 두고 조작 한도와 조회 전용 표시만 바꾼 새 문맥 */
-export function withContext(ctx: ExecContext, changes: Partial<Pick<ExecContext, "counter" | "publicLookup" | "actionLimit" | "browsingScope">>): ExecContext {
+export function withContext(ctx: ExecContext, changes: Partial<Pick<ExecContext, "counter" | "publicLookup" | "actionLimit" | "browsingScope" | "signal">>): ExecContext {
   return new ExecContext({ ...ctx, ...changes });
 }
 
@@ -526,7 +527,7 @@ export class SessionOrchestrator {
   reminders() { return dueReminder(this.personal.applications(), this.today); }
 
   /** 저장해 둔 조사 한 건을 한다. 격리된 새 작업 세션에서만 부른다. */
-  researchPublic(text: string, language: Lang) { return this.planner.research(text, language); }
+  researchPublic(...args: Parameters<PublicPlanner["research"]>) { return this.planner.research(...args); }
 
   /** 받아쓴 말이 비었을 때 다시 말해 달라는 안내 */
   missedSpeechHint(): string {
@@ -576,10 +577,20 @@ export class SessionOrchestrator {
         catch { return { interrupted: true }; }
         if (this.state !== "STOPPED") this.dialogue.commit(this.dialogue.authWaiting ? "AUTH_HANDOFF" : browseState(view));
       }
+      if (this.dialogue.authWaiting) {
+        const ended = this.browse.authEndIfUnavailable(turn.ctx);
+        if (ended !== undefined) this.dialogue.commit(ended.state);
+      }
       const handoff = this.dialogue.authHandoff;
+      const offer = this.dialogue.authWaiting
+        ? this.#offerFor(turn, this.state, this.browse.authWait(), this.web.currentView)
+        : undefined;
+      this.#offer = offer;
       return {
         ...checkpoint, state: this.state, ...(this.state === "STOPPED" ? { stopGeneration: this.#queue.epoch } : {}),
         authHandoff: this.dialogue.authWaiting && handoff !== undefined ? handoff.public() : null,
+        ...(offer === undefined ? {} : { turnId: offer.turnId,
+          offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })) }),
       };
     });
   }
@@ -1019,6 +1030,12 @@ export class SessionOrchestrator {
         d.profileDone();
       }
       if (forced === undefined) {
+        const savedResearch = /^(?:맡긴 조사 결과 읽어\s*줘|저장한 조사 결과 읽어\s*줘|read (?:my |the )?saved research(?: results?)?|朗读(?:已保存的)?调查结果|保存した調査結果を読んで)[.!?。]?$/iu;
+        if (this.deps.readResearch !== undefined && !d.hasPendingInteraction && savedResearch.test(original ?? text)) {
+          turn.intentType = "READ_RESEARCH";
+          const result = await this.deps.readResearch(this.lang);
+          if (result !== undefined) return this.finish(turn, { ...result, state: this.state });
+        }
         // 라벨(intentType)은 await 전에 적는다. 그 안에서 예외가 나면 RECOVERING 결과가 이 라벨을 보고한다.
         // 실제 사이트 칸 채우기. 진행 중이면 그 대답으로 받고, 아니면 '하나씩 채워줘'로 시작한다.
         // 승인 대기(칸에 넣을지 물음) 중이면 칸 채우기 대답으로 가로채지 않고 승인 문으로 보낸다.

@@ -11,3 +11,16 @@ export const states: Readonly<Partial<Record<string, readonly string[]>>> = {
   incomplete: ['확인하지 못함', 'Unverified', '未能确认', '未確認'], failed: ['실패', 'Failed', '失败', '失敗'],
   needs_input: ['질문 보완 필요', 'Clarification needed', '需要补充说明', '質問の補足が必要'], cancelled: ['중단됨', 'Cancelled', '已取消', '中止済み'],
 };
+
+export const resultCopy = {
+  missing: ["확인이 남은 항목", "Still to verify", "待核实项目", "確認が残っている項目"],
+  checked: ["출처 확인일", "Source checked", "核实日期", "出典の確認日"],
+  unknownDate: ["날짜 기록 없음", "Date unavailable", "日期未知", "日付不明"],
+  dataDate: ["자료 기준일", "Data date", "数据基准日期", "データ基準日"],
+  live: ["기관 자료", "Agency data", "机构数据", "機関のデータ"],
+  stored: ["저장 자료", "Stored data", "存档数据", "保存データ"],
+  "private-program": ["민간 사업 자료", "Private program data", "民间项目数据", "民間制度のデータ"],
+  answer: ["공개 정보로 답하기", "Reply with public information", "用公开信息回复", "公開情報で回答"],
+  resume: ["조사 이어가기", "Continue research", "继续调查", "調査を続ける"],
+  read: ["결과 듣기", "Read result aloud", "朗读结果", "結果を読み上げる"],
+} as const;

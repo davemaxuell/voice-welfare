@@ -75,3 +75,26 @@ it("test_shared_profiles_isolate_personal_state_and_preserve_three_active_sessio
     for (const s of api.sessions.values()) expect((await api.request("/api/session/" + s.id + "/state")).status).toBe(200);
   } finally { await close(); }
 });
+
+it("issues current auth choices after reconnecting the same browser", async () => {
+  const { post, close } = apiFixture({ PILOT_PROFILE: "personal" });
+  try {
+    const original = Credentials.parse(await (await post("/api/session", { recovery: true })).json());
+    const old = { "x-cheongeum-writer": original.writer };
+    const path = "/api/session/" + original.sessionId;
+    const turn = async (text: string) => (await post("/api/turn", { sessionId: original.sessionId, text }, old)).json();
+    await turn("장애인연금 신청 도와줘");
+    const initial = z.object({ turnId: z.string(), authHandoff: z.object({ id: z.string() }) }).parse(await turn("로그인하고 싶어"));
+    expect((await post(path + "/detach", undefined, old)).status).toBe(200);
+    const recovered = Credentials.parse(await (await post("/api/session/recover", { token: original.token, attempt: randomUUID() })).json());
+    const writer = { "x-cheongeum-writer": recovered.writer };
+    const resumed = z.object({ turnId: z.string(), offeredChoices: z.array(z.object({ key: z.string() })) })
+      .parse(await (await post(path + "/resume", undefined, writer)).json());
+    expect(resumed.turnId).not.toBe(initial.turnId);
+    expect(resumed.offeredChoices.map(choice => choice.key)).toEqual(["auth-done", "auth-cancel"]);
+    const chosen = { turnId: resumed.turnId, key: "auth-cancel", handoffId: initial.authHandoff.id };
+    expect((await post(path + "/choice", { ...chosen, turnId: initial.turnId }, writer)).status).toBe(409);
+    expect((await post(path + "/choice", chosen, old)).status).toBe(409);
+    expect(await (await post(path + "/choice", chosen, writer)).json()).toMatchObject({ authHandoff: { status: "cancelled" }, actions: [] });
+  } finally { await close(); }
+});

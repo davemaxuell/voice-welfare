@@ -158,6 +158,7 @@ let sessionGeneration = 0;
 let stoppedGeneration = 0;
 let commandActionId: string | undefined;
 const RECOVERY_KEY = "cheongeum.recovery";
+const RECOVERY_DECLINED = "cheongeum.recoveryDeclined";
 const PROGRESS_KEY = "cheongeum.progressSeq";
 
 function tabStore(key: string, value?: string | null) {
@@ -416,6 +417,10 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
 
 function speak(text: string) {
   void speakAndWaitFrom(text);
+}
+
+export function speakResearch(text: string) {
+  if (ui.workspaceAvailable && ui.consent === "granted") speak(text);
 }
 
 // 청음 소개: 줄마다 카드(정지 그림·글)를 보이고 아바타에 그 동작을 보낸 뒤 말한다.
@@ -1460,6 +1465,7 @@ export async function endSession() {
 export async function answerRecovery(yes: boolean) {
   const choice = ui.recovery?.choice;
   if (choice === "new") {
+    tabStore(RECOVERY_DECLINED, yes ? null : "1");
     closeRecovery();
     return openSession(yes);
   }
@@ -1480,7 +1486,8 @@ export async function answerRecovery(yes: boolean) {
     desk.stopGeneration = checkpoint.stopGeneration ?? null;
     closeRecovery();
     setSpeechLang(checkpoint.lang ?? "ko");
-    set({ state: checkpoint.state, lang: checkpoint.lang ?? "ko", last: { authHandoff: checkpoint.authHandoff }, hasTurn: true });
+    set({ state: checkpoint.state, lang: checkpoint.lang ?? "ko",
+      last: { authHandoff: checkpoint.authHandoff, turnId: checkpoint.turnId, offeredChoices: checkpoint.offeredChoices }, hasTurn: true });
     tabStore(PROGRESS_KEY, String(checkpoint.progressSeq ?? 0));
     const consent = checkpoint.consent === "pending" ? "ask" : checkpoint.consent;
     setConsent(consent);
@@ -1529,7 +1536,7 @@ export async function chooseSession() {
   }
   tabStore(RECOVERY_KEY, null);
   tabStore(PROGRESS_KEY, null);
-  if (health?.recoveryAvailable === true) {
+  if (health?.recoveryAvailable === true && tabStore(RECOVERY_DECLINED) !== "1") {
     showRecovery("new", "같은 탭 작업 복구", "개인 컴퓨터에서 작업을 이어갈 수 있게 할까요? 브라우저가 열려 있으면 연결이 끊긴 뒤 5분 동안 돌아올 수 있어요.", "복구 켜고 시작", "복구 없이 시작");
   } else {
     await openSession(false);
