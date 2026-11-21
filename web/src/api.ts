@@ -13,7 +13,7 @@ export const AuthHandoffSchema = z.object({
 export type AuthHandoff = z.infer<typeof AuthHandoffSchema>;
 const SourceSchema = z.object({ title: text, url: text, lastCheckedAt: text, note: opt(text) });
 export type Source = z.infer<typeof SourceSchema>;
-export const APPROVAL_KINDS = ["field-entry", "click", "file-transfer", "visual-navigation", "practice-submission", "public-research", "vault-save", "vault-clear"] as const;
+export const APPROVAL_KINDS = ["field-entry", "click", "plan", "file-transfer", "visual-navigation", "practice-submission", "public-research", "vault-save", "vault-clear"] as const;
 export type ApprovalKind = typeof APPROVAL_KINDS[number];
 const PendingSchema = z.object({
   actionId: text, kind: opt(z.enum(APPROVAL_KINDS)), purpose: text, site: text, description: opt(text),

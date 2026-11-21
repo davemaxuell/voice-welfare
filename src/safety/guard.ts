@@ -1,4 +1,5 @@
 import { parseAction, type Action, type ActionType, type NativeGrant, type NoticeFacts, type NoticeProof } from "../core/actions.ts";
+import { boundPlanClick, type PlanBinding } from "../core/plan.ts";
 import type { PolicyDecision } from "../core/turn.ts";
 import { hasText, strip } from "../core/text.ts";
 import { tryUrl } from "../core/url.ts";
@@ -31,6 +32,7 @@ export interface PolicyContext {
   notice?: NoticeProof;
   /** 사이트의 confirm() 창에 답하며 같은 누르기를 되풀이한다는 허가. 누르기에만 붙고 공개 조회·화면 확인 범위에서는 쓰지 않는다. */
   native?: NativeGrant;
+  plan?: PlanBinding;
 }
 export type ClickTier = "free" | "ask" | "hard";
 
@@ -72,6 +74,13 @@ export function clickTier(role: string | undefined, name: string): ClickTier {
   if (role === "tab" || role === "scriptlink") return isActionName(name) ? "ask" : "free";
   if (role === "button" || role === "menuitem") return guardPatterns.riskyButton.test(name) ? "ask" : "free";
   return "ask";
+}
+
+/** 확인·로그인·결과를 남기는 조작은 여러 단계를 묶는 동의에 넣지 않는다. */
+export function planControlAllowed(role: string, name: string): boolean {
+  return ["button", "link", "tab", "scriptlink", "menuitem", "generic"].includes(role) && strip(name).length > 0 &&
+    !/^(?:확인|ok|confirm)$/iu.test(strip(name).replace(guardPatterns.trailingNoise, "")) &&
+    !(guardPatterns.hardAction.test(name) && isActionName(name)) && !guardPatterns.loginName.test(name);
 }
 
 // ---- 안내 팝업(notice) ----
@@ -193,6 +202,11 @@ export class PolicyGuard {
     if (tier === "none") return deny("DENIED_ORIGIN", "허용되지 않은 주소라서 열거나 조작하지 않습니다.");
     // 사이트의 confirm() 창에 답하는 허가는 읽기 전용 사이트에서 같은 화면의 누르기를 되풀이할 때만 쓴다.
     // 공개 조회·화면 확인 범위에서는 쓰지 않고, 안내 팝업 증명과 함께 쓰지도 않는다.
+    if (ctx.plan !== undefined && (this.publicLookup(ctx) || this.inspectionEnabled(ctx) || ctx.native !== undefined || ctx.notice !== undefined ||
+        ctx.approvals?.has(action.id) !== true || !boundPlanClick(ctx.plan, action, ctx.currentUrl) ||
+        !planControlAllowed(ctx.plan.step.role, ctx.plan.step.name))) {
+      return deny("DENIED_PLAN_BINDING", "이 조작은 확인받은 순서에 들어 있지 않아요.");
+    }
     if (ctx.native !== undefined) {
       if (action.type !== "click" || tier !== "read-only" || this.publicLookup(ctx) || this.inspectionEnabled(ctx) ||
         ctx.notice !== undefined || ctx.native.url !== ctx.currentUrl) {

@@ -80,7 +80,7 @@ export interface ControlWindow {
   url: string;
   items: Array<{
     ref: string; role: string; name: string; region: string; disabled: boolean;
-    context?: string; pictureMasked?: boolean; inspection?: InspectionControl; notice?: NoticeFacts;
+    context?: string; pictureMasked?: boolean; inspection?: InspectionControl; notice?: NoticeFacts; planSignature?: string;
   }>;
   more: boolean;
 }
@@ -679,7 +679,7 @@ export class WebExecutionAgent {
       ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
       : this.guard.check(action, {
         ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
-        notice: grants?.notice, native: grants?.native,
+        notice: grants?.notice, native: grants?.native, plan: grants?.plan,
       }));
     if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {
       this.#inspectionPending = { action: structuredClone(action), sessionId: ctx.sessionId, binding: inspection };

@@ -40,6 +40,7 @@ import { groundedScreenAnswer, sameScreen, screenContext, screenDecision, screen
 import { NOT_READY, stillBuilding } from "../effect.ts";
 import { nativeSpeech, noticeSpeech, questionSpeech, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "../notice.ts";
 import type { DownloadStore } from "../downloads.ts";
+import { KnownPlans } from "./known_plan.ts";
 import { askAgain, blockedSpeech, browseState, isFormOpen, notOpen, outcomeFailure, pressResult } from "./common.ts";
 
 const LINKS_PER_PAGE = 10;
@@ -95,7 +96,7 @@ export interface BrowseDeps {
   practiceMode?: boolean;
   sharedBrowser?: boolean;
 }
-type BrowseDialogue = Pick<DialogueState, "state" | "guided" | "awaiting" | "authResume" | "authWaiting" | "authHandoff" | "finishAuth" | "holdAuth" | "takeAuthResume" | "navigated" | "askApproval" | "clearApproval">;
+type BrowseDialogue = Pick<DialogueState, "approval" | "state" | "guided" | "awaiting" | "authResume" | "authWaiting" | "authHandoff" | "finishAuth" | "holdAuth" | "takeAuthResume" | "navigated" | "askApproval" | "clearApproval">;
 type ClickApproval = Extract<NonNullable<DialogueState["approval"]>, { kind: "click" }>;
 interface PublicLookup {
   readonly agency?: string;
@@ -145,6 +146,7 @@ function descriptionKey(view: PageView): string {
 
 export class BrowseSkill {
   readonly web: WebExecutionAgent;
+  readonly knownPlans = new KnownPlans(this);
   readonly dialogue: BrowseDialogue;
   readonly narrator: Narrator;
   readonly form: BrowseForm;
@@ -390,6 +392,10 @@ export class BrowseSkill {
     // native가 있으면 사이트가 물었던 confirm() 질문에 사용자가 '진행'이라고 답한 것이다: 같은 조작을 한 번 되풀이하고 그 질문에만 답한다.
     const grants = approval.native === undefined ? undefined : {native: approval.native};
     const out = await this.web.withInspection(ctx, () => this.web.clickApproved(approval.action, ctx, grants));
+    return this.finishApprovedClick(out, approval, ctx);
+  }
+
+  async finishApprovedClick(out: WebOutcome, approval: Pick<ClickApproval, "native" | "action" | "url" | "then">, ctx: ExecContext): Promise<Draft> {
     if (out.status === "needs-approval" && out.native !== undefined && out.pending) {
       // 되풀이하는 중에 사이트가 또 물었다. 이전 승인은 이미 한 번 썼으니 새 질문으로만 이어 간다.
       this.dialogue.clearApproval();
