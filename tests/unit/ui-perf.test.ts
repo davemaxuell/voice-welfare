@@ -27,3 +27,12 @@ it("브라우저에 내보내는 기록의 문자열은 정해진 단계 이름�
     .toEqual(["input-received", "turn-sent", "result-applied"]);
   expect(t.data.records.map(r => Object.keys(r))).toEqual(Array(3).fill(["stage", "durationMs", "turn", "cancelled"]));
 });
+
+it("세션을 닫은 뒤 새 마이크 요청은 이전 세션의 취소에 묶이지 않는다", () => {
+  const t = new ClientTiming();
+  const previous = t.mark("microphone-requested");
+  t.cancelPending();
+  const next = t.mark("microphone-requested");
+  expect(t.measure(previous, "track-live")).toBeUndefined();
+  expect(t.measure(next, "track-live")?.record.turn).toBe(next.record.turn);
+});

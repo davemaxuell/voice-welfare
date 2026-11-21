@@ -49,12 +49,12 @@ export class ClientTiming {
       if (this.pending.has(record.turn)) record.cancelled = true;
     }
     this.pending.clear();
-    this.lastCancelled = this.sequence;
+    this.lastCancelled = this.sequence++;
   }
 
   stop() {
     this.cancelPending();
-    return this.mark("stop-requested", ++this.sequence);
+    return this.mark("stop-requested");
   }
 
   afterPaint(from: TimingPoint | undefined, to: Stage, visible: () => boolean = () => true) {
@@ -65,6 +65,6 @@ export class ClientTiming {
   }
 }
 
-export const timing = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("perf") === "1"
+export const timing = typeof window !== "undefined" && new URLSearchParams(window.location?.search).get("perf") === "1"
   ? new ClientTiming() : undefined;
 if (timing !== undefined) window.cheongeumPerf = timing.data;

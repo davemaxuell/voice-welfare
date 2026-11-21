@@ -153,7 +153,7 @@ async function sample(page: Page, url: string, name: Scenario): Promise<Sample> 
 }
 
 async function runGroup(name: Scenario, runs: number): Promise<Group> {
-  const ui = await startUi(false, { REQUIRE_CONSENT: "false", HEADLESS: "true" });
+  const ui = await startUi(false, { REQUIRE_CONSENT: "false", HEADLESS: "true", PRACTICE_MODE: String(name === "typed") });
   try {
     const browser = await chromium.launch();
     const samples: Sample[] = [];
