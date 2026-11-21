@@ -82,6 +82,11 @@ it("입력 승인 대기 중 언어를 바꿔도 같은 승인을 한 번만 실
   const switched = await session.setLanguage("en");
   expect(switched.lang).toBe("en");
   expect(switched.pendingConfirmation?.actionId).toBe(approval.actionId);
+  expect(switched.pendingConfirmation?.purpose).toBe("Fill in fields without submitting");
+  expect(switched.pendingConfirmation?.values).toContainEqual({ label: "Name", value: "김하늘" });
+  expect(switched.localSpeechOnly).toBe(true);
+  expect(switched.speech).toContain("김하늘");
+  expect(session.snapshot().pendingConfirmation).toEqual(switched.pendingConfirmation);
   await session.confirm(true, approval.actionId);
   expect(await page.locator("#opinionName").inputValue()).toBe("김하늘");
   expect(await page.locator("#opinionName").getAttribute("data-inputs")).toBe("1");

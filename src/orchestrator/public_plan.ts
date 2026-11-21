@@ -254,7 +254,7 @@ export class PublicPlanner {
       s.dialogue.askApproval({ kind: "research", goal: question, confirmation: {
         actionId: randomUUID(), kind: "public-research", purpose: "공개 자료 조사", description: prompt, site: "청음", values: [], realSubmission: false,
       } });
-      return s.finish(turn, draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, { lang }));
+      return s.finish(turn, draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, { lang, approvalSpeech: "ask" }));
     }
     if (decision.kind === "conversation") {
       turn.intentType = "CHAT";

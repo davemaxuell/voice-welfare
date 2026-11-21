@@ -32,7 +32,7 @@ export function requestAssist(dialogue: Pick<DialogueState, "askApproval">, view
   dialogue.askApproval({kind: "assist", url: view.url, action, actions, guided,
     confirmation: {actionId: action.id, kind: "field-entry", description: speech, purpose: "실제 사이트 입력란 채우기(제출은 하지 않음)", site, values, realSubmission: false},
     fingerprint: fingerprint(view, actions, speech)});
-  return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, {view});
+  return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, {view, approvalSpeech: "ask"});
 }
 
 export class FormSkill {
@@ -221,7 +221,7 @@ export class FormSkill {
       site, values, realSubmission: false},
       fingerprint: fingerprint(out.view, [action], speech, out.view.fields.map(f => f.fieldId))});
     this.dialogue.dropValueWait();
-    return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, {actions: [...out.actions, preview], view: out.view, masked: true});
+    return draft("WAITING_FOR_USER_CONFIRMATION", "prepare-submit", speech, {approvalSpeech: "ask", actions: [...out.actions, preview], view: out.view, masked: true});
   }
 
   async assistApproved(actions: Action[], ctx: ExecContext): Promise<Draft> {

@@ -330,10 +330,10 @@ export class BrowseSkill {
     const question = lang !== undefined ? inspectionClickQuestion(lang, site, title, name) : `${site}의 '${title}' 화면에서 '${name}' ${josa(kind, "을", "를")} 누르려고 해요. `
       + (hasText(effect) ? effect : `신청, 제출, 로그인처럼 무언가를 처리하는 ${kind}일 수 있어서 누르기 전에 여쭤봐요.`)
       + " 누를까요? 누르려면 '눌러', 그만두려면 '거절'이라고 말씀해 주세요.";
-    this.dialogue.askApproval({kind: "click", action, url, then,
+    this.dialogue.askApproval({kind: "click", action, url, then, pageTitle: title,
       confirmation: {actionId: action.id, kind: "click", description: question, purpose: `'${name}' ${kind} 누르기`, site, values: [], realSubmission: false},
       fingerprint: fingerprint(view ?? {}, [action], question)});
-    return draft("WAITING_FOR_USER_CONFIRMATION", "confirm-click", lead + question, {actions, view, lang});
+    return draft("WAITING_FOR_USER_CONFIRMATION", "confirm-click", lead + question, {actions, view, lang, approvalSpeech: "ask"});
   }
 
   async clickApproved(approval: ClickApproval, ctx: ExecContext): Promise<Draft> {
@@ -436,7 +436,7 @@ export class BrowseSkill {
     const prompt = `'${record.name}'의 ${contents}를 ${recipient}에 보내면 개인 정보가 포함될 수 있어요. 보내도 될까요? '네' 또는 '아니요'라고 말씀해 주세요.`;
     this.dialogue.askApproval({kind: "file", record, digest, question, confirmation: {actionId: `file:${randomUUID()}`, kind: "file-transfer",
       description: prompt, purpose: "받은 파일 분석", site: recipient, values: [{label: "전송할 파일", value: record.name}], realSubmission: false}});
-    return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {view, privateHistory: true});
+    return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {view, privateHistory: true, approvalSpeech: "ask"});
   }
 
   async analyzeApproved(approval: Extract<Approval, {kind: "file"}>, ctx: ExecContext, lang: Lang): Promise<Draft> {
@@ -702,8 +702,8 @@ export class BrowseSkill {
         const prompt = `${site} 화면의 글만으로는 설명하기 어려워요. 입력란을 가린 화면 사진 한 장을 OpenAI로 보내 확인할까요?`;
         const key = {};
         this.#screenRequests.set(key, {fingerprint: descriptionKey(view), page: this.web.adapter.page, previousInputs});
-        this.#askVisual(text, key, site, prompt, "화면 사진으로 현재 페이지 설명");
-        return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {view, masked: true});
+        this.#askVisual(text, key, site, prompt, "화면 사진으로 현재 페이지 설명", "visualDescribe");
+        return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {view, masked: true, approvalSpeech: "ask"});
       }
       const local = this.#localScreen(view, text, []);
       return {...local, speech: "페이지 글만으로는 그 모습을 확인하기 어려워요. " + local.speech};
@@ -770,8 +770,8 @@ export class BrowseSkill {
     return draft(browseState(out.view), "web-answer", `${quoted} 검색해 봤어요. ${answer}`, {actions: out.actions, view: out.view});
   }
 
-  #askVisual(goal: string, checkpoint: object, site: string, prompt: string, purpose: string): void {
-    this.dialogue.askApproval({kind: "visual", goal, checkpoint,
+  #askVisual(goal: string, checkpoint: object, site: string, prompt: string, purpose: string, imagePurpose: NonNullable<Extract<Approval, {kind: "visual"}>["imagePurpose"]>): void {
+    this.dialogue.askApproval({kind: "visual", goal, checkpoint, imagePurpose,
       confirmation: {actionId: randomUUID(), kind: "visual-navigation", description: prompt, purpose, site,
         values: [{label: "전송 대상", value: "OpenAI"}], realSubmission: false}});
   }
@@ -933,8 +933,8 @@ export class BrowseSkill {
       const site = siteLabel(view.url, sites);
       const prompt = `${site}에서 ${result.speech}`;
       this.#pausedGoals.set(paused, saved);
-      this.#askVisual(goal, paused, site, prompt, paused.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기");
-      return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {actions: result.actions, view, ...review});
+      this.#askVisual(goal, paused, site, prompt, paused.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기", paused.kind === "orient" ? "visualOrient" : "visualLink");
+      return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {actions: result.actions, view, ...review, approvalSpeech: "ask"});
     }
     if (publicTask && result.status === "needs-approval") return draft(view ? browseState(view) : this.dialogue.state, "goal", "공개 안내에서 이 정보를 확인하지 못했어요.", {actions: result.actions, view, ...review});
     if (result.status === "needs-approval" && result.pending) {

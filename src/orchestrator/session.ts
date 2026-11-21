@@ -31,6 +31,7 @@ import { rstripChars, strip, stripChars } from "../core/text.ts";
 import { AGENT_IDS, LANGS, draft, parseTurnResult, type Draft, type HumanAuthHandoff, type Lang, type SemanticAction, type SessionState,
   type SourceCitation, type TraceEntry, type TurnResult } from "../core/turn.ts";
 import { tryUrl } from "../core/url.ts";
+import { approvalAction, approvalNarration, approvalPresentation } from "../language/approval.ts";
 import { FIXED, detectLangSwitch, detectScriptLang, translateIn, translateOut } from "../language/i18n.ts";
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, foreignVaultSave, parsePersonalCommand } from "../personal/commands.ts";
@@ -510,12 +511,16 @@ export class SessionOrchestrator {
     catch { /* 첫 화면을 못 열어도 대화를 시작할 수 있다. */ }
   }
 
+  #approvalPresentation() {
+    return approvalPresentation(this.dialogue.approval ?? this.dialogue.vaultConfirm, this.lang, this.personal.persistent);
+  }
+
   snapshot() {
     const guard = this.web.guard.config;
     return omitAbsent({
       sessionId: this.id, state: this.state, stopGeneration: this.state === "STOPPED" ? this.#queue.epoch : undefined,
       platform: "pc" as const, observation: this.summarize(this.web.currentView),
-      pendingConfirmation: this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
+      pendingConfirmation: this.#approvalPresentation()?.card ?? this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
       mockOnly: guard.readOnlyWeb !== true && guard.allowedOrigins.every(origin => origin === this.web.profile.origin),
       speechPrefs: this.personal.speech(),
     });
@@ -859,7 +864,7 @@ export class SessionOrchestrator {
     if (to !== "ko" && this.deps.llm === undefined) return this.finish(turn, draft(this.state, "set-language", FIXED.needLlm[this.lang], { lang: this.lang }));
     this.lang = to;
     turn.ctx.trace("INTENT_DETECTED", AGENT_IDS.orchestrator, `SET_LANGUAGE ${to} (규칙)`);
-    return this.finish(turn, draft(this.state, "set-language", FIXED.switched[to], { lang: to }));
+    return this.finish(turn, draft(this.state, "set-language", FIXED.switched[to], { lang: to, approvalSpeech: "switch" }));
   }
 
   /** 한국어 응답을 사용자 언어로. 숫자가 바뀌면 원문 한국어를 들려준다(지어낸 숫자 방지). */
@@ -1260,7 +1265,8 @@ export class SessionOrchestrator {
     const state = stopped ? "STOPPED" : out.state;
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
-    const privateHistory = turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
+    const localApproval = !stopped && this.lang !== "ko" && out.approvalSpeech !== undefined && d.confirmation !== undefined;
+    const privateHistory = localApproval || turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
     // 금고 값(저장 대기 포함)은 사용자에게는 읽어 주되, LLM에 가는 기록에는 넣지 않는다.
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
     let localSpeechOnly = privateHistory || recorded !== speech;
@@ -1305,13 +1311,17 @@ export class SessionOrchestrator {
       return { ...a, result: { actionId: a.action.id, ok: false, verified: false, errorCode: "UNKNOWN", latencyMs: 0, message: "조작 기록을 남기지 못했습니다." } };
     });
     const suggestions = (out.publicSuggestions ?? []).filter(label => VOCAB.has(label));
+    const shown = stopped ? undefined : this.#approvalPresentation();
+    const approvalReply = stopped ? undefined : approvalNarration(out.approvalSpeech, this.lang, speech, shown?.speech);
     return parseTurnResult({
       sessionId: this.id, turnId: turn.id, userUtterance: turn.original ?? turn.text, localSpeechOnly: localSpeechOnly ? true : undefined,
       intentType: turn.intentType, state, stopGeneration: state === "STOPPED" ? this.#queue.epoch : undefined,
       semanticAction: out.semanticAction, publicSuggestions: suggestions.length > 0 ? suggestions : undefined,
       field: out.field, value: out.value, page: view?.pageId, accessMode: view === undefined ? undefined : this.web.guard.tierOf(view.url),
-      speech, lang: out.lang ?? "ko", trace: turn.trace, actions, observation: this.summarize(view), verification: out.verification,
-      review: out.review, pendingConfirmation: d.confirmation, authHandoff: d.authHandoff?.public(), handoff: out.handoff,
+      speech: approvalReply ?? speech, lang: approvalReply === undefined ? out.lang ?? "ko" : this.lang, trace: turn.trace,
+      actions: this.lang === "ko" ? actions : actions.map(a => approvalAction(a, this.lang)),
+      observation: this.summarize(view), verification: out.verification,
+      review: out.review, pendingConfirmation: shown?.card ?? d.confirmation, authHandoff: d.authHandoff?.public(), handoff: out.handoff,
       answerCard: stopped ? undefined : out.answerCard, introScript: stopped ? undefined : out.introScript,
       sources: out.sources ?? [], missingFields: out.missingFields ?? [], pendingActions: 0, realSubmission: false,
       flags: { secretDetected: out.secretDetected === true, masked: out.masked === true }, latencyMs: Math.floor(performance.now() - turn.started),
