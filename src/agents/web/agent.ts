@@ -243,22 +243,26 @@ export class WebExecutionAgent {
    * 여러 개가 맞으면 누르지 않고 후보를 돌려준다. 누른 뒤에는 화면이 어떻게 바뀌었는지(effect)를 함께 돌려준다.
    * expected: 사진에서 고른 항목(주소, ref, role). matchedControl: 조작 대상 창에서 고른 항목.
    */
-  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl }: {
+  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl, visual = false }: {
     expected?: readonly [url: string, ref: string, role: string];
     matchedControl?: { ref: string; role: string; url: string; context?: string };
+    visual?: boolean;
   } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
+    if (visual && planShot(view) instanceof ShotRefusal) {
+      return {status: "failed", actions: log, view, message: "화면이 바뀌어 사진에서 확인한 메뉴를 누르지 않았어요."};
+    }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
     if (matchedControl !== undefined) {
       const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref });
-      item = fresh?.items.find(it => it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
+      item = fresh?.items.find(it => !it.disabled && (!visual || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
         it.context === matchedControl.context);
       if (item === undefined || fresh?.url !== matchedControl.url || fresh.url !== view.url) {
         return { status: "needs-clarification", actions: log, view, message: "고른 항목이 바뀌었어요. 현재 화면에서 다시 찾아 주세요." };
       }
     } else if (expected !== undefined) {
-      const matches = (view.outline?.items ?? []).filter(it => !it.disabled && it.name === name);
+      const matches = (view.outline?.items ?? []).filter(it => !it.disabled && (!visual || it.pictureMasked !== true) && it.name === name);
       const [only] = matches;
       if (matches.length !== 1 || only === undefined || view.url !== expected[0] || only.ref !== expected[1] || only.role !== expected[2]) {
         return { status: "needs-clarification", actions: log, view, message: "사진을 찍은 뒤 항목이 바뀌었어요. 화면 사진을 다시 요청해 주세요." };

@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { browserCases, flat } from "./browser-cases.ts";
@@ -59,6 +59,67 @@ function plannedModel(afterReview?: () => Promise<unknown>) {
     return { checks, nextRoute: null, answer };
   });
 }
+
+it.each(["text", "approve", "exclude", "decline", "stale"])("reads the current tab and continues to the requested link during a reviewed voice turn (%s)", async decision => {
+  const { session, page } = await open({practiceMode: false});
+  const documents = await installPages(page);
+  await page.goto("https://www.gov.kr/guide");
+  await page.locator("main").evaluate(main => {
+    const canvas = document.createElement("canvas");
+    const ink = canvas.getContext("2d")!;
+    ink.fillStyle = "gold";
+    ink.font = "36px sans-serif";
+    ink.fillText("➜", 10, 40);
+    main.prepend(canvas);
+  });
+  const requests = [decision === "exclude" ? "지금 보고 있는 페이지의 안내를 글로만 읽어주고" : "지금 보고 있는 페이지의 안내를 읽어주고", "거기서 이용 시간 안내를 열어줘"];
+  const description = "그림 속에 노란 화살표가 있어요.";
+  const model = new FakeLlm(({schemaName, user}) => {
+    if (schemaName === "public_service_decision") return {kind: "review_before_output", subject: "방문 안내",
+      goal: "현재 화면 내용을 설명하고 이용 시간 안내를 연다", requestedFacts: [], exclusions: decision === "exclude" ? ["screen_capture"] : [], continuation: false,
+      choices: [], difficulty: "medium", requirements: requests};
+    if (schemaName === "intent_plan") return {steps: [flat("DESCRIBE_SCREEN"), flat("FOLLOW_LINK", {topic: "이용 시간 안내"})]};
+    if (schemaName === "screen_text_decision") return {decision: decision === "text" ? "answer" : "visual", answer: "별칭 입력란이 있어요.", evidence: ["별칭"]};
+    if (schemaName !== "review_before_output") return undefined;
+    const {evidence} = proof.parse(JSON.parse(user));
+    expect(user).not.toContain(description);
+    const picture = evidence.find(row => row.kind === "action" && row.text.includes("음성 설명"));
+    const fact = evidence.find(row => row.kind === "fact" && row.text.includes("별칭"));
+    const arrival = evidence.find(row => row.kind === "page" && row.text.includes("/hours"));
+    return {checks: [
+      picture ? {request: requests[0], kind: "action", citations: [{id: picture.id, quote: picture.text}]}
+        : {request: requests[0], kind: "fact", citations: fact ? [{id: fact.id, quote: "별칭"}] : []},
+      {request: requests[1], kind: "arrival", citations: arrival ? [{id: arrival.id, quote: arrival.text}] : []},
+    ], nextRoute: null, answer: picture && arrival ? "이용 시간 안내를 열었어요." : fact && arrival ? "방문 안내에는 별칭 입력란이 있어요. 이용 시간 안내를 열었어요." : ""};
+  });
+  const see = vi.fn(async () => ({screen: "normal", description, pressable: []}));
+  session.deps.visionLlm = {see};
+  withLlm(session, model);
+  let result = await session.handleTurn(requests.join(" "), {fromVoice: true});
+  expect(model.calls.some(call => call.schemaName === "screen_text_decision")).toBe(true);
+  expect(see).not.toHaveBeenCalled();
+  if (decision !== "text" && decision !== "exclude") {
+    expect(documents).toEqual(["/guide"]);
+    expect(result.state, result.speech).toBe("WAITING_FOR_USER_CONFIRMATION");
+    expect(result.review?.status).toBe("needs_input");
+    const id = result.pendingConfirmation!.actionId;
+    if (decision === "stale") await page.evaluate(() => document.querySelector("h1")!.textContent = "다른 업무");
+    result = await session.confirm(decision !== "decline", id);
+    if (decision !== "approve") {
+      expect(documents).toEqual(["/guide"]);
+      expect(see).not.toHaveBeenCalled();
+      expect(result.review?.status).not.toBe("completed");
+      return;
+    }
+    expect(result.speech).toContain(description);
+    expect(result.localSpeechOnly).toBe(true);
+    expect(JSON.stringify(session.exportHistory())).not.toContain(description);
+    await session.confirm(true, id);
+    expect(see).toHaveBeenCalledTimes(1);
+  } else expect(result.speech).toContain("별칭");
+  expect(documents).toEqual(["/guide", "/hours"]);
+  expect(result.review?.status, result.speech).toBe("completed");
+});
 
 it.each(["approve", "decline", "stale", "stop"])("test_reviewed_open_click_fill_click", async decision => {
   const { session, page } = await open();

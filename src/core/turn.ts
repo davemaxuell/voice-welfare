@@ -194,6 +194,8 @@ type DraftExtras = Partial<Pick<TurnResult,
   reviewQuoteSources?: Readonly<Record<string, readonly string[]>>;
   /** 공개 안내 조사가 사용자에게 되물을 말 */
   taskQuestion?: string;
+  /** 사진에서만 보인 메뉴를 사용자가 연 뒤 같은 작업으로 돌아오는 세션 내부 표식. */
+  navigationHandoff?: { readonly origin: string; readonly prompt: string; reviewedTask?: unknown };
   /** 공개 안내 조사에서 찾은 근거 글과 그 판정(completed·partial·incomplete·needs_input) */
   researchEvidence?: string;
   researchState?: string;
