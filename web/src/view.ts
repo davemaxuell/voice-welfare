@@ -302,7 +302,8 @@ export function viewOf(ui: UiState, env: Env) {
     } : undefined,
     readMain: decision !== undefined && readMain !== undefined ? { id: decision.id, label: readMain.label } : undefined,
     confirmCard: decision?.kind === "approval" ? decision.id : "",
-    decisionDisabled: busy || decisionTaken,
+    decisionDisabled: busy || decisionTaken || ui.offline === true || ui.cancelUnconfirmed === true ||
+      (pending !== undefined && decision?.kind !== "approval"),
     auth: signingIn ? {
       cardId: authCard?.id ?? last.turnId ?? "",
       viaCard: authCard !== undefined,

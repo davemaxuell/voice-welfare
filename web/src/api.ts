@@ -1,4 +1,4 @@
-import { workspaceText } from "./workspace-language.ts";
+import { issueText, workspaceText } from "./workspace-language.ts";
 import { getSpeechLang } from "./audio.ts";
 // 서버와 주고받는 모든 요청. 응답은 여기서 zod로 검증해 화면이 쓰는 모양으로만 넘긴다(Python server/app.py의 계약).
 import { z } from "zod";
@@ -111,7 +111,7 @@ export const WorkspaceSchema = z.object({ jobs: z.array(JobSchema), notes: z.arr
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
 export type ErrorKind = "network" | "timeout" | "server" | "expired";
-const errors = { network: "연결이 끊겼어요", timeout: "응답 시간이 초과됐어요.", server: "요청을 처리하지 못했어요.", expired: "요청한 작업이 만료됐어요." } as const;
+const errors = { network: issueText.offline, timeout: issueText.timeout, server: issueText.turnFailed, expired: issueText.expired } as const;
 
 export class ApiError extends Error {
   readonly kind: ErrorKind;
