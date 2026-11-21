@@ -139,10 +139,17 @@ it("test_controller_cards_carry_no_values_and_dispatch_once", async () => {
   await check(page.locator("#log li").last()).toContainText(answer.speech);
 });
 
-it("test_avatar_page_renders_cards_as_text_and_passes_axe", async () => {
+async function checkAvatarCardAccess(scheme: "light" | "dark") {
+  await page.emulateMedia({ colorScheme: scheme });
   await overlay(false); await send("prefs", { corner: "bottom-right", still: true });
   const choice = { ...approval, instance: "a" };
-  await snap(2, choice); await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
+  const start = await page.evaluate(() => performance.timeOrigin);
+  await snap(1, { ...choice, contrast: true });
+  await check(page.locator("#overlay")).toHaveClass(/high-contrast/u);
+  await snap(2, { ...choice, contrast: false });
+  await check(page.locator("#overlay")).not.toHaveClass(/high-contrast/u);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(start);
+  await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
   await check(button("<i>입력 승인</i>")).toBeVisible(); await check(page.locator("#card-site")).toHaveText("대상: 127.0.0.1:5174");
   await snap(1, { instance: "a" }); await check(page.locator("#card")).toBeVisible();
   await button("<i>입력 승인</i>").click(); await button("내용 확인").click();
@@ -169,7 +176,10 @@ it("test_avatar_page_renders_cards_as_text_and_passes_axe", async () => {
   await snap(3, { instance: "b", mode: "choice", busy: true, status: "처리하는 중이에요.", prompt: "버튼을 누를까요?",
     choiceSetId: "b-2", choices: [{ key: "approve", label: "누르기 승인" }, { key: "review", label: "내용 확인", open: "confirm" }] });
   await check(button("누르기 승인")).toBeDisabled(); await check(button("내용 확인")).toBeEnabled();
-});
+}
+
+it("test_avatar_page_renders_cards_as_text_and_passes_axe", () => checkAvatarCardAccess("light"));
+it("어두운 테마에서 아바타 카드를 안전한 텍스트로 그리고 접근성 검사를 통과한다", () => checkAvatarCardAccess("dark"));
 
 function figureBounds() {
   const figure = document.getElementById("figure")!;
