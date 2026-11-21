@@ -390,3 +390,51 @@ it("작업 결과가 도착하면 지금 진행 중인 단계 줄을 숨긴다",
   await browserExpect(page.locator("#send")).toBeEnabled();
   await browserExpect(page.locator("#st-activity")).toBeHidden();
 });
+
+it("이전 조회가 남아 있는 동안 다음 작업을 시작해도 진행 요청은 하나다", async () => {
+  await consent();
+  const reports: Route[] = [];
+  await page.route(progressRoute, route => { reports.push(route); });
+  const first = await heldTurn();
+  await browserExpect.poll(() => reports.length).toBe(1);
+  await first.continue();
+  await browserExpect(page.locator("#send")).toBeEnabled();
+  const second = await heldTurn();
+  await new Promise(resolve => setTimeout(resolve, 2500));
+  expect(reports).toHaveLength(1);
+  await afterProgress(reports[0]!);
+  await browserExpect(page.locator("#st-activity")).toBeHidden();
+  await browserExpect.poll(() => reports.length).toBe(2);
+  await afterProgress(reports[1]!);
+  await browserExpect(page.locator("#st-activity")).toHaveText(finishedStep);
+  await second.continue();
+});
+
+it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽지 않는다", async () => {
+  const voice = await startUi(true, { PRACTICE_MODE: "false" });
+  try {
+    await recordCues(page, true);
+    await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
+    const audio = holdNext("**/api/audio/turn?**");
+    const progress = holdNext(progressRoute);
+    const interrupt = holdNext("**/api/audio/stop?**");
+    await consent(voice.url);
+    const [pendingAudio, pendingProgress, spokenStop] = await Promise.all([audio, progress, interrupt]);
+    const clip = Buffer.alloc(2048, 32);
+    clip.write("멈춰");
+    const response = await spokenStop.fetch({
+      headers: { ...spokenStop.request().headers(), "content-type": "audio/webm" }, postData: clip,
+    });
+    expect(await response.json()).toMatchObject({ stopped: true });
+    await spokenStop.fulfill({ response });
+    await browserExpect(state()).toHaveText("중단됨");
+    const log = await page.locator("#log").innerText();
+    await afterProgress(pendingProgress);
+    expect(await page.locator("#st-activity").isVisible()).toBe(false);
+    expect(await page.locator("#log").innerText()).toBe(log);
+    await pendingAudio.fulfill({ status: 409, json: { message: "중단된 작업이에요." } });
+  } finally {
+    await page.close();
+    await voice.close();
+  }
+});

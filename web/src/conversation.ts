@@ -157,7 +157,7 @@ let recoverable = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let sessionGeneration = 0;
 let stoppedGeneration = 0;
-let spokenActivity = 0;
+let progressSession: ReturnType<typeof sessionProgress> | undefined;
 let commandActionId: string | undefined;
 const RECOVERY_KEY = "cheongeum.recovery";
 const RECOVERY_DECLINED = "cheongeum.recoveryDeclined";
@@ -360,6 +360,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
   }
   const prevState = ui.state;
   const stopped = r.intentType === "STOP" || r.semanticAction === "stop";
+  if (stopped && desk.stopping === null) stoppedGeneration++;
   const wake = desk.wakeCount;
   if (r.state === "STOPPED" && r.stopGeneration !== undefined && Number.isInteger(r.stopGeneration)) desk.stopGeneration = r.stopGeneration;
   else if (r.state !== "STOPPED") desk.stopGeneration = null;
@@ -770,6 +771,24 @@ async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
 
 const PROGRESS_POLL_MS = 2000;
 
+function sessionProgress(sessionId: string) {
+  let pending: ReturnType<typeof api.progress> | undefined;
+  return {
+    sessionId,
+    spoken: 0,
+    async poll() {
+      if (pending !== undefined) {
+        // 이전 작업에서 보낸 응답은 그 작업에서만 사용한다.
+        await pending;
+        return;
+      }
+      pending = api.progress(sessionId);
+      try { return await pending; }
+      finally { pending = undefined; }
+    },
+  };
+}
+
 /** 서버가 일하는 동안(work가 끝날 때까지): 목표 수행의 새 단계를 말하고, 대화 모드(voice)면 '멈춰'와 '지금 어디까지 했어?'를 듣는다. */
 async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
   const stops = [trackProgress(voice), ...(voice !== undefined ? [listenForStopWhileBusy(voice)] : [])];
@@ -781,13 +800,13 @@ async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
 }
 
 function trackProgress(voice?: VoiceLoop) {
-  const sessionId = ui.sessionId;
-  if (sessionId === undefined) return () => {};
+  const session = progressSession;
+  if (session === undefined) return () => {};
   const stop = stoppedGeneration;
-  const isCurrent = () => ui.sessionId === sessionId && stoppedGeneration === stop;
+  const isCurrent = () => session === progressSession && stoppedGeneration === stop;
   const finish = watchProgress({
     isCurrent,
-    poll: () => api.progress(sessionId),
+    poll: session.poll,
     wait(next) {
       const timer = setTimeout(next, PROGRESS_POLL_MS);
       return () => clearTimeout(timer);
@@ -799,9 +818,9 @@ function trackProgress(voice?: VoiceLoop) {
     },
     considerSpeech(report) {
       if (userTalking || busyTalking) return;
-      const next = progressUpdate(report, spokenActivity);
+      const next = progressUpdate(report, session.spoken);
       if (next.speak === undefined) return;
-      spokenActivity = next.seq;
+      session.spoken = next.seq;
       push({ role: "assistant", text: next.speak });
       announce(next.speak);
       void sayWhileBusy({ speech: next.speak }, voice);
@@ -1427,7 +1446,7 @@ function closeRecovery() {
 }
 
 function connect(s: { sessionId: string; state?: Session["state"] | undefined; stopGeneration?: number | undefined; token?: string | undefined; writer?: string | undefined }) {
-  if (s.sessionId !== ui.sessionId) spokenActivity = 0;
+  if (s.sessionId !== progressSession?.sessionId) progressSession = sessionProgress(s.sessionId);
   desk.message = null;
   desk.sleeping = s.state === "STOPPED";
   desk.stopGeneration = s.stopGeneration ?? null;
@@ -1443,6 +1462,7 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 
 export async function endSession() {
   const sid = ui.sessionId;
+  progressSession = undefined;
   desk.message = null;
   desk.sleeping = false;
   desk.stopGeneration = null;

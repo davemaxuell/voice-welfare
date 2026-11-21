@@ -3,7 +3,7 @@ import type { api } from "./api.ts";
 type Report = Awaited<ReturnType<typeof api.progress>>;
 
 interface ProgressWatch {
-  poll(): Promise<Report>;
+  poll(): Promise<Report | undefined>;
   isCurrent(): boolean;
   apply(report: Report): void;
   considerSpeech(report: Report): void;
