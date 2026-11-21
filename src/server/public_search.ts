@@ -85,7 +85,7 @@ export class TavilySearch {
     return safeInput(value, maximum, spans);
   }
 
-  async search(task: PublicTask, language: string, signal: AbortSignal): Promise<SourcedAnswer | undefined> {
+  async search(task: PublicTask, language: string, signal: AbortSignal, requestedSteps: readonly string[] = []): Promise<SourcedAnswer | undefined> {
     let query = await this.#safe(task.goal, 400);
     const model = this.#model;
     if (query === undefined || signal.aborted || model === undefined) return undefined;
@@ -108,7 +108,7 @@ export class TavilySearch {
         user: redactedJson({ question: redactText(task.goal), replyLanguage: redactText(language), today: redactText(today), attempt: attempt + 1,
           searchQuery: redactText(searchQuery), excerpts: evidence.map(page => ({
             host: redactText(splitUrl(page.url).hostname ?? ""), title: redactText(page.title), text: redactText(page.text),
-          })) }),
+          })), ...(requestedSteps.length > 0 ? {requestedSteps: requestedSteps.map(step => redactText(step))} : {}) }),
         schemaName: "public_search_answer", schema: ANSWER_SCHEMA, signal,
       });
       if (!isRecord(response) || signal.aborted) return {};

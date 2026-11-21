@@ -410,7 +410,8 @@ export class ReviewLoop {
   async lookup(run: ReviewedTask, turn: Turn, missing: readonly string[]): Promise<Draft | undefined> {
     const s = this.session;
     const [, steps] = REVIEW_LIMITS[run.difficulty];
-    const goal = run.rounds === 0 ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
+    const webLookup = run.route === "browser" || run.route === "quiet";
+    const goal = run.rounds === 0 || webLookup ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
     const hidden = [...new Set(run.privateValues.filter(value => value.length > 0))].sort(byLengthDesc);
     let subtask = new PublicTask({ ...run.task, goal: replaceValues(goal, hidden), subject: replaceValues(run.task.subject, hidden) });
     if ((run.rounds > 0 || run.publicArrival && subtask.facts.length === 0) && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });

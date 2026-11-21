@@ -101,7 +101,7 @@ export interface OrchestratorDeps {
   today?: () => string;
   places?: PlaceFinder;
   publicPlanning?: boolean;
-  quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal) => Promise<QuietAnswer>;
+  quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal, requestedSteps?: readonly string[]) => Promise<QuietAnswer>;
   browsePublicSources?: (task: PublicTask, ctx: ExecContext, maxSteps?: number, requirements?: readonly string[]) => Promise<Draft | undefined>;
   /** 알려지지 않은 기관의 공식 누리집 후보를 공공 도메인 안에서 찾는다(없으면 목표 수행이 이 길을 쓰지 않는다). */
   findPortal?: (query: string, signal: AbortSignal) => Promise<readonly { url: string; title: string }[]>;

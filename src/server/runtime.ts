@@ -242,7 +242,7 @@ export class AgentRuntime {
       : new TavilySearch(this.config.tavilyApiKey, webLlm, this.connections, { scan: texts => this.scanner.scan(texts) });
     return { intentProvider, llm: this.understandLlm ?? webLlm, goalLlm: this.goalLlm ?? webLlm,
       webLlm, fileLlm, visionLlm, recoveryLlm, quietSearch: search === undefined ? undefined :
-        (async (task, lang, signal) => (await search.search(task, lang, signal)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
+        (async (task, lang, signal, requestedSteps) => (await search.search(task, lang, signal, requestedSteps)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
       browsePublicSources: this.config.readOnlyWeb && (this.goalLlm ?? webLlm) !== undefined ? this.browsePublicSources : undefined,
       findPortal: search === undefined ? undefined :
         ((query, signal) => search.portals(query, signal)) satisfies NonNullable<OrchestratorDeps["findPortal"]> };

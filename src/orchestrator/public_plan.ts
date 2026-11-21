@@ -341,7 +341,7 @@ export class PublicPlanner {
     const permitted = s.consentStatus === "granted" && !signal.aborted &&
       [task.goal, task.subject].every(term => s.speakable(term) && detectSensitive(term).kinds.length === 0);
     if (search !== undefined && permitted) {
-      try { answer = await raceAbort(within => search(task, lang, within), signal); }
+      try { answer = await raceAbort(within => search(task, lang, within, requestedSteps), signal); }
       catch { answer = {}; }
     }
     if (signal.aborted) return draft("STOPPED", "none", FIXED.stopBusy[lang], { lang });

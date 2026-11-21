@@ -37,7 +37,9 @@ it.each([
   {description: "referral with the cutoff", task: referral, published: true},
   {description: "referral with the cutoff missing", task: referral, published: false},
   {description: "two websites for the same fact kind", task: comparison, published: true},
-])("checks $description", async ({task, published}) => {
+  {description: "a model outage during the quiet browser fallback", task: referral, published: true, outage: true},
+])("checks $description", async ({task, published, outage = false}) => {
+  if (live && outage) return;
   const {request, requirements, firstFact, firstQuote, firstTitle, firstLink, publicQuery, kind} = task;
   function responseFor(schemaName: string, user: string) {
     if (schemaName === "public_service_decision") return {kind, source: "browser", searchMode: "quiet",
@@ -62,6 +64,9 @@ it.each([
   const completions: typeof fetch = async (_url, init) => {
     const body = z.object({response_format: z.object({json_schema: z.object({name: z.string()})}),
       messages: z.array(z.object({role: z.string(), content: z.string()}))}).parse(JSON.parse(String(init?.body)));
+    if (outage && body.response_format.json_schema.name === "public_browse_step") {
+      return Response.json({error: {message: "Fixture outage"}}, {status: 503});
+    }
     const result = responseFor(body.response_format.json_schema.name, body.messages.find(message => message.role === "user")?.content ?? "");
     return Response.json({choices: [{message: {content: JSON.stringify(result ?? {})}}]});
   };
@@ -100,6 +105,12 @@ it.each([
     try {
       const result = await session.handleTurn(request);
       const why = JSON.stringify({speech: result.speech, review: result.review, visited, trace: result.trace.map(step => step.note)});
+      if (outage) {
+        expect(result.state, why).toBe("RECOVERING");
+        expect(result.speech).toMatch(/모델|연결/u);
+        expect(result.sources).toEqual([]);
+        return;
+      }
       expect(visited, why).toEqual(expect.arrayContaining([searchOrigin, listing, hours]));
       expect(queries).not.toContain(request);
       if (!live) expect(queries[0]).toBe(publicQuery);
