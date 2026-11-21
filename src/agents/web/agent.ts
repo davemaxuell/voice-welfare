@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import type { Action, ActionResult, ActionTarget, ExecutionErrorCode, Observation } from "../../core/actions.ts";
+import type {
+  Action, ActionResult, ActionTarget, ExecuteGrants, ExecutionErrorCode, NativeSeen, NoticeFacts, NoticeProof, Observation,
+} from "../../core/actions.ts";
 import type { Redacted } from "../../core/llm.ts";
 import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
-import { PolicyGuard, type AccessTier, type InspectionBinding, type InspectionControl, type PolicyContext } from "../../safety/guard.ts";
+import { PolicyGuard, isNotice, type AccessTier, type InspectionBinding, type InspectionControl, type PolicyContext } from "../../safety/guard.ts";
 import { AdapterError } from "./browser/index.ts";
 import { redactText } from "../../safety/privacy.ts";
 import { speakLabel } from "../../speech/phrasing.ts";
@@ -16,6 +18,7 @@ import {
   Churn, NOT_READY, diffViews, hasContent, itemChanged, looksLoading, openedDialog, stillBuilding, unconfirmedMessage, type Effect,
 } from "./effect.ts";
 import { REFUSAL_SPEECH, ShotRefusal, planShot, type ShotPlan } from "./shot.ts";
+import { nativeSpeech, noticeKey, noticeSaid, popupQuestion, revealedExcept, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "./notice.ts";
 
 interface ContextOptions {
   signal: AbortSignal;
@@ -73,21 +76,27 @@ export interface ControlWindow {
   url: string;
   items: Array<{
     ref: string; role: string; name: string; region: string; disabled: boolean;
-    context?: string; pictureMasked?: boolean; inspection?: InspectionControl;
+    context?: string; pictureMasked?: boolean; inspection?: InspectionControl; notice?: NoticeFacts;
   }>;
   more: boolean;
 }
 export interface WebAdapter {
   observe(signal?: AbortSignal): Promise<Observation>;
-  execute(action: Action, signal?: AbortSignal, inspection?: InspectionBinding): Promise<ActionResult>;
+  /** grants: 이 조작 한 번에만 붙는 허가(안내 팝업 증명·confirm() 답). 어댑터는 정책 검사와 따로 새 관찰·자기 기록으로 다시 확인한다. */
+  execute(action: Action, signal?: AbortSignal, inspection?: InspectionBinding, grants?: ExecuteGrants): Promise<ActionResult>;
   close(): Promise<void>;
   readonly page?: { url(): string; isClosed?(): boolean };
   bringToFront?(): Promise<void>;
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
   controlWindow?(text?: string, offset?: number, options?: {
-    ref?: string; exact?: boolean; inspection?: boolean; destination?: string;
+    ref?: string; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   }): Promise<ControlWindow>;
+  /** 이 조작 중에 취소하거나 받아 준 사이트의 confirm() 창(한 번만 가져간다). */
+  takeNative?(actionId: string): NativeSeen | undefined;
+  peekNative?(actionId: string): NativeSeen | undefined;
+  /** 대신 답할 수 있는 confirm() 기록을 모두 버린다. */
+  dropNative?(): void;
   inspectionSearch?(fieldId: string): Promise<{ url: string; destination: string; parameter: string; signature: string } | undefined>;
   withInspection?<T>(work: () => Promise<T>): Promise<T>;
   fullPageLayout?<T>(work: () => Promise<T>): Promise<T>;
@@ -147,7 +156,17 @@ export interface WebOutcome {
   revealed?: string;
   /** back: 양식을 다시 보내지 않으려고 돌아가지 않은 이전 화면의 주소 */
   resubmitUrl?: string;
+  /** 묻지 않고 닫은 안내 팝업이 말한 내용(아직 말하지 않은 것만). 부르는 쪽이 사용자에게 한 번 알린다. */
+  notices?: NoticeSaid[];
+  question?: PopupQuestion;
+  manual?: NativeQuestion[];
+  /** 누르는 동안 사이트가 confirm() 창으로 물어서 청음이 취소했다. 이때 status는 needs-approval이고 pending은 누른 조작이다. */
+  native?: NativeQuestion;
 }
+
+// 한 번에 묻지 않고 닫는 안내 팝업의 수(끝없이 새 팝업을 띄우는 화면에 붙들리지 않게)
+const MAX_NOTICES = 3;
+const NOTICE_SAID_KEEP = 50;
 
 const MAX_STEPS = 6;
 // 화면이 채워지기를 기다리는 한도: 연 화면, 검색 결과(틀이 뜬 뒤 결과를 따로 받아 온다. 복지로는 10초쯤), 읽어 달라고 한 화면
@@ -190,6 +209,10 @@ export class WebExecutionAgent {
   }
   accessMode(view = this.lastView): AccessTier { return this.guard.tierOf(view?.url); }
   #inspectionPending?: { action: Action; sessionId: string; binding: InspectionBinding };
+  /** 이미 말로 알린 안내 팝업(출처와 제목·글). 같은 안내가 다시 뜨면 닫기만 하고 다시 읽지 않는다. */
+  readonly #noticeSaid = new Set<string>();
+  /** 닫으려다 닫히지 않은 안내(팝업 서명). 같은 팝업을 단계마다 다시 눌러 보며 기다리지 않는다. */
+  readonly #noticeStuck = new Set<string>();
 
   async openSite(url: string, ctx: ExecContext, { personalStart = false }: { personalStart?: boolean } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
@@ -279,11 +302,27 @@ export class WebExecutionAgent {
       if (item === undefined) return this.notLocated(view, name, located.hits);
     }
     const target = { ref: item.ref, role: item.role, name: item.name };
-    const result = await this.run(this.action({ type: "click", target, reason: `'${item.name}' 누르기(${item.role})` }), ctx, log);
+    // 이름이 하나뿐인 안내 팝업의 닫기 단추는 새로 읽은 팝업 사실이 '안내'로 확인될 때만 묻지 않고 누른다(어댑터가 누르기 직전에 한 번 더 확인).
+    const proof = this.sameNameCount(view, item.name) === 1 ? await this.noticeProof(view, item, ctx) : undefined;
+    const click = this.action({ type: "click", target, reason: `'${item.name}' 누르기(${item.role})` });
+    const result = await this.run(click, ctx, log, undefined, undefined, proof === undefined ? undefined : { notice: proof });
+    if (proof !== undefined && result?.errorCode === "VERIFY_FAILED") {
+      // 누르기 직전에 팝업이 바뀌어 증명이 맞지 않았다. 안내로 확인되지 않은 '확인'이니 증명 없이 누를 때와 같이 사용자에게 묻는다.
+      const plain = this.action({ type: "click", target: { ...target }, reason: `'${item.name}' 누르기(${item.role})` });
+      const policy = this.guard.check(plain, this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
+      if (policy.code === "NEEDS_CONFIRMATION") {
+        log.push({ agent: this.id, action: plain, policy });
+        return this.failed(log, undefined, view);
+      }
+    }
     const timedOut = this.inspectionEnabled(ctx) && result?.errorCode === "TIMEOUT";
+    // 누르는 동안 사이트가 confirm() 창으로 물었다면 결과가 어떻든 사용자에게 알린다(조용히 넘기지 않는다).
+    const asked = result === undefined ? undefined : this.nativeOutcome(click, view, log, ctx, false, proof !== undefined);
+    if (asked !== undefined) return asked;
     if (result?.ok !== true && !timedOut) return this.failed(log, result, view);
     ctx.trace("VERIFYING", this.id, "화면 변화 확인");
-    return this.afterClick(view, item, ctx, log, timedOut);
+    const after = await this.afterClick(view, item, ctx, log, timedOut);
+    return this.settleNotices(after, view, ctx, log, proof === undefined ? undefined : { proof, item });
   }
 
   async pointAt(name: string, ctx: ExecContext, preferButton = false): Promise<WebOutcome> {
@@ -304,15 +343,29 @@ export class WebExecutionAgent {
     return { status: result?.ok === true ? "ok" : "failed", actions: log, view: this.lastView, focused: result?.ok === true };
   }
 
-  async clickApproved(action: Action, ctx: ExecContext): Promise<WebOutcome> {
+  /**
+   * 사용자가 확인한 누르기. grants.native가 있으면 사이트가 물었던 confirm() 질문에 사용자가 '진행'이라고 답한 뒤 같은 조작을 한 번 되풀이하는 것이다
+   * (ctx.granted로 이 조작의 승인을 받은 때만 정책이 통과시키고, 어댑터는 자기 기록과 한 번 더 맞춰 본다).
+   */
+  async clickApproved(action: Action, ctx: ExecContext, grants?: ExecuteGrants): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
     const target = action.target ?? {};
     const item = view.outline?.items?.find(candidate => candidate.ref === target.ref) ?? target;
-    const result = await this.run(action, ctx, log);
+    const result = await this.run(action, ctx, log, undefined, undefined, grants);
+    // 누르는 동안 사이트가 confirm() 창으로 물었다면 결과가 어떻든 사용자에게 알린다(되풀이하는 중에 또 물어도 대신 답하지 않는다).
+    const asked = result === undefined ? undefined : this.nativeOutcome(action, view, log, ctx, grants?.native !== undefined);
+    if (asked !== undefined) return asked;
+    if (grants?.native !== undefined && result?.errorCode === "VERIFY_FAILED") {
+      return {status: "failed", actions: log, view, message: "앞서 확인한 사이트 질문에 답했는지 확인하지 못했어요. 화면에서 직접 확인해 주세요."};
+    }
+    if (grants?.native !== undefined && result?.errorCode === "TIMEOUT") {
+      return {status: "unconfirmed", actions: log, view, message: "사이트가 제때 응답하지 않아 질문이 처리됐는지 확인하지 못했어요."};
+    }
     if (result?.ok !== true && result?.errorCode !== "TIMEOUT") return this.failed(log, result, view);
     ctx.trace("VERIFYING", this.id, "누른 뒤 화면 확인");
-    return this.afterClick(view, item, ctx, log, result.errorCode === "TIMEOUT");
+    const after = await this.afterClick(view, item, ctx, log, result.errorCode === "TIMEOUT");
+    return this.settleNotices(after, view, ctx, log);
   }
 
   private async afterClick(before: PageView, item: ActionTarget & { expanded?: boolean }, ctx: ExecContext, log: WebAction[], timedOut: boolean): Promise<WebOutcome> {
@@ -365,6 +418,11 @@ export class WebExecutionAgent {
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
     const boxes = view.fields.filter((f) => f.visible && f.searchable === true);
+    const searchAction = async (action: Action, binding?: InspectionBinding): Promise<WebOutcome | undefined> => {
+      const result = await this.run(action, ctx, log, undefined, binding);
+      const asked = result === undefined ? undefined : this.nativeOutcome(action, view, log, ctx, false);
+      return asked ?? (result?.ok === true ? undefined : this.failed(log, result, view));
+    };
     if (this.inspectionEnabled(ctx)) {
       let search: Awaited<ReturnType<NonNullable<WebAdapter["inspectionSearch"]>>>;
       let fieldId: string | undefined;
@@ -377,16 +435,16 @@ export class WebExecutionAgent {
       }
       const target = { fieldId, role: "searchbox" };
       const action = this.action({ type: "press", target, value: query, url: search.destination, reason: "현재 사이트에서 검색" });
-      const r = await this.run(action, ctx, log, undefined, { kind: "search", fieldId, ...search });
-      if (r?.ok !== true) return this.failed(log, r, view);
+      const blocked = await searchAction(action, { kind: "search", fieldId, ...search });
+      if (blocked !== undefined) return blocked;
     } else {
       const [box] = boxes;
       if (!box) return { status: "failed", actions: log, view, message: "이 화면에서 검색창을 찾지 못했습니다." };
       const target = { fieldId: box.fieldId, role: "searchbox" };
-      const filled = await this.run(this.action({ type: "fill", target, value: query, reason: `검색어 입력: ${query}` }), ctx, log);
-      if (filled?.ok !== true) return this.failed(log, filled, view);
-      const r = await this.run(this.action({ type: "press", target, value: "Enter", reason: "검색 실행" }), ctx, log);
-      if (r?.ok !== true) return this.failed(log, r, view);
+      const fill = await searchAction(this.action({ type: "fill", target, value: query, reason: `검색어 입력: ${query}` }));
+      if (fill !== undefined) return fill;
+      const press = await searchAction(this.action({ type: "press", target, value: "Enter", reason: "검색 실행" }));
+      if (press !== undefined) return press;
     }
     ctx.trace('VERIFYING', this.id, '검색 결과 확인');
     const changed = (v: PageView) => diffViews(view, v, undefined, this.churn.volatile())[0] !== "none" && hasContent(v);
@@ -588,6 +646,7 @@ export class WebExecutionAgent {
 
   async run(
     action: Action, ctx: ExecContext, log: WebAction[], perform?: () => Promise<ActionResult>, binding?: InspectionBinding,
+    grants?: ExecuteGrants,
   ): Promise<WebActionResult | undefined> {
     ctx.trace("POLICY_CHECK", this.id, action.type);
     const personal = this.inspectionEnabled(ctx);
@@ -598,11 +657,16 @@ export class WebExecutionAgent {
     const matches = pending !== undefined && inspection !== undefined && pending.sessionId === ctx.sessionId &&
       isDeepStrictEqual(pending.action, action) && isDeepStrictEqual(pending.binding, inspection);
     const changed = approved && (pending !== undefined || (personal && action.type === "click")) && (!personal || !matches);
-    const policy = changed
+    // 허가(안내 팝업 증명·confirm() 답)는 어댑터가 누르기 직전에 다시 확인해야 뜻이 있다. 어댑터를 거치지 않는 실행(perform)에는 붙일 수 없다.
+    const bound = grants !== undefined && perform !== undefined
+      ? { allowed: false, code: "DENIED_GRANT_BINDING", reason: "허가가 필요한 조작은 어댑터가 확인하는 길로만 실행할 수 있어요." }
+      : undefined;
+    const policy = bound ?? (changed
       ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
       : this.guard.check(action, {
         ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
-      });
+        notice: grants?.notice, native: grants?.native,
+      }));
     if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {
       this.#inspectionPending = { action: structuredClone(action), sessionId: ctx.sessionId, binding: inspection };
     }
@@ -617,12 +681,12 @@ export class WebExecutionAgent {
     const writeLog = (phase: "before" | "after", ok?: boolean) => this.actionLog?.append({
       host: tryUrl(this.lastView?.url)?.hostname ?? "", pageKind: this.lastView?.pageId ?? "",
       actionType: action.type, label: personal ? undefined : actionLabel(action),
-      approvalId: action.requiresConfirmation || policy.code === "APPROVED" ? action.id : undefined,
+      approvalId: action.requiresConfirmation || policy.code === "APPROVED" || grants?.native !== undefined ? action.id : undefined,
       phase, ...(ok === undefined ? {} : { ok }),
     });
     try { await writeLog("before"); }
     catch {
-      if (action.type === "capture" || action.requiresConfirmation || policy.code === "APPROVED") {
+      if (action.type === "capture" || action.requiresConfirmation || policy.code === "APPROVED" || grants?.native !== undefined) {
         entry.result = { actionId: action.id, ok: false, verified: false, errorCode: "LOG_FAILED", latencyMs: 0 };
         return entry.result;
       }
@@ -634,9 +698,13 @@ export class WebExecutionAgent {
       entry.result = { actionId: action.id, ok: false, verified: false, errorCode: "ABORTED", latencyMs: 0 };
       return entry.result;
     }
-    let result = perform === undefined ? await this.adapter.execute(action, ctx.signal, inspection) : await perform();
-    if (!personal && perform === undefined && action.risk === "low" && policy.code !== "APPROVED" && !result.ok && result.errorCode === "TIMEOUT" &&
-      !ctx.signal.aborted) {
+    // 허가가 있으면 같은 허가를 붙여 한 번만 실행한다. 허가가 없는 호출은 지금처럼 인자를 늘리지 않는다.
+    let result = perform !== undefined ? await perform()
+      : grants === undefined ? await this.adapter.execute(action, ctx.signal, inspection)
+        : await this.adapter.execute(action, ctx.signal, inspection, grants);
+    // 시간이 넘었다고 다시 하는 것은 허가가 없는 저위험 조작뿐이다. 허가·승인이 붙은 조작은 이미 됐을 수 있고, 허가 없이 다시 하면 어댑터의 확인을 건너뛴다.
+    if (!personal && perform === undefined && grants === undefined && action.risk === "low" && policy.code !== "APPROVED" && policy.code !== "ALLOWED_NOTICE" &&
+      !result.ok && result.errorCode === "TIMEOUT" && this.adapter.peekNative?.(action.id) === undefined && !ctx.signal.aborted) {
       result = await this.adapter.execute(action, ctx.signal);
     }
     entry.result = result;
@@ -665,6 +733,196 @@ export class WebExecutionAgent {
     };
     return { status: 'failed', actions: log, view, message: messages[result.errorCode ?? ''] ?? '조작에 실패했습니다.' };
   }
+
+  // ---- 안내 팝업을 묻지 않고 닫기, 사이트의 confirm() 질문 알리기 ----
+
+  /**
+   * 묻지 않는 길은 읽기 전용 사이트의 보통 탐색에서만 연다. 지원 사이트(모의 신청서)는 handleDialogs가 맡고,
+   * 정보 조회·화면 확인 범위와 멈춘 뒤에는 지금처럼 그대로 둔다(그 범위의 정책은 이 허가를 보지 않는다).
+   */
+  private plainReadOnly(ctx: ExecContext, view: PageView): boolean {
+    return this.adapter.controlWindow !== undefined && !ctx.publicLookup && this.guard.config.publicLookupOnly !== true &&
+      !this.inspectionEnabled(ctx) && !ctx.isStopped() && !ctx.signal.aborted && this.guard.tierOf(view.url) === "read-only";
+  }
+
+  /** 같은 이름의 조작 요소가 화면에 몇 개인지. 이름으로 고른 항목이 하나뿐일 때만 안내 팝업 단추로 본다(여럿이면 어느 것인지 모호하다). */
+  private sameNameCount(view: PageView, name: string): number {
+    const term = normalizeTerm(name);
+    return (view.outline?.items ?? []).filter(item => !item.disabled && normalizeTerm(item.name) === term).length;
+  }
+
+  /**
+   * 이 단추가 '내용만 알리는 안내 팝업을 닫는 단추'라는 증명을 누르기 직전의 새 관찰로 만든다.
+   * 단추의 ref·역할·이름·주소와 팝업 사실(입력 없음·단추 하나·다른 조작 요소 없음·위험한 낱말 없음)이 모두 확인될 때만 만들고, 하나라도 어긋나거나 읽지 못하면
+   * undefined를 돌려준다(그러면 정책이 지금처럼 묻는다). 정책과 어댑터가 각자 같은 판정(isNotice)을 다시 한다.
+   */
+  private async noticeProof(view: PageView, item: { ref: string; role: string; name: string }, ctx: ExecContext): Promise<NoticeProof | undefined> {
+    if (item.role !== "button" || !this.plainReadOnly(ctx, view)) return undefined;
+    const index = view.outline?.items?.find(candidate => candidate.ref === item.ref)?.dialog;
+    const popup = index === undefined ? undefined : view.dialogs[index];
+    if (popup === undefined || popup.hasInputs !== false || popup.buttons.length !== 1) return undefined;
+    try {
+      const fresh = await this.adapter.controlWindow?.("", 0, { ref: item.ref, notice: true });
+      const [now] = fresh?.items ?? [];
+      if (fresh === undefined || fresh.url !== view.url || fresh.items.length !== 1 || now === undefined || now.ref !== item.ref ||
+        now.disabled || now.role !== item.role || now.name !== item.name || now.notice === undefined || !isNotice(now.notice, now)) return undefined;
+      return { kind: "notice", url: fresh.url, ref: item.ref, role: item.role, name: item.name, facts: now.notice };
+    } catch (error) {
+      if (ctx.signal.aborted) throw error;
+      return undefined;
+    }
+  }
+
+  /**
+   * 팝업 가운데 입력이 없고 단추 하나가 안에서 유일한 조작 요소인 것을 찾아 증명과 함께 돌려준다.
+   * since가 있으면 그 화면에 이미 떠 있던 팝업(제목과 글이 같은 것)은 건너뛴다: 사용자가 방금 누른 것이 새로 연 팝업만 다룬다.
+   */
+  private async findNotice(view: PageView, ctx: ExecContext, since?: PageView): Promise<{ item: { ref: string; role: string; name: string }; proof: NoticeProof } | undefined> {
+    const known = new Set((since?.dialogs ?? []).map(popup => popup.title + "\n" + popup.text));
+    for (const [index, popup] of view.dialogs.entries()) {
+      if (popup.hasInputs !== false || popup.buttons.length !== 1 || known.has(popup.title + "\n" + popup.text)) continue;
+      const inside = (view.outline?.items ?? []).filter(item => item.dialog === index && !item.disabled);
+      const [only] = inside;
+      if (inside.length !== 1 || only === undefined || only.role !== "button") continue;
+      const proof = await this.noticeProof(view, only, ctx);
+      if (proof !== undefined && !this.#noticeStuck.has(proof.facts.signature)) return { item: only, proof };
+    }
+    return undefined;
+  }
+
+  /** 닫은 안내가 말한 내용을 만들고 '이미 말한 안내' 기록에 남긴다. */
+  private noticeBody(proof: NoticeProof, name: string, origin: string): { body: NoticeSaid; repeated: boolean } {
+    const body = noticeSaid(proof.facts, name);
+    const key = noticeKey(origin, body);
+    const repeated = this.#noticeSaid.has(key);
+    this.#noticeSaid.add(key);
+    for (const old of this.#noticeSaid) { if (this.#noticeSaid.size <= NOTICE_SAID_KEEP) break; this.#noticeSaid.delete(old); }
+    return { body, repeated };
+  }
+
+  /**
+   * 화면에 뜬 안내 팝업을 묻지 않고 닫는다(최대 MAX_NOTICES개). 닫은 안내가 말한 내용을 돌려주니 부르는 쪽이 사용자에게 한 번 알린다.
+   * announce "once"(기본)는 이미 말한 안내가 다시 뜨면 닫기만 하고 다시 읽지 않고, "always"는 사용자가 방금 눌러서 연 팝업이라 늘 읽는다.
+   * 닫는 누르기도 다른 조작처럼 정책 검사를 거치고 어댑터가 누르기 직전에 팝업을 다시 확인한다. 안내가 아니거나(단추가 둘, 입력, 위험한 낱말, 묻는 말투, 속을 볼 수 없는 틀)
+   * 확인하지 못하면 아무것도 누르지 않는다. 닫히지 않으면 같은 팝업을 다시 누르지 않고, 닫는 데 실패해도 하던 일은 이어 간다.
+   * 닫으려고 누르다가 사이트가 confirm() 창으로 물으면 그것은 안내가 아니다: 취소한 채 두고(대신 답하지 않는다) manual로 돌려줘 사용자에게 알린다.
+   */
+  async dismissNotices(view: PageView, ctx: ExecContext, log: WebAction[], { announce = "once", since }: {
+    announce?: "once" | "always"; since?: PageView;
+  } = {}): Promise<{ view: PageView; said: NoticeSaid[]; manual: NativeQuestion[] }> {
+    const said: NoticeSaid[] = [];
+    const manual: NativeQuestion[] = [];
+    let current = view;
+    for (let i = 0; i < MAX_NOTICES; i++) {
+      if (this.adapter.controlWindow === undefined || current.dialogs.length === 0 || !this.plainReadOnly(ctx, current)) break;
+      const found = await this.findNotice(current, ctx, since);
+      if (found === undefined) break;
+      const { item, proof } = found;
+      const action = this.action({ type: "click", target: { ref: item.ref, role: item.role, name: item.name }, reason: "안내 팝업 닫기" });
+      const result = await this.run(action, ctx, log, undefined, undefined, { notice: proof });
+      // 안내를 닫다가 사이트가 질문을 띄웠다면 그것은 안내가 아니다. 대신 답하지 않고, 조용히 넘기지 않고 알린다.
+      const cancelled = this.adapter.takeNative?.(action.id)?.cancelled ?? [];
+      const [asked] = cancelled;
+      if (asked !== undefined) {
+        this.#noticeStuck.add(proof.facts.signature);
+        manual.push({ record: asked, answerable: false, count: cancelled.length, scope: "auto" });
+        break;
+      }
+      if (result?.ok !== true) {
+        this.#noticeStuck.add(proof.facts.signature);
+        break;
+      }
+      const open = (v: PageView) => v.outline?.items?.some(candidate => candidate.ref === item.ref && candidate.dialog !== undefined) === true;
+      try { current = await this.observeUntil(ctx, v => !open(v), 1500); }
+      catch (error) { if (ctx.signal.aborted) throw error; break; }
+      if (open(current)) {
+        this.#noticeStuck.add(proof.facts.signature);
+        break;
+      }
+      const { body, repeated } = this.noticeBody(proof, item.name, tryUrl(current.url)?.origin ?? "");
+      if (repeated && announce === "once") continue;
+      said.push(body);
+    }
+    return { view: current, said, manual };
+  }
+
+  /**
+   * 누른 뒤의 안내 팝업과 사이트의 질문을 다룬다. 새 화면으로 옮겨 갔으면 그 화면에 뜬 안내 팝업을 묻지 않고 닫는다.
+   * 같은 화면에서 이번 누르기로 새 팝업이 떴으면 그 팝업이 안내일 때만 닫고 말해 주며,
+   * 안내가 아니라 그대로 남은 팝업(단추가 둘 이상 등)은 읽어 주고 고를 것을 알려 사용자의 선택을 기다린다(question). 어느 단추도 청음이 고르지 않는다.
+   * own: 사용자가 직접 누른 것이 안내 팝업의 단추(증명을 받은 누르기)였고 그 팝업이 실제로 닫혔으면 그 안내의 내용을 말해 준다.
+   */
+  private async settleNotices(out: WebOutcome, before: PageView, ctx: ExecContext, log: WebAction[],
+    own?: { proof: NoticeProof; item: { ref: string; name: string } }): Promise<WebOutcome> {
+    if (out.status !== "ok" || out.view === undefined) return out;
+    let view = out.view;
+    const said: NoticeSaid[] = [];
+    const manual: NativeQuestion[] = [];
+    const inPopup = (v: PageView, ref: string) => v.outline?.items?.some(candidate => candidate.ref === ref && candidate.dialog !== undefined) === true;
+    if (own !== undefined && this.plainReadOnly(ctx, view) && !inPopup(view, own.item.ref)) {
+      // 방금 시킨 누르기이니 이미 말한 안내여도 다시 읽는다.
+      said.push(this.noticeBody(own.proof, own.item.name, tryUrl(view.url)?.origin ?? "").body);
+    }
+    const moved = out.effect === "moved";
+    const opened = out.effect === "changed" && openedDialog(before, view);
+    if (moved || opened) {
+      const closed = await this.dismissNotices(view, ctx, log, moved ? {} : { announce: "always", since: before });
+      view = closed.view;
+      said.push(...closed.said);
+      manual.push(...closed.manual);
+    }
+    const question = manual.length === 0 && (opened || moved) ? this.questionOf(view, ctx, moved ? undefined : before) : undefined;
+    if (view === out.view && said.length === 0 && manual.length === 0 && question === undefined) return out;
+    const next: WebOutcome = { ...out, view };
+    if (said.length > 0) next.notices = said;
+    if (manual.length > 0) next.manual = manual;
+    if (question !== undefined) next.question = question;
+    if (said.length > 0 || question !== undefined) {
+      // 팝업이 한 말은 따로 읽어 주니 새로 보이는 내용에서는 뺀다(같은 내용을 두 번 읽지 않는다).
+      const rest = revealedExcept(out.revealed, out.view.dialogs.flatMap(dialog => [dialog.title, dialog.text]));
+      next.revealed = rest.length > 0 ? rest : undefined;
+    }
+    return next;
+  }
+
+  /**
+   * 이번 누르기로 같은 화면에 새로 떠서 그대로 남은 팝업 가운데 입력 칸이 없는 것을, 읽어 주고 사용자가 고르게 할 질문으로 만든다.
+   * 고를 수 있는 것은 팝업 안에서 관찰된 조작 요소의 이름이다. 정보 조회·화면 확인 범위와 입력 칸이 있는 팝업은 지금처럼 둔다.
+   */
+  questionOf(view: PageView, ctx: ExecContext, before?: PageView): PopupQuestion | undefined {
+    if (!this.plainReadOnly(ctx, view)) return undefined;
+    const known = new Set(before?.dialogs.map(popup => popup.title + "\n" + popup.text));
+    for (const [index, popup] of view.dialogs.entries()) {
+      if (popup.hasInputs !== false || popup.buttons.length < 2 || known.has(popup.title + "\n" + popup.text)) continue;
+      const inside = (view.outline?.items ?? []).filter(item => item.dialog === index && !item.disabled);
+      const question = popupQuestion(popup, inside.map(item => item.name), index);
+      if (question !== undefined) return question;
+    }
+    return undefined;
+  }
+
+  /**
+   * 누르는 동안 사이트가 confirm() 창으로 물어서 청음이 취소했다면 그 질문을 사용자에게 돌려준다(status needs-approval, pending은 누른 조작).
+   * 소리로 다 읽어 줄 수 있고 신청·삭제·로그인 같은 말이 없는 질문 하나뿐이고, 이번이 처음 누른 것일 때만 대신 답할 수 있다(answerable).
+   * 사용자가 시킨 정보 조회·화면 확인 범위에서는 대신 답할 수 없으니 취소했다고만 알리고 직접 확인하시게 한다(scope). 맡겨 둔 조사(백그라운드)는 지금처럼 아무것도 하지 않는다.
+   * 멈춘 뒤에는 알릴 것이 없다. 질문 글은 어느 경우에도 모델에 보내지 않고 정책에도 쓰지 않는다.
+   */
+  private nativeOutcome(action: Action, view: PageView, log: WebAction[], ctx: ExecContext, replay: boolean, notice = false): WebOutcome | undefined {
+    const seen = this.adapter.takeNative?.(action.id);
+    const [record] = seen?.cancelled ?? [];
+    if (seen === undefined || record === undefined || ctx.isStopped() || ctx.signal.aborted || this.guard.config.publicLookupOnly === true) return undefined;
+    const count = seen.cancelled.length;
+    let native: NativeQuestion;
+    if (notice) native = {record, answerable: false, count, scope: "auto"};
+    else if (this.plainReadOnly(ctx, view)) native = { record, answerable: action.type === "click" && !replay && count === 1 && record.risk === "routine", count };
+    else if (this.inspectionEnabled(ctx)) native = { record, answerable: false, count, scope: "private" };
+    else if (ctx.publicLookup) native = { record, answerable: false, count, scope: "lookup" };
+    else return undefined;
+    return { status: "needs-approval", actions: log, view, pending: action, native, message: nativeSpeech(native) };
+  }
+
+  /** 사용자가 거절했거나 멈췄을 때 사이트의 질문에 대신 답할 수 있던 기록을 버린다. */
+  forgetNative(): void { this.adapter.dropNative?.(); }
 
   /** 세션 준비: 빈 창 대신 모의 사이트 첫 화면을 띄워 둔다. */
   async openHome(ctx: ExecContext): Promise<WebOutcome> {

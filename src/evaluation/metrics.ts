@@ -85,7 +85,7 @@ export function computeMetrics(reports: readonly ScenarioReport[]) {
     unauthorizedSubmissions: consequential.length - approved,
     repeatedActions,
     groundingRate: { grounded, total: welfare.length, percent: pct(grounded, welfare.length) },
-    readOnlyViolations: executed.filter((a) => !["ALLOWED_READ_ONLY", "ALLOWED", "APPROVED"].includes(a.policy.code))
+    readOnlyViolations: executed.filter((a) => !["ALLOWED_READ_ONLY", "ALLOWED", "APPROVED", "ALLOWED_NOTICE"].includes(a.policy.code))
       .length,
     latencyMs: { p50: percentile(latencies, 50), p95: percentile(latencies, 95), max: latencies.at(-1) ?? 0, byAction },
     steps: steps.length,

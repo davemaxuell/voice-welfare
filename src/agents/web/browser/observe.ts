@@ -1,13 +1,17 @@
-import type { DialogInfo, Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
+import type { DialogInfo, NoticeFacts, Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
 import type { InspectionControl } from "../../../safety/guard.ts";
 
 export interface ControlQuery {
   text?: string; offset?: number; limit?: number; ref?: string | null; exact?: boolean;
   inspection?: boolean; destination?: string; searchField?: string;
+  /** ref로 찾은 항목이 팝업 안에 있으면 그 팝업의 사실(notice)을 새로 읽어 함께 돌려준다. */
+  notice?: boolean;
 }
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 type RefElement = HTMLElement | SVGElement;
-type Item = InteractiveItem & { context?: string; inspection?: InspectionControl };
+// shadows는 페이지 안에서 알 수 없다(닫힌 shadow root는 스크립트에 보이지 않는다). 어댑터가 브라우저의 DOM 정보로 채운다.
+type PageNotice = Omit<NoticeFacts, "shadows">;
+type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice };
 type RawObservation = Omit<Observation, "platform" | "capturedAt" | "outline"> &
   { outline?: Omit<ScreenOutline, "screenTarget"> & { screenTarget: ScreenTarget | null } };
 declare global {
@@ -150,7 +154,7 @@ export function observePage(query: ControlQuery | null = null) {
     || firstUsable('#contents, #content, #contentArea, #contentsWrap')
     || firstUsable('article')
     || body;
-  // 팝업 사실: ARIA 대화상자·<dialog>와 화면 위에 뜬 레이어 팝업을 한 목록(최대 3개)으로 모은다. 조회 전용 질의(query)에서는 만들지 않는다.
+  // 팝업 사실: ARIA 대화상자·<dialog>와 화면 위에 뜬 레이어 팝업을 한 목록(최대 3개)으로 모은다. 조회 전용 질의(query)에서는 만들지 않는다(notice 질의는 예외).
   // 애매하면 팝업으로 세지 않고, 팝업이어도 입력이 있는 쪽으로 기울인다. 확실하지 않을 때는 지금처럼 사용자에게 묻게 하려는 것이다.
   const BUTTONISH = 'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], input[type="image"]';
   // 입력 칸·양식. 안을 볼 수 없는 iframe·embed·object도 입력이 있는 것으로 센다.
@@ -159,7 +163,9 @@ export function observePage(query: ControlQuery | null = null) {
     + '[role="textbox"], [role="combobox"], [role="searchbox"], [role="listbox"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="spinbutton"]';
   // 레이어 팝업의 단서는 닫기 계열 이름뿐이다. '확인'은 하단 고정 줄의 제출 단추와 구분되지 않아 단서로 쓰지 않는다.
   const CLOSE_NAME = /^(?:x|×|✕|✖|╳|닫기|닫음|close)$|(?:닫기|닫음)$|(?:열지|보지|보이지)(?:않|말)/i;
-  const ariaPopups: Element[] = query ? [] : Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).filter(isVisible);
+  // 조회 질의는 팝업을 만들지 않지만, notice 질의(누르기 직전 안내 팝업 확인)는 같은 규칙으로 팝업을 새로 읽는다.
+  const wantPopups = !query || query.notice === true;
+  const ariaPopups: Element[] = !wantPopups ? [] : Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).filter(isVisible);
   // 레이어의 몸통: 닫기 단추의 조상 가운데 화면 안에서 겹쳐 뜬(fixed·absolute, z-index 1 이상) 상자.
   // 제목줄 같은 안쪽 상자를 잡으면 입력 칸을 놓치므로 조건을 만족하는 가장 바깥 조상을 쓴다.
   const layerRoot = (closeControl: Element): Element | null => {
@@ -178,7 +184,7 @@ export function observePage(query: ControlQuery | null = null) {
     return found;
   };
   const layerPopups: Element[] = [];
-  if (!query) {
+  if (wantPopups) {
     const closers = Array.from(document.querySelectorAll(BUTTONISH + ', a'))
       .filter((c) => (c.textContent ?? '').length < 40 && CLOSE_NAME.test(nameOf(c).replace(/\s+/g, '')) && isVisible(c))
       .slice(0, 40);
@@ -198,7 +204,8 @@ export function observePage(query: ControlQuery | null = null) {
   // 단추가 속한 양식: 팝업 안의 <form> 조상이든 밖의 양식을 가리키는 button[form]이든 그 양식을 보낼 수 있다.
   // form 속성이 있으면 짝이 아직 없어도(나중에 생길 수 있다) 센다. 보이지 않는 단추도 센다.
   const formBound = (b: Element) => (b instanceof HTMLButtonElement || b instanceof HTMLInputElement) && (b.form !== null || b.hasAttribute('form'));
-  // 열린 shadow root 안은 querySelector로 볼 수 없다. 안에 무엇이 있는지 모르므로 입력이 있는 것으로 센다(닫힌 root는 알 수 없다).
+  // 열린 shadow root 안은 querySelector로 볼 수 없다. 안에 무엇이 있는지 모르므로 입력이 있는 것으로 센다.
+  // 닫힌 root는 페이지 안에서 알 수 없다: 안내 팝업 증명에서는 어댑터가 브라우저(CDP)의 DOM 정보로 따로 세어 NoticeFacts.shadows에 담는다.
   const hasShadow = (d: Element) => d.shadowRoot !== null || Array.from(d.querySelectorAll('*')).some((e) => e.shadowRoot !== null);
   result.dialogs = popups.map((d): DialogInfo => {
     const buttonEls = Array.from(d.querySelectorAll(BUTTONISH));
@@ -389,6 +396,24 @@ export function observePage(query: ControlQuery | null = null) {
   };
   const pointer = (el: Element | null) => !!el && el.nodeType === 1 && getComputedStyle(el).cursor === 'pointer';
   const pointerRoot = (el: Element) => pointer(el) && !pointer(el.parentElement);
+  // 안내 팝업 증명에 쓰는 사실: 이 단추가 든 팝업을 지금 다시 읽는다. 팝업 몸통·이 단추의 ref와 글 전체를 서명에 넣어, 팝업이 바뀌거나 다른 것으로 갈아 끼워지면 달라진다.
+  // 입력 칸·양식·속을 못 보는 틀은 hasInputs로, 이 단추 밖의 조작 요소(링크·입력·라벨·탭 포함)는 others로 센다. 애매하면 안내가 아닌 쪽 값이 나온다.
+  const noticeOf = (root: Element, control: RefElement, controlRef: string): PageNotice => {
+    const buttonEls = Array.from(root.querySelectorAll(BUTTONISH));
+    const names = buttonEls.filter(isVisible).map(nameOf);
+    const full = text(root);
+    const others = Array.from(root.querySelectorAll(INTERACTIVE)).filter((x) => x !== control && isVisible(x)).length;
+    const hasInputs = root.querySelector(FIELDISH) !== null || root.closest('form') !== null || buttonEls.some(formBound) || hasShadow(root);
+    const rootRef = root instanceof HTMLElement || root instanceof SVGElement ? refOf(root) : '';
+    const kind = ariaPopups.includes(root) ? 'dialog' : 'layer';
+    const title = popupTitle(root);
+    const buttons = names.slice(0, 6);
+    return {
+      kind, title, text: full.slice(0, 600), textLength: full.length, buttons, buttonCount: names.length, others, hasInputs, popups: popups.length,
+      signature: JSON.stringify([kind, title, full.slice(0, 2000), full.length, rootRef, buttons, names.length, others, hasInputs, popups.length, controlRef]),
+      root: rootRef,
+    };
+  };
   const items: Item[] = [];
   let links = 0;
   let others = 0;
@@ -440,6 +465,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (role === 'link' && isSearchResult(el)) item.searchResult = true;
     const popup = popups.length > 0 ? dialogOf(el) : -1;
     if (popup >= 0) item.dialog = popup;
+    if (query?.notice === true && popup >= 0) item.notice = noticeOf(popups[popup]!, el, item.ref);
     const sel = el.getAttribute('aria-selected');
     const cur = el.getAttribute('aria-current');
     if (sel !== null) item.selected = sel === 'true';

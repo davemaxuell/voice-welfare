@@ -564,6 +564,7 @@ export class SessionOrchestrator {
     const state = this.state;
     const view = this.web.currentView;
     this.#interrupt();
+    this.web.forgetNative();
     this.#approvals.clear();
     this.#offer = undefined;
     this.dialogue.stop({ preserveAuth: true });
@@ -671,6 +672,8 @@ export class SessionOrchestrator {
     // 멈추기 전에 이미 바뀐 화면은 되돌리지 않고(멈춘 뒤의 조작이 되므로) 바뀌었다는 사실을 바로 말한다(주인 결정 2026-11-19)
     const moved = busy && this.web.movedSinceLastView();
     this.#interrupt();
+    // 사이트의 질문(confirm())에 대신 답할 수 있던 기록도 버린다. 멈춘 뒤의 '응'이 예전 질문에 답하는 일은 없다.
+    this.web.forgetNative();
     const dropped = this.lang === "ko" ? this.#droppedOnStop() : "";
     const privateReadback = !this.speakable(dropped);
     const praise = this.firstRun.afterStop();

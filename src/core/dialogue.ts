@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { Action, ActionTarget } from "./actions.ts";
+import type { Action, ActionTarget, NativeGrant } from "./actions.ts";
 import type { PlaceAsk } from "./places.ts";
 import type { HumanAuthHandoff, PendingConfirmation, SessionState } from "./turn.ts";
 
@@ -23,12 +23,14 @@ interface Acting extends Confirmed {
  * 승인 대기. kind가 없거나 "submit" = 모의접수 클릭, "assist" = 실제 사이트 입력란 채우기(제출은 사용자가 직접),
  * "click" = 확인받고 누르기, "file" = 받은 파일을 모델에 보내기, "visual" = 화면 사진으로 안내 링크 찾기, "research" = 공개 자료 조사.
  * 앞의 셋은 지문(fingerprint)으로 다시 확인하고, 뒤의 셋은 행동 없이 확인만 받는다.
+ * "click"에 native가 붙으면 사이트가 누르는 중에 띄운 confirm() 질문을 청음이 취소했고, 사용자가 '진행'이라고 하면 같은 누르기를 한 번 되풀이하며
+ * 그 질문(같은 탭·문서·글)에만 '확인'으로 답한다는 뜻이다. 허가는 이 승인이 실행될 때(ctx.granted)만 뜻이 있고, 어댑터가 자기 기록과 다시 맞춰 본다.
  * Python은 모의접수에도 kind "submit"과 url을 늘 적는다. 아래 패키지가 옮길 때까지 이 둘은 비워 둘 수 있다.
  */
 export type Approval =
   | (Acting & { kind?: "submit"; url?: string })
   | (Acting & { kind: "assist"; url?: string; actions: [Action, ...Action[]]; guided?: boolean })
-  | (Acting & { kind: "click"; url: string; then?: "login-open" | "login-submit" })
+  | (Acting & { kind: "click"; url: string; then?: "login-open" | "login-submit"; native?: NativeGrant })
   | (Confirmed & { kind: "file"; record: unknown; digest: string; question: string })
   | (Confirmed & { kind: "visual"; goal: string; publicTask?: unknown; checkpoint: unknown })
   | (Confirmed & { kind: "research"; goal: string });

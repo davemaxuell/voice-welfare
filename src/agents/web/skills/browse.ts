@@ -21,7 +21,7 @@ import { PUBLIC_FACT_LABELS, checkGrounding, type PublicFact } from "../../../sa
 import { chunkText, josa, speakLabel } from "../../../speech/phrasing.ts";
 import type { Narrator } from "../../../speech/screen.ts";
 import { KNOWN_SITES, goalSiteRequest, publicServiceSite, resolveSite, siteLabel, siteNameFrom, type KnownSite } from "../../../understanding/sites.ts";
-import { ExecContext, type PageView, type WebAction, type WebExecutionAgent } from "../agent.ts";
+import { ExecContext, type PageView, type WebAction, type WebExecutionAgent, type WebOutcome } from "../agent.ts";
 import { fingerprint } from "../approval.ts";
 import { accessBlocked, authPageKind, firstFillField, passwordFields, stillNeedsAuth, verificationApp } from "../auth_page.ts";
 import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint } from "../autopilot.ts";
@@ -38,6 +38,7 @@ import { orientScreen, screenKey } from "../orient.ts";
 import { selectControl, type VisionModel } from "../visual_step.ts";
 import { groundedScreenAnswer, sameScreen, screenContext, screenDecision, screenPatterns, screenRedactor, SCREEN_CHANGED, SCREEN_CLARIFY, SCREEN_TEXT_SCHEMA, SCREEN_TEXT_SYSTEM } from "./screen_context.ts";
 import { NOT_READY, stillBuilding } from "../effect.ts";
+import { nativeSpeech, noticeSpeech, questionSpeech, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "../notice.ts";
 import type { DownloadStore } from "../downloads.ts";
 import { askAgain, blockedSpeech, browseState, isFormOpen, notOpen, outcomeFailure, pressResult } from "./common.ts";
 
@@ -277,6 +278,11 @@ export class BrowseSkill {
   }
 
   async followLink(name: string, ctx: ExecContext, expected?: readonly [string, string, string]): Promise<Draft> {
+    const choices = this.linkChoices;
+    if (!expected && choices?.source === "popup" && choices.offerId.length > 0) {
+      const option = choices.options.find(item => item.name === name);
+      if (option) return this.followLink(name, ctx, [choices.url, option.ref, option.role]);
+    }
     const digits = browsePatterns.numbered.exec(name)?.[1];
     if (!expected && digits !== undefined && this.linkChoices) {
       const option = this.linkChoices.options[Number(asciiDecimalDigits(digits)) - 1];
@@ -295,6 +301,7 @@ export class BrowseSkill {
     }
     const out = await this.web.followLink(name, ctx, false, {expected});
     const now = this.web.currentView;
+    if (out.status === "needs-approval" && out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view ?? now, "", out.actions);
     if (out.status === "needs-approval" && out.pending) return this.askClick(out.pending, out.view ?? now, "", out.actions);
     if (out.status === "policy-denied" && now?.pageId === "external") {
       return draft(this.dialogue.state, "follow-link",
@@ -310,16 +317,54 @@ export class BrowseSkill {
       return draft(this.dialogue.state, "follow-link", speech, {view: out.view, offersLinks: candidates.length > 0});
     }
     if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
+    const interruption = this.#siteQuestion(out, out.view, out.actions);
+    if (interruption !== undefined) return interruption;
     const pressed = josa(hasText(out.readValue) ? out.readValue : name, "을", "를");
     const notice = this.web.adapter.takeDownloadNotice?.();
-    let speech;
-    if (out.effect === "none") speech = pressResult(pressed, "none");
-    else {
-      this.afterNavigation(out.view);
-      const intro = await this.narrator.pageIntro(out.view, ctx);
-      speech = pressResult(pressed, out.effect, {revealed: out.revealed, moved: `'${out.readValue}' 링크를 열었습니다. ${intro}`});
-    }
+    const speech = await this.#pressSpeech(out, out.view, ctx, pressed, `'${out.readValue}' 링크를 열었습니다.`);
     return draft(browseState(out.view), "follow-link", hasText(notice) ? `${speech} ${notice}` : speech, {actions: out.actions, view: out.view});
+  }
+
+  async #pressSpeech(out: WebOutcome, view: PageView, ctx: ExecContext, pressed: string, moved: string): Promise<string> {
+    const popup = noticeSpeech(out.notices ?? []);
+    if (out.effect !== "none") this.afterNavigation(view);
+    if (hasText(popup) && (out.effect === "none" || (out.effect === "changed" && !hasText(out.revealed)))) return popup;
+    const intro = out.effect === "moved" ? await this.narrator.pageIntro(view, ctx) : "";
+    const speech = pressResult(pressed, out.effect, {revealed: out.revealed, moved: strip(`${moved} ${intro}`)});
+    return strip(`${speech} ${popup}`);
+  }
+
+  #siteQuestion(out: {question?: PopupQuestion; manual?: NativeQuestion[]; notices?: NoticeSaid[]}, view: PageView, actions: WebAction[]): Draft | undefined {
+    const {question, manual = []} = out;
+    if (question === undefined && manual.length === 0) return undefined;
+    this.afterNavigation(view);
+    const messages = [noticeSpeech(out.notices ?? []), ...manual.map(nativeSpeech)];
+    if (question !== undefined) {
+      messages.push(questionSpeech(question));
+      const options = question.choices.flatMap(name => {
+        const matches = (view.outline?.items ?? []).filter(item => item.dialog === question.dialogIndex && !item.disabled && item.name === name);
+        return matches.length === 1 ? matches : [];
+      });
+      if (options.length === question.choices.length) this.linkChoices = new LinkChoices(view.url, options, "popup");
+    }
+    return draft("NEEDS_CLARIFICATION", "clarify", messages.filter(hasText).join(" "), {view, actions, offersLinks: this.linkChoices !== undefined});
+  }
+
+  /**
+   * 누르는 동안 사이트가 confirm() 창으로 물어서 청음이 취소했다. 사용자에게 그 질문을 알리고, 대신 답해도 되는 질문이면 진행할지 묻는다.
+   * 승인이 나면 같은 조작을 한 번 되풀이하며 그 질문(같은 탭·문서·글)에만 '확인'으로 답한다(clickApproved). 중요한 일일 수 있는 질문은 묻지 않고 직접 하시도록 알린다.
+   */
+  askNative(action: Action, native: NativeQuestion, view: PageView | undefined, lead: string, actions: WebAction[]): Draft {
+    if (!native.answerable) return draft("NEEDS_CLARIFICATION", "confirm-click", lead + nativeSpeech(native), {actions, view});
+    const name = action.target?.name ?? "";
+    const url = view?.url ?? "";
+    const site = tryUrl(url)?.host ?? url;
+    const question = nativeSpeech(native);
+    const {record} = native;
+    this.dialogue.askApproval({kind: "click", action, url, native: {tab: record.tab, document: record.document, url: record.url, hash: record.hash, length: record.length},
+      confirmation: {actionId: action.id, kind: "click", description: question, purpose: `사이트의 질문에 답하고 '${name}' 누르기`, site, values: [], realSubmission: false},
+      fingerprint: fingerprint(view ?? {}, [action], question)});
+    return draft("WAITING_FOR_USER_CONFIRMATION", "confirm-click", lead + question, {actions, view});
   }
 
   askClick(action: Action, view: PageView | undefined, lead: string, actions: WebAction[], effect?: string, then?: ClickApproval["then"], lang?: Lang): Draft {
@@ -338,7 +383,20 @@ export class BrowseSkill {
   }
 
   async clickApproved(approval: ClickApproval, ctx: ExecContext): Promise<Draft> {
-    const out = await this.web.withInspection(ctx, () => this.web.clickApproved(approval.action, ctx));
+    // native가 있으면 사이트가 물었던 confirm() 질문에 사용자가 '진행'이라고 답한 것이다: 같은 조작을 한 번 되풀이하고 그 질문에만 답한다.
+    const grants = approval.native === undefined ? undefined : {native: approval.native};
+    const out = await this.web.withInspection(ctx, () => this.web.clickApproved(approval.action, ctx, grants));
+    if (out.status === "needs-approval" && out.native !== undefined && out.pending) {
+      // 되풀이하는 중에 사이트가 또 물었다. 이전 승인은 이미 한 번 썼으니 새 질문으로만 이어 간다.
+      this.dialogue.clearApproval();
+      return this.askNative(out.pending, out.native, out.view, "", out.actions);
+    }
+    if (approval.native !== undefined && (out.status === "unconfirmed" || out.status === "failed")) {
+      // 시간이 넘은 것을 다시 하지 않는다: 사이트의 질문에 이미 한 번 답했으니 같은 질문으로 되묻지 않고 화면을 직접 보시게 한다.
+      this.dialogue.clearApproval();
+      return draft(out.view ? browseState(out.view) : this.dialogue.state, "confirm-click",
+        `${out.message ?? "처리됐는지 확인하지 못했어요."} 같은 질문에 다시 답하지는 않을게요. 화면에서 직접 확인해 주세요.`, {actions: out.actions, view: out.view});
+    }
     if (ctx.browsingScope === "personal-inspection") {
       this.dialogue.clearApproval();
       if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
@@ -349,19 +407,18 @@ export class BrowseSkill {
     if (out.status === "unconfirmed") return askAgain(out, "confirm-click", "누르려면 '눌러', 그만두려면 '거절'이라고 말씀해 주세요.");
     this.dialogue.clearApproval();
     if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
-    if (approval.then === "login-open") {
-      this.afterNavigation(out.view);
-      return this.#loginPageGuide(out.view, out.actions, ctx, approval.url);
+    const interruption = this.#siteQuestion(out, out.view, out.actions);
+    if (interruption !== undefined) return interruption;
+    if (approval.then === "login-open" || approval.then === "login-submit") {
+      let next;
+      if (approval.then === "login-open") {
+        this.afterNavigation(out.view);
+        next = await this.#loginPageGuide(out.view, out.actions, ctx, approval.url);
+      } else next = {...await this.authDone(ctx), actions: out.actions};
+      return {...next, speech: strip(`${noticeSpeech(out.notices ?? [])} ${next.speech}`)};
     }
-    if (approval.then === "login-submit") return {...await this.authDone(ctx), actions: out.actions};
     const pressed = josa(out.readValue ?? "", "을", "를");
-    let speech;
-    if (out.effect === "none") speech = pressResult(pressed, "none");
-    else {
-      this.afterNavigation(out.view);
-      const intro = await this.narrator.pageIntro(out.view, ctx);
-      speech = pressResult(pressed, out.effect, {revealed: out.revealed, moved: `'${out.readValue}' 버튼을 눌렀어요. ${intro}`});
-    }
+    const speech = await this.#pressSpeech(out, out.view, ctx, pressed, `'${out.readValue}' 버튼을 눌렀어요.`);
     return draft(browseState(out.view), "confirm-click", speech, {actions: out.actions, view: out.view});
   }
 
@@ -559,6 +616,7 @@ export class BrowseSkill {
       out = await this.web.openSite(this.searchUrl(query), ctx);
     }
     actions.push(...out.actions);
+    if (out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view, "", actions);
     if (out.status === "ok" && out.view && origin.length > 0) this.#searched = {query, origin, results: out.view.url};
     if (out.status === "unconfirmed" && out.view) {
       this.afterNavigation(out.view);
@@ -923,6 +981,10 @@ export class BrowseSkill {
     if (result.view) this.afterNavigation(result.view);
     const view = result.view ?? this.web.currentView;
     const review = {browserIterations: result.iterations, reviewQuotes: result.reviewQuotes, reviewPages: result.reviewPages, reviewQuoteSources: Object.fromEntries(result.quoteSources)};
+    if (view !== undefined) {
+      const interruption = this.#siteQuestion(result, view, result.actions);
+      if (interruption !== undefined) return {...interruption, ...review};
+    }
     if (personal && view && stillNeedsAuth(view) && !ctx.signal.aborted && !ctx.isStopped()) {
       if (exclusions.includes("login")) return draft("BROWSING", "goal", "이 화면부터는 로그인이 필요해서 여기서 멈췄어요.", {view, actions: result.actions, ...review});
       const auth = await this.#beginAuthHandoff(view, result.actions, ctx, "", undefined, journey?.returnOrigin);
@@ -948,7 +1010,11 @@ export class BrowseSkill {
     if (publicTask && result.status === "needs-approval") return draft(view ? browseState(view) : this.dialogue.state, "goal", "공개 안내에서 이 정보를 확인하지 못했어요.", {actions: result.actions, view, ...review});
     if (result.status === "needs-approval" && result.pending) {
       if (personal) return {...this.askClick(result.pending, view, "", result.actions, undefined, undefined, this.#replyLanguage()), ...review};
-      const lead = `'${goal}'라고 하신 일을 하다가 `;
+      // 하는 동안 묻지 않고 닫은 안내 팝업이 있으면 무엇이라고 했는지 먼저 한 번 알린다.
+      const closed = noticeSpeech(result.notices ?? []);
+      const lead = `${closed.length > 0 ? closed + " " : ""}'${goal}'라고 하신 일을 하다가 `;
+      // 하다가 사이트가 confirm() 창으로 물었다: 대신 답해도 되는 질문이면 진행할지 묻고, 아니면 직접 하시도록 알린다.
+      if (result.native !== undefined) return {...this.askNative(result.pending, result.native, view, lead, result.actions), ...review};
       if (result.pending.target?.name === this.web.profile.buttons.submit && isFormOpen(view)) {
         const asked = await this.form.prepareSubmit(ctx);
         return {...asked, speech: `${lead}모의접수 단계에 왔어요. ${asked.speech}`, actions: [...result.actions, ...asked.actions ?? []], ...review};
@@ -967,7 +1033,9 @@ export class BrowseSkill {
       speech += ` ${label} 화면에서 확인했어요.`;
       this.#sourcesSpoken.add(label);
     }
-    return draft(state, "goal", speech, {actions: result.actions, view, sources, ...review, lang: personal && result.status === "asked" ? this.#replyLanguage() : undefined,
+    // 하는 동안 묻지 않고 닫은 안내 팝업이 있으면 무엇이라고 했는지 결과 앞에서 한 번 알린다(요약·근거에는 넣지 않는다).
+    const popup = noticeSpeech(result.notices ?? []);
+    return draft(state, "goal", popup.length > 0 ? `${popup} ${speech}` : speech, {actions: result.actions, view, sources, ...review, lang: personal && result.status === "asked" ? this.#replyLanguage() : undefined,
       summary: result.status === "answered" ? speech : undefined,
       taskQuestion: (publicTask || personal) && result.status === "asked" ? result.speech : undefined,
       researchEvidence: publicTask && result.status === "answered" ? result.speech : undefined, researchState: publicTask && result.status === "partial" ? "partial" : undefined});

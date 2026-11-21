@@ -16,6 +16,7 @@ import { ExecContext, type ControlWindow, type WebAction, type WebExecutionAgent
 import { accessBlocked, authPageKind, stillNeedsAuth } from "./auth_page.ts";
 import { digestForLlm, digestPage, flatMain, textOffset, type PageDigest } from "./digest.ts";
 import { clickNote } from "./effect.ts";
+import { nativeSpeech, questionSpeech, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "./notice.ts";
 import { guideSection } from "./playbook.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import { screenKey, type Orientation } from "./orient.ts";
@@ -78,6 +79,12 @@ export interface AutopilotResult {
   actions: WebAction[];
   view?: PageView;
   pending?: Action;
+  /** needs-approval: 누르다가 사이트가 confirm() 창으로 물어서 청음이 취소했다(pending은 누른 조작). */
+  native?: NativeQuestion;
+  /** 묻지 않고 닫은 안내 팝업이 말한 내용(아직 말하지 않은 것). 부르는 쪽이 사용자에게 한 번 알린다. */
+  notices?: NoticeSaid[];
+  question?: PopupQuestion;
+  manual?: NativeQuestion[];
   /** answered: 검증된 근거 문장이 있던 화면들 */
   sources: PageSource[];
   checkpoint?: BrowseCheckpoint;
@@ -491,6 +498,8 @@ export class Autopilot {
     let displayedSearch = false;
     let actionsBeforeStep = 0;
     let heldApproval: { action: string; target: string | undefined; url: string | undefined; outcome: WebOutcome } | undefined;
+    // 묻지 않고 닫은 안내 팝업이 말한 내용은 사용자에게 한 번 알린다.
+    const notices: NoticeSaid[] = [];
     let scrubView: PageView | undefined;
     let scrub = personalScrubber(undefined, privateValues);
     const clean = (value: string) => {
@@ -590,7 +599,7 @@ export class Autopilot {
       phase({ phase: "step", action: step.action, target: step.target, ok: step.ok }, true);
       ctx.trace('EXECUTING', this.web.id, `자율 ${step.n}: ${step.action}${step.target !== undefined && step.target.length > 0 ? `(${step.target})` : ''} ${step.ok ? '✓' : '✗'} ${step.note}`);
     };
-    const done = (status: AutopilotResult["status"], speech: string, more: { pending?: Action; sources?: PageSource[]; quotes?: readonly string[] } = {}): AutopilotResult => {
+    const done = (status: AutopilotResult["status"], speech: string, more: Pick<AutopilotResult, "pending" | "native" | "question" | "manual"> & { sources?: PageSource[]; quotes?: readonly string[] } = {}): AutopilotResult => {
       let { sources, quotes = [] } = more;
       if (status !== "stopped") remember(view);
       if (evidence !== undefined && (status === "failed" || status === "limit") && evidence.passages.size > 0) {
@@ -623,6 +632,8 @@ export class Autopilot {
       });
       return {
         status, speech, steps, actions, view, ...(more.pending === undefined ? {} : { pending: more.pending }),
+        ...(more.native === undefined ? {} : { native: more.native }), ...(notices.length === 0 ? {} : { notices: [...notices] }),
+        ...(more.question === undefined ? {} : {question: more.question}), ...(more.manual === undefined ? {} : {manual: more.manual}),
         sources: sources ?? [], iterations, reviewQuotes: quotes, reviewPages: [...reviewPages], quoteSources,
       };
     };
@@ -633,7 +644,7 @@ export class Autopilot {
         return undefined;
       }
       journey?.pause("approval");
-      return done("needs-approval", outcome.message ?? "", { pending: outcome.pending });
+      return done("needs-approval", outcome.message ?? "", { pending: outcome.pending, native: outcome.native });
     };
     const stopped = () => ctx.signal.aborted || ctx.isStopped();
     const snapshot = (choice: VisualChoice, remainingSteps: number, extra: Partial<BrowseCheckpoint> = {}): BrowseCheckpoint => ({
@@ -649,6 +660,17 @@ export class Autopilot {
         return done(stopped() ? "stopped" : "failed", stopped() ? "멈췄어요." : "원래 누리집에서 다시 이어 주세요.");
       }
       for (let i = 0; ; i++) {
+        // 화면에 안내 팝업이 떠 있으면 묻지 않고 닫는다. 읽기 전용 사이트의 보통 탐색에서만 하고(정보 조회·화면 확인 범위는 그대로),
+        // 닫는 누르기도 정책 검사와 어댑터의 누르기 직전 확인을 거친다. 사용자가 골라야 하는 질문은 모델에 넘기기 전에 멈춘다.
+        if (view !== undefined && !stopped()) {
+          const closed = await this.web.dismissNotices(view, ctx, actions);
+          view = closed.view;
+          notices.push(...closed.said);
+          if (stopped()) return done("stopped", "멈췄어요.");
+          if (closed.manual.length > 0) return done("asked", closed.manual.map(nativeSpeech).join(" "), {manual: closed.manual});
+          const question = this.web.questionOf(view, ctx);
+          if (question !== undefined) return done("asked", questionSpeech(question), {question});
+        }
         if (view !== undefined && !personal) view = guideSection(view, goal);
         if (stopped()) return done('stopped', '멈췄어요.');
         // 직전에 보던 사이트의 로그인·차단 화면은 새 기관으로 이동하는 것을 막지 않는다.
@@ -1139,7 +1161,18 @@ export class Autopilot {
           }
           actions.push(...out.actions);
           if (out.view) view = out.view;
+          notices.push(...out.notices ?? []);
           mainOffset = 0;
+          if (stopped()) return done("stopped", "멈췄어요.");
+          const manual = out.native?.answerable === false ? [out.native] : out.manual;
+          if (out.question !== undefined) {
+            record({action, target, ok: true, note: "팝업에서 사용자의 선택을 기다림", url: urlOf()});
+            return done("asked", questionSpeech(out.question), {question: out.question});
+          }
+          if (manual !== undefined && manual.length > 0) {
+            record({action, target, ok: out.status === "ok", note: "사이트의 질문에서 멈춤", url: urlOf()});
+            return done("asked", manual.map(nativeSpeech).join(" "), {manual});
+          }
           if (out.status === "needs-approval") {
             const approval = requireApproval(action, target, out);
             if (approval !== undefined) return approval;
@@ -1192,6 +1225,10 @@ export class Autopilot {
           if (!personal && out.status === 'failed' && site === undefined) out = await this.web.openSite(this.opts.searchUrl(target), ctx);
           actions.push(...out.actions);
           if (out.view) view = out.view;
+          if (out.native !== undefined) {
+            record({action, target, ok: false, note: "검색 도중 사이트의 질문에서 멈춤", url: urlOf()});
+            return done("asked", nativeSpeech(out.native), {manual: [out.native]});
+          }
           mainOffset = 0;
           record({ action: 'search', target, ok: out.status === 'ok', note: out.status === 'ok' ? `'${view?.title}'` : (out.message ?? '검색 실패'), url: urlOf() });
           continue;
