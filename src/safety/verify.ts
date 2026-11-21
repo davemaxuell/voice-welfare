@@ -73,7 +73,8 @@ export class PublicEvidence {
         if (passage !== undefined && passage.length > 0 && !passage.includes(REDACTED) && redactText(passage) === passage) {
           const bucket = this.passages.get(fact) ?? [];
           this.passages.set(fact, bucket);
-          if (!bucket.some(([u, p]) => u === url && p === passage) && bucket.length < 4) bucket.push([url, passage]);
+          const fromPage = bucket.filter(([u]) => u === url);
+          if (bucket.length < 16 && fromPage.length < 4 && !fromPage.some(([, p]) => p === passage)) bucket.push([url, passage]);
           break;
         }
       }

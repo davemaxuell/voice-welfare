@@ -1,6 +1,7 @@
 // 여러 단계를 거치는 요청을 끝까지 하고, 답하기 전에 원래 요청과 대조하는 고리(task_review.ts가 판정한다).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BrowserJourney } from "../agents/web/journey.ts";
+import { accessBlocked, stillNeedsAuth } from "../agents/web/auth_page.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import type { Redacted } from "../core/llm.ts";
@@ -44,6 +45,7 @@ interface ReviewedFields {
   privateValues?: string[];
   background?: boolean;
   inspection?: "answer" | "arrival";
+  publicArrival?: boolean;
 }
 
 /** 검토를 거치는 일 하나. 승인·되물음·본인인증으로 멈췄다 이어 가도 같은 횟수 한도와 근거를 쓴다. */
@@ -67,6 +69,7 @@ export class ReviewedTask {
   readonly background: boolean;
   readonly journey?: BrowserJourney;
   readonly inspection?: "answer" | "arrival";
+  readonly publicArrival: boolean;
   readonly entryOrigin?: string;
 
   constructor(fields: ReviewedFields & { publicFactsOnly?: boolean }) {
@@ -83,6 +86,7 @@ export class ReviewedTask {
     this.privateValues = fields.privateValues ?? [];
     this.background = fields.background ?? false;
     this.inspection = this.background ? undefined : fields.inspection;
+    this.publicArrival = !this.background && fields.publicArrival === true;
     if (this.inspection !== undefined) {
       const supplied = publicDestinations(fields.request).urls;
       if (supplied.size === 1) this.entryOrigin = [...supplied.keys()][0];
@@ -244,6 +248,11 @@ export class ReviewLoop {
           last = work;
           await record(work);
           if (needsInput(work)) return pause(work);
+          if (!run.background && run.task.searchMode === "visible" && work.view && (work.browserIterations ?? 0) > 0 &&
+              !run.retries.has("blocked-public-entry") && (stillNeedsAuth(work.view) || accessBlocked(work.view))) {
+            run.retries.add("blocked-public-entry");
+            continue;
+          }
         }
         resuming = false;
         if (turn.ctx.signal.aborted) return this.#stopped();
@@ -254,7 +263,8 @@ export class ReviewLoop {
           turn.ctx.trace("VERIFYING", AGENT_IDS.orchestrator, `요청 완료 검토 ${run.rounds}/${rounds}`);
           const correction = repair;
           verdict = await raceAbort(signal => reviewBeforeOutput(s.deps.llm, s.historySpeech(run.request), run.evidence, signal, {
-            language: s.lang, requirements: run.requirements, privateValues, repairReason: correction, inspection: run.inspection,
+            language: s.lang, requirements: run.requirements, exclusions: run.task.exclusions, privateValues, repairReason: correction,
+            inspection: run.inspection, publicArrival: run.publicArrival,
             publicFactsOnly: run.publicFactsOnly, ...(run.publicFactsOnly ? { publicContext: run.task.goal } : {}),
           }), turn.ctx.signal);
           if (repair.length > 0 || run.rounds >= rounds || verdict.repairReason.length === 0) break;
@@ -400,10 +410,11 @@ export class ReviewLoop {
   async lookup(run: ReviewedTask, turn: Turn, missing: readonly string[]): Promise<Draft | undefined> {
     const s = this.session;
     const [, steps] = REVIEW_LIMITS[run.difficulty];
-    const goal = run.rounds === 0 ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
+    const webLookup = run.route === "browser" || run.route === "quiet";
+    const goal = run.rounds === 0 || webLookup ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
     const hidden = [...new Set(run.privateValues.filter(value => value.length > 0))].sort(byLengthDesc);
     let subtask = new PublicTask({ ...run.task, goal: replaceValues(goal, hidden), subject: replaceValues(run.task.subject, hidden) });
-    if (run.rounds > 0 && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
+    if ((run.rounds > 0 || run.publicArrival && subtask.facts.length === 0) && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
     let mode = run.background && run.task.searchMode !== "quiet" ? undefined : run.task.searchMode;
     if (run.route === "quiet" || (mode === "quiet" && run.route === "browser")) mode = "quiet";
     else if (run.route === "browser") mode = "visible";
@@ -415,7 +426,7 @@ export class ReviewLoop {
     const step: Turn = { ...turn, intentType: kind, ctx: withContext(turn.ctx, { publicLookup: true }) };
     return s.planner.execute(subtask, step, mode, {
       research: run.background, maxSteps: Math.max(0, steps - run.browserSteps), continuePage: run.browserSteps > 0, journey: run.journey,
-      requestedSteps: mode === "visible" ? missing.map(part => replaceValues(part, hidden)) : [],
+      requestedSteps: missing.map(part => replaceValues(part, hidden)),
     });
   }
 }
