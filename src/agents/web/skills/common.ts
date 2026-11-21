@@ -43,7 +43,7 @@ export function outcomeFailure(out: WebOutcome, fallbackState: SessionState) {
 }
 
 export function askAgain(out: WebOutcome, semantic: SemanticAction, how: string) {
-  return draft("WAITING_FOR_USER_CONFIRMATION", semantic, `${out.message ?? ""} 다시 할까요? ${how}`, {actions: out.actions, view: out.view, approvalSpeech: "unverified"});
+  return draft("WAITING_FOR_USER_CONFIRMATION", semantic, `${out.message ?? ""} 다시 할까요? ${how}`, {actions: out.actions, view: out.view});
 }
 
 export function helpHumanDraft(state: SessionState, contact: Parameters<typeof helpHumanSpeech>[0] = {}) {

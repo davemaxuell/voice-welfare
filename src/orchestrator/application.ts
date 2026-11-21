@@ -203,12 +203,12 @@ export class ApplicationCommands {
     const changed = bindRecord && approval.url !== view.url ? "여쭤본 뒤에 화면 주소가 바뀌었어요." : rechecked;
     if (changed !== undefined) {
       d.clearApproval();
-      return draft(d.authWaiting ? "AUTH_HANDOFF" : browseState(view), "none", `${changed} 그래서 ${NOT_DONE[kind]} 바뀐 대로 하시려면 한 번 더 말씀해 주세요.`, { view, approvalSpeech: "changed" });
+      return draft(d.authWaiting ? "AUTH_HANDOFF" : browseState(view), "none", `${changed} 그래서 ${NOT_DONE[kind]} 바뀐 대로 하시려면 한 번 더 말씀해 주세요.`, { view });
     }
     if (expired()) {
       d.askApproval({ ...approval, fingerprint: now });
       return draft("WAITING_FOR_USER_CONFIRMATION", kind === "click" ? "confirm-click" : "prepare-submit",
-        `여쭤본 지 ${APPROVAL_TTL_S / 60}분이 지나서 다시 여쭤볼게요. ${now.speech}`, { view, masked: true, approvalSpeech: "expired" });
+        `여쭤본 지 ${APPROVAL_TTL_S / 60}분이 지나서 다시 여쭤볼게요. ${now.speech}`, { view, masked: true });
     }
     // 실행한 뒤에도 같은 승인이 남아 있으면(확인하지 못해 다시 묻는 경우) 물은 시각을 새로 잰다.
     const keepAsking = <T>(result: T): T => {

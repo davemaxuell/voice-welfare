@@ -3,9 +3,8 @@ import { fingerprint } from "../../src/agents/web/approval.ts";
 import type { Approval, VaultCommand } from "../../src/core/dialogue.ts";
 import type { Action } from "../../src/core/actions.ts";
 import { LANGS, type PendingConfirmation } from "../../src/core/turn.ts";
-import { approvalPresentation } from "../../src/language/approval.ts";
 import { foreignApproval } from "../../src/core/lexicon.ts";
-import { detectLangSwitch, detectScriptLang, languagePatterns, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
+import { approvalPresentation, detectLangSwitch, detectScriptLang, languagePatterns, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
 import { unsupportedNumbers } from "../../src/safety/verify.ts";
 import { FakeLlm } from "../helpers.ts";
 import { codePointSpans } from "./python-spans.ts";
@@ -152,9 +151,9 @@ const examples: [string, Approval | VaultCommand, string][] = [
   ["모의접수", { ...acting, kind: "submit" }, "Submit the practice disability pension application"],
   ["파일", { kind: "file", confirmation: sampleCard, record: {}, digest: "fixture", question: "" }, "Analyze the downloaded file"],
   ["사진", { kind: "visual", confirmation: sampleCard, goal: "", checkpoint: {} }, "Review an image of this page"],
-  ["화면 설명", { kind: "visual", imagePurpose: "visualDescribe", confirmation: sampleCard, goal: "", checkpoint: {} }, "Describe the current page from a screenshot"],
-  ["메뉴 찾기", { kind: "visual", imagePurpose: "visualOrient", confirmation: sampleCard, goal: "", checkpoint: {} }, "Find a menu in a screenshot"],
-  ["안내 링크", { kind: "visual", imagePurpose: "visualLink", confirmation: sampleCard, goal: "", checkpoint: {} }, "Find a guidance link in a screenshot"],
+  ["화면 설명", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 현재 페이지 설명" }, goal: "", checkpoint: {} }, "Describe the current page from a screenshot"],
+  ["메뉴 찾기", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 메뉴 찾기" }, goal: "", checkpoint: {} }, "Find a menu in a screenshot"],
+  ["안내 링크", { kind: "visual", confirmation: { ...sampleCard, purpose: "화면 사진으로 안내 링크 찾기" }, goal: "", checkpoint: {} }, "Find a guidance link in a screenshot"],
   ["조사", { kind: "research", confirmation: sampleCard, goal: typedValue }, "Research public sources"],
   ["금고 저장", { kind: "vault-save", confirmation: { ...sampleCard, values: [] }, values: { name: typedValue } }, "Save my information"],
   ["금고 삭제", { kind: "vault-clear", confirmation: { ...sampleCard, values: [] } }, "Delete my saved information"],
