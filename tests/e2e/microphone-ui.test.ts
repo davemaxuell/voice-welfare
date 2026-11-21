@@ -1,14 +1,62 @@
-import { chromium, type Browser, type Page } from "@playwright/test";
+import { chromium, expect as screen, type Browser, type Page } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { startUi } from "./web-ui-fixtures.ts";
 
 let browser: Browser;
 let ui: Awaited<ReturnType<typeof startUi>>;
 let page: Page;
-beforeAll(async () => { ui = await startUi(); browser = await chromium.launch(); });
+beforeAll(async () => { ui = await startUi(); browser = await chromium.launch({ channel: "chromium", args: ["--use-fake-device-for-media-stream"] }); });
 beforeEach(async () => { page = await browser.newPage(); await page.goto(ui.url); });
 afterEach(async () => { await page.close(); await ui.reset(); });
 afterAll(async () => { await browser?.close(); await ui?.close(); });
+
+it("마이크 권한을 거절해도 텍스트로 질문할 수 있다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  try {
+    await page.context().grantPermissions([], { origin: voice.url });
+    await page.goto(voice.url);
+    const denied = await page.evaluate(async () => (await navigator.permissions.query({ name: "microphone" })).state);
+    expect(denied).toBe("denied");
+    await screen(page.locator("#mic-btn")).toBeEnabled();
+    await page.locator("#mic-btn").click();
+    await screen(page.locator("#error")).toContainText("브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요.");
+    await screen(page.locator("#mic-btn")).toHaveAttribute("aria-pressed", "false");
+    await page.locator("#command").fill("장애인연금이 뭐야");
+    await page.locator("#command").press("Enter");
+    await screen(page.locator("#log .assistant").last()).toContainText("장애인연금");
+  } finally { await page.close(); await voice.close(); }
+});
+
+it("듣던 마이크가 끊기면 대화를 끄고 연결 안내를 보여 준다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  try {
+    await page.context().grantPermissions(["microphone"], { origin: voice.url });
+    await page.goto(voice.url);
+    await screen(page.locator("#conv-start")).toBeEnabled();
+    await screen(page.locator("#tts-toggle")).toHaveText("음성 안내 켜짐");
+    await page.locator("#tts-toggle").click();
+    const track = await page.evaluateHandle(() => {
+      let current: MediaStreamTrack | undefined;
+      navigator.mediaDevices.getUserMedia = async () => {
+        const audio = new AudioContext();
+        await audio.resume();
+        const mic = audio.createMediaStreamDestination();
+        const tone = audio.createOscillator();
+        tone.connect(mic);
+        tone.start();
+        current ??= mic.stream.getAudioTracks()[0];
+        return mic.stream;
+      };
+      return () => { current?.stop(); current?.dispatchEvent(new Event("ended")); };
+    });
+    await page.locator("#conv-start").click();
+    await screen(page.locator("#phase")).toHaveClass(/phase-listening/);
+    await track.evaluate(end => end());
+    await screen(page.locator("#error")).toContainText("마이크 연결이 끊겼거나");
+    await screen(page.locator("#phase")).toHaveClass(/phase-off/);
+    await screen(page.locator("#mic-btn")).toHaveAttribute("aria-pressed", "false");
+  } finally { await page.close(); await voice.close(); }
+});
 
 it("test_double_clap_uses_continuous_mic_audio_and_releases_it", async () => {
   await page.locator("h1").click();

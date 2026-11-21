@@ -204,27 +204,6 @@ export function takeInterruptedSpeech() {
 export function isSpeaking() {
   return source !== undefined || utterance !== null;
 }
-const PROGRESS_GAP_MS = 15000;
-export interface ProgressReport { running: boolean; seq: number; spoken: boolean; latest?: string | null }
-/**
- * 진행 안내: 서버가 알려 준 목표 수행 단계 가운데 가장 최근 것을 15초에 한 번까지만 말한다.
- * 사용자가 말하는 중이거나 이미 안내 중이면 이번에는 건너뛴다. 일을 시작하고 15초 안에는 말하지 않는다(금방 끝나는 일은 답만 듣게).
- */
-export const progressVoice = {
-  seen: 0,
-  at: 0,
-  start() {
-    this.at = Date.now();
-  },
-  /** p = GET /api/session/{id}/progress. 지금 말할 문장(없으면 undefined). quiet = 사용자가 말하는 중이거나 다른 안내 중 */
-  pick(p: ProgressReport, quiet: boolean) {
-    if (!p.running || !p.spoken || p.latest == null || p.latest.length === 0 || p.seq <= this.seen) return undefined;
-    if (quiet || isSpeaking() || Date.now() - this.at < PROGRESS_GAP_MS) return undefined;
-    this.seen = p.seq;
-    this.at = Date.now();
-    return p.latest;
-  },
-};
 /** 신호음 종류: start 대화시작 · listen 이제말하세요 · done 다들었어요 · thinking 생각중 · working 일하는중 · approve 승인필요 · handoff 직접해주세요 · success 모의접수완료 · problem 문제 · stopped 멈춤 · end 대화끝 · reminder 기한알림 */
 export const CUE_KINDS = [
   "start",

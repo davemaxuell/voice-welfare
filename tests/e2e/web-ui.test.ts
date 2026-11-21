@@ -1,7 +1,9 @@
-import { chromium, expect as browserExpect, type Browser, type Page } from "@playwright/test";
+import { join } from "node:path";
+import { chromium, expect as browserExpect, type Browser, type Page, type Route } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type * as Speaker from "../../web/src/speaker.ts";
-import { axeScript } from "../../src/core/assets.ts";
+import { axeScript, soundCues } from "../../src/core/assets.ts";
+import { latch } from "./browser-cases.ts";
 import { recordCues, startUi } from "./web-ui-fixtures.ts";
 
 let browser: Browser;
@@ -82,6 +84,35 @@ it("test_decline_and_high_contrast", async () => {
   await browserExpect(page.getByRole("button", { name: "대화 시작 (Enter)" })).toBeDisabled();
   await page.getByRole("button", { name: "고대비 꺼짐" }).click();
   await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
+});
+
+it("멈춘 뒤 늦게 온 응답은 기록하거나 읽지 않는다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  const received = latch(), release = latch();
+  const late = "늦게 도착한 연습 응답입니다.";
+  const speech: string[] = [];
+  try {
+    await page.route("**/api/turn", async route => {
+      const response = await route.fetch();
+      const json: unknown = await response.json();
+      if (typeof json !== "object" || json === null) throw new Error("시험 응답이 없습니다.");
+      received.resolve();
+      await release.promise;
+      await route.fulfill({ json: { ...json, speech: late } });
+    });
+    page.on("request", r => { if (new URL(r.url()).pathname === "/api/audio/speak") speech.push(r.postData() ?? ""); });
+    await page.goto(voice.url);
+    await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+    await send("장애인연금이 뭐야");
+    await received.promise;
+    await page.locator("#stop-all").click();
+    await browserExpect(state()).toHaveText("중단됨", turnTimeout);
+    const messages = await page.locator("#log .assistant").allTextContents();
+    release.resolve();
+    await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+    expect(await page.locator("#log .assistant").allTextContents()).toEqual(messages);
+    expect(speech.some(text => text.includes(late))).toBe(false);
+  } finally { release.resolve(); await page.close(); await voice.close(); }
 });
 
 it("test_sound_cues_stay_under_mic_detector_limits", async () => {
@@ -297,5 +328,172 @@ it("test_progress_cues_never_play_over_speech", async () => {
   } finally {
     await page.close();
     await voiceUi.close();
+  }
+});
+
+const progressRoute = "**/api/session/*/progress";
+const finishedStep = "연습 누리집에서 안내를 확인했어요.";
+const finishedReport = { running: true, seq: 17, spoken: true, activity: finishedStep, activitySpoken: true, activitySeq: 17 };
+
+function holdNext(pattern: string) {
+  return new Promise<Route>((resolve, reject) => {
+    page.route(pattern, route => { resolve(route); }, { times: 1 }).catch(reject);
+  });
+}
+
+async function heldTurn(text = "도움말") {
+  const pending = holdNext("**/api/turn");
+  await send(text);
+  return pending;
+}
+
+async function afterProgress(route: Route) {
+  const finished = page.waitForEvent("requestfinished", request => request === route.request());
+  await route.fulfill({ json: finishedReport });
+  await finished;
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+it("진행 조회가 열 초 지연되어도 요청은 하나만 보낸다", async () => {
+  await consent();
+  let waiting = 0;
+  await page.route(progressRoute, () => { waiting++; });
+  await heldTurn();
+  await new Promise(resolve => setTimeout(resolve, 10_250));
+  expect(waiting).toBe(1);
+});
+
+it("멈춘 뒤 도착한 진행 응답은 화면과 복구 기록을 바꾸지 않는다", async () => {
+  const personal = await startUi(false, { PILOT_PROFILE: "personal" });
+  try {
+    await page.goto(personal.url);
+    await page.getByRole("button", { name: "복구 켜고 시작" }).click();
+    await page.getByRole("button", { name: heading }).click();
+    await page.getByRole("button", { name: "동의하고 시작 (Enter)" }).click();
+    await browserExpect(page.locator("#consent-panel")).toBeHidden();
+    const progress = holdNext(progressRoute);
+    await heldTurn();
+    const pending = await progress;
+    await page.locator("#stop-all").click();
+    await browserExpect(state()).toHaveText("중단됨");
+    const log = await page.locator("#log").innerText();
+    const stored = () => page.evaluate(() => sessionStorage.getItem("cheongeum.progressSeq"));
+    const previous = await stored();
+    await afterProgress(pending);
+    expect({ visible: await page.locator("#st-activity").isVisible(), stored: await stored(), log: await page.locator("#log").innerText() })
+      .toEqual({ visible: false, stored: previous, log });
+  } finally {
+    await page.close();
+    await personal.close();
+  }
+});
+
+it("같은 세션의 두 번째 요청에서는 지난 단계 문장을 다시 읽지 않는다", async () => {
+  await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
+  await recordCues(page);
+  const spoken: string[] = [];
+  await page.route("**/api/audio/speak", async route => {
+    const body: unknown = route.request().postDataJSON();
+    if (typeof body === "object" && body !== null && "text" in body && typeof body.text === "string") spoken.push(body.text);
+    await route.fulfill({ path: join(soundCues, "done.ogg"), contentType: "audio/ogg" });
+  });
+  await consent();
+  const firstProgress = holdNext(progressRoute);
+  const firstTurn = await heldTurn();
+  await afterProgress(await firstProgress);
+  await browserExpect.poll(() => spoken.filter(text => text === finishedStep)).toHaveLength(1);
+  await firstTurn.continue();
+  await browserExpect(page.locator("#send")).toBeEnabled();
+  const secondProgress = holdNext(progressRoute);
+  await heldTurn();
+  await afterProgress(await secondProgress);
+  expect(spoken.filter(text => text === finishedStep)).toHaveLength(1);
+  await browserExpect(page.locator("#log .assistant").filter({ hasText: finishedStep })).toHaveCount(1);
+});
+
+it("작업 결과가 도착하면 지금 진행 중인 단계 줄을 숨긴다", async () => {
+  await consent();
+  await page.route(progressRoute, route => route.fulfill({ json: finishedReport }));
+  const turn = await heldTurn();
+  await browserExpect(page.locator("#st-activity")).toHaveText(finishedStep);
+  await turn.continue();
+  await browserExpect(page.locator("#send")).toBeEnabled();
+  await browserExpect(page.locator("#st-activity")).toBeHidden();
+});
+
+it("이전 조회가 남아 있는 동안 다음 작업을 시작해도 진행 요청은 하나다", async () => {
+  await consent();
+  const reports: Route[] = [];
+  await page.route(progressRoute, route => { reports.push(route); });
+  const first = await heldTurn();
+  await browserExpect.poll(() => reports.length).toBe(1);
+  await first.continue();
+  await browserExpect(page.locator("#send")).toBeEnabled();
+  const second = await heldTurn();
+  await new Promise(resolve => setTimeout(resolve, 2500));
+  expect(reports).toHaveLength(1);
+  await afterProgress(reports[0]!);
+  await browserExpect(page.locator("#st-activity")).toBeHidden();
+  await browserExpect.poll(() => reports.length).toBe(2);
+  await afterProgress(reports[1]!);
+  await browserExpect(page.locator("#st-activity")).toHaveText(finishedStep);
+  await second.continue();
+});
+
+it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽지 않는다", async () => {
+  const voice = await startUi(true, { PRACTICE_MODE: "false" });
+  try {
+    await recordCues(page, true);
+    await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
+    const audio = holdNext("**/api/audio/turn?**");
+    const progress = holdNext(progressRoute);
+    const interrupt = holdNext("**/api/audio/stop?**");
+    await consent(voice.url);
+    const [pendingAudio, pendingProgress, spokenStop] = await Promise.all([audio, progress, interrupt]);
+    const clip = Buffer.alloc(2048, 32);
+    clip.write("멈춰");
+    const response = await spokenStop.fetch({
+      headers: { ...spokenStop.request().headers(), "content-type": "audio/webm" }, postData: clip,
+    });
+    expect(await response.json()).toMatchObject({ stopped: true });
+    await spokenStop.fulfill({ response });
+    await browserExpect(state()).toHaveText("중단됨");
+    const log = await page.locator("#log").innerText();
+    await afterProgress(pendingProgress);
+    expect(await page.locator("#st-activity").isVisible()).toBe(false);
+    expect(await page.locator("#log").innerText()).toBe(log);
+    await pendingAudio.fulfill({ status: 409, json: { message: "중단된 작업이에요." } });
+  } finally {
+    await page.close();
+    await voice.close();
+  }
+});
+
+it("진행 상황을 물어도 실행 중인 작업의 단계는 계속 표시한다", async () => {
+  const voice = await startUi(true, { PRACTICE_MODE: "false" });
+  try {
+    await recordCues(page, true);
+    await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
+    const audio = holdNext("**/api/audio/turn?**");
+    const question = holdNext("**/api/audio/stop?**");
+    let polls = 0;
+    await page.route(progressRoute, route => {
+      polls++;
+      return route.fulfill({ json: { ...finishedReport, activitySpoken: false } });
+    });
+    await consent(voice.url);
+    const [pendingAudio, pendingQuestion] = await Promise.all([audio, question]);
+    const activity = page.locator("#st-activity");
+    await browserExpect(activity).toHaveText(finishedStep);
+    await pendingQuestion.continue();
+    await browserExpect(page.locator("#log .user").last()).toContainText("어디까지");
+    const before = polls;
+    await browserExpect.poll(() => polls).toBeGreaterThan(before);
+    await browserExpect(activity).toBeVisible();
+    await browserExpect(activity).toHaveText(finishedStep);
+    await pendingAudio.fulfill({ status: 409, json: { message: "시험을 마쳤어요." } });
+  } finally {
+    await page.close();
+    await voice.close();
   }
 });
