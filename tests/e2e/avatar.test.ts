@@ -69,6 +69,26 @@ async function pixels(element: Element) {
   return { src: element.src, width, height, w: element.naturalWidth, h: element.naturalHeight, foot, head: top + head };
 }
 
+it("아바타의 작업 상태가 바뀔 때만 한 번 알린다", async () => {
+  await overlay();
+  await snap(1, { taskLabel: "연습 준비" });
+  const status = page.locator("#status");
+  await check(status).toHaveText("연습 준비");
+  const changes = await status.evaluateHandle(el => {
+    const messages: string[] = [];
+    new MutationObserver(rows => { messages.push(...rows.map(() => el.textContent ?? "")); })
+      .observe(el, { childList: true, characterData: true, subtree: true });
+    return messages;
+  });
+  const labels = ["화면 확인", "입력 확인", "승인 대기", "연습 진행", "안내 완료", "다음 요청 대기"];
+  for (const [index, label] of labels.entries()) {
+    await snap(2 * index + 2, { taskLabel: label });
+    await check(status).toHaveText(label);
+    await snap(2 * index + 3, { taskLabel: label, captureLabel: "마이크 꺼짐" });
+  }
+  expect(await changes.jsonValue()).toEqual(labels);
+});
+
 it("test_all_animation_frames_fit_the_desktop_portrait", async () => {
   await overlay(false); await send("prefs", { corner: "top-right", still: true });
   const probe = "/@fs/" + REPO_ROOT.replaceAll("\\", "/") + "/tests/e2e/avatar-portrait-probe.ts";

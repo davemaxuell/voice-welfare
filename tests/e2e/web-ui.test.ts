@@ -222,13 +222,16 @@ it("test_command_focus_and_value_survive_rerender", async () => {
 });
 
 /** 화면 낭독기는 aria-live 영역의 DOM이 바뀔 때만 읽는다. 그 바뀜을 센다. */
-async function watchLiveRegion(id: string) {
-  await page.evaluate(id => {
+async function watchLiveRegion(id: string, repliesOnly = false) {
+  await page.evaluate(({ id, repliesOnly }) => {
     const w = window as unknown as { __mutations: Record<string, number> };
     w.__mutations = { ...w.__mutations, [id]: 0 };
-    new MutationObserver(records => { w.__mutations[id] = (w.__mutations[id] ?? 0) + records.length; })
+    new MutationObserver(records => {
+      const count = repliesOnly ? records.filter(r => [...r.addedNodes].some(n => n instanceof Element && n.matches("li.assistant"))).length : records.length;
+      w.__mutations[id] = (w.__mutations[id] ?? 0) + count;
+    })
       .observe(document.getElementById(id)!, { childList: true, characterData: true, subtree: true });
-  }, id);
+  }, { id, repliesOnly });
   return {
     count: () => page.evaluate(id => (window as unknown as { __mutations: Record<string, number> }).__mutations[id] ?? 0, id),
     reset: () => page.evaluate(id => { (window as unknown as { __mutations: Record<string, number> }).__mutations[id] = 0; }, id),
@@ -241,11 +244,12 @@ it("test_repeated_announcement_reaches_screen_reader", async () => {
   await browserExpect(state()).toHaveText("신청서 작성 중", turnTimeout);
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
   const announce = await watchLiveRegion("announce");
+  const replies = await watchLiveRegion("log", true);
   await send("이름은 김하늘");
   await browserExpect(page.locator("#fields")).toContainText("입력됨: 김하늘", turnTimeout);
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
-  await browserExpect(page.locator("#announce")).toHaveText("상태: 신청서 작성 중");
-  expect(await announce.count()).toBeGreaterThan(0);
+  expect(await replies.count()).toBe(1);
+  expect(await announce.count()).toBe(0);
   await announce.reset();
   await page.getByRole("button", { name: "고대비 꺼짐" }).click();
   await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
@@ -262,7 +266,7 @@ it("test_repeated_error_reaches_screen_reader", async () => {
   await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
   const alert = await watchLiveRegion("error");
   await select.selectOption("zh");
-  await browserExpect.poll(alert.count).toBeGreaterThan(0);
+  await browserExpect.poll(alert.count).toBe(1);
   await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
 });
 
@@ -400,8 +404,13 @@ it("같은 세션의 두 번째 요청에서는 지난 단계 문장을 다시 �
   await consent();
   const firstProgress = holdNext(progressRoute);
   const firstTurn = await heldTurn();
+  const announcement = await watchLiveRegion("announce");
+  const replies = await watchLiveRegion("log", true);
   await afterProgress(await firstProgress);
   await browserExpect.poll(() => spoken.filter(text => text === finishedStep)).toHaveLength(1);
+  expect(await replies.count()).toBe(1);
+  expect(await announcement.count()).toBe(0);
+  await browserExpect(page.locator("#st-activity")).not.toHaveAttribute("aria-live", "polite");
   await firstTurn.continue();
   await browserExpect(page.locator("#send")).toBeEnabled();
   const secondProgress = holdNext(progressRoute);
