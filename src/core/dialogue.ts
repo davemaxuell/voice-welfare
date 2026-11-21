@@ -28,9 +28,9 @@ interface Acting extends Confirmed {
 export type Approval =
   | (Acting & { kind?: "submit"; url?: string })
   | (Acting & { kind: "assist"; url?: string; actions: [Action, ...Action[]]; guided?: boolean })
-  | (Acting & { kind: "click"; url: string; pageTitle?: string; then?: "login-open" | "login-submit" })
+  | (Acting & { kind: "click"; url: string; then?: "login-open" | "login-submit" })
   | (Confirmed & { kind: "file"; record: unknown; digest: string; question: string })
-  | (Confirmed & { kind: "visual"; imagePurpose?: "visualDescribe" | "visualOrient" | "visualLink"; goal: string; publicTask?: unknown; checkpoint: unknown })
+  | (Confirmed & { kind: "visual"; goal: string; publicTask?: unknown; checkpoint: unknown })
   | (Confirmed & { kind: "research"; goal: string });
 
 export interface GuardianContact { name: string; phone: string }

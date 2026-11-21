@@ -176,8 +176,6 @@ type DraftExtras = Partial<Pick<TurnResult,
   "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang" | "review" | "answerCard" | "introScript" | "publicSuggestions"
 >> & {
   actions?: DraftAction[];
-  /** 실행 결과를 만든 곳에서만 표시하는 승인 낭독의 구분. */
-  approvalSpeech?: "ask" | "switch" | "expired" | "changed" | "unverified";
   view?: Observation & { pageId: string };
   masked?: boolean;
   secretDetected?: boolean;
