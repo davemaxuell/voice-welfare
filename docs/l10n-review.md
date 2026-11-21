@@ -125,6 +125,8 @@
 | 실시간 음성 연결 시간이 초과됐어요. | The live voice connection timed out. | 实时语音连接超时。 | リアルタイム音声の接続がタイムアウトしました。 |
 | 실시간 음성 대화가 종료됐어요. | Live voice chat ended. | 实时语音对话已结束。 | リアルタイム音声会話が終了しました。 |
 | 실시간 음성 서비스에 연결할 수 없어요. | Cannot connect to the live voice service. | 无法连接实时语音服务。 | リアルタイム音声サービスに接続できません。 |
+| [승인 버튼] | [Approve button] | [批准按钮] | [承認ボタン] |
+| [거절 버튼] | [Decline button] | [拒绝按钮] | [拒否ボタン] |
 | [언어 선택] | [Language selection] | [语言选择] | [言語選択] |
 | 복지로 열어줘 | Open Bokjiro. | 请打开韩国福祉路。 | 韓国の福祉ポータル、ポクチロを開いてください。 |
 

@@ -230,7 +230,13 @@ it.each(["en", "zh", "ja"] as const)("%s 화면과 접근성 이름에서 번역
     const turn = turns[turnId++];
     await route.fulfill(turn === undefined ? { status: 503, json: {} } : { json: { ...common, ...turn, turnId: String(turnId) } });
   });
-  for (const id of ["#confirm-title", "#auth-title", "#answer-title", "#error"]) {
+  await page.route("**/api/session/*/confirm", route => route.fulfill({ json: { ...common, turnId: "confirmed", userUtterance: "[승인 버튼]" } }));
+  await send("test");
+  await check("#confirm-title");
+  await page.locator("#confirm-yes").click();
+  await screen(page.locator("#confirm-panel")).toBeHidden();
+  expect(await untranslated(page.locator("body"))).toEqual([]);
+  for (const id of ["#auth-title", "#answer-title", "#error"]) {
     await send("test");
     await check(id);
   }
