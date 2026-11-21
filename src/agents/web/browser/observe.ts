@@ -2,7 +2,7 @@ import type { DialogInfo, NoticeFacts, Observation, ObservedField, InteractiveIt
 import type { InspectionControl } from "../../../safety/guard.ts";
 
 export interface ControlQuery {
-  text?: string; offset?: number; limit?: number; ref?: string | null; exact?: boolean;
+  text?: string; offset?: number; limit?: number; ref?: string | null; refs?: readonly string[]; exact?: boolean;
   inspection?: boolean; destination?: string; searchField?: string;
   /** ref로 찾은 항목이 팝업 안에 있으면 그 팝업의 사실(notice)을 새로 읽어 함께 돌려준다. */
   notice?: boolean;
@@ -420,8 +420,9 @@ export function observePage(query: ControlQuery | null = null) {
   let generics = 0;
   let matching = 0;
   const needle = (query?.text ?? '').trim().toLocaleLowerCase().replace(/\s+/g, '');
-  const candidates = query?.ref !== undefined && query.ref !== null && query.ref.length > 0 ? document.querySelectorAll('[data-cheongeum-ref="' + CSS.escape(query.ref) + '"]')
-    : (body ? body.getElementsByTagName('*') : []);
+  const requestedRefs = query?.ref !== undefined && query.ref !== null && query.ref.length > 0 ? [query.ref] : query?.refs;
+  const candidates = requestedRefs === undefined ? (body ? body.getElementsByTagName('*') : [])
+    : requestedRefs.length === 0 ? [] : document.querySelectorAll(requestedRefs.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(','));
   for (const el of candidates) {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     const standard = el.matches(CANDIDATE);

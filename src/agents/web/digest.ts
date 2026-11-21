@@ -125,7 +125,7 @@ export function textOffset(d: PageDigest, needle: string): number | undefined {
 }
 
 // 이미 가린 문장을 잘라도 사용자 원문이 다시 들어오지 않는다.
-function cutRedacted(text: Redacted, limit: number): Redacted {
+export function cutRedacted(text: Redacted, limit: number): Redacted {
   return Array.from(text).slice(0, limit).join("") as Redacted;
 }
 
@@ -136,9 +136,7 @@ export async function pageTextForLlm(d: PageDigest, { limit = 3000, scanner }: {
   return [Array.from(raw).slice(0, limit).join(""), cutRedacted(redactText(raw, spans), limit)];
 }
 
-export async function digestForLlm(d: PageDigest, { offset = 0, mainChars = 1500, maxLinks = 30, scanner }: {
-  offset?: number; mainChars?: number; maxLinks?: number; scanner?: Scanner;
-} = {}) {
+export function digestItems(d: PageDigest, maxLinks = 30) {
   const content = d.contentLinks.slice(0, maxLinks);
   const menuAll = d.menu.filter(name => !content.includes(name));
   const controlsAll = d.controls.filter(control => !content.includes(control.name) && !menuAll.includes(control.name));
@@ -146,6 +144,12 @@ export async function digestForLlm(d: PageDigest, { offset = 0, mainChars = 1500
   const nControls = Math.min(controlsAll.length, 12 + spare);
   spare -= Math.max(0, nControls - 12);
   const menu = menuAll.slice(0, 12 + Math.max(0, spare));
+  return [...content.map(name => ({ kind: "link" as const, name })), ...menu.map(name => ({ kind: "menu" as const, name })), ...controlsAll.slice(0, nControls)];
+}
+
+export async function digestForLlm(d: PageDigest, { offset = 0, mainChars = 1500, maxLinks = 30, scanner }: {
+  offset?: number; mainChars?: number; maxLinks?: number; scanner?: Scanner;
+} = {}) {
   const main = flatMain(d);
   const headings = d.headings.slice(0, 8);
   const texts = [d.title, ...headings, ...d.dialogs, main, d.footer];
@@ -155,7 +159,7 @@ export async function digestForLlm(d: PageDigest, { offset = 0, mainChars = 1500
     : redactText(text, spans?.[index]));
   return {
     url: d.url, title: safe[0]!, kind: PAGE_KIND_LABEL[d.kind], headings: safe.slice(1, 1 + headings.length),
-    items: [...content.map(name => ({ kind: "link" as const, name })), ...menu.map(name => ({ kind: "menu" as const, name })), ...controlsAll.slice(0, nControls)],
+    items: digestItems(d, maxLinks),
     hasSearchBox: d.hasSearchBox, dialogs: safe.slice(1 + headings.length, -2), mainText: safe.at(-2)!,
     moreText: Array.from(main).length > offset + mainChars, footer: cutRedacted(safe.at(-1)!, 400),
   };

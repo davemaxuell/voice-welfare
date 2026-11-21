@@ -299,13 +299,16 @@ export class BrowseSkill {
       const url = tryUrl(current.url);
       if (url) return this.openSite(url.origin, ctx);
     }
-    const out = await this.web.followLink(name, ctx, false, {expected});
+    const model = this.deps.webLlm ?? this.deps.llm;
+    const out = await this.web.followLink(name, ctx, false, expected || !model ? {expected} : {picker: {model, scanner: this.deps.scanner}});
     const now = this.web.currentView;
     if (out.status === "needs-approval" && out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view ?? now, "", out.actions);
     if (out.status === "needs-approval" && out.pending) return this.askClick(out.pending, out.view ?? now, "", out.actions);
     if (out.status === "policy-denied" && now?.pageId === "external") {
+      const target = out.actions.at(-1)?.action.target?.name;
+      const found = hasText(target) && target !== name ? `'${redactPictureText(target)}' 항목을 찾았어요. ` : "";
       return draft(this.dialogue.state, "follow-link",
-        "실제 사이트의 신청·제출 같은 버튼은 제가 대신 누르지 않아요. 내용을 확인하신 뒤 직접 눌러 주세요. 로그인은 '로그인하고 싶어'라고 하시면 확인받고 눌러 드려요.", {actions: out.actions});
+        found + "실제 사이트의 신청·제출 같은 버튼은 제가 대신 누르지 않아요. 내용을 확인하신 뒤 직접 눌러 주세요. 로그인은 '로그인하고 싶어'라고 하시면 확인받고 눌러 드려요.", {actions: out.actions});
     }
     if (out.status === "needs-clarification") {
       const candidates = out.candidates ?? [];
