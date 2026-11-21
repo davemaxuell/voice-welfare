@@ -4,7 +4,7 @@ import type { Picture } from "../../core/picture.ts";
 import { isActionName } from "../../safety/guard.ts";
 import { redactPictureText } from "../../safety/privacy.ts";
 import { MAX_NAMES } from "../../speech/picture.ts";
-import type { ExecContext, WebAction, WebExecutionAgent } from "./agent.ts";
+import type { ControlWindow, ExecContext, WebAction, WebExecutionAgent } from "./agent.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import type { WebObservation } from "./view.ts";
 
@@ -21,6 +21,12 @@ export interface VisionModel {
 
 const ROLES = new Set(["link", "tab", "menuitem", "button", "scriptlink"]);
 
+export function safeVisualControl(item: Partial<ControlWindow["items"][number]>): boolean {
+  return item.disabled !== true && item.pictureMasked !== true && item.ref !== undefined && item.ref !== "" &&
+    item.role !== undefined && ROLES.has(item.role) && item.name !== undefined && item.name !== "" &&
+    !isActionName(item.name) && redactPictureText(item.name) === item.name;
+}
+
 /** 이름이 하나뿐이고 누르기 안전한 이동용 조작. 본문 영역이 먼저 온다. */
 function namedControls(view: WebObservation): Array<{ name: string; ref: string; role: string }> {
   const items = (view.outline?.items ?? []).filter(item => item.disabled !== true);
@@ -28,9 +34,9 @@ function namedControls(view: WebObservation): Array<{ name: string; ref: string;
   for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
   const ordered = [...items].sort((a, b) => Number(a.region !== "main") - Number(b.region !== "main"));
   const found: Array<{ name: string; ref: string; role: string }> = [];
-  for (const { name, ref, role } of ordered) {
-    if (name === undefined || name === "" || ref === undefined || ref === "" || counts.get(name) !== 1 ||
-      role === undefined || !ROLES.has(role) || isActionName(name) || redactPictureText(name) !== name) continue;
+  for (const item of ordered) {
+    const {name, ref, role} = item;
+    if (name === undefined || ref === undefined || role === undefined || counts.get(name) !== 1 || !safeVisualControl(item)) continue;
     found.push({ name, ref, role });
   }
   return found;

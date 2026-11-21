@@ -46,7 +46,7 @@ export function looksLoading(text: string): boolean {
 /** 화면에 내용이 그려졌는지(SPA는 주소가 먼저 바뀌고 내용이 나중에 채워진다). */
 export function hasContent(view: WebObservation): boolean {
   const outline = view.outline;
-  return (outline?.linkCount ?? 0) + (outline?.buttons?.length ?? 0) + (view.fields?.length ?? 0) > 0 ||
+  return outline?.hasVisualContent === true || (outline?.linkCount ?? 0) + (outline?.buttons?.length ?? 0) + (view.fields?.length ?? 0) > 0 ||
     (outline?.mainText ?? "").length > 0;
 }
 

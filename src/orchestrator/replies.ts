@@ -222,7 +222,7 @@ export class SessionReplies {
     return s.form.readField(mention, turn.ctx);
   }
 
-  async describeScreen(turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
+  async describeScreen(turn: Turn, exclusions: readonly string[] = [], confirmPicture = false): Promise<Draft> {
     const s = this.session;
     const question = turn.original ?? turn.text;
     const textOnly = exclusions.includes("screen_capture") || s.publicTask.exclusions.includes("screen_capture") ||
@@ -235,7 +235,7 @@ export class SessionReplies {
         previous.push(Array.from(safe).slice(0, 300).join(""));
       }
     }
-    return s.browse.screen(redactPictureText(s.historySpeech(question)), turn.ctx, { previousInputs: previous.slice(-3), allowPicture: !textOnly });
+    return s.browse.screen(redactPictureText(s.historySpeech(question)), turn.ctx, { previousInputs: previous.slice(-3), allowPicture: !textOnly, confirmPicture });
   }
 
   /** 받아쓴 말을 알아듣지 못했을 때: 들은 말을 되읽고 어느 업무인지 묻는다. */
