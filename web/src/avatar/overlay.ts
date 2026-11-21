@@ -234,7 +234,7 @@ function render() {
   $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture === "on");
   root.classList.toggle("has-stop", $("stop").hidden === false);
   renderCard(status, copy);
-  setText($("status"), live && snap.taskLabel !== undefined ? snap.taskLabel : bubble !== null ? $("card-prompt").textContent ?? "" : status);
+  setText($("status"), live && snap.taskLabel !== undefined ? status : bubble !== null ? $("card-prompt").textContent ?? "" : status);
   if (focused !== null && (!focused.isConnected || (focused instanceof HTMLButtonElement && focused.disabled) || focused.closest("[hidden], [inert]") !== null)) focusFirst();
   queueGeometry();
 }

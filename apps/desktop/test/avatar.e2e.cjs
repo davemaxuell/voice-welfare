@@ -387,7 +387,8 @@ const scenarios = {
     }, { what: 'new card after an unchanged gate' });
     const waiting = await server(`/api/session/${sid}/state`);
     assert.equal(waiting.state, 'AUTH_HANDOFF', 'unchanged login page keeps waiting');
-    assert.ok((await logLines(controller)).some((l) => l.startsWith('나: 로그인했어요')), 'the choice is in the transcript as said');
+    const userChoice = controller.locator('#log li.user').filter({ hasText: /^나:\s+로그인했어요$/u });
+    assert.equal(await userChoice.count(), 1, '선택한 사용자의 말이 기록에 한 번 표시된다');
 
     const choicesBefore = requests.filter((r) => r.path.endsWith('/choice')).length;
     await overlay.evaluate((id) => window.cheongeumOverlay.choose(id, 'auth-done'), firstSet);
