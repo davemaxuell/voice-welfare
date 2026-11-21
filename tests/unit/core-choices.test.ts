@@ -88,16 +88,17 @@ it("인증 종류를 모르면 로그인 이름을 쓴다", () => {
 });
 
 it("고른 뒤 처리할 말과 의도가 표와 같다", () => {
-  expect(CHOICE_KEYS).toEqual(["auth-done", "auth-cancel", "read-main"]);
+  expect(CHOICE_KEYS).toEqual(["auth-done", "auth-cancel", "read-main", "resume-navigation"]);
   expect(CHOICE_TURNS).toStrictEqual({
     "auth-done": { text: undefined, intent: { type: "AUTH_DONE" } },
     "auth-cancel": { text: "인증 취소", intent: { type: "REJECT" } },
     "read-main": { text: "본문 읽어줘", intent: { type: "READ_MAIN", more: false } },
+    "resume-navigation": { text: "계속해 줘", intent: { type: "RESUME" } },
   });
   for (const key of CHOICE_KEYS) expect(parseIntent(CHOICE_TURNS[key].intent)).toEqual(CHOICE_TURNS[key].intent);
 });
 
-it("제안 키는 정해진 세 가지만 받는다", () => {
+it("제안 키는 정해진 선택지만 받는다", () => {
   expect(ChoiceKeySchema.safeParse("auth-done").success).toBe(true);
   expect(ChoiceKeySchema.safeParse("approve").success).toBe(false);
 });

@@ -101,6 +101,18 @@ it("공식 안내의 이어 읽기는 한 번 조회하고 페이지를 이동�
   expect(official).toHaveBeenCalledTimes(2);
 });
 
+it("계획 모델이 없어도 열린 탭의 실제 링크를 읽고 번호로 고르게 한다", async () => {
+  const view = observation();
+  view.outline = {...view.outline!, links: ["방문 상담"], items: [
+    {ref: "desk", name: "방문 상담", role: "link", region: "main", disabled: false},
+  ]};
+  const {browse, ctx} = browsing(view);
+  const result = await browse.runGoal("이 페이지에서 상담 시간을 찾아줘", ctx);
+  expect(result.offersLinks).toBe(true);
+  expect(result.speech).toContain("1번 방문 상담");
+  expect(browse.listedLink(0)).toBe("방문 상담");
+});
+
 it("checks a screen answer against the current selection and excludes form values from the model", async () => {
   const view = observation();
   view.outline = {...view.outline!, mainText: "신청 기간은 6월입니다. 하늘동 17번지",

@@ -21,7 +21,7 @@ import { DialogueState } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
-import type { Redacted, StructuredLlm } from "../core/llm.ts";
+import { ModelTransportError, type Redacted, type StructuredLlm } from "../core/llm.ts";
 import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { Progress } from "../core/progress.ts";
@@ -125,7 +125,7 @@ export interface TurnOptions {
   maxCodePoints?: number;
 }
 interface ProcessOptions { fromVoice?: boolean; staleLinkOffer?: boolean }
-interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string }
+interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string; navigationHandoff?: Draft["navigationHandoff"] }
 /** 공공업무 판단에 주는 지난 대화 한 줄. 기관을 모르면 agency는 null(모델에 가는 JSON 그대로). */
 export interface PublicTurn { agency: string | null; request: string; reply: string }
 export interface RecoveryCheckpoint {
@@ -351,6 +351,7 @@ export class SessionOrchestrator {
     const d = this.dialogue;
     const askedVault = d.vaultConfirm, askedAction = d.approval, askedHandoff = d.authHandoff, askedTask = this.publicTask;
     const offered = linkOfferId ?? this.linkOfferId;
+    const navigation = this.#offer?.navigationHandoff;
     const presented = approvalId ?? (fromVoice ? "" : d.confirmation?.actionId ?? "");
 
     const work = async (): Promise<TurnResult> => {
@@ -360,6 +361,13 @@ export class SessionOrchestrator {
       if (epoch !== this.#queue.epoch) return this.voided();
       const spoken = redactText(stripAddress(safeText(spans)));
       const sensitive = detectSensitive(normalized, spans);
+      if (!sensitive.hasSecretValue && navigation !== undefined) {
+        const spokenLabel = stripChars(spoken, " .!?。！？").replace(/\s+/gu, "").toLowerCase();
+        if (LANGS.some(lang => choiceLabel("resume-navigation", lang).replace(/\s+/gu, "").toLowerCase() === spokenLabel)) {
+          if (navigation !== this.#offer?.navigationHandoff) return this.fixedReply(redactText("[계속하기]"), "안내하던 작업이 바뀌었어요. 지금 하려는 일을 알려 주세요.", "ko");
+          return this.process(spoken, sensitive, {type: "RESUME"}, {fromVoice});
+        }
+      }
       const staleLinkOffer = offered !== this.linkOfferId;
       if (staleLinkOffer && !d.hasPendingInteraction && this.publicTask.question.length === 0 &&
           (linkReference(spoken, this.browse.linkChoices) !== undefined || agree(spoken) !== undefined)) {
@@ -452,10 +460,19 @@ export class SessionOrchestrator {
         const view = await this.web.observe(check.ctx).catch(() => undefined);
         if (view?.url !== offer.url) return undefined;
       }
-      this.#offer = undefined;
+      if (chosen !== "resume-navigation") this.#offer = undefined;
       const { text, intent } = CHOICE_TURNS[chosen];
       return this.process(redactText(text ?? choiceLabel(chosen, "ko", offer.authKind)), NO_SECRET, { ...intent });
     });
+  }
+
+  async #resumeNavigation(handoff: NonNullable<Draft["navigationHandoff"]>, turn: Turn): Promise<Draft> {
+    this.#offer = undefined;
+    const refused = this.gate(["GOAL"]);
+    if (refused !== undefined) return refused;
+    const result = await this.browse.resumeNavigation(handoff, turn.ctx);
+    const reviewed = handoff.reviewedTask;
+    return reviewed instanceof ReviewedTask ? this.review.run(reviewed, turn, result) : result;
   }
 
   /** 이 응답 뒤에 버튼으로 고를 수 있는 것. 승인을 기다리면 승인 카드가 맡으므로 내지 않는다. */
@@ -465,6 +482,7 @@ export class SessionOrchestrator {
     if (this.dialogue.authWaiting && handoff !== undefined) {
       return { turnId: turn.id, keys: ["auth-done", "auth-cancel"], handoffId: handoff.id, authKind: handoff.kind };
     }
+    if (out.navigationHandoff !== undefined) return {turnId: turn.id, keys: ["resume-navigation"], navigationHandoff: out.navigationHandoff};
     if (state === "BROWSING" && (out.semanticAction === "open-site" || out.semanticAction === "follow-link" || out.semanticAction === "back") &&
         view !== undefined && view.url.length > 0) {
       return { turnId: turn.id, keys: ["read-main"], url: view.url };
@@ -685,6 +703,8 @@ export class SessionOrchestrator {
 
   /** busy: 다른 턴이 대기열을 잡고 일하는 중(목표 수행이 아니면 단계 기록이 없다) */
   progressDraft(busy: boolean): Draft {
+    const navigationHandoff = this.#offer?.navigationHandoff;
+    if (!busy && navigationHandoff !== undefined) return draft(this.state, "read-state", navigationHandoff.prompt, {navigationHandoff});
     const p = this.progress;
     const latest = p.latest !== undefined && p.latest.length > 0 ? p.latest : undefined;
     const speech = p.running && latest !== undefined ? `지금까지 ${p.count}단계 했어요. 방금 ${latest}` :
@@ -1161,9 +1181,12 @@ export class SessionOrchestrator {
       // 전체 발화를 되풀이한 단계가 빠져 질문 하나만 남아도 모델이 쓴 질문으로 처리한다.
       const splitQuestion = intent.type === "UNKNOWN" && llm !== undefined && understood.by === llm.name && intent.text !== heard;
       if (rest.length > 0 || splitQuestion) return this.finish(turn, await this.runPlan(intents, turn));
-      return this.planner.command(turn, intent.type, () => this.route(intent, turn));
+      return await this.planner.command(turn, intent.type, () => this.route(intent, turn));
     } catch (error) {
       if (isAbort(error)) return this.voided();
+      if (error instanceof ModelTransportError) {
+        return this.finish(turn, draft("RECOVERING", "none", "웹 탐색에 필요한 AI 서비스에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요."));
+      }
       const name = error instanceof Error ? error.name : "Error";
       return this.finish(turn, draft("RECOVERING", "none", `처리 중 문제가 생겨 실행을 멈췄습니다(${name}). 다시 말씀해 주세요.`));
     }
@@ -1500,7 +1523,9 @@ export class SessionOrchestrator {
     };
   }
 
-  async route(intent: Intent, turn: Turn, { plannedQuestion = false }: { plannedQuestion?: boolean } = {}): Promise<Draft> {
+  async route(intent: Intent, turn: Turn, { plannedQuestion = false, exclusions, confirmPicture = false }: {
+    plannedQuestion?: boolean; exclusions?: readonly string[]; confirmPicture?: boolean;
+  } = {}): Promise<Draft> {
     if (intent.type === "FOLLOW_LINK" && turn.staleLinkOffer) return this.changedLinkReply();
     // 모델이 풀어 쓴 질문을 번호 선택이나 입력 칸의 값으로 받아들이지 않는다.
     if (plannedQuestion) {
@@ -1557,11 +1582,11 @@ export class SessionOrchestrator {
     const refused = this.consentGate(intent);
     if (refused !== undefined) return refused;
     const before = this.web.currentView;
-    return this.browse.recognizeAuthPage(await this.dispatch(intent, turn), before, turn.ctx);
+    return this.browse.recognizeAuthPage(await this.dispatch(intent, turn, exclusions, confirmPicture), before, turn.ctx);
   }
 
   /** 의도 종류 → 처리(동의 문을 지난 뒤). 의도 표의 종류가 모두 있는지는 registry 테스트가 본다. */
-  async dispatch(intent: Intent, turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
+  async dispatch(intent: Intent, turn: Turn, exclusions: readonly string[] = [], confirmPicture = false): Promise<Draft> {
     const ctx = turn.ctx;
     const welfare = this.deps.welfare;
     switch (intent.type) {
@@ -1586,10 +1611,10 @@ export class SessionOrchestrator {
       case "PREPARE_SUBMIT": return this.form.prepareSubmit(ctx);
       case "APPROVE": return this.application.approve(turn);
       case "REJECT": return this.form.reject();
-      case "RESUME": return this.browse.resume(ctx);
+      case "RESUME": return this.#offer?.navigationHandoff === undefined ? this.browse.resume(ctx) : this.#resumeNavigation(this.#offer.navigationHandoff, turn);
       case "CURRENT_STEP": return this.browse.currentStep(ctx);
       case "DESCRIBE_PICTURE": return this.browse.picture(intent.question, ctx);
-      case "DESCRIBE_SCREEN": return this.replies.describeScreen(turn, exclusions);
+      case "DESCRIBE_SCREEN": return this.replies.describeScreen(turn, exclusions, confirmPicture);
       case "ABOUT_SITE": return this.browse.aboutSite();
       case "REPHRASE": return this.replies.rephrase(turn);
       case "GOAL": return this.browse.runGoal(intent.goal, ctx);

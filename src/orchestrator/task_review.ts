@@ -342,7 +342,14 @@ export function evidenceFromDraft(draft: Pick<Draft, "view" | "actions" | "revie
     evidence.push(...byAction.get(action.id) ?? []);
   }
   const current = currentPage(view, privateValues);
-  if (current !== undefined) evidence.push(current);
+  if (current !== undefined) {
+    evidence.push(current);
+    if (draft.semanticAction === "describe-screen" && view !== undefined) {
+      // 설명 모델의 답을 인용하지 않고 관찰한 화면의 본문만 근거로 보낸다.
+      const quote = safe(reviewPage(view)?.text ?? "", privateValues);
+      if (quote.length > 0 && !quote.includes(REDACTED)) evidence.push(reviewEvidence("fact", quote, {sources: [current.text]}));
+    }
+  }
   const cited = draft.sources ?? [];
   const sources = new Map<string, string>();
   for (const source of cited) {
