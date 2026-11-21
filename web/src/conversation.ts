@@ -390,7 +390,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
   desk.message = desktopNotice(turnNotice(r));
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
-  set({ last: r, state: r.state, lang: r.lang, hasTurn, activity: null });
+  set({ last: r, state: r.state, lang: r.lang, hasTurn, activity: r.intentType === "PROGRESS" ? ui.activity : null });
   if (isConsent) {
     recordConsent(ui.consent === "granted" ? r.speech : undefined);
     if (ui.consent !== "granted") push({ role: "assistant", text: r.speech });
