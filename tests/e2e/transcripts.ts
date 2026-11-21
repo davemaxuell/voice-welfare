@@ -62,10 +62,10 @@ const publicTaskPrompt = "07ae2984a51e23ca1b04fac9fc12e7b1e5e5661b8f4c49a854c35e
 // 원본 녹취에 쓰인 프롬프트만 새 해시로 옮긴다. 실제 호출의 프롬프트와 입력은 그대로 대조한다.
 const promptRevisions = new Map([
   ["public_service_decision/22a52d57ec64dd88f4e0a766ac2e27544d66000b9d8d5de14575c47c23251d49", publicTaskPrompt],
-  ["intent_plan/9988af5abe511f8995bb8c6bdd6ff2832a29c43c1e7752c5ae409301841ce207", "741accd94c0e06de9fec29b9305470a8275b87a38f4ea3de359b1e30a453a8b5"],
-  ["chat_route/33f0972df08b71633d280e6cfec6e5b0105249faa7c431a2fa43210482b59647", "b4da21f01efe8b9635c19841138fcaa45d16c25aa5cf7fb02bbd236c4d9f22fc"],
-  ["chat_route/616694c49fa03cfe3a0afa238faceca5222cbee32f5626a93767b2c4077e7264", "2073b4e9e3296d9211cac338f2d65a22c71343168066ad247c6d438a76ba3cee"],
-  ["browse_step/fcf351d87bcaabed87b5c73022947c1122b30946651164ce4b282e8cec5da833", "15136b7a898e39f2c4dd08029ea5330980b7efa19edb8469a7993455203be2cf"],
+  ["intent_plan/9988af5abe511f8995bb8c6bdd6ff2832a29c43c1e7752c5ae409301841ce207", "c50b20405167e18184eec4bba70d1d5b87f7ed362ec28fa208d0f7b2c90949a8"],
+  ["chat_route/33f0972df08b71633d280e6cfec6e5b0105249faa7c431a2fa43210482b59647", "83be42e5646d46c7f3083d98668464dfa341cdfc8239e45f70b1a140bae8132c"],
+  ["chat_route/616694c49fa03cfe3a0afa238faceca5222cbee32f5626a93767b2c4077e7264", "9da1b5b6bd2354c3f6ad6d46cab91fd55a00105c0feafb3331460fa7688558bb"],
+  ["browse_step/fcf351d87bcaabed87b5c73022947c1122b30946651164ce4b282e8cec5da833", "46e129981870f3a11c672d952a841b4b42c2e7bf8846c2fda748e01cac6e15e9"],
 ]);
 const conversationCase = "tests/e2e/test_conversation.py::";
 // 기존 답을 재생하기 전에 일반 탐색 명령을 해석하는 공공업무 모델 호출이 한 번 추가된다.

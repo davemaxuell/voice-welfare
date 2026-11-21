@@ -21,7 +21,7 @@ import { DialogueState } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
-import type { Redacted, StructuredLlm } from "../core/llm.ts";
+import { ModelTransportError, type Redacted, type StructuredLlm } from "../core/llm.ts";
 import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { Progress } from "../core/progress.ts";
@@ -1181,9 +1181,12 @@ export class SessionOrchestrator {
       // 전체 발화를 되풀이한 단계가 빠져 질문 하나만 남아도 모델이 쓴 질문으로 처리한다.
       const splitQuestion = intent.type === "UNKNOWN" && llm !== undefined && understood.by === llm.name && intent.text !== heard;
       if (rest.length > 0 || splitQuestion) return this.finish(turn, await this.runPlan(intents, turn));
-      return this.planner.command(turn, intent.type, () => this.route(intent, turn));
+      return await this.planner.command(turn, intent.type, () => this.route(intent, turn));
     } catch (error) {
       if (isAbort(error)) return this.voided();
+      if (error instanceof ModelTransportError) {
+        return this.finish(turn, draft("RECOVERING", "none", "웹 탐색에 필요한 AI 서비스에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요."));
+      }
       const name = error instanceof Error ? error.name : "Error";
       return this.finish(turn, draft("RECOVERING", "none", `처리 중 문제가 생겨 실행을 멈췄습니다(${name}). 다시 말씀해 주세요.`));
     }
