@@ -37,6 +37,15 @@ it("인용이 걸친 원문 문장과 표 행 전체를 보존한다", () => {
   ] as const) expect(PublicEvidence.passage(quote, source), quote).toBe(passage);
 });
 
+it("keeps evidence from a second source when the first has already contributed four passages", () => {
+  const evidence = new PublicEvidence(["dates"]);
+  for (const url of ["https://first.go.kr/", "https://second.go.kr/"]) {
+    const rows = ["가", "나", "다", "라"].map(day => day + "요일 방문 시간");
+    evidence.collect(rows.map(quote => ({ fact: "dates", quote })), new Map([[url, rows.join("\n")]]), { observedRow: true });
+  }
+  expect(evidence.result(new Map())[1].map(source => source.url)).toEqual(["https://first.go.kr/", "https://second.go.kr/"]);
+});
+
 it("요청한 사실별로 마지막 페이지부터 찾고 빠진 사실을 말한다", () => {
   const evidence = new PublicEvidence(["amount", "dates", "documents"]);
   evidence.collect([

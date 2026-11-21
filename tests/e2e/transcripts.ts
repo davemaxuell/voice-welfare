@@ -58,7 +58,7 @@ const runtime = createTestRuntime();
 export const openRecordedSession = openBrowserTranscript(runtime);
 export const closeTranscriptRuntime = runtime.close;
 
-const publicTaskPrompt = "07ae2984a51e23ca1b04fac9fc12e7b1e5e5661b8f4c49a854c35e3330600a35";
+const publicTaskPrompt = "b1643521d29d4b8799081706b74f71bf9b5a11149308ee117f29154a68784955";
 // 원본 녹취에 쓰인 프롬프트만 새 해시로 옮긴다. 실제 호출의 프롬프트와 입력은 그대로 대조한다.
 const promptRevisions = new Map([
   ["public_service_decision/22a52d57ec64dd88f4e0a766ac2e27544d66000b9d8d5de14575c47c23251d49", publicTaskPrompt],
