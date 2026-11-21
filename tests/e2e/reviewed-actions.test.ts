@@ -1,8 +1,9 @@
 import type { Page } from "playwright";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
-import { FakeLlm, withLlm } from "../helpers.ts";
+import { FakeLlm, PORTAL, withLlm } from "../helpers.ts";
 import { browserCases, flat } from "./browser-cases.ts";
+import { apiFixture, Approval } from "./runtime-http-fixture.ts";
 
 const open = browserCases();
 const parts = ["정부24를 열고", "방문 안내 링크를 누르고", "별칭 칸에 민들레를 입력하고", "이용 시간 안내 링크를 열어줘"];
@@ -190,6 +191,22 @@ it.each(["approve", "decline", "stale", "stop"])("test_reviewed_open_click_fill_
   expect(await page.evaluate(() => sessionStorage.getItem("alias"))).toBeNull();
   expect(documents.filter(u => u === "/guide")).toHaveLength(1);
   expect(documents).not.toContain("/hours");
+});
+
+it("같은 입력 승인을 동시에 두 번 보내면 칸에는 한 번만 쓴다", async () => {
+  const fixture = apiFixture();
+  try {
+    const { sessionId } = z.object({ sessionId: z.string() }).parse(await (await fixture.post("/api/session")).json());
+    const say = (text: string) => fixture.post("/api/turn", { sessionId, text });
+    await say(PORTAL + " 열어줘");
+    const { actionId } = Approval.parse(await (await say("이름 칸에 김하늘 써줘")).json()).pendingConfirmation;
+    const confirm = () => fixture.post(`/api/session/${sessionId}/confirm`, { actionId, approve: true });
+    const results = await Promise.all([confirm(), confirm()]);
+    expect(results.map(r => r.status)).toEqual([200, 200]);
+    const { events } = z.object({ events: z.array(z.object({ actionType: z.string(), success: z.boolean() })) })
+      .parse(await (await fixture.api.request("/api/events")).json());
+    expect(events.filter(e => e.actionType === "fill" && e.success)).toHaveLength(1);
+  } finally { await fixture.close(); }
 });
 
 it("test_final_arrival_is_checked_after_the_reviewer_replies", async () => {
