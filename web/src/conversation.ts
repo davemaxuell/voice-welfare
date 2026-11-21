@@ -27,6 +27,36 @@ const env: Env = { background: BACKGROUND, mac: /Mac/.test(navigator.platform) }
 const desktop = window.cheongeumDesktop;
 let desktopLanguage = desktop === undefined ? undefined : LangSchema.safeParse(new URLSearchParams(location.search).get("desktopLang")).data;
 
+function syncDesktopLanguage(lang: Lang) {
+  if (desktop === undefined) return;
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("desktopLang") !== lang) {
+      url.searchParams.set("desktopLang", lang);
+      history.replaceState(history.state, "", url.href);
+    }
+  } catch { /* 주소 갱신 불가 환경 무시 */ }
+}
+
+const TRANSLATE_FAIL_PREFIXES: readonly string[] = [
+  "(Translation could not be verified, so here is the original Korean.)",
+  "（无法确认翻译是否准确，以下为韩语原文。）",
+  "（翻訳を確認できなかったため、韓国語の原文をお伝えします。）",
+];
+
+function responseLanguage(r: Turn): Lang {
+  if (r.semanticAction === "set-language") return r.lang;
+  if (ui.requestedLanguage !== undefined) return ui.requestedLanguage;
+  if (r.lang === "ko" && ui.lang !== "ko" && (r.localSpeechOnly === true ||
+      TRANSLATE_FAIL_PREFIXES.some(prefix => r.speech.startsWith(prefix)))) {
+    return ui.lang;
+  }
+  return r.lang;
+}
+
+const REMINDER_NOW = /^(?:지금|now|现在|今)[.!。！?？ ]*$/iu;
+const REMINDER_MORNING = /^(?:아침|morning|早上|朝)[.!。！?？ ]*$/iu;
+
 const t = (text: string, values?: Readonly<Record<string, string | number>>) => workspaceText(text, ui.lang, values);
 const consentText = (lang: string = ui.lang) => consentTextFor(ui, env, lang);
 
@@ -355,12 +385,13 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
-  const language = r.semanticAction === "set-language" ? r.lang : ui.requestedLanguage ?? ui.lang;
+  const language = responseLanguage(r);
   if (language !== ui.lang) {
     const generation = stoppedGeneration;
     await loadWorkspaceLanguage(language);
     if (generation !== stoppedGeneration || r.sessionId !== ui.sessionId || ui.last?.turnId !== prevTurn) return;
   }
+  syncDesktopLanguage(language);
   if (r.intentType === "READ_START_GUIDE") r = { ...r, speech: consentText(r.lang) };
   if (r.intentType === "SETUP_RESTART") {
     // 처음 설정 화면이 녹음한 문장을 틀므로 응답은 말하지 않는다
@@ -1056,7 +1087,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   if (!await readyForInput()) return;
   const origin = document.activeElement;
   const fromForm = insideCommandArea(origin);
-  if (reminderNight && /^지금[.! ]*$/.test(t)) {
+  if (reminderNight && REMINDER_NOW.test(t)) {
     const { text: due } = await api.reminders(ui.sessionId).catch(() => ({ text: undefined }));
     if (due != null && due.length > 0) {
       reminderSeen = `${new Date().toDateString()}|${due}`;
@@ -1065,7 +1096,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
     }
     return;
   }
-  if (reminderNight && /^아침[.! ]*$/.test(t)) return;
+  if (reminderNight && REMINDER_MORNING.test(t)) return;
   const stop = stoppedGeneration;
   const input = timing?.begin("input-received");
   set({ busy: true, error: undefined });
@@ -1398,9 +1429,7 @@ export async function selectLanguage(lang: Lang) {
   const current = () => request === languageRequest && sid === ui.sessionId;
   set({ requestedLanguage: lang });
   try {
-    await loadWorkspaceLanguage(lang);
-    if (!current()) return;
-    const r = await api.language(sid, lang);
+    const [r] = await Promise.all([api.language(sid, lang), loadWorkspaceLanguage(lang)]);
     if (!current()) return;
     await applyResult(r, !conversationOn, true, { controlLabel: workspaceText("[언어 선택]", lang) });
     if (conversationOn && current()) await speakTurn(r);
@@ -1571,6 +1600,7 @@ export async function answerRecovery(yes: boolean) {
     closeRecovery();
     await loadWorkspaceLanguage(checkpoint.lang ?? "ko");
     setSpeechLang(checkpoint.lang ?? "ko");
+    syncDesktopLanguage(checkpoint.lang ?? "ko");
     set({ state: checkpoint.state, lang: checkpoint.lang ?? "ko",
       last: { authHandoff: checkpoint.authHandoff, turnId: checkpoint.turnId, offeredChoices: checkpoint.offeredChoices }, hasTurn: true });
     tabStore(PROGRESS_KEY, String(checkpoint.progressSeq ?? 0));
@@ -1721,6 +1751,7 @@ export async function saveSettings(values: SettingsInput, autostart: boolean | u
       if (values.language !== dialog.prefs?.language) {
         await loadWorkspaceLanguage(values.language);
         setSpeechLang(values.language);
+        syncDesktopLanguage(values.language);
         set({ lang: values.language });
       }
       announce(t("이용 설정을 저장했어요."));
@@ -1750,6 +1781,7 @@ async function openSession(recovery: boolean) {
     await loadWorkspaceLanguage(language);
     if (s.sessionId !== ui.sessionId) return;
     setSpeechLang(language);
+    syncDesktopLanguage(language);
     set({ lang: language, announcement: { text: workspaceText("청음을 준비하고 있어요.", language), seq: ui.announcement.seq } });
     if (s.speechPrefs !== undefined) applySpeechPrefs(s.speechPrefs);
     if (!s.consentRequired) {
