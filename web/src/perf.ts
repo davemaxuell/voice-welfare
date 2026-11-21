@@ -1,5 +1,5 @@
 export type Stage = "input-received" | "first-state-paint" | "turn-sent" | "result-applied" | "turn-failed"
-  | "stop-requested" | "local-stop-shown" | "cancel-acknowledged" | "stopped-state-paint"
+  | "stop-requested" | "stop-observed" | "local-stop-shown" | "cancel-acknowledged" | "stopped-state-paint"
   | "microphone-requested" | "track-live" | "capture-end" | "transcript-shown"
   | "speech-requested" | "first-audio" | "overlay-loaded" | "figure-visible";
 
@@ -21,10 +21,10 @@ export class ClientTiming {
   private lastCancelled = -1;
   private pending = new Set<number>();
 
-  mark(stage: Stage, turn = this.sequence, since?: number): TimingPoint {
+  mark(stage: Stage, turn = this.sequence, since?: number, startTime?: number): TimingPoint {
     const name = `cheongeum:${stage}`;
     performance.clearMarks(name);
-    const time = performance.mark(name, { detail: turn }).startTime;
+    const time = performance.mark(name, { detail: turn, startTime }).startTime;
     const record = { stage, durationMs: since === undefined ? 0 : time - since, turn, cancelled: false };
     this.data.records.push(record);
     if (this.data.records.length > 2048) this.data.records.shift();
@@ -52,9 +52,19 @@ export class ClientTiming {
     this.lastCancelled = this.sequence++;
   }
 
-  stop() {
+  stop(startTime?: number) {
     this.cancelPending();
-    return this.mark("stop-requested");
+    return this.mark("stop-requested", this.sequence, undefined, startTime);
+  }
+
+  confirmedStop(startTime?: number) {
+    if (startTime === undefined) {
+      this.cancelPending();
+      return this.mark("stop-observed");
+    }
+    const request = this.stop(startTime);
+    this.measure(request, "cancel-acknowledged");
+    return request;
   }
 
   afterPaint(from: TimingPoint | undefined, to: Stage, visible: () => boolean = () => true) {

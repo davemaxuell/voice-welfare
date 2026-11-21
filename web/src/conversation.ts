@@ -346,7 +346,8 @@ async function readyForInput() {
 
 // ---------------------------------------------------------------- 응답·음성
 
-async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, sent?: TimingPoint, capture?: TimingPoint) {
+type TurnTiming = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint };
+async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnTiming) {
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
@@ -359,6 +360,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, sen
   }
   const prevState = ui.state;
   const stopped = r.intentType === "STOP" || r.semanticAction === "stop";
+  const stop = trace?.stop ?? (stopped ? timing?.confirmedStop(trace?.sent?.time) : undefined);
   const wake = desk.wakeCount;
   if (r.state === "STOPPED" && r.stopGeneration !== undefined && Number.isInteger(r.stopGeneration)) desk.stopGeneration = r.stopGeneration;
   else if (r.state !== "STOPPED") desk.stopGeneration = null;
@@ -396,8 +398,10 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, sen
     push({ role: "user", text: r.userUtterance });
     push({ role: "assistant", text: r.speech });
   }
-  timing?.measure(sent, "result-applied");
-  timing?.afterPaint(capture, "transcript-shown");
+  timing?.measure(trace?.sent, "result-applied");
+  timing?.afterPaint(trace?.capture, "transcript-shown");
+  timing?.afterPaint(stop, "stopped-state-paint", () =>
+    r.turnId === ui.last?.turnId && document.getElementById("st-state")?.dataset.state === "STOPPED");
   announce(workspaceText("상태", ui.lang) + ": " + workspaceText(STATE_LABELS_KO[r.state], ui.lang));
   const kind = stopped && !sleepOnStop ? undefined : transitionCue(prevState, r.state);
   if (kind !== undefined && !(kind === "stopped" && Date.now() - stopCuedAt < STOP_CUE_WINDOW_MS)) await cue(kind);
@@ -686,7 +690,7 @@ export async function startConversation() {
       if (loop !== current) break;
       failures = 0;
       missed = 0;
-      await applyResult(r, r.state === "STOPPED", true, sent, capture);
+      await applyResult(r, r.state === "STOPPED", true, { sent, capture });
       if (loop !== current) break;
       setPhase("speaking");
       // 끼어들기: 안내 중에 사용자가 말하면 안내를 멈추고 바로 듣는다.
@@ -716,7 +720,7 @@ export async function startConversation() {
         try {
           const { result: again, capture, sent } = await voiceTurn(clip, bargeAsked, current);
           if (loop !== current) break;
-          await applyResult(again, again.state === "STOPPED", true, sent, capture);
+          await applyResult(again, again.state === "STOPPED", true, { sent, capture });
           if (loop !== current) break;
           setPhase("speaking");
           await speakTurn(again);
@@ -835,12 +839,14 @@ function listenForStopWhileBusy(voice: VoiceLoop) {
       if (clip === null && busyTalking && on) continue;
       if (clip === null || !on) { clip?.cancel(); break; }
       try {
+        const sentAt = timing === undefined ? undefined : performance.now();
         const r = await api.audioStop(ui.sessionId ?? "", clip);
         if (loop !== voice) break;
         if (r.stopped) {
+          const stop = timing?.confirmedStop(sentAt);
           cueStopped();
           announce("멈출게요.");
-          if (r.result !== undefined) await applyResult(r.result);
+          if (r.result !== undefined) await applyResult(r.result, true, true, { stop });
           break;
         } else if (on && r.result !== undefined) {
           await applyResult(r.result, false);
@@ -1026,7 +1032,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.turn(ui.sessionId, t, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, sent);
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1072,8 +1078,11 @@ export function stopAll() {
 
 async function stopSession() {
   const requested = timing?.stop();
-  const localIndicator = ui.listening || ui.phase !== "off" || ui.speaking;
   const stop = ++stoppedGeneration;
+  if (ui.listening || ui.phase !== "off" || ui.speaking) {
+    timing?.afterPaint(requested, "local-stop-shown", () =>
+      stop === stoppedGeneration && !ui.listening && ui.phase === "off" && !ui.speaking);
+  }
   const wake = desk.wakeCount;
   const previousTurn = ui.last;
   desk.sleeping = ui.sessionId !== undefined;
@@ -1087,8 +1096,6 @@ async function stopSession() {
   recording?.cancel();
   recording = undefined;
   set({ listening: false, error: undefined });
-  if (localIndicator) timing?.afterPaint(requested, "local-stop-shown", () =>
-    stop === stoppedGeneration && !ui.listening && ui.phase === "off" && !ui.speaking);
   if (ui.sessionId === undefined) return;
   try {
     const result = await api.cancel(ui.sessionId);
@@ -1097,12 +1104,7 @@ async function stopSession() {
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
-    else {
-      const applied = applyResult(result, stillSleeping, stillSleeping);
-      timing?.afterPaint(requested, "stopped-state-paint", () =>
-        stop === stoppedGeneration && document.getElementById("st-state")?.dataset.state === "STOPPED");
-      await applied;
-    }
+    else await applyResult(result, stillSleeping, stillSleeping, { stop: requested });
   } catch (e) {
     if (stop !== stoppedGeneration || wake !== desk.wakeCount) return;
     desk.sleeping = false;
@@ -1120,7 +1122,7 @@ async function confirm(approve: boolean, actionId: string) {
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.confirm(ui.sessionId, approve, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, sent);
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1253,7 +1255,7 @@ export async function toggleMic() {
     const sent = timing?.measure(capture, "turn-sent");
     try {
       const result = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, rec.asked)));
-      if (generation === stoppedGeneration) await applyResult(result, true, true, sent, capture);
+      if (generation === stoppedGeneration) await applyResult(result, true, true, { sent, capture });
     } catch (e) {
       timing?.measure(sent, "turn-failed");
       if (generation === stoppedGeneration) setError(errorMessage(e));

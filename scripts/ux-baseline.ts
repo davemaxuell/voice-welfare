@@ -12,7 +12,7 @@ import { startUi } from "../tests/e2e/web-ui-fixtures.ts";
 import { ensureMockSite } from "./mock-site.ts";
 import { main as withPortLock } from "./with-port-lock.ts";
 
-const scenarios = ["typed", "stop", "approval", "progress", "typing-100", "typing-1000", "typing-5000"] as const;
+const scenarios = ["progress", "stop", "approval", "typing-100", "typing-1000", "typing-5000", "typed"] as const;
 type Scenario = typeof scenarios[number];
 const metrics: Record<Scenario, string> = {
   typed: "요청 처리 시작 → 결과 반영", stop: "멈춰 → 중단됨 상태 표시", approval: "승인 선택 → 결과 반영",

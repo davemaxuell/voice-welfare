@@ -109,6 +109,21 @@ function measureVisibleFigure() {
   const start = loaded;
   requestAnimationFrame(() => {
     if (loaded !== start || $("overlay").inert || document.hidden) return;
+    const figure = $("figure");
+    const visible = { opacityProperty: true, visibilityProperty: true };
+    if (figure.dataset.renderer === "webgl") {
+      if (character?.hasDrawnFrame !== true || !$("character").checkVisibility(visible)) {
+        measureVisibleFigure();
+        return;
+      }
+    } else {
+      const poster = element(figure.dataset.sleeping === "true" ? "sleeping-still" : "still", HTMLImageElement);
+      if (!poster.complete || poster.naturalWidth === 0) return;
+      if (!poster.checkVisibility(visible)) {
+        if ($("overlay").hasAttribute("data-presenting")) measureVisibleFigure();
+        return;
+      }
+    }
     loaded = undefined;
     requestAnimationFrame(() => timing?.measure(start, "figure-visible"));
   });
@@ -524,7 +539,10 @@ if (bridge.onVisibility !== undefined) {
 }
 
 bridge.onFocus(focusFirst);
-if (timing !== undefined) document.addEventListener("visibilitychange", measureVisibleFigure);
+if (timing !== undefined) {
+  document.addEventListener("visibilitychange", measureVisibleFigure);
+  $("figure").addEventListener("load", measureVisibleFigure, true);
+}
 const sizeObserver = new ResizeObserver(reportSize);
 sizeObserver.observe(overlay);
 sizeObserver.observe($("card"));
