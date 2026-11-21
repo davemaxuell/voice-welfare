@@ -32,6 +32,40 @@ it("마이크 권한을 거절해도 텍스트로 질문할 수 있다", async (
   } finally { await page.close(); await voice.close(); }
 });
 
+it("서버가 끊기면 사용 중인 수동 녹음 트랙을 닫고 음성을 보내지 않는다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  try {
+    await page.context().grantPermissions(["microphone"], { origin: voice.url });
+    await page.clock.install();
+    await page.goto(voice.url);
+    const tracks = await page.evaluateHandle(() => {
+      const captured: MediaStreamTrack[] = [];
+      const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async constraints => {
+        const stream = await open(constraints);
+        captured.push(...stream.getAudioTracks());
+        return stream;
+      };
+      return captured;
+    });
+    let beats = 0, uploads = 0;
+    page.on("request", r => { if (new URL(r.url()).pathname === "/api/audio/turn") uploads++; });
+    await screen(page.locator("#send")).toBeEnabled();
+    await page.route("**/api/session/*/heartbeat", route => { beats++; return route.abort("internetdisconnected"); });
+    await page.clock.fastForward(15_100);
+    await screen.poll(() => beats).toBe(1);
+    await page.locator("#mic-btn").click();
+    await screen(page.locator("#mic-btn")).toHaveAttribute("aria-pressed", "true");
+    await page.clock.fastForward(14_950);
+    await screen(page.locator("#task-label")).toHaveText("연결이 끊겼어요");
+    await screen(page.locator("#capture-label")).toHaveText("마이크 꺼짐");
+    const states = await tracks.evaluate(list => list.map(track => track.readyState));
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.every(state => state === "ended")).toBe(true);
+    expect(uploads).toBe(0);
+  } finally { await page.close(); await voice.close(); }
+});
+
 it("듣던 마이크가 끊기면 대화를 끄고 연결 안내를 보여 준다", async () => {
   const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
   try {

@@ -299,8 +299,27 @@ function connectionChanged(path: string, failure?: ApiError) {
   }
   const lost = path.endsWith("/heartbeat") ? ++missedHeartbeats >= 2 : failure.kind === "network";
   if (lost && ui.offline !== true) {
-    set({ offline: true, activity: null, error: ui.cancelUnconfirmed === true ? "cancelFailed" : pendingResult ? "lostTurn" : "offline", errorSeq: ui.errorSeq + 1 });
+    endConversation(false);
+    manualRequestGeneration = -1;
+    recording?.cancel();
+    recording = undefined;
+    manualStream?.getTracks().forEach(track => track.stop());
+    manualStream = undefined;
+    set({ offline: true, listening: false, activity: null, error: ui.cancelUnconfirmed === true ? "cancelFailed" : pendingResult ? "lostTurn" : "offline", errorSeq: ui.errorSeq + 1 });
   }
+}
+
+type ServerState = Awaited<ReturnType<typeof api.resume>> | Awaited<ReturnType<typeof api.sessionState>>;
+
+function applyServerState(state: ServerState, error: IssueKey | undefined) {
+  const last = "consent" in state
+    ? { authHandoff: state.authHandoff, turnId: state.turnId, offeredChoices: state.offeredChoices }
+    : { pendingConfirmation: state.pendingConfirmation };
+  const decision = currentDecision({ ...ui, state: state.state, last });
+  // 서버가 아직 기다리는 승인만 새 카드 번호로 다시 고를 수 있다.
+  if (decision?.kind === "approval") desk.dropped.delete(decision.key);
+  if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
+  set({ state: state.state, last, activity: null, error });
 }
 
 async function reconcileResult() {
@@ -311,18 +330,14 @@ async function reconcileResult() {
   const run = async () => {
     try {
       // 복구를 켠 개인 세션만 복구 체크포인트를 읽는다. 이미 붙어 있는 세션은 현재 상태만 조회한다.
-      let state: Awaited<ReturnType<typeof api.resume>> | Awaited<ReturnType<typeof api.sessionState>>;
+      let state: ServerState;
       if (recoverable) {
         try { state = await api.resume(pending.sessionId); }
         catch (e) { if (errorCode(e) !== "RECOVERY_NOT_WAITING") throw e; state = await api.sessionState(pending.sessionId); }
       } else state = await api.sessionState(pending.sessionId);
       if (!current()) return;
       pendingResult = undefined;
-      if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
-      const last = "consent" in state
-        ? { authHandoff: state.authHandoff, turnId: state.turnId, offeredChoices: state.offeredChoices }
-        : { pendingConfirmation: state.pendingConfirmation };
-      set({ state: state.state, last, error: ui.error === "timeout" ? "timeout" : "lostTurn", activity: null });
+      applyServerState(state, ui.error === "timeout" ? "timeout" : "lostTurn");
     } catch { if (current() && ui.error !== "timeout") setError("lostTurn"); }
   };
   checkingResult = run().finally(() => { checkingResult = undefined; });
@@ -356,8 +371,7 @@ export async function actOnIssue(action: IssueAction) {
     if (action === "check") {
       const state = await api.sessionState(sid);
       if (sid !== ui.sessionId || generation !== stoppedGeneration) return;
-      if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
-      set({ state: state.state, last: { pendingConfirmation: state.pendingConfirmation } });
+      applyServerState(state, ui.error);
     } else await api.heartbeat(sid);
     if (ui.cancelUnconfirmed !== true && (ui.error === "expired" || ui.error === "timeout")) set({ error: undefined });
   } catch (error) { setError(kindOf(error)); }
@@ -1447,19 +1461,24 @@ function reveal(where?: string) {
 /** 한 번 누르면 녹음하고 다시 누르면 음성 API에 보낸다. */
 export async function toggleMic() {
   if (openingMic || ui.sessionId === undefined || !ui.voiceMode.stt || ui.consent !== "granted") return;
-  if (!await readyForInput() || openingMic || ui.last?.authHandoff?.status === "waiting") return;
   if (recording !== undefined) {
     const rec = recording;
     const generation = stoppedGeneration;
+    const sessionId = ui.sessionId;
     recording = undefined;
     set({ listening: false, busy: true });
     announce(t("인식 중입니다."));
     const audio = await rec.stop();
+    if (generation !== stoppedGeneration || manualRequestGeneration !== generation || sessionId !== ui.sessionId || ui.offline === true) {
+      audio.cancel();
+      set({ busy: false });
+      return;
+    }
     const capture = timing?.begin("capture-end");
     void cue("done");
     const sent = timing?.measure(capture, "turn-sent");
     try {
-      const result = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, rec.asked)));
+      const result = await withProgressCues(whileBusy(api.audioTurn(sessionId, audio, rec.asked)));
       if (generation === stoppedGeneration) await applyResult(result, true, true, { sent, capture });
     } catch (e) {
       timing?.measure(sent, "turn-failed");
@@ -1469,6 +1488,7 @@ export async function toggleMic() {
     }
     return;
   }
+  if (!await readyForInput() || openingMic || ui.last?.authHandoff?.status === "waiting") return;
   stopSpeaking();
   set({ error: undefined });
   openingMic = true;
@@ -1476,17 +1496,18 @@ export async function toggleMic() {
   microphoneTrouble = false;
   captureChanged();
   const sessionId = ui.sessionId, generation = stoppedGeneration;
+  const current = () => sessionId === ui.sessionId && generation === stoppedGeneration && manualRequestGeneration === generation && ui.offline !== true;
   try {
     await cue("listen");
     const asked = ui.last?.pendingConfirmation?.actionId ?? "";
     const rec = await startRecording(() => api.liveAudio(sessionId), ui.micId, () => void toggleMic(), stream => {
-      if (sessionId !== ui.sessionId || generation !== stoppedGeneration || authWaiting() ||
+      if (!current() || authWaiting() ||
           ui.consent !== "granted" || dialogNow() !== undefined) return false;
       manualStream = stream;
       captureChanged();
       return true;
     }, captureChanged);
-    if (sessionId !== ui.sessionId || generation !== stoppedGeneration || ui.consent !== "granted"
+    if (!current() || ui.consent !== "granted"
         || dialogNow() !== undefined || authWaiting()) {
       rec.cancel();
       return;
@@ -1495,7 +1516,7 @@ export async function toggleMic() {
     set({ listening: true });
     announce(t("듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요."));
   } catch {
-    if (sessionId !== ui.sessionId || generation !== stoppedGeneration || authWaiting()) return;
+    if (!current() || authWaiting()) return;
     microphoneTrouble = true;
     setError("micDenied");
   } finally {
