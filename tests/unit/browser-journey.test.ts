@@ -82,7 +82,7 @@ it("잘못 들어간 화면에서 돌아와 인증을 맡긴 뒤 다른 경로�
   const f = fixture(initial, request => {
     const current = JSON.parse(request.user);
     requests++;
-    if (current.page.title === "공개 안내") return { action: "fail", assessment: "dead_end" };
+    if (current.page.title === "공개 안내") return { action: "no_route", assessment: "dead_end" };
     if (current.page.title === "접수 상태") {
       expect(current.journey).toMatchObject({
         resumed: true, blockedBy: null, currentSubgoal: "접수 상태 화면",

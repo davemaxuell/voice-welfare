@@ -33,6 +33,40 @@ async function installPages(page: Page) {
   return documents;
 }
 
+it("answers capability questions, describes the current page, and acts on a polite request to click", async () => {
+  const { session, page } = await open({ practiceMode: false });
+  const documents = await installPages(page);
+  await page.goto("https://www.gov.kr/guide");
+  const capability = "청음이 크롬 메뉴도 눌러 줄 수 있나요?";
+  const describe = "이 화면에 있는 별칭 입력란을 설명해 줄래요?";
+  const operate = "지금 탭에서 이용 시간 안내 링크를 눌러 줄래요?";
+  const explanation = "청음은 현재 탭에서 이름이 확인된 메뉴를 열 수 있어요.";
+  const description = "별칭 입력란이 있어요.";
+  withLlm(session, new FakeLlm(({ schemaName, user }) => {
+    if (schemaName === "intent_plan") {
+      const { utterance } = z.object({ utterance: z.string() }).parse(JSON.parse(user));
+      if (utterance === describe) return { steps: [flat("DESCRIBE_SCREEN")] };
+      if (utterance === operate) return { steps: [flat("FOLLOW_LINK", { topic: "이용 시간 안내" })] };
+      return { steps: [flat("UNKNOWN")] };
+    }
+    if (schemaName === "chat_route") return { route: "general", reply: explanation };
+    if (schemaName === "screen_text_decision") return { decision: "answer", answer: description, evidence: ["별칭"] };
+    return undefined;
+  }));
+
+  const answer = await session.handleTurn(capability);
+  expect(answer.speech).toContain(explanation);
+  expect(answer.actions).toEqual([]);
+  expect(answer.pendingConfirmation).toBeUndefined();
+  const inspected = await session.handleTurn(describe);
+  expect(inspected.speech).toContain(description);
+  expect(inspected.actions).toEqual([]);
+  expect(documents).toEqual(["/guide"]);
+  const opened = await session.handleTurn(operate);
+  expect(opened.actions.map(action => action.action.type), opened.speech).toEqual(["click"]);
+  expect(page.url()).toBe("https://www.gov.kr/hours");
+});
+
 function plannedModel(afterReview?: () => Promise<unknown>) {
   return new FakeLlm(async ({ schemaName, user }) => {
     if (schemaName === "public_service_decision") return { kind: "review_before_output", agency: "정부24", source: null, searchMode: null,
