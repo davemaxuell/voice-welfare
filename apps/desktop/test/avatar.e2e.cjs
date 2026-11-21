@@ -1,6 +1,8 @@
 // 아바타 창 E2E: node apps/desktop/test/avatar.e2e.cjs [시나리오 이름…]
 // 실제 Electron 앱을 띄워 아바타 창과 대화 창이 세션 하나를 함께 쓰는지 확인한다(창이 잠깐 화면에 뜬다).
 const assert = require('node:assert/strict');
+const { mkdir, writeFile } = require('node:fs/promises');
+const path = require('node:path');
 const { launch, windows, until } = require('./harness.cjs');
 
 const isController = (w) => w.url.includes('desktop=1');
@@ -77,6 +79,62 @@ async function recordPoses(overlay) {
 }
 
 const scenarios = {
+  async soak({ app, controller, overlay, errors }) {
+    const dir = path.resolve(__dirname, '../../../reports/ux');
+    await mkdir(dir, { recursive: true });
+    const samples = [];
+    async function sample(cycle, phase) {
+      const processes = await app.evaluate(({ app, BrowserWindow }) => {
+        const roles = new Map([[process.pid, 'main']]);
+        for (const w of BrowserWindow.getAllWindows()) {
+          const url = w.webContents.getURL();
+          if (url.includes('desktop=1')) roles.set(w.webContents.getOSProcessId(), 'conversation');
+          if (url.includes('/avatar/')) roles.set(w.webContents.getOSProcessId(), 'overlay');
+        }
+        return app.getAppMetrics().map(({ pid, type, name, cpu, memory }) => ({
+          pid, role: roles.get(pid) ?? (name === '청음 서비스' ? 'service' : type),
+          cpuPercent: cpu.percentCPUUsage, workingSetKiB: memory.workingSetSize,
+        }));
+      });
+      for (const role of ['main', 'service', 'conversation', 'overlay']) {
+        assert.ok(processes.some(p => p.role === role), `측정할 프로세스가 없습니다: ${role}`);
+      }
+      samples.push({ cycle, phase, time: Date.now(), processes });
+    }
+    // 숨기기 뒤 갱신된 트레이 메뉴에서 실제 '아바타 보이기' 동작을 고른다.
+    await app.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate;
+      Menu.buildFromTemplate = function (template) {
+        const toggle = template.find(item => item.label === '아바타 보이기');
+        if (toggle) globalThis.__soakShow = () => toggle.click({ checked: true });
+        return build.call(this, template);
+      };
+    });
+    await consentByOverlay(overlay);
+    const stop = overlay.getByRole('button', { name: '멈춰' });
+    const talk = overlay.getByRole('button', { name: '말하기' });
+    const visible = async () => (await windows(app)).find(isOverlay).visible;
+    await until(async () => await liveTracks(controller) > 0, { what: '합성 마이크 시작' });
+    await stop.click();
+    await until(async () => await liveTracks(controller) === 0, { what: '초기 마이크 종료' });
+    await sample(0, 'idle');
+    for (let cycle = 1; cycle <= 20; cycle++) {
+      await overlay.getByRole('button', { name: '숨기기' }).click();
+      await until(async () => !await visible(), { what: '아바타 숨김' });
+      await app.evaluate(() => globalThis.__soakShow());
+      await until(visible, { what: '아바타 표시' });
+      await talk.click();
+      await until(async () => await liveTracks(controller) > 0, { what: '합성 마이크 시작' });
+      await sample(cycle, 'talk');
+      await stop.click();
+      await until(async () => await liveTracks(controller) === 0, { what: '마이크 트랙 해제' });
+      await sample(cycle, 'stopped');
+    }
+    assert.deepEqual(errors, []);
+    await writeFile(path.join(dir, 'soak.json'), JSON.stringify(samples, null, 2));
+    await overlay.screenshot({ path: path.join(dir, 'soak.png') });
+    return { cycles: 20, samples: samples.length };
+  },
   // 청음 소개: 줄마다 정한 동작을 차례로 보인다(말하는 동안에도 'speaking'이 아니라 그 동작)
   async intro({ controller, overlay }) {
     await consentByOverlay(overlay);
@@ -471,6 +529,7 @@ const scenarios = {
 };
 
 const OPTIONS = {
+  soak: { mic: { burstAt: null } },
   approvals: { mic: { burstAt: null } },
   'login-handoff': { mic: { burstAt: null } },
   motion: { mic: { burstAt: null } },
