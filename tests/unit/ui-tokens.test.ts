@@ -11,7 +11,22 @@ const sheets = ["styles.css", "avatar/overlay.css"].map(name =>
   parse(readFileSync(new URL("../../web/src/" + name, import.meta.url), "utf8"), { from: name }));
 const tokens = parse(readFileSync(new URL("../../web/src/tokens.css", import.meta.url), "utf8"));
 
+function checkFontLength(value: string, source: string) {
+  const length = /^(\d*\.?\d+)(px|rem)$/iu.exec(value.trim());
+  if (length === null) throw new Error(source + " 글자 크기는 px 또는 rem 단위로 검증해야 합니다: " + value);
+  const pixels = Number(length[1]) * (length[2]?.toLowerCase() === "rem" ? 16 : 1);
+  expect(pixels, source).toBeGreaterThanOrEqual(14);
+}
+
 it("두 화면의 색은 토큰을 쓰고 작은 글자도 14픽셀 이상이다", () => {
+  const typeTokens = new Set<string>();
+  tokens.walkDecls(decl => {
+    expect(decl.prop).toMatch(/^--/u);
+    if (decl.prop.startsWith("--type-")) {
+      checkFontLength(decl.value, decl.toString());
+      typeTokens.add(decl.prop);
+    }
+  });
   for (const sheet of sheets) {
     sheet.walkDecls(decl => {
       // 아이콘 파일의 내부 그림과 선택자 이름은 CSS 색상값이 아니다.
@@ -19,15 +34,20 @@ it("두 화면의 색은 토큰을 쓰고 작은 글자도 14픽셀 이상이다
       expect(value, decl.toString()).not.toMatch(/#[\da-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|oklab|oklch|lab|lch|color)\(/iu);
       expect(value.replace(/--[\w-]+/gu, ""), decl.toString()).not.toMatch(namedColor);
       if (decl.prop !== "font" && decl.prop !== "font-size") return;
-      for (const [, number, unit] of value.matchAll(/([\d.]+)(px|rem)\b/gu)) {
-        expect(Number(number) * (unit === "rem" ? 16 : 1), decl.toString()).toBeGreaterThanOrEqual(14);
-      }
+      if (value === "inherit") return;
+      // 그림으로만 보여 주는 세 버튼은 접근성 이름을 유지하고 화면의 문자만 숨긴다.
+      if (value === "0" && decl.parent?.type === "rule" && [
+        ".send", ".app:not(.high-contrast) .contrast-button", ".app:not(.high-contrast) .header-button.end",
+      ].includes(decl.parent.selector)) return;
+      const size = decl.prop === "font" ? /(?:^|\s)(var\(--[\w-]+\)|[\d.]+(?:[a-z]+|%))(?=[/\s]|$)/iu.exec(value)?.[1] : value;
+      if (size === undefined) throw new Error("축약 글꼴에서 글자 크기를 찾을 수 없습니다: " + decl.toString());
+      // clamp의 첫 인수가 실제 글자 크기의 하한이다.
+      const minimum = /^clamp\(([^,]+),[^,]+,[^,]+\)$/iu.exec(size)?.[1]?.trim() ?? size;
+      const reference = /^var\((--[\w-]+)\)$/u.exec(minimum)?.[1];
+      if (reference === undefined) checkFontLength(minimum, decl.toString());
+      else expect(typeTokens.has(reference), decl.toString()).toBe(true);
     });
   }
-  tokens.walkDecls(decl => {
-    expect(decl.prop).toMatch(/^--/u);
-    if (decl.prop.startsWith("--type-")) expect(parseFloat(decl.value) * 16).toBeGreaterThanOrEqual(14);
-  });
 });
 
 function luminance(color: string) {
