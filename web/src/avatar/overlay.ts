@@ -44,14 +44,13 @@ let readTimer: ReturnType<typeof setTimeout> | undefined;
 let readUntil = 0;
 let readingTime = 0;
 let lang: string | undefined;
-type ChromeKey = "talk" | "stop" | "hide" | "avatar" | "micOn" | "micOff" | "on" | "off" | "site" | "offline" | "title";
-const chromeText: Readonly<Record<string, Readonly<Record<ChromeKey, string>>>> = {
-  ko: { talk: "말하기", stop: "멈춰", hide: "숨기기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
-  en: { talk: "Talk", stop: "Stop", hide: "Hide", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
-  zh: { talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
-  ja: { talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
-};
-const KO_TEXT = chromeText.ko ?? { talk: "", stop: "", hide: "", avatar: "", micOn: "", micOff: "", on: "", off: "", site: "", offline: "", title: "" };
+type ChromeKey = "talk" | "stop" | "hide" | "avatar" | "micOn" | "micOff" | "on" | "off" | "site" | "offline" | "title" | "connecting" | "hideTitle";
+const chromeText = {
+  ko: { connecting: "청음과 연결하는 중이에요.", hideTitle: "도우미 숨기기", talk: "말하기", stop: "멈춰", hide: "숨기기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
+  en: { connecting: "Connecting to Cheongeum.", hideTitle: "Hide assistant", talk: "Talk", stop: "Stop", hide: "Hide", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
+  zh: { connecting: "正在连接青音。", hideTitle: "隐藏助手", talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
+  ja: { connecting: "チョンウムに接続しています。", hideTitle: "アシスタントを隠す", talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
+} satisfies Record<"ko" | "en" | "zh" | "ja", Record<ChromeKey, string>>;
 const choiceIcons = new Map([
   ["consent-yes", "yes"], ["approve", "yes"], ["auth-done", "yes"],
   ["consent-no", "no"], ["reject", "no"], ["auth-cancel", "no"],
@@ -213,14 +212,15 @@ function render() {
   root.classList.toggle("resting", resting);
   root.classList.toggle("stopped", sleeping(snap));
   const language = (snap.lang !== undefined && snap.lang.length > 0 ? snap.lang : lang ?? "ko").toLowerCase().split("-")[0] ?? "ko";
-  const copy = chromeText[language] ?? KO_TEXT;
+  const locale = language === "en" || language === "zh" || language === "ja" ? language : "ko";
+  const copy = chromeText[locale];
   if (lang !== language) {
     lang = language;
-    document.documentElement.lang = chromeText[lang] !== undefined ? lang : "ko";
+    document.documentElement.lang = locale;
     document.title = copy.title;
     for (const id of ["talk", "stop", "hide", "avatar"] as const) {
       $(id).setAttribute("aria-label", copy[id]);
-      $(id).title = copy[id];
+      $(id).title = id === "hide" ? copy.hideTitle : copy[id];
     }
   }
   $("mic").dataset.capture = snap.capture;
@@ -228,7 +228,7 @@ function render() {
   setText($("mic-text"), micLabel);
   setText($("mic-short"), snap.capture === "on" ? copy.on : copy.off);
   $("mic").title = micLabel;
-  const status = live ? snap.status ?? "" : copy.offline;
+  const status = live ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
   // 동의는 카드의 '동의하고 음성 대화 시작'으로만(말하기 버튼이 동의가 되지 않게)
   button("talk").disabled = !live || ["ended", "starting", "consent", "auth-handoff"].includes(snap.mode ?? "");
   $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture === "on");

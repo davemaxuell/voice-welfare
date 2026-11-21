@@ -169,3 +169,75 @@ it.each([true, false])("test_private_prompt_never_uses_remote_speech", async loc
   }
   expect(remote.every(text => !text.includes("별구름"))).toBe(true);
 });
+
+async function untranslated(scope: ReturnType<Page["locator"]>) {
+  return scope.evaluate(root => {
+    const found: string[] = [];
+    const check = (element: Element | null, value: string | null) => {
+      if (element === null || value === null || !/[가-힣]/u.test(value) || !element.checkVisibility()
+          || element.closest("[lang]")?.getAttribute("lang") === "ko") return;
+      found.push((element.id.length > 0 ? element.id : element.tagName) + " — " + value.trim());
+    };
+    const nodes = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (nodes.nextNode()) check(nodes.currentNode.parentElement, nodes.currentNode.textContent);
+    for (const el of root.querySelectorAll("*")) {
+      for (const attr of ["aria-label", "title", "alt", "placeholder"]) check(el, el.getAttribute(attr));
+      for (const id of (el.getAttribute("aria-labelledby") ?? "").split(/\s+/u)) {
+        const label = document.getElementById(id);
+        if (el.checkVisibility() && label !== null) check(label, label.textContent);
+      }
+    }
+    return [...new Set(found)];
+  });
+}
+
+it.each(["en", "zh", "ja"] as const)("%s 화면과 접근성 이름에서 번역되지 않은 안내를 찾는다", async lang => {
+  const prefs = { language: lang, region: "", regions: [], speed: 1.35, rememberService: false, deviceUse: "shared",
+    browser: "separate", sharedDevice: true, hasKey: false, loadError: false, browserFallback: false };
+  await page.route("**/api/settings", route => route.fulfill({ json: prefs }));
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...await response.json(), settingsAvailable: true } });
+  });
+  let sessionId = "";
+  await page.route("**/api/session", async route => {
+    const response = await route.fetch();
+    const session = await response.json();
+    sessionId = session.sessionId;
+    await route.fulfill({ json: { ...session, lang } });
+  });
+  await page.goto(ui.url);
+  await screen(page.locator("html")).toHaveAttribute("lang", lang);
+  const check = async (id: string) => {
+    await screen(page.locator(id)).toBeVisible();
+    expect(await untranslated(page.locator("body")), id).toEqual([]);
+  };
+  await check("#consent-hear");
+  await page.locator("#consent-hear").click();
+  await page.locator("#consent-yes").click();
+  await check("#welcome-panel");
+  const common = { sessionId, state: "BROWSING", userUtterance: "test", intentType: "TEST", semanticAction: "test", speech: "OK", lang };
+  const source = { title: "Practice source", url: "http://localhost/fixture", lastCheckedAt: "2026-01-01" };
+  const turns = [
+    { state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: { actionId: "test", kind: "field-entry", purpose: "Input", site: "Practice", values: [{ label: "Name", value: "Sample" }] } },
+    { state: "AUTH_HANDOFF", authHandoff: { id: "test", taskId: "task", kind: "login", site: "Practice", status: "waiting" } },
+    { state: "DONE", answerCard: { serviceName: "Service", answer: "OK", grounded: true, source, dataKind: "stored", dataOrigin: "fixture", nextAction: "Continue" } },
+    undefined,
+    { intentType: "SETUP_RESTART" },
+  ];
+  let turnId = 0;
+  await page.route("**/api/turn", async route => {
+    const turn = turns[turnId++];
+    await route.fulfill(turn === undefined ? { status: 503, json: {} } : { json: { ...common, ...turn, turnId: String(turnId) } });
+  });
+  for (const id of ["#confirm-title", "#auth-title", "#answer-title", "#error"]) {
+    await send("test");
+    await check(id);
+  }
+  await page.locator("#open-settings").click();
+  await screen(page.locator("#setup-language")).toHaveValue(lang);
+  await check("#settings-dialog");
+  await page.locator("#setup-cancel").click();
+  await send("test");
+  await check('#first-run [data-step="language"]');
+});

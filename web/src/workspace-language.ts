@@ -1,6 +1,7 @@
 // Korean strings are also the fallback for the first render, before a session exists.
 // 낱말표는 src/cheongeum/web/static/workspace-language.js에서 그대로 옮겼다.
 const copy: Readonly<Record<string, readonly [string, string, string]>> = {
+  "{speed}배": ["{speed}×", "{speed} 倍", "{speed}倍"],
   '이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.': ['No on-device voice is available for this language. Your private reply is on screen.', '此设备没有可用的本地语音，私人回复已显示在屏幕上。', 'この端末で利用できる音声がないため、個人情報を含む案内は画面に表示しました。'],
   '시작 전 안내를 듣고 동의해 주세요.': ['Please review the introduction and choose whether to start.', '请查看使用说明，再选择是否开始。', '開始時の案内を確認し、同意するか選んでください。'],
   '동의하고 음성 대화 시작': ['Agree and start voice chat', '同意并开始语音对话', '同意して音声会話を開始'],
@@ -142,7 +143,7 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '다음으로': ['Go to the next step.', '进入下一步。', '次へ進んでください。'],
   '이 항목은 무슨 뜻이야?': ['What does this field mean?', '这个项目是什么意思？', 'この項目はどういう意味ですか？'],
   '화면 설명해줘': ['Describe the current page.', '请描述当前页面。', '現在の画面を説明してください。'],
-  '복지로 열어줘': ['Open Bokjiro.', '请打开韩国福祉路（복지로）。', '韓国の福祉ポータル、ポクチロ（복지로）を開いてください。'],
+  '복지로 열어줘': ['Open Bokjiro.', '请打开韩国福祉路。', '韓国の福祉ポータル、ポクチロを開いてください。'],
   '정부24에서 주민등록등본 발급 방법 찾아줘': ['Find out how to get a resident registration certificate on Government24.', '请在政府24上查找居民登记誊本的办理方法。', '政府24で住民登録謄本の交付方法を調べてください。'],
   '장학재단에서 국가장학금 신청 안내 찾아줘': ['Find the national scholarship application guide at the Korea Student Aid Foundation.', '请在韩国奖学财团查找国家奖学金申请指南。', '韓国奨学財団で国家奨学金の申請案内を探してください。'],
   '장학재단에서 국가장학금 신청 기간 알려줘': ['Find the national scholarship application dates at the Korea Student Aid Foundation.', '请在韩国奖学财团查找国家奖学金的申请时间。', '韓国奨学財団で国家奨学金の申請期間を調べてください。'],
@@ -156,11 +157,29 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '모의 접수 내용을 확인했어': ['I have reviewed my practice application.', '我已核对模拟申请的内容。', '練習用の申請内容を確認しました。'],
 };
 
+let supplemental: typeof copy | undefined;
+let loading: Promise<void> | undefined;
+
+/** 선택한 언어가 적용되기 전에 추가 화면 문구를 한 번만 읽는다. */
+export function loadWorkspaceLanguage(lang: string) {
+  if (lang === "ko" || supplemental !== undefined) return Promise.resolve();
+  return loading ??= import("./workspace-extra-text.ts").then(module => { supplemental = module.extraCopy; })
+    .catch((error: unknown) => { loading = undefined; throw error; });
+}
+
 const LANG_INDEX: Readonly<Record<string, 0 | 1 | 2>> = { en: 0, zh: 1, ja: 2 };
 
 /** 한국어 문구를 대화 언어로. 낱말표에 없거나 한국어면 그대로 돌려준다. */
-export function workspaceText(text: string, lang: string | undefined): string {
+export function workspaceText(text: string, lang: string | undefined, values?: Readonly<Record<string, string | number>>): string {
   const index = lang === undefined || !Object.hasOwn(LANG_INDEX, lang) ? undefined : LANG_INDEX[lang];
-  const row = Object.hasOwn(copy, text) ? copy[text] : undefined;
-  return index === undefined || row === undefined ? text : row[index];
+  const row = Object.hasOwn(copy, text) ? copy[text] : supplemental !== undefined && Object.hasOwn(supplemental, text) ? supplemental[text] : undefined;
+  const localized = index === undefined || row === undefined ? text : row[index];
+  return values === undefined ? localized : localized.replace(/\{(\w+)\}/gu, (slot: string, name: string) => String(values[name] ?? slot));
+}
+
+export const LANGUAGE_NAMES = [["ko", "한국어"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"]] as const;
+
+/** 앱의 안내와 구분해 사이트 원문·사용자 입력의 발음 언어를 표시한다. */
+export function sourceLanguage(text: string | undefined) {
+  return text !== undefined && /[가-힣]/u.test(text) ? "ko" : undefined;
 }
