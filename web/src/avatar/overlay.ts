@@ -7,7 +7,7 @@ import "./overlay.css";
 
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
-  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
+  contrast: z.boolean().optional(), connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
   mode: z.string().optional(), capture: z.string().default("off"), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
   state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(),
@@ -489,6 +489,7 @@ bridge.onSnapshot((next) => {
   receivedSnapshot = true;
   const prev = snap;
   snap = accepted;
+  if (snap.contrast !== undefined) overlay.classList.toggle("high-contrast", snap.contrast);
   animate(prev, snap);
   render();
 });
