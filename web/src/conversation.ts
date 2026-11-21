@@ -8,6 +8,7 @@ import { getSpeechLang, setSpeechLang, unlockAudio } from "./audio.ts";
 import { currentDecision, desktopView, turnNotice, type Consent, type Decision } from "./companion.ts";
 import { createFirstRun } from "./first-run.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
+import { watchProgress } from "./progress-watch.ts";
 import {
   applySpeechPrefs, earcon, onSpeaking, preloadCues, serverTts, speakOnDevice, speechPrefs,
   takeInterruptedSpeech, transitionCue, type CueKind,
@@ -156,6 +157,7 @@ let recoverable = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let sessionGeneration = 0;
 let stoppedGeneration = 0;
+let progressSession: ReturnType<typeof sessionProgress> | undefined;
 let commandActionId: string | undefined;
 const RECOVERY_KEY = "cheongeum.recovery";
 const RECOVERY_DECLINED = "cheongeum.recoveryDeclined";
@@ -358,6 +360,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
   }
   const prevState = ui.state;
   const stopped = r.intentType === "STOP" || r.semanticAction === "stop";
+  if (stopped && desk.stopping === null) stoppedGeneration++;
   const wake = desk.wakeCount;
   if (r.state === "STOPPED" && r.stopGeneration !== undefined && Number.isInteger(r.stopGeneration)) desk.stopGeneration = r.stopGeneration;
   else if (r.state !== "STOPPED") desk.stopGeneration = null;
@@ -387,7 +390,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
   desk.message = desktopNotice(turnNotice(r));
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
-  set({ last: r, state: r.state, lang: r.lang, hasTurn });
+  set({ last: r, state: r.state, lang: r.lang, hasTurn, activity: r.intentType === "PROGRESS" ? ui.activity : null });
   if (isConsent) {
     recordConsent(ui.consent === "granted" ? r.speech : undefined);
     if (ui.consent !== "granted") push({ role: "assistant", text: r.speech });
@@ -768,9 +771,27 @@ async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
 
 const PROGRESS_POLL_MS = 2000;
 
+function sessionProgress(sessionId: string) {
+  let pending: ReturnType<typeof api.progress> | undefined;
+  return {
+    sessionId,
+    spoken: 0,
+    async poll() {
+      if (pending !== undefined) {
+        // 이전 작업에서 보낸 응답은 그 작업에서만 사용한다.
+        await pending;
+        return;
+      }
+      pending = api.progress(sessionId);
+      try { return await pending; }
+      finally { pending = undefined; }
+    },
+  };
+}
+
 /** 서버가 일하는 동안(work가 끝날 때까지): 목표 수행의 새 단계를 말하고, 대화 모드(voice)면 '멈춰'와 '지금 어디까지 했어?'를 듣는다. */
 async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
-  const stops = [watchProgress(voice), ...(voice !== undefined ? [listenForStopWhileBusy(voice)] : [])];
+  const stops = [trackProgress(voice), ...(voice !== undefined ? [listenForStopWhileBusy(voice)] : [])];
   try {
     return await work;
   } finally {
@@ -778,25 +799,36 @@ async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
   }
 }
 
-/** 몇 초마다 진행 줄을 받아 화면에 두고, 끝난 단계만 말한다. 반환값을 부르면 그친다. */
-function watchProgress(voice?: VoiceLoop) {
-  let on = true;
-  let spokenActivity = 0;
-  const timer = setInterval(() => void (async () => {
-    const p = await api.progress(ui.sessionId ?? "").catch(() => undefined);
-    if (p === undefined) return;
-    if (recoverable) tabStore(PROGRESS_KEY, String(p.seq));
-    const next = progressUpdate(p, spokenActivity);
-    set({ activity: next.activity });
-    if (!on || next.speak === undefined || userTalking || busyTalking) return;
-    spokenActivity = next.seq;
-    push({ role: "assistant", text: next.speak });
-    announce(next.speak);
-    void sayWhileBusy({ speech: next.speak }, voice);
-  })(), PROGRESS_POLL_MS);
+function trackProgress(voice?: VoiceLoop) {
+  const session = progressSession;
+  if (session === undefined) return () => {};
+  const stop = stoppedGeneration;
+  const isCurrent = () => session === progressSession && stoppedGeneration === stop;
+  const finish = watchProgress({
+    isCurrent,
+    poll: session.poll,
+    wait(next) {
+      const timer = setTimeout(next, PROGRESS_POLL_MS);
+      return () => clearTimeout(timer);
+    },
+    apply(report) {
+      if (recoverable) tabStore(PROGRESS_KEY, String(report.seq));
+      const activity = report.activity ?? null;
+      if (ui.activity !== activity) set({ activity });
+    },
+    considerSpeech(report) {
+      if (userTalking || busyTalking) return;
+      const next = progressUpdate(report, session.spoken);
+      if (next.speak === undefined) return;
+      session.spoken = next.seq;
+      push({ role: "assistant", text: next.speak });
+      announce(next.speak);
+      void sayWhileBusy({ speech: next.speak }, voice);
+    },
+  });
   return () => {
-    on = false;
-    clearInterval(timer);
+    finish();
+    if (isCurrent() && ui.activity != null) set({ activity: null });
   };
 }
 
@@ -1071,7 +1103,7 @@ async function stopSession() {
   stopSpeaking();
   recording?.cancel();
   recording = undefined;
-  set({ listening: false, error: undefined });
+  set({ listening: false, error: undefined, activity: null });
   if (ui.sessionId === undefined) return;
   try {
     const result = await api.cancel(ui.sessionId);
@@ -1414,6 +1446,7 @@ function closeRecovery() {
 }
 
 function connect(s: { sessionId: string; state?: Session["state"] | undefined; stopGeneration?: number | undefined; token?: string | undefined; writer?: string | undefined }) {
+  if (s.sessionId !== progressSession?.sessionId) progressSession = sessionProgress(s.sessionId);
   desk.message = null;
   desk.sleeping = s.state === "STOPPED";
   desk.stopGeneration = s.stopGeneration ?? null;
@@ -1429,6 +1462,7 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 
 export async function endSession() {
   const sid = ui.sessionId;
+  progressSession = undefined;
   desk.message = null;
   desk.sleeping = false;
   desk.stopGeneration = null;
@@ -1450,7 +1484,7 @@ export async function endSession() {
   commandActionId = undefined;
   set({
     sessionId: undefined, state: "IDLE", last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: "ko", requestedLanguage: undefined,
-    messages: [], commandReset: ui.commandReset + 1, sessionNew: true,
+    messages: [], activity: null, commandReset: ui.commandReset + 1, sessionNew: true,
   });
   focus("session-new");
   try {
