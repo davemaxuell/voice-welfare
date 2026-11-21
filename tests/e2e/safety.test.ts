@@ -313,7 +313,10 @@ it("test_ordinary_words_pass_outside_login", async () => {
 });
 
 it("test_mock_submit_receipt", async () => {
-  const session = await openForm();
+  const session = await newSession();
+  const opened = await session.handleTurn("장애인연금 신청 도와줘");
+  expect(opened.state).toBe("APPLICATION_OPEN");
+  expect(opened.speech).toContain("연습용이라 실제로 접수되지는 않아요.");
   await session.handleTurn("이름은 김하늘");
   await session.handleTurn("주소는 부산광역시 예시구 예시로 10");
   await session.handleTurn("연락처는 010-1234-5678");
@@ -324,6 +327,7 @@ it("test_mock_submit_receipt", async () => {
   const done = await session.confirm(true);
   expect(done.state).toBe("MOCK_SUBMITTED");
   expect(done.realSubmission).toBe(false);
+  expect(done.speech).toContain("실제 복지로 접수가 아니며 어떤 기관에도 전송되지 않았습니다.");
   expect(done.verification?.receipt).toMatch(/^MOCK-\d{8}-\d{4}$/u);
 });
 

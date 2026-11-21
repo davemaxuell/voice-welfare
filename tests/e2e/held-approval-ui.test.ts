@@ -1,6 +1,7 @@
 import { chromium, expect as screen, type Browser, type Page } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { z } from "zod";
+import { PORTAL } from "../helpers.ts";
 import { recordCues, startUi } from "./web-ui-fixtures.ts";
 
 let ui: Awaited<ReturnType<typeof startUi>>, browser: Browser, page: Page;
@@ -46,6 +47,26 @@ it("test_typed_vault_reply_is_bound_when_typing_starts", async () => {
   await send("응");
   await screen(panel).toBeHidden();
   expect(answers[1]).toBeTruthy();
+});
+
+it("멈춘 뒤에는 이전 입력 카드를 키보드로 승인할 수 없다", async () => {
+  let confirms = 0;
+  page.on("request", request => { if (new URL(request.url()).pathname.endsWith("/confirm")) confirms++; });
+  const opened = page.waitForResponse(r => new URL(r.url()).pathname === "/api/session" && r.request().method() === "POST");
+  await page.goto(ui.url);
+  const { sessionId } = z.object({ sessionId: z.string() }).parse(await (await opened).json());
+  await send(PORTAL + " 열어줘");
+  await send("이름 칸에 김하늘 써줘");
+  await screen(page.locator("#confirm-yes")).toBeVisible();
+  await page.locator("#confirm-yes").focus();
+  await page.locator("#stop-all").click();
+  await screen(page.locator("#st-state")).toHaveText("중단됨");
+  await screen(page.locator("#confirm-panel")).toBeHidden();
+  await page.keyboard.press("Enter");
+  expect(confirms).toBe(0);
+  const { events } = z.object({ events: z.array(z.object({ sessionId: z.string(), actionType: z.string(), success: z.boolean() })) })
+    .parse(await (await page.request.get(ui.url + "api/events")).json());
+  expect(events.filter(e => e.sessionId === sessionId && e.actionType === "fill" && e.success)).toHaveLength(0);
 });
 
 it("test_held_sign_in_cancel_cannot_apply_to_another_handoff", async () => {
