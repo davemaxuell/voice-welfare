@@ -92,8 +92,8 @@ it("진행 안내는 시작 15초 뒤, 새 단계만, 조용할 때만 말한다
 
 function microphone(level: () => number) {
   const stop = vi.fn();
-  const track = { stop, onended: null, onmute: null, enabled: true, label: "내장 마이크", readyState: "live" };
-  return { stop, stream: { getTracks: () => [track], getAudioTracks: () => [track] }, level };
+  const track = { stop, onended: () => {}, onmute: null, enabled: true, label: "내장 마이크", readyState: "live" };
+  return { stop, track, stream: { getTracks: () => [track], getAudioTracks: () => [track] }, level };
 }
 
 /** 마이크 워크릿 대신: 소리 크기는 analyser가, 40 ms 묶음은 onFrame으로 직접 넣는다. */
@@ -127,6 +127,16 @@ async function voiceLoop(level: () => number) {
   const feed = (n: number) => { for (let i = 0; i < n; i++) ports[0]?.onmessage?.({ data: new ArrayBuffer(4) }); };
   return { loop, sent, feed, mic };
 }
+
+it("열려 있는 마이크 트랙이 끝나면 연결 끊김을 알린다", async () => {
+  vi.useFakeTimers();
+  const { loop, mic } = await voiceLoop(() => 0.1);
+  const trouble = vi.fn();
+  loop.onTrouble = trouble;
+  mic.track.onended();
+  expect(trouble).toHaveBeenCalledExactlyOnceWith("ended");
+  loop.stop();
+});
 
 it("말이 시작되기 전 소리를 앞에 붙여 보내고, 조용해지면 끝낸다", async () => {
   vi.useFakeTimers();
