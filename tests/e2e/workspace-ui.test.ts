@@ -107,6 +107,7 @@ it("test_same_tab_reload_offers_resume_with_microphone_off", async () => {
     await screen(restore).toBeVisible();
     await screen(box()).toBeDisabled();
     await restore.press("Enter");
+    await screen(page.locator("#recovery-panel")).toBeHidden();
     await screen(button("입력 승인")).toBeHidden();
     await screen(button("음성 입력")).toHaveAttribute("aria-pressed", "false");
     await screen(page.locator("#log")).not.toContainText("김하늘");
@@ -256,4 +257,94 @@ it.each(["en", "zh", "ja"] as const)("%s 화면과 접근성 이름에서 번역
   await page.locator("#setup-cancel").click();
   await send("test");
   await check('#first-run [data-step="language"]');
+});
+
+it("자동 언어 전환은 화면에 반영하고 번역 실패만 원문 언어 표시로 유지한다", async () => {
+  await consent();
+  const turns = [
+    { state: "IDLE", intentType: "HELP", semanticAction: "help-list", speech: "I can help you check welfare services.", lang: "en" },
+    { state: "IDLE", intentType: "POLICY_QUESTION", semanticAction: "answer", speech: "(Translation could not be verified, so here is the original Korean.) 장애인연금 안내입니다.", lang: "ko" },
+  ];
+  let index = 0;
+  await page.route("**/api/turn", async route => {
+    const body = z.object({ sessionId: z.string(), text: z.string() }).parse(route.request().postDataJSON());
+    const reply = turns[index++];
+    await route.fulfill({ json: { sessionId: body.sessionId, turnId: `auto-${index}`, userUtterance: body.text, ...reply } });
+  });
+  await send("What can you help with?");
+  await screen(page.locator("html")).toHaveAttribute("lang", "en");
+  await screen(page.locator("#lang-select")).toHaveValue("en");
+  await send("Tell me about disability pension");
+  await screen(page.locator("html")).toHaveAttribute("lang", "en");
+  await screen(page.locator("#lang-select")).toHaveValue("en");
+  await screen(page.locator("#log .assistant").last()).toHaveAttribute("lang", "ko");
+});
+
+it.each([
+  ["en", "now", "morning"],
+  ["zh", "现在", "早上"],
+  ["ja", "今", "朝"],
+] as const)("야간 기한 알림에서 %s 응답으로 알림을 듣거나 미룬다", async (lang, nowWord, morningWord) => {
+  await page.addInitScript(() => {
+    const RealDate = Date;
+    class NightDate extends RealDate {
+      override getHours() { return 23; }
+    }
+    Object.defineProperty(window, "Date", { value: NightDate });
+  });
+  let reminderChecks = 0;
+  let turns = 0;
+  await page.route("**/api/session", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...await response.json(), lang } });
+  });
+  await page.route("**/api/session/*/reminders", route => {
+    reminderChecks++;
+    return route.fulfill({ json: { text: "Deadline tomorrow" } });
+  });
+  await page.route("**/api/turn", route => {
+    turns++;
+    return route.fulfill({ status: 500, json: {} });
+  });
+  await page.goto(ui.url);
+  await page.locator("#consent-hear").click();
+  await page.locator("#consent-yes").click();
+  await screen(page.locator("#consent-panel")).toBeHidden();
+  await screen.poll(() => reminderChecks).toBe(1);
+  await send(morningWord);
+  await send(nowWord);
+  await screen(page.locator("#log")).toContainText("Deadline tomorrow");
+  expect(reminderChecks).toBe(2);
+  expect(turns).toBe(0);
+});
+
+it("데스크톱에서 언어를 바꾼 뒤 새로고침해도 바뀐 언어를 유지한다", async () => {
+  const published: string[] = [];
+  const requested: string[] = [];
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).cheongeumDesktop = {
+      onTalk: () => {},
+      onAction: () => {},
+      publish: (snap: { lang?: string }) => { if (snap.lang !== undefined) ((window as unknown as { __langs?: string[] }).__langs ??= []).push(snap.lang); },
+    };
+  });
+  await page.route("**/api/session/*/language", async route => {
+    const { lang } = z.object({ lang: z.string() }).parse(route.request().postDataJSON());
+    requested.push(lang);
+    const sid = route.request().url().split("/").at(-2) ?? "";
+    await route.fulfill({ json: { sessionId: sid, turnId: `lang-${requested.length}`, userUtterance: "", intentType: "SET_LANGUAGE", semanticAction: "set-language", state: "IDLE", speech: "", lang } });
+  });
+  await page.goto(`${ui.url}?desktop=1&desktopLang=en`);
+  await screen(page.locator("html")).toHaveAttribute("lang", "en");
+  await page.locator("#consent-yes").click();
+  await screen(page.locator("#consent-panel")).toBeHidden();
+  await page.locator("#lang-select").selectOption("ja");
+  await screen(page.locator("html")).toHaveAttribute("lang", "ja");
+  requested.length = 0;
+  await page.reload();
+  await screen(page.locator("html")).toHaveAttribute("lang", "ja");
+  await screen(page.locator("#lang-select")).toHaveValue("ja");
+  published.push(...await page.evaluate(() => (window as unknown as { __langs?: string[] }).__langs ?? []));
+  expect(published.at(-1)).toBe("ja");
+  expect(requested).not.toContain("en");
 });
