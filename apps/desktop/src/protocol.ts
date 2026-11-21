@@ -1,6 +1,17 @@
 /** 데스크톱 메인 프로세스와 로컬 서비스(유틸리티 프로세스) 사이의 메시지. */
 
 import type { Lang } from "../../../src/core/turn.ts";
+import { taskKeys, taskText } from "../../../web/src/workspace-language.ts";
+
+function isTask(value: unknown): value is keyof typeof taskKeys {
+  return typeof value === "string" && Object.hasOwn(taskKeys, value);
+}
+
+/** 트레이에는 앱에서 정한 작업 이름만 내보낸다. */
+export function trayTaskText(snapshot: Record<string, unknown> | null): string | undefined {
+  if (snapshot?.connected !== true || !isTask(snapshot.task)) return undefined;
+  return taskText(snapshot.task, isDesktopLanguage(snapshot.lang) ? snapshot.lang : "ko");
+}
 
 export function isDesktopLanguage(value: unknown): value is Lang {
   return value === "ko" || value === "en" || value === "zh" || value === "ja";

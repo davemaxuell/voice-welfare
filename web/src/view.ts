@@ -7,15 +7,8 @@ import type { Microphone } from "./mic.ts";
 import { fullGuide } from "./onboarding.ts";
 import { workspaceText } from "./workspace-language.ts";
 
-export const PHASE_LABELS = {
-  off: "꺼짐",
-  starting: "준비 중",
-  listening: "듣고 있어요 — 말씀하세요",
-  hearing: "말씀을 듣는 중…",
-  thinking: "처리 중…",
-  speaking: "안내하는 중…",
-} as const;
-export type Phase = keyof typeof PHASE_LABELS;
+import { presentationOf, type Capture, type Phase } from "./presentation.ts";
+export type { Phase } from "./presentation.ts";
 
 export const EXAMPLES = [
   "장애인연금 신청 도와줘",
@@ -100,6 +93,9 @@ export interface UiState {
   micId?: string | undefined;
   /** 대화 창 밖 상태(Python의 desk·모듈 변수 중 화면에 나오는 것) */
   speaking: boolean;
+  capture?: Capture;
+  stopping?: boolean;
+  sleeping?: boolean;
   card?: CardView | undefined;
   cardTaken: boolean;
   recovery?: Recovery | undefined;
@@ -198,19 +194,15 @@ export function viewOf(ui: UiState, env: Env) {
   const consentShown = consent === "intro" || consent === "ask";
   const { sessionReady, stage } = stageOf(ui);
 
-  let shownPhase: Phase = phase;
-  let phaseLabel = t("음성 대화") + ": " + t(PHASE_LABELS[phase]);
-  if (phase === "off") {
-    if (listening) { shownPhase = "listening"; phaseLabel = t("음성 입력: 듣고 있어요"); }
-    else if (ui.speaking) { shownPhase = "speaking"; phaseLabel = t("음성 안내 중"); }
-    else if (busy) { shownPhase = "thinking"; phaseLabel = t("요청을 처리하고 있어요"); }
-  }
+  const display = presentationOf(ui);
+  const phaseLabel = display.phase === phase ? t("음성 대화") + ": " + t(display.phaseKey) : t(display.phaseKey);
 
   const obs = last?.observation;
   const step = obs?.step;
   const hasStep = step !== undefined && Number.isFinite(step.index) && Number.isFinite(step.total) && step.total > 0;
   const pending = state === "WAITING_FOR_USER_CONFIRMATION" ? last?.pendingConfirmation : undefined;
   const authCard = decision?.kind === "offer" && decision.ref.handoffId !== undefined && decision.ref.handoffId.length > 0 ? decision : undefined;
+  const readMain = decision?.kind === "offer" ? decision.choices.find(choice => choice.key === "read-main") : undefined;
   const receipt = state === "MOCK_SUBMITTED" ? last?.verification?.receipt : undefined;
   const answer = last?.answerCard;
   const providers = [
@@ -247,8 +239,12 @@ export function viewOf(ui: UiState, env: Env) {
       startShown: phase === "off",
       startDisabled: !hasSession || consent !== "granted" || signingIn || !voiceMode.stt,
       endShown: phase !== "off",
-      phase: shownPhase,
+      phase: display.phase,
       phaseLabel,
+      showPhase: display.task === "idle" || display.task === "working" || display.playback === "speaking" ||
+        (display.capture === "on" && (phase === "listening" || phase === "hearing")),
+      captureLabel: t(display.captureKey),
+      taskLabel: t(display.taskKey),
       hint: phase !== "off" ? t(ui.edge ? "자연스럽게 말씀하세요. 답변 중에도 끼어들 수 있어요." : "띵 소리 뒤에 말씀하세요. 스페이스 키나 박수 두 번으로 안내를 끊거나, 하던 말을 바로 보낼 수 있어요.") : undefined,
       caption: ui.liveCaption,
     },
@@ -297,6 +293,7 @@ export function viewOf(ui: UiState, env: Env) {
       site: pending.site,
       values: pending.values,
     } : undefined,
+    readMain: decision !== undefined && readMain !== undefined ? { id: decision.id, label: readMain.label } : undefined,
     confirmCard: decision?.kind === "approval" ? decision.id : "",
     decisionDisabled: busy || decisionTaken,
     auth: signingIn ? {
