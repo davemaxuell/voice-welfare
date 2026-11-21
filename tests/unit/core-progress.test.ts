@@ -1,6 +1,25 @@
 import { expect, it } from "vitest";
 import { Progress } from "../../src/core/progress.ts";
 
+it("검토 중에 확인한 단계만 한 번씩 읽고 음성 설정을 존중한다", async () => {
+  const progress = new Progress();
+  progress.start();
+  await progress.review(async () => {
+    progress.note("다음 항목을 찾는 중이에요.", true);
+    progress.milestone("portal", "요청한 사이트를 열었어요.");
+    const first = progress.snapshot();
+    progress.milestone("portal", "요청한 사이트를 열었어요.");
+    expect(progress.snapshot()).toEqual(first);
+    expect(first).toMatchObject({spoken: true, activitySpoken: true});
+    expect(progress.shiftSpoken()).toBe(first.latest);
+    expect(progress.hasSpoken()).toBe(false);
+    progress.spoken = false;
+    progress.milestone("return", "사이트로 돌아왔어요.");
+    expect(progress.latest).toBe("사이트로 돌아왔어요.");
+    expect(progress.hasSpoken()).toBe(false);
+  });
+});
+
 it("검토하는 동안에는 자동 음성 안내만 멈추고 최신 단계는 그대로 읽을 수 있다", async () => {
   const progress = new Progress();
   progress.start();

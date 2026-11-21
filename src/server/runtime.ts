@@ -241,7 +241,9 @@ export class AgentRuntime {
       : new TavilySearch(this.config.tavilyApiKey, webLlm, this.connections, { scan: texts => this.scanner.scan(texts) });
     return { intentProvider, llm: this.understandLlm ?? webLlm, goalLlm: this.goalLlm ?? webLlm,
       webLlm, fileLlm, visionLlm, recoveryLlm, quietSearch: search === undefined ? undefined :
-        (async (task, lang, signal) => (await search.search(task, lang, signal)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]> };
+        (async (task, lang, signal) => (await search.search(task, lang, signal)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
+      findPortal: search === undefined ? undefined :
+        ((query, signal) => search.portals(query, signal)) satisfies NonNullable<OrchestratorDeps["findPortal"]> };
   }
   personalEnabled() {
     return this.config.pilotProfile === "personal" || (this.config.pilotProfile !== "shared" && this.settings?.completed === true
@@ -334,6 +336,8 @@ export class AgentRuntime {
       const remember = settings !== undefined && cfg.pilotProfile !== "shared";
       const sessionOptions = {
         ...this.sessionModels(),
+        // 맡겨 둔 조사는 사용자에게 사진 전송 동의를 물을 수 없으니 화면 사진을 보내지 않는다.
+        ...(background ? { visionLlm: undefined } : {}),
         web: new WebExecutionAgent(adapter, guard, profile, background ? undefined : this.actionLog),
         welfare: new WelfareInformationAgent(this.welfareProvider, this.answerLlm, { shelf: this.openData.programs, links: this.openData.links }),
         places: this.openData.places,

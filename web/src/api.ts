@@ -92,7 +92,7 @@ const CheckpointSchema = z.object({
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
 const ProgressSchema = z.object({
   running: z.boolean(), seq: z.number(), spoken: z.boolean(), latest: z.string().nullish(),
-  activity: z.string().nullish(), activitySpoken: z.boolean().optional(),
+  activity: z.string().nullish(), activitySpoken: z.boolean().optional(), activitySeq: z.number().optional(),
 });
 const JobSchema = z.object({
   id: text, prompt: text, state: text,

@@ -6,7 +6,7 @@ import type { InteractiveItem, ObservedField } from "../../src/core/actions.ts";
 import type { StructuredLlm } from "../../src/core/llm.ts";
 import { draft, type DraftAction, type SourceCitation } from "../../src/core/turn.ts";
 import {
-  REVIEW_SYSTEM, coverage, evidenceFromDraft, location, pageMatches, repetitions, reviewBeforeOutput, reviewEvidence, reviewPatterns, safe,
+  REVIEW_SYSTEM, coverage, evidenceFromDraft, inspectionEvidence, location, pageMatches, repetitions, reviewBeforeOutput, reviewEvidence, reviewPatterns, safe,
   type ReviewEvidence,
 } from "../../src/orchestrator/task_review.ts";
 import { FakeLlm } from "../helpers.ts";
@@ -75,6 +75,36 @@ it("test_review_releases_only_the_completed_grounded_result", async () => {
   expect(verdict.status).toBe("complete");
   expect(verdict.answer).toBe(raw.answer);
   expect(verdict.nextRoute).toBeUndefined();
+});
+
+it("개인 결과를 요청하면 현재 탭에서 확인한 사실을 근거로 요구한다", async () => {
+  const request = "접수한 민원 상태를 알려줘";
+  const status = "담당자가 검토 중입니다.";
+  const url = "https://portal.example/private/member-row?account=private-key";
+  const tab = (name: string) => {
+    const page = view(url, "민원함", {items: [{ref: "tab", name, role: "tab", region: "main", selected: true, disabled: false}]});
+    return {...page, outline: {...page.outline, mainText: status}};
+  };
+  const current = tab("최근 접수");
+  const evidence = await inspectionEvidence({view: current, reviewQuotes: [status, "접수 취소됨"]});
+  const confirm = (kind: string, id: number, quote: string, answer = quote) => reviewBeforeOutput(answering({
+    checks: [check(request, kind, id, quote)], nextRoute: null, answer,
+  }), request, evidence, idle(), {inspection: "answer"});
+  expect(evidence.map(row => row.text).join(" ")).not.toMatch(/member-row|private-key|접수 취소됨/u);
+  expect((await confirm("arrival", 0, "민원함")).status).not.toBe("complete");
+  const verdict = await confirm("fact", 1, status);
+  expect(verdict.status).toBe("complete");
+  expect((await confirm("fact", 1, status, "승인되었습니다.")).answer).toBe(status);
+  const translation = "The case is under review.";
+  const english = new FakeLlm(({schemaName}) => schemaName === "personal_answer_check" ? {faithful: true} :
+    {checks: [check(request, "fact", 1, status)], nextRoute: null, answer: translation});
+  expect((await reviewBeforeOutput(english, request, evidence, idle(), {inspection: "answer", language: "en"})).answer).toBe(translation);
+  expect(english.calls.map(call => call.schemaName)).toEqual(["review_before_output", "personal_answer_check"]);
+  expect((await confirm("fact", 1, "검토")).status).not.toBe("complete");
+  const changed = {...current, outline: {...current.outline, mainText: "이전 기록: " + status}};
+  expect((await inspectionEvidence({view: changed, reviewQuotes: [status]})).some(e => e.kind === "fact")).toBe(false);
+  expect(pageMatches(verdict, current, [], true)).toBe(true);
+  expect(pageMatches(verdict, tab("지난 접수"), [], true)).toBe(false);
 });
 
 it("test_partial_review_retries_only_the_unanswered_original_fact", async () => {

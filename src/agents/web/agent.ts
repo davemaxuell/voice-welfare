@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Action, ActionResult, ActionTarget, ExecutionErrorCode, Observation } from "../../core/actions.ts";
 import type { Redacted } from "../../core/llm.ts";
 import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
-import { PolicyGuard, type AccessTier, type PolicyContext } from "../../safety/guard.ts";
+import { PolicyGuard, type AccessTier, type InspectionBinding, type InspectionControl, type PolicyContext } from "../../safety/guard.ts";
 import { AdapterError } from "./browser/index.ts";
 import { redactText } from "../../safety/privacy.ts";
 import { speakLabel } from "../../speech/phrasing.ts";
@@ -26,6 +27,7 @@ interface ContextOptions {
   sessionId?: string;
   taskId?: string;
   publicLookup?: boolean;
+  browsingScope?: "personal-inspection";
   actionLimit?: number;
 }
 export class ExecContext {
@@ -38,11 +40,12 @@ export class ExecContext {
   readonly sessionId: string;
   readonly taskId: string;
   readonly publicLookup: boolean;
+  readonly browsingScope?: "personal-inspection";
   readonly actionLimit?: number;
 
   constructor({
     signal, approvals = new Set(), isStopped, trace, counter = { actions: 0 }, actor = "resident", sessionId = "", taskId = "",
-    publicLookup = false, actionLimit,
+    publicLookup = false, browsingScope, actionLimit,
   }: ContextOptions) {
     this.signal = signal;
     this.approvals = approvals;
@@ -53,6 +56,7 @@ export class ExecContext {
     this.sessionId = sessionId;
     this.taskId = taskId;
     this.publicLookup = publicLookup;
+    this.browsingScope = browsingScope;
     this.actionLimit = actionLimit;
   }
   async granted<T>(ids: readonly string[], work: () => Promise<T>): Promise<T> {
@@ -67,18 +71,25 @@ export type PageView = Observation & { pageId: PageId };
 /** 현재 문서에서 실제로 보이는 조작 대상 몇 개(브라우저 어댑터의 controlWindow). */
 export interface ControlWindow {
   url: string;
-  items: Array<{ ref: string; role: string; name: string; region: string; disabled: boolean; context?: string; pictureMasked?: boolean }>;
+  items: Array<{
+    ref: string; role: string; name: string; region: string; disabled: boolean;
+    context?: string; pictureMasked?: boolean; inspection?: InspectionControl;
+  }>;
   more: boolean;
 }
 export interface WebAdapter {
   observe(signal?: AbortSignal): Promise<Observation>;
-  execute(action: Action, signal?: AbortSignal): Promise<ActionResult>;
+  execute(action: Action, signal?: AbortSignal, inspection?: InspectionBinding): Promise<ActionResult>;
   close(): Promise<void>;
   readonly page?: { url(): string; isClosed?(): boolean };
   bringToFront?(): Promise<void>;
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
-  controlWindow?(text?: string, offset?: number, options?: { ref?: string; exact?: boolean }): Promise<ControlWindow>;
+  controlWindow?(text?: string, offset?: number, options?: {
+    ref?: string; exact?: boolean; inspection?: boolean; destination?: string;
+  }): Promise<ControlWindow>;
+  inspectionSearch?(fieldId: string): Promise<{ url: string; destination: string; parameter: string; signature: string } | undefined>;
+  withInspection?<T>(work: () => Promise<T>): Promise<T>;
   fullPageLayout?<T>(work: () => Promise<T>): Promise<T>;
   prepareFullPage?(url: string, signal: AbortSignal): Promise<ShotRefusal | undefined>;
   capture?(plan: ShotPlan, mainText: string): Promise<Picture | ShotRefusal>;
@@ -178,16 +189,36 @@ export class WebExecutionAgent {
     return await this.adapter.clearSiteLogin?.({ currentOnly }, signal) ?? [];
   }
   accessMode(view = this.lastView): AccessTier { return this.guard.tierOf(view?.url); }
-  async openSite(url: string, ctx: ExecContext): Promise<WebOutcome> {
+  #inspectionPending?: { action: Action; sessionId: string; binding: InspectionBinding };
+
+  async openSite(url: string, ctx: ExecContext, { personalStart = false }: { personalStart?: boolean } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const host = tryUrl(url)?.host ?? url;
     ctx.trace("PLANNING", this.id, "open " + host);
-    const result = await this.run(this.action({ type: "navigate", url, reason: "사용자가 요청한 사이트 열기: " + host }), ctx, log);
+    const binding: InspectionBinding | undefined = personalStart ? { kind: "start", url } : undefined;
+    const result = await this.run(this.action({ type: "navigate", url, reason: "사용자가 요청한 사이트 열기: " + host }), ctx, log, undefined, binding);
     if (result?.ok !== true) return this.failed(log, result);
     ctx.trace("VERIFYING", this.id, "페이지 내용 확인");
     const view = await this.observeUntil(ctx, v => v.url !== "about:blank" && hasContent(v), 6000);
     return { status: "ok", actions: log, view: await this.settle(ctx, view) };
   }
+  async withInspection<T>(ctx: ExecContext, work: () => Promise<T>): Promise<T> {
+    return this.inspectionEnabled(ctx) && this.adapter.withInspection !== undefined ? this.adapter.withInspection(work) : work();
+  }
+
+  async followNavigationUrl(url: string, ctx: ExecContext): Promise<WebOutcome> {
+    const view = await this.observe(ctx);
+    const destination = URL.parse(url)?.href;
+    if (destination !== undefined && this.inspectionEnabled(ctx)) {
+      const window = await this.adapter.controlWindow?.("", 0, { destination, inspection: true });
+      const [item] = window?.items ?? [];
+      if (window?.url === view.url && window.items.length === 1 && !window.more && item?.inspection?.kind === "navigation") {
+        return this.followLink(item.name, ctx, false, { matchedControl: { ...item, url: window.url } });
+      }
+    }
+    return { status: "policy-denied", actions: [], view, message: "이 화면에서 확인한 이동 주소만 열 수 있어요." };
+  }
+
   private locate(view: PageView, name: string, preferButton = false, linksOnly = false) {
     const all = (view.outline?.items ?? []).filter(item => !item.disabled);
     const term = normalizeTerm(name);
@@ -245,9 +276,10 @@ export class WebExecutionAgent {
     }
     const target = { ref: item.ref, role: item.role, name: item.name };
     const result = await this.run(this.action({ type: "click", target, reason: `'${item.name}' 누르기(${item.role})` }), ctx, log);
-    if (result?.ok !== true) return this.failed(log, result, view);
+    const timedOut = this.inspectionEnabled(ctx) && result?.errorCode === "TIMEOUT";
+    if (result?.ok !== true && !timedOut) return this.failed(log, result, view);
     ctx.trace("VERIFYING", this.id, "화면 변화 확인");
-    return this.afterClick(view, item, ctx, log, false);
+    return this.afterClick(view, item, ctx, log, timedOut);
   }
 
   async pointAt(name: string, ctx: ExecContext, preferButton = false): Promise<WebOutcome> {
@@ -315,7 +347,7 @@ export class WebExecutionAgent {
     const action = pastFormTo !== undefined && pastFormTo !== ""
       ? this.action({ type: "back", url: pastFormTo, reason: "양식 결과 화면을 건너뛰어 그 앞 화면으로 돌아가기" })
       : this.action({ type: "back", reason: "이전 페이지로 돌아가기" });
-    const r = await this.run(action, ctx, log);
+    const r = await this.run(action, ctx, log, undefined, { kind: "back", url: view.url });
     if (r?.errorCode === "RESUBMIT_BLOCKED") return { ...this.failed(log, r, view), resubmitUrl: r.message };
     if (r?.ok !== true) return this.failed(log, r, view);
     if (!r.verified) return { status: 'failed', actions: log, view, message: '더 돌아갈 이전 페이지가 없습니다.' };
@@ -328,13 +360,30 @@ export class WebExecutionAgent {
     this.pendingSearch = undefined;
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
-    const box = view.fields.find((f) => f.visible && f.searchable === true);
-    if (!box) return { status: 'failed', actions: log, view, message: '이 화면에서 검색창을 찾지 못했습니다.' };
-    const target = { fieldId: box.fieldId, role: 'searchbox' };
-    let r = await this.run(this.action({ type: 'fill', target, value: query, reason: `검색어 입력: ${query}` }), ctx, log);
-    if (r?.ok !== true) return this.failed(log, r, view);
-    r = await this.run(this.action({ type: 'press', target, value: 'Enter', reason: '검색 실행' }), ctx, log);
-    if (r?.ok !== true) return this.failed(log, r, view);
+    const boxes = view.fields.filter((f) => f.visible && f.searchable === true);
+    if (this.inspectionEnabled(ctx)) {
+      let search: Awaited<ReturnType<NonNullable<WebAdapter["inspectionSearch"]>>>;
+      let fieldId: string | undefined;
+      for (const box of boxes) {
+        search = await this.adapter.inspectionSearch?.(box.fieldId);
+        if (search?.url === view.url) { fieldId = box.fieldId; break; }
+      }
+      if (search === undefined || fieldId === undefined) {
+        return { status: "policy-denied", actions: log, view, message: "이 화면에서는 검색에만 쓰이는 입력란을 확인하지 못했어요." };
+      }
+      const target = { fieldId, role: "searchbox" };
+      const action = this.action({ type: "press", target, value: query, url: search.destination, reason: "현재 사이트에서 검색" });
+      const r = await this.run(action, ctx, log, undefined, { kind: "search", fieldId, ...search });
+      if (r?.ok !== true) return this.failed(log, r, view);
+    } else {
+      const [box] = boxes;
+      if (!box) return { status: "failed", actions: log, view, message: "이 화면에서 검색창을 찾지 못했습니다." };
+      const target = { fieldId: box.fieldId, role: "searchbox" };
+      const filled = await this.run(this.action({ type: "fill", target, value: query, reason: `검색어 입력: ${query}` }), ctx, log);
+      if (filled?.ok !== true) return this.failed(log, filled, view);
+      const r = await this.run(this.action({ type: "press", target, value: "Enter", reason: "검색 실행" }), ctx, log);
+      if (r?.ok !== true) return this.failed(log, r, view);
+    }
     ctx.trace('VERIFYING', this.id, '검색 결과 확인');
     const changed = (v: PageView) => diffViews(view, v, undefined, this.churn.volatile())[0] !== "none" && hasContent(v);
     let after = await this.observeUntil(ctx, changed, 6000);
@@ -519,9 +568,40 @@ export class WebExecutionAgent {
    * 중요한 조작은 이미 됐을 수 있어 다시 하지 않는다(부르는 쪽이 화면을 다시 보고 알린다).
    * perform이 있으면 어댑터 대신 그것을 한 번만 부른다(화면 사진).
    */
-  async run(action: Action, ctx: ExecContext, log: WebAction[], perform?: () => Promise<ActionResult>): Promise<WebActionResult | undefined> {
-    ctx.trace('POLICY_CHECK', this.id, action.type);
-    const policy = this.guard.check(action, this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
+  private inspectionEnabled(ctx: ExecContext): boolean {
+    return this.guard.inspectionEnabled(this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
+  }
+
+  private async inspectTarget(action: Action, ctx: ExecContext): Promise<InspectionBinding | undefined> {
+    const ref = action.target?.ref;
+    if (ref === undefined || ctx.signal.aborted || ctx.isStopped()) return undefined;
+    const fresh = await this.adapter.controlWindow?.("", 0, { ref, inspection: true });
+    const [item] = fresh?.items ?? [];
+    if (fresh === undefined || fresh.url !== this.lastView?.url || item?.ref !== ref || item.disabled ||
+      item.role !== action.target?.role || item.name !== action.target?.name || item.inspection === undefined) return undefined;
+    return { kind: "control", url: fresh.url, ref, control: item.inspection };
+  }
+
+  async run(
+    action: Action, ctx: ExecContext, log: WebAction[], perform?: () => Promise<ActionResult>, binding?: InspectionBinding,
+  ): Promise<WebActionResult | undefined> {
+    ctx.trace("POLICY_CHECK", this.id, action.type);
+    const personal = this.inspectionEnabled(ctx);
+    const pending = this.#inspectionPending?.action.id === action.id ? this.#inspectionPending : undefined;
+    const approved = ctx.approvals.has(action.id);
+    if (pending !== undefined && approved) this.#inspectionPending = undefined;
+    const inspection = !personal ? undefined : action.type === "click" ? await this.inspectTarget(action, ctx) : binding;
+    const matches = pending !== undefined && inspection !== undefined && pending.sessionId === ctx.sessionId &&
+      isDeepStrictEqual(pending.action, action) && isDeepStrictEqual(pending.binding, inspection);
+    const changed = approved && (pending !== undefined || (personal && action.type === "click")) && (!personal || !matches);
+    const policy = changed
+      ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
+      : this.guard.check(action, {
+        ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
+      });
+    if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {
+      this.#inspectionPending = { action: structuredClone(action), sessionId: ctx.sessionId, binding: inspection };
+    }
     const entry: WebAction = { agent: this.id, action, policy };
     log.push(entry);
     if (!policy.allowed) {
@@ -532,7 +612,8 @@ export class WebExecutionAgent {
     }
     const writeLog = (phase: "before" | "after", ok?: boolean) => this.actionLog?.append({
       host: tryUrl(this.lastView?.url)?.hostname ?? "", pageKind: this.lastView?.pageId ?? "",
-      actionType: action.type, label: actionLabel(action), approvalId: action.requiresConfirmation ? action.id : undefined,
+      actionType: action.type, label: personal ? undefined : actionLabel(action),
+      approvalId: action.requiresConfirmation || policy.code === "APPROVED" ? action.id : undefined,
       phase, ...(ok === undefined ? {} : { ok }),
     });
     try { await writeLog("before"); }
@@ -549,8 +630,8 @@ export class WebExecutionAgent {
       entry.result = { actionId: action.id, ok: false, verified: false, errorCode: "ABORTED", latencyMs: 0 };
       return entry.result;
     }
-    let result = perform === undefined ? await this.adapter.execute(action, ctx.signal) : await perform();
-    if (perform === undefined && action.risk === "low" && policy.code !== "APPROVED" && !result.ok && result.errorCode === "TIMEOUT" &&
+    let result = perform === undefined ? await this.adapter.execute(action, ctx.signal, inspection) : await perform();
+    if (!personal && perform === undefined && action.risk === "low" && policy.code !== "APPROVED" && !result.ok && result.errorCode === "TIMEOUT" &&
       !ctx.signal.aborted) {
       result = await this.adapter.execute(action, ctx.signal);
     }
@@ -566,6 +647,9 @@ export class WebExecutionAgent {
     }
     if (!result) return { status: 'policy-denied', actions: log, view, message: last?.policy.reason };
     if (result.errorCode === 'ABORTED') return { status: 'aborted', actions: log, view, message: '중단되었습니다.' };
+    if (result.errorCode === "TIMEOUT" && last?.policy.code === "ALLOWED_INSPECTION") {
+      return { status: "unconfirmed", actions: log, view, message: "화면이 바뀌었는지 확인하지 못했어요." };
+    }
     const messages: Record<string, string> = {
       TARGET_NOT_FOUND: '화면에서 조작할 대상을 찾지 못했습니다.',
       AMBIGUOUS_TARGET: '같은 이름의 대상이 여러 개라서 실행하지 않았습니다.',
@@ -819,7 +903,7 @@ export class WebExecutionAgent {
   private policyContext(ctx: ExecContext, stopped: boolean): PolicyContext {
     return {
       currentUrl: this.lastView?.url, stopped, approvals: ctx.approvals, actionsThisTurn: ctx.counter.actions,
-      actionLimit: ctx.actionLimit, publicLookup: ctx.publicLookup,
+      actionLimit: ctx.actionLimit, publicLookup: ctx.publicLookup, browsingScope: ctx.browsingScope,
     };
   }
 

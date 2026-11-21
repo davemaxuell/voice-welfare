@@ -21,23 +21,36 @@ export interface VisionModel {
 
 const ROLES = new Set(["link", "tab", "menuitem", "button", "scriptlink"]);
 
-export function choices(view: WebObservation, matches?: readonly string[]): VisualChoice | undefined {
-  if (view.url === undefined || view.url === "" || planShot(view) instanceof ShotRefusal) return undefined;
-  const url = view.url;
+/** 이름이 하나뿐이고 누르기 안전한 이동용 조작. 본문 영역이 먼저 온다. */
+function namedControls(view: WebObservation): Array<{ name: string; ref: string; role: string }> {
   const items = (view.outline?.items ?? []).filter(item => item.disabled !== true);
   const counts = new Map<string | undefined, number>();
   for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
-  const controls = new Map<string, VisualControl>();
   const ordered = [...items].sort((a, b) => Number(a.region !== "main") - Number(b.region !== "main"));
-  for (const item of ordered) {
-    const name = item.name;
-    if (name === undefined || name === "" || item.ref === undefined || item.ref === "" || counts.get(name) !== 1 ||
-      (matches !== undefined && matches.length > 0 && !matches.includes(name)) || item.role === undefined || !ROLES.has(item.role) ||
-      isActionName(name) || redactPictureText(name) !== name) continue;
-    controls.set(name, [url, item.ref, item.role]);
+  const found: Array<{ name: string; ref: string; role: string }> = [];
+  for (const { name, ref, role } of ordered) {
+    if (name === undefined || name === "" || ref === undefined || ref === "" || counts.get(name) !== 1 ||
+      role === undefined || !ROLES.has(role) || isActionName(name) || redactPictureText(name) !== name) continue;
+    found.push({ name, ref, role });
+  }
+  return found;
+}
+
+export function choices(view: WebObservation, matches?: readonly string[]): VisualChoice | undefined {
+  if (view.url === undefined || view.url === "" || planShot(view) instanceof ShotRefusal) return undefined;
+  const url = view.url;
+  const controls = new Map<string, VisualControl>();
+  for (const { name, ref, role } of namedControls(view)) {
+    if (matches !== undefined && matches.length > 0 && !matches.includes(name)) continue;
+    controls.set(name, [url, ref, role]);
     if (controls.size >= MAX_NAMES) break;
   }
   return controls.size > 0 ? { url, controls } : undefined;
+}
+
+/** 화면 사진 속 이름이 누를 수 있는 조작인지 맞춰 보는 데 쓰는, 화면 글에서 읽은 조작 이름들. */
+export function controlNames(view: WebObservation, limit: number): string[] {
+  return namedControls(view).slice(0, limit).map(control => control.name);
 }
 
 export function sameChoice(a: VisualChoice | undefined, b: VisualChoice): boolean {

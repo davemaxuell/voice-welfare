@@ -20,9 +20,15 @@ function fake(reply: unknown) {
 }
 const signal = new AbortController().signal;
 
-it("the decision schemas and agency catalog are the ones Python sends", () => {
-  expect(JSON.parse(JSON.stringify(DECISION_SCHEMA))).toEqual(oracle.schema);
-  expect(JSON.stringify(DECISION_SCHEMA)).toBe(JSON.stringify(oracle.schema));
+it("개인 탐색과 한 단계 명령은 앞에서 실행하는 계획에만 추가한다", () => {
+  const {command, outcome, ...properties} = DECISION_SCHEMA.properties;
+  expect(command.properties.type.enum).toContain("PREV");
+  expect(outcome.anyOf[0]).toMatchObject({enum: ["answer", "arrival"]});
+  const additions = new Set(["inspect_personal", "browser_command"]);
+  expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command"]);
+  expect(properties.agency.anyOf[0]).toMatchObject({type: "string"});
+  expect({...DECISION_SCHEMA, properties: {...properties, agency: RESEARCH_SCHEMA.properties.agency, kind: {...properties.kind, enum: properties.kind.enum.filter(k => !additions.has(k))}},
+    required: DECISION_SCHEMA.required.filter(k => k !== "command" && k !== "outcome")}).toEqual(oracle.schema);
   expect(JSON.stringify(RESEARCH_SCHEMA)).toBe(JSON.stringify(oracle.research));
   expect(JSON.stringify(AGENCY_CATALOG)).toBe(JSON.stringify(oracle.catalog));
 });
@@ -41,6 +47,20 @@ it("parse_decision accepts and rejects what Python does", () => {
   delete stripped.question;
   delete stripped.agency;
   expect(parseDecision(stripped)?.agency).toBeUndefined();
+});
+it("keeps a pasted private URL local and grounds uncatalogued institution names in the request", async () => {
+  const text = "Open https://portal.example/a/private-row?key=content#member";
+  const open = fake({kind: "browser_command", command: {type: "OPEN_SITE", target: "https://portal.example", more: false},
+    requestedFacts: [], choices: [], exclusions: [], continuation: false});
+  const options = {voice: false, recent: [], signal};
+  const decision = await decide(open.llm, redactText(text), "en", new PublicTask(), options);
+  expect(decision?.command?.target).toBe(text.slice(5));
+  expect(open.calls[0]?.user).not.toMatch(/private-row|key=content|#member/u);
+  const ask = "Check my status at Cedar Civic Office";
+  const personal = (agency: string) => fake({kind: "inspect_personal", agency, goal: ask, requirements: [ask],
+    requestedFacts: [], choices: [], exclusions: [], continuation: false});
+  expect((await decide(personal("Cedar Civic Office").llm, redactText(ask), "en", new PublicTask(), options))?.agency).toBe("Cedar Civic Office");
+  expect(await decide(personal("Invented Office").llm, redactText(ask), "en", new PublicTask(), options)).toBeUndefined();
 });
 it("a task carries only what a continuation keeps", () => {
   const task = new PublicTask({ agency: "정부24", subject: "주민등록등본", goal: "등본 서류", facts: ["documents"], exclusions: ["login"], searchMode: "quiet" });

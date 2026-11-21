@@ -86,7 +86,7 @@ it("실패한 누름의 진행 알림에는 화면 글이 들어가지 않고 �
   const page: Observation = {
     ...obs, title: "복지로",
     outline: {
-      ...obs.outline, mainText: `안내 ${secret}`,
+      ...obs.outline!, mainText: `안내 ${secret}`,
       items: [
         { ref: "a", role: "button", name: "신청", region: "main", disabled: false },
         { ref: "b", role: "button", name: "신청", region: "main", disabled: false },

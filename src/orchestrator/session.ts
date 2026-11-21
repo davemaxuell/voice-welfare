@@ -101,6 +101,8 @@ export interface OrchestratorDeps {
   places?: PlaceFinder;
   publicPlanning?: boolean;
   quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal) => Promise<QuietAnswer>;
+  /** 알려지지 않은 기관의 공식 누리집 후보를 공공 도메인 안에서 찾는다(없으면 목표 수행이 이 길을 쓰지 않는다). */
+  findPortal?: (query: string, signal: AbortSignal) => Promise<readonly { url: string; title: string }[]>;
 }
 export type ModelRoles = Partial<Pick<OrchestratorDeps, "llm" | "goalLlm" | "webLlm" | "fileLlm" | "visionLlm" | "recoveryLlm">>;
 export type Detection = ReturnType<typeof detectSensitive>;
@@ -153,11 +155,8 @@ const SiteGuessSchema = z.object({
 });
 
 /** Python dataclasses.replace(ctx, ...): 승인·중단 신호는 그대로 두고 조작 한도와 조회 전용 표시만 바꾼 새 문맥 */
-export function withContext(ctx: ExecContext, changes: { counter?: { actions: number }; publicLookup?: boolean; actionLimit?: number }): ExecContext {
-  return new ExecContext({
-    signal: ctx.signal, approvals: ctx.approvals, isStopped: ctx.isStopped, trace: ctx.trace, counter: ctx.counter, actor: ctx.actor,
-    sessionId: ctx.sessionId, taskId: ctx.taskId, publicLookup: ctx.publicLookup, actionLimit: ctx.actionLimit, ...changes,
-  });
+export function withContext(ctx: ExecContext, changes: Partial<Pick<ExecContext, "counter" | "publicLookup" | "actionLimit" | "browsingScope">>): ExecContext {
+  return new ExecContext({ ...ctx, ...changes });
 }
 
 export function isAbort(error: unknown): boolean {
@@ -209,6 +208,7 @@ export class SessionOrchestrator {
   publicTask = new PublicTask();
   /** 검토하던 일이 사용자 대답을 기다리는 자리(되물음·본인인증·지역 물음) */
   reviewQuestion?: readonly [PublicTask, ReviewedTask];
+  inspectedScreen?: {task: PublicTask; confirmedPageKey: string};
   authReview?: readonly [handoffId: string, ReviewedTask];
   placeReview?: readonly [PlaceAsk, ReviewedTask];
   /** 공공업무 판단에 주는 최근 대화(네 턴까지) */
@@ -239,6 +239,7 @@ export class SessionOrchestrator {
     const region = () => ({ ctpv: this.profile.ctpv, sgg: this.profile.sgg });
     this.browse = new BrowseSkill({
       web: deps.web, dialogue: this.dialogue, narrator: this.narrator, form: this.form, deps, progress: this.progress,
+      replyLanguage: () => this.lang,
       officialText: url => deps.welfare.readableService(url),
       applicationGuideUrl: name => deps.welfare.applicationGuideUrl(name, region()),
       resolveGuideTarget: (question, { subject, siteUrl } = {}) => deps.welfare.resolveGuideTarget(question, { subject, siteUrl, ...region() }),
@@ -298,6 +299,7 @@ export class SessionOrchestrator {
       if (d.approval?.kind === "file") d.clearApproval();
       if (!granted) {
         this.publicTask = new PublicTask();
+        this.inspectedScreen = undefined;
         this.reviewQuestion = this.authReview = this.placeReview = undefined;
         d.finishAuth("cancelled");
         d.takeVaultConfirm();
@@ -551,6 +553,8 @@ export class SessionOrchestrator {
     this.publicTurns.length = 0;
     this.activeService = undefined;
     this.publicTask = new PublicTask();
+    this.inspectedScreen = undefined;
+    this.reviewQuestion = this.authReview = this.placeReview = undefined;
     this.profile = {};
     this.grounded = undefined;
     this.#secretHint = false;
@@ -582,6 +586,8 @@ export class SessionOrchestrator {
 
   async close() {
     this.publicTask = new PublicTask();
+    this.inspectedScreen = undefined;
+    this.reviewQuestion = this.authReview = this.placeReview = undefined;
     this.#queue.invalidate();
     this.#controller.abort();
     this.#offer = undefined;
@@ -617,6 +623,7 @@ export class SessionOrchestrator {
 
   #interrupt() {
     this.#queue.invalidate();
+    this.progress.interrupt();
     this.#controller.abort();
     this.#controller = new AbortController();
   }
@@ -626,6 +633,7 @@ export class SessionOrchestrator {
   }
 
   #stop(text: Redacted): TurnResult {
+    this.inspectedScreen = undefined;
     this.reviewQuestion = this.authReview = this.placeReview = undefined;
     this.browse.linkChoices = undefined;
     this.publicTask = new PublicTask();
@@ -1025,6 +1033,12 @@ export class SessionOrchestrator {
         }
         // 금고·신청 기록 명령. 다른 명령처럼 동의 문과 멈춤 문을 지난다.
         const command = vaultValues === undefined ? parsePersonalCommand(text, this.today) : { kind: "vault-save" as const, values: vaultValues };
+        const planning = guess === undefined && original === undefined && this.planner.canPlan(text, sensitive);
+        const recordCandidate = command?.kind === "app-status" || command?.kind === "app-done";
+        if (planning && recordCandidate) {
+          const planned = await this.planner.plan(text, turn);
+          if (planned !== undefined) return planned;
+        }
         if (command !== undefined) {
           const type: `PERSONAL_${string}` = `PERSONAL_${command.kind.toUpperCase().replace("-", "_")}`;
           turn.intentType = type;
@@ -1050,12 +1064,14 @@ export class SessionOrchestrator {
               if (intents.some(i => !READ_ONLY_QUESTIONS.has(i.type))) intents = [{ type: "UNKNOWN", text: said }];
               return this.finish(turn, await this.runPlan(intents, turn));
             }
-            const before = this.web.currentView;
-            const result = await raceAbort(() => this.browse.chooseLink(reference, said, turn.ctx, { redact: speech => this.historySpeech(speech) }), turn.ctx.signal);
-            return this.finish(turn, await this.browse.recognizeAuthPage(result, before, turn.ctx));
+            return this.planner.command(turn, type, async () => {
+              const before = this.web.currentView;
+              const result = await raceAbort(() => this.browse.chooseLink(reference, said, turn.ctx, { redact: speech => this.historySpeech(speech) }), turn.ctx.signal);
+              return this.browse.recognizeAuthPage(result, before, turn.ctx);
+            });
           }
         }
-        if (guess === undefined && original === undefined && this.planner.canPlan(text, sensitive)) {
+        if (planning && !recordCandidate) {
           const planned = await this.planner.plan(text, turn);
           if (planned !== undefined) return planned;
         }
@@ -1128,7 +1144,7 @@ export class SessionOrchestrator {
       // 전체 발화를 되풀이한 단계가 빠져 질문 하나만 남아도 모델이 쓴 질문으로 처리한다.
       const splitQuestion = intent.type === "UNKNOWN" && llm !== undefined && understood.by === llm.name && intent.text !== heard;
       if (rest.length > 0 || splitQuestion) return this.finish(turn, await this.runPlan(intents, turn));
-      return this.finish(turn, await this.route(intent, turn));
+      return this.planner.command(turn, intent.type, () => this.route(intent, turn));
     } catch (error) {
       if (isAbort(error)) return this.voided();
       const name = error instanceof Error ? error.name : "Error";
@@ -1139,6 +1155,8 @@ export class SessionOrchestrator {
   async #authTurn(turn: Turn, forced: Intent | undefined): Promise<Draft> {
     const text = turn.text;
     const d = this.dialogue;
+    const inspection = this.authReview?.[1].inspection !== undefined;
+    if (inspection) turn.ctx = withContext(turn.ctx, { browsingScope: "personal-inspection" });
     const loginSubmit = () => { const waiting = d.approval; return waiting?.kind === "click" && waiting.then === "login-submit"; };
     const parsed = forced ?? this.rules.parseSync(text, { state: d.approval === undefined ? "AUTH_HANDOFF" : "WAITING_FOR_USER_CONFIRMATION" });
     let intent: string = parsed.type;
@@ -1170,15 +1188,18 @@ export class SessionOrchestrator {
     const handoff = d.authHandoff;
     if (intent === "AUTH_DONE") {
       d.clearApproval();
-      const result = await this.browse.authDone(turn.ctx);
       const waiting = this.authReview;
+      const journey = handoff?.id === waiting?.[0] ? waiting?.[1].journey : undefined;
+      const result = await this.browse.authDone(turn.ctx, inspection ? journey : undefined);
       if (waiting !== undefined && handoff?.id === waiting[0] && handoff.status === "completed") {
         this.authReview = undefined;
+        journey?.resumeAfterAuth();
         return this.review.run(waiting[1], turn, result);
       }
+      if (waiting && !d.authWaiting) this.authReview = undefined;
       return result;
     }
-    if (intent === "LOGIN" && handoff?.kind === "login" && authInputDone(text)) return this.browse.login(text, turn.ctx);
+    if (!inspection && intent === "LOGIN" && handoff?.kind === "login" && authInputDone(text)) return this.browse.login(text, turn.ctx);
     if ((intent === "APPROVE" || intent === "REJECT") && loginSubmit()) {
       if (intent === "APPROVE") return this.application.approve(turn);
       d.clearApproval();
@@ -1198,7 +1219,7 @@ export class SessionOrchestrator {
     const state = stopped ? "STOPPED" : out.state;
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
-    const privateHistory = turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true;
+    const privateHistory = turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
     // 금고 값(저장 대기 포함)은 사용자에게는 읽어 주되, LLM에 가는 기록에는 넣지 않는다.
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
     let localSpeechOnly = privateHistory || recorded !== speech;
@@ -1261,6 +1282,7 @@ export class SessionOrchestrator {
 
   /** 이 응답이 어느 공공기관 일이었는지 적어 둔다. 다음 공공업무 판단과 이어 묻는 말이 읽는다. */
   #rememberPublicTurn(turn: Turn, out: Draft, state: SessionState, view: View | undefined, userText: Redacted, reply: Redacted) {
+    if (turn.ctx.browsingScope === "personal-inspection") return;
     const lookup = turn.ctx.publicLookup;
     const clip = (text: string, size: number) => Array.from(redactText(text)).slice(0, size).join("");
     const known = this.publicTask.agency ?? "";
@@ -1324,7 +1346,7 @@ export class SessionOrchestrator {
 
   // ---------------------------------------------------------------- 라우팅
 
-  #secrets(): string[] {
+  privateValuesForRedaction(): string[] {
     const secrets = new Set(Object.values(this.personal.vault()));
     // 부르는 이름도 금고 값처럼 LLM에 가는 기록에는 넣지 않는다
     for (const name of [this.personal.callName(), this.firstRun.pendingName]) {
@@ -1335,7 +1357,7 @@ export class SessionOrchestrator {
     return [...secrets].filter(value => value.length > 0).sort(byLengthDesc);
   }
 
-  #withoutSecrets(speech: string): string { return replaceValues(speech, this.#secrets()); }
+  #withoutSecrets(speech: string): string { return replaceValues(speech, this.privateValuesForRedaction()); }
 
   /** 보조 턴 기록용: 금고에 있거나 저장 확인 대기 중인 값을 [비공개]로 바꾼다(들은 말은 그대로). */
   historySpeech(speech: string): Redacted { return redactText(this.#withoutSecrets(speech)); }
