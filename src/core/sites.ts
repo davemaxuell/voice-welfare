@@ -111,3 +111,9 @@ export const KNOWN_SITES: readonly KnownSite[] = [
 
 export const PUBLIC_AGENCIES: ReadonlyMap<string, KnownSite> = new Map(PUBLIC_SITES.map(site => [site.label, site]));
 export const PUBLIC_ORIGINS: ReadonlySet<string> = new Set(PUBLIC_SITES.map(site => site.url.replace(/\/+$/u, "")));
+
+/** 공공 누리집으로 볼 수 있는 주소인지. https, 기본 포트, 계정 정보 없음에 `.go.kr` 도메인이거나 알려진 공공 누리집이다. */
+export function isOfficialPortal(url: { href: string; protocol: string; hostname: string; port: string; origin: string }): boolean {
+  if (url.protocol !== "https:" || url.port !== "" || /^[a-z][\d+.a-z-]*:\/\/[^/?#]*@/iu.test(url.href)) return false;
+  return url.hostname.endsWith(".go.kr") || PUBLIC_ORIGINS.has(url.origin);
+}

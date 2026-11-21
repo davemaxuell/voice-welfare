@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { BrowserJourney } from "../journey.ts";
 import { extname } from "node:path";
 import { z } from "zod";
 import { raceAbort } from "../../../core/abort.ts";
@@ -11,6 +12,7 @@ import { asciiDecimalDigits, hasText, strip } from "../../../core/text.ts";
 import { AGENT_IDS, draft, type Draft, type Lang, type HumanAuthHandoff } from "../../../core/turn.ts";
 import { todayIso } from "../../../core/time.ts";
 import { tryUrl } from "../../../core/url.ts";
+import { PERSONAL_BROWSE_TEXT, inspectionClickQuestion } from "../../../speech/browse_phrases.ts";
 import { guardPatterns } from "../../../safety/guard.ts";
 import type { PiiScanner } from "../../../safety/pii_model.ts";
 import { REDACTED, redactText, redactPictureText } from "../../../safety/privacy.ts";
@@ -21,7 +23,7 @@ import { KNOWN_SITES, goalSiteRequest, publicServiceSite, resolveSite, siteLabel
 import { ExecContext, type PageView, type WebAction, type WebExecutionAgent } from "../agent.ts";
 import { fingerprint } from "../approval.ts";
 import { accessBlocked, authPageKind, firstFillField, passwordFields, stillNeedsAuth, verificationApp } from "../auth_page.ts";
-import { Autopilot, type AutopilotStep, type BrowseCheckpoint } from "../autopilot.ts";
+import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint } from "../autopilot.ts";
 import { PAGE_KIND_LABEL, digestPage, pageTextForLlm } from "../digest.ts";
 import { DocumentLimit } from "../docs.ts";
 import { answerFile, readForUpload } from "../file_answer.ts";
@@ -31,6 +33,7 @@ import { LinkChoices, resolveDescription, type LinkReference } from "../link_cho
 import { PICTURE_SCHEMA, PICTURE_SCHEMA_NAME, PICTURE_SYSTEM } from "../../../core/picture.ts";
 import { HISTORY_NOT_DESCRIBED, MAX_NAMES, composePictureAnswer, pictureRequest } from "../../../speech/picture.ts";
 import { planShot, ShotRefusal } from "../shot.ts";
+import { orientScreen } from "../orient.ts";
 import { selectControl, type VisionModel } from "../visual_step.ts";
 import { groundedScreenAnswer, sameScreen, screenContext, screenDecision, screenPatterns, screenRedactor, SCREEN_CHANGED, SCREEN_CLARIFY, SCREEN_TEXT_SCHEMA, SCREEN_TEXT_SYSTEM } from "./screen_context.ts";
 import { NOT_READY, stillBuilding } from "../effect.ts";
@@ -61,6 +64,8 @@ export function stepSentence(step: Pick<AutopilotStep, "action" | "ok" | "target
     case "click": return ok ? `${before.length > 0 ? before + "에서 " : ""}${target} 눌렀어요.` : `${target} 누르려고 했어요.`;
     case "search": return ok ? `${target} 검색했어요.` : `${target} 검색하려고 했어요.`;
     case "back": return ok ? "이전 페이지로 돌아갔어요." : "이전 페이지로 돌아가려고 했어요.";
+    case "inspect_screen": return ok ? "화면 사진으로 메뉴를 확인했어요." : "화면 사진으로 메뉴를 확인해 보려고 했어요.";
+    case "find_portal": return ok ? "공식 누리집 후보를 찾았어요." : "공식 누리집 후보를 찾아봤어요.";
     case "read_more": return "본문을 이어서 보고 있어요.";
     case "find": return ok ? `본문에서 ${target} 찾았어요.` : `본문에서 ${target} 찾아봤어요.`;
     default: return "찾은 답이 화면과 맞는지 다시 보고 있어요.";
@@ -82,6 +87,7 @@ export interface BrowseDeps {
   downloads?: Pick<DownloadStore, "speakList" | "readLatest"> & Partial<Pick<DownloadStore, "latest">>;
   visionLlm?: VisionModel;
   recoveryLlm?: StructuredLlm;
+  findPortal?: AutopilotOptions["discoverPortal"];
   fileLlm?: StructuredLlm & {readonly fileRecipient?: string};
   clock?: () => number;
   practiceMode?: boolean;
@@ -103,6 +109,11 @@ interface GuideLinks {
 }
 interface GoalOptions {
   publicTask?: PublicLookup;
+  journey?: BrowserJourney;
+  privateValues?: readonly string[];
+  agency?: string;
+  entryOrigin?: string;
+  inspectionOutcome?: "answer" | "arrival";
   checkpoint?: BrowseCheckpoint;
   visualControl?: string;
   maxSteps?: number;
@@ -115,6 +126,7 @@ interface Options {
   resolveGuideTarget?(question: string, options?: {subject?: string; siteUrl?: string}): Promise<{url?: string; kind?: string; links?: GuideLinks} | undefined>;
   planningContext?(goal: string, siteUrl?: string): object;
   resolveSiteLink?(target: string): Promise<{url?: string; label?: string} | undefined>;
+  replyLanguage?(): Lang;
   web: WebExecutionAgent; dialogue: BrowseDialogue; narrator: Narrator; form: BrowseForm;
   deps: BrowseDeps; progress: Progress; officialText(url: string): Promise<{text: string; servNm: string} | undefined>;
 }
@@ -138,18 +150,20 @@ export class BrowseSkill {
   linkChoices?: LinkChoices;
   #searched?: {query: string; origin: string; results: string};
   readonly #sourcesSpoken = new Set<string>();
-  readonly #savedVisual = new WeakMap<object, {checkpoint: BrowseCheckpoint; publicTask?: PublicLookup}>();
+  readonly #savedVisual = new WeakMap<object, {checkpoint: BrowseCheckpoint; publicTask?: PublicLookup; journey?: BrowserJourney}>();
   readonly #applicationGuideUrl: Options["applicationGuideUrl"];
   readonly #resolveGuideTarget: Options["resolveGuideTarget"];
   readonly #planningContext: Options["planningContext"];
   readonly #resolveSiteLink: Options["resolveSiteLink"];
+  readonly #replyLanguage: NonNullable<Options["replyLanguage"]>;
 
-  constructor({web, dialogue, narrator, form, deps, progress, officialText, resolveSiteLink, applicationGuideUrl, resolveGuideTarget, planningContext}: Options) {
+  constructor({web, dialogue, narrator, form, deps, progress, officialText, resolveSiteLink, applicationGuideUrl, resolveGuideTarget, planningContext, replyLanguage = () => "ko"}: Options) {
     this.web = web;
     this.dialogue = dialogue;
     this.narrator = narrator;
     this.form = form;
     this.deps = deps;
+    this.#replyLanguage = replyLanguage;
     this.progress = progress;
     this.#officialText = officialText;
     this.#resolveSiteLink = resolveSiteLink;
@@ -299,23 +313,30 @@ export class BrowseSkill {
     return draft(browseState(out.view), "follow-link", hasText(notice) ? `${speech} ${notice}` : speech, {actions: out.actions, view: out.view});
   }
 
-  askClick(action: Action, view: PageView | undefined, lead: string, actions: WebAction[], effect?: string, then?: ClickApproval["then"]): Draft {
+  askClick(action: Action, view: PageView | undefined, lead: string, actions: WebAction[], effect?: string, then?: ClickApproval["then"], lang?: Lang): Draft {
     const name = action.target?.name ?? "";
     const kind = action.target?.role === "link" ? "링크" : "버튼";
     const url = view?.url ?? "";
     const site = tryUrl(url)?.host ?? url;
     const title = hasText(view?.title) ? view.title : site;
-    const question = `${site}의 '${title}' 화면에서 '${name}' ${josa(kind, "을", "를")} 누르려고 해요. `
+    const question = lang !== undefined ? inspectionClickQuestion(lang, site, title, name) : `${site}의 '${title}' 화면에서 '${name}' ${josa(kind, "을", "를")} 누르려고 해요. `
       + (hasText(effect) ? effect : `신청, 제출, 로그인처럼 무언가를 처리하는 ${kind}일 수 있어서 누르기 전에 여쭤봐요.`)
       + " 누를까요? 누르려면 '눌러', 그만두려면 '거절'이라고 말씀해 주세요.";
     this.dialogue.askApproval({kind: "click", action, url, then,
       confirmation: {actionId: action.id, kind: "click", description: question, purpose: `'${name}' ${kind} 누르기`, site, values: [], realSubmission: false},
       fingerprint: fingerprint(view ?? {}, [action], question)});
-    return draft("WAITING_FOR_USER_CONFIRMATION", "confirm-click", lead + question, {actions, view});
+    return draft("WAITING_FOR_USER_CONFIRMATION", "confirm-click", lead + question, {actions, view, lang});
   }
 
   async clickApproved(approval: ClickApproval, ctx: ExecContext): Promise<Draft> {
-    const out = await this.web.clickApproved(approval.action, ctx);
+    const out = await this.web.withInspection(ctx, () => this.web.clickApproved(approval.action, ctx));
+    if (ctx.browsingScope === "personal-inspection") {
+      this.dialogue.clearApproval();
+      if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
+      this.afterNavigation(out.view);
+      if (stillNeedsAuth(out.view)) return this.#beginAuthHandoff(out.view, out.actions, ctx, "", undefined, approval.url);
+      return draft(browseState(out.view), "confirm-click", "누른 뒤의 화면을 다시 확인할게요.", {actions: out.actions, view: out.view});
+    }
     if (out.status === "unconfirmed") return askAgain(out, "confirm-click", "누르려면 '눌러', 그만두려면 '거절'이라고 말씀해 주세요.");
     this.dialogue.clearApproval();
     if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
@@ -341,6 +362,10 @@ export class BrowseSkill {
     return undefined;
   }
 
+  #personalAuthLang(ctx: ExecContext): Lang | undefined {
+    return ctx.browsingScope === "personal-inspection" ? this.#replyLanguage() : undefined;
+  }
+
   async #beginAuthHandoff(view: PageView, actions: WebAction[], ctx: ExecContext, speech: string, resume?: DialogueState["authResume"], expectedUrl?: string): Promise<Draft> {
     const kind = authPageKind(view);
     if (kind === "other") return draft(browseState(view), "auth-handoff", speech, {actions, view});
@@ -351,16 +376,25 @@ export class BrowseSkill {
       expectedPath: expected?.pathname ?? "/", kind, deadline: (this.deps.clock?.() ?? this.web.clock() / 1000) + 600, site: here?.host ?? ""}));
     await this.web.showBrowser();
     const app = kind === "verification" ? verificationApp(view) : undefined;
-    if (kind === "captcha") speech = "사이트의 보안문자나 사람 확인을 직접 처리해 주세요. 사이트가 음성 확인이나 다른 방법을 제공하면 그 방법을 쓸 수 있어요. 끝나면 '다 했어'라고 알려 주세요.";
-    if (app !== undefined) {
+    const lang = this.#personalAuthLang(ctx);
+    if (lang !== undefined) {
+      if (kind === "captcha") speech = PERSONAL_BROWSE_TEXT.authCaptcha[lang];
+      else if (app !== undefined) speech = PERSONAL_BROWSE_TEXT.authApp[lang].replace("{app}", app);
+      else speech = PERSONAL_BROWSE_TEXT.authStart[lang];
+    } else if (kind === "captcha") {
+      speech = "사이트의 보안문자나 사람 확인을 직접 처리해 주세요. 사이트가 음성 확인이나 다른 방법을 제공하면 그 방법을 쓸 수 있어요. 끝나면 '다 했어'라고 알려 주세요.";
+    } else if (app !== undefined) {
       speech = strip(`${app} 인증 화면으로 보여요. 휴대폰에서 ${app} 앱으로 인증을 마친 뒤 '인증 끝났어' 또는 '다 했어'라고 말씀해 주세요. 인증번호는 제가 듣지도 입력하지도 않아요. ${speech}`);
     }
     const first = firstFillField(view);
     if (first && app === undefined && kind === "login") actions = (await this.web.focusField(first, ctx, actions)).actions;
     if (this.deps.sharedBrowser === true) {
-      speech += this.narrator.once("chrome-login", " 이 컴퓨터에 로그인이 남을 수 있어요. 지우려면 '로그아웃해줘' 또는 '로그인 기록 지워줘'라고 말씀해 주세요.");
+      const notice = lang === undefined
+        ? "이 컴퓨터에 로그인이 남을 수 있어요. 지우려면 '로그아웃해줘' 또는 '로그인 기록 지워줘'라고 말씀해 주세요."
+        : PERSONAL_BROWSE_TEXT.authShared[lang];
+      speech += this.narrator.once("chrome-login", " " + notice);
     }
-    return draft("AUTH_HANDOFF", "auth-handoff", speech, {actions, view});
+    return draft("AUTH_HANDOFF", "auth-handoff", speech, {actions, view, lang});
   }
 
   async clearLogin(ctx: ExecContext): Promise<Draft> {
@@ -722,6 +756,11 @@ export class BrowseSkill {
     const saved = typeof key === "object" && key !== null ? this.#savedVisual.get(key) : undefined;
     if (!saved) return draft("BROWSING", "goal", "화면이나 항목이 바뀌었어요. 필요한 업무를 다시 말씀해 주세요.");
     this.#savedVisual.delete(saved.checkpoint);
+    if (saved.checkpoint.kind === "orient") {
+      // 사진은 이어 가는 목표 수행 안에서 찍는다. 동의는 이 목표와 이 누리집에만 적용된다.
+      const checkpoint = {...saved.checkpoint, remainingMs: Math.max(0, Math.floor(saved.checkpoint.remainingMs))};
+      return this.runGoal(approval.goal, new ExecContext({...ctx, publicLookup: true}), {publicTask: saved.publicTask, journey: saved.journey, checkpoint});
+    }
     const actions: WebAction[] = [];
     const deadline = performance.now() + saved.checkpoint.remainingMs;
     const timeout = AbortSignal.timeout(Math.max(0, Math.floor(saved.checkpoint.remainingMs)));
@@ -735,24 +774,29 @@ export class BrowseSkill {
     }
     if (!hasText(control)) return draft(ctx.signal.aborted ? "STOPPED" : "BROWSING", "goal", reason, {actions});
     const checkpoint = {...saved.checkpoint, remainingMs: Math.max(0, Math.floor(deadline - performance.now()))};
-    const result = await this.runGoal(approval.goal, new ExecContext({...ctx, publicLookup: true}), {publicTask: saved.publicTask, checkpoint, visualControl: control});
+    const result = await this.runGoal(approval.goal, new ExecContext({...ctx, publicLookup: true}), {publicTask: saved.publicTask, journey: saved.journey, checkpoint, visualControl: control});
     return {...result, actions: [...actions, ...result.actions ?? []]};
   }
 
   async runGoal(goal: string, ctx: ExecContext, options: GoalOptions = {}): Promise<Draft> {
-    const {publicTask, checkpoint, visualControl, maxSteps, continuePage, exclusions = [], requestedSteps = []} = options;
+    const {publicTask, journey, checkpoint, visualControl, maxSteps, continuePage, exclusions = [], requestedSteps = []} = options;
+    const personal = ctx.browsingScope === "personal-inspection";
     const model = this.deps.goalLlm ?? this.deps.llm;
     const sites = this.mockSites();
     let [siteUrl, question] = goalSiteRequest(goal, sites);
-    let agency = publicServiceSite(goal);
+    let agency: KnownSite | undefined = publicServiceSite(goal);
     if (publicTask) {
       agency = KNOWN_SITES.find(site => site.label === publicTask.agency);
       siteUrl = agency?.url;
       question = publicTask.goal;
     }
-    let startUrl = publicGuideUrl(siteUrl, question);
+    if (personal) {
+      agency = [...sites, ...KNOWN_SITES].find(site => site.label === options.agency || site.names.includes(options.agency ?? ""));
+      siteUrl = options.entryOrigin ?? agency?.url;
+    }
+    let startUrl = personal ? siteUrl : publicGuideUrl(siteUrl, question);
     let links: GuideLinks | undefined;
-    if (!checkpoint && !hasText(startUrl)) {
+    if (!personal && !checkpoint && !hasText(startUrl)) {
       if (this.#resolveGuideTarget) {
         const resolved = await this.#resolveGuideTarget(question, {subject: publicTask?.subject, siteUrl});
         if (hasText(resolved?.url)) {
@@ -777,40 +821,50 @@ export class BrowseSkill {
       return draft(this.dialogue.state, "goal", "여러 단계를 알아서 하려면 AI 모델 설정이 필요해요. 대신 '네이버 열어줘'처럼 한 단계씩 말씀해 주세요.");
     }
     let here = this.web.currentView?.url ?? "";
-    const offerVisual = this.deps.visionLlm !== undefined && !exclusions.includes("screen_capture") && publicTask?.exclusions.includes("screen_capture") !== true;
+    const offerVisual = !personal && this.deps.visionLlm !== undefined && !exclusions.includes("screen_capture") && publicTask?.exclusions.includes("screen_capture") !== true;
+    const vision = this.deps.visionLlm;
+    const orientWith = offerVisual && vision !== undefined ? (question: string, url: string, run: ExecContext, log: WebAction[]) => orientScreen(this.web, vision, question, url, run, log) : undefined;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
-      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, offerVisual, maxSteps, timeBudgetMs: maxSteps === undefined ? undefined : maxSteps * 12_000,
-      progress: this.progress, activityLlm: this.deps.webLlm});
+      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: maxSteps === undefined ? undefined : maxSteps * 12_000,
+      progress: this.progress, activityLlm: this.deps.webLlm, milestoneText: key => PERSONAL_BROWSE_TEXT[key][this.#replyLanguage()]});
     this.progress.start();
     let result;
     try {
-      const conversation: Record<string, unknown> = {...this.#planningContext?.(goal, siteUrl), ...publicTask?.context()};
+      const conversation: Record<string, unknown> = personal ? {} : {...this.#planningContext?.(goal, siteUrl), ...publicTask?.context()};
       if (requestedSteps.length > 0) conversation.requestedSteps = requestedSteps;
       const relatedSites = (links?.relatedSites ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       const forms = (links?.forms ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       if (relatedSites.length > 0 || forms.length > 0) conversation.officialLinks = {...(relatedSites.length > 0 ? {relatedSites} : {}), ...(forms.length > 0 ? {forms} : {})};
-      result = await pilot.run(goal, new ExecContext({...ctx, actor: "goal"}), step => {
+      result = await this.web.withInspection(ctx, () => pilot.run(goal, new ExecContext({...ctx, actor: "goal"}), step => {
         const before = here;
         if (hasText(step.url)) here = step.url;
-        this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
-      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, visualControl,
-        requestedFacts: publicTask?.facts.filter((fact): fact is PublicFact => Object.hasOwn(PUBLIC_FACT_LABELS, fact)), allowedUrls: relatedSites.map(site => site.url)});
+        if (!personal) this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
+      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, visualControl, journey, privateValues: options.privateValues,
+        discoveryAgency: personal && !hasText(siteUrl) ? options.agency : undefined,
+        inspectionOutcome: options.inspectionOutcome, replyLanguage: this.#replyLanguage(),
+        requestedFacts: publicTask?.facts.filter((fact): fact is PublicFact => Object.hasOwn(PUBLIC_FACT_LABELS, fact)), allowedUrls: relatedSites.map(site => site.url)}));
     } finally { this.progress.finish(); }
     if (result.view) this.afterNavigation(result.view);
     const view = result.view ?? this.web.currentView;
     const review = {browserIterations: result.iterations, reviewQuotes: result.reviewQuotes, reviewPages: result.reviewPages, reviewQuoteSources: Object.fromEntries(result.quoteSources)};
+    if (personal && view && stillNeedsAuth(view) && !ctx.signal.aborted && !ctx.isStopped()) {
+      if (exclusions.includes("login")) return draft("BROWSING", "goal", "이 화면부터는 로그인이 필요해서 여기서 멈췄어요.", {view, actions: result.actions, ...review});
+      const auth = await this.#beginAuthHandoff(view, result.actions, ctx, "", undefined, journey?.returnOrigin);
+      return {...auth, ...review};
+    }
     if (result.checkpoint && view) {
       const site = siteLabel(view.url, sites);
       const prompt = `${site}에서 ${result.speech}`;
       const approval: Extract<Approval, {kind: "visual"}> = {kind: "visual", goal, publicTask, checkpoint: result.checkpoint,
-        confirmation: {actionId: randomUUID(), kind: "visual-navigation", description: prompt, purpose: "화면 사진으로 안내 링크 찾기", site,
+        confirmation: {actionId: randomUUID(), kind: "visual-navigation", description: prompt, purpose: result.checkpoint.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기", site,
           values: [{label: "전송 대상", value: "OpenAI"}], realSubmission: false}};
-      this.#savedVisual.set(result.checkpoint, {checkpoint: result.checkpoint, publicTask});
+      this.#savedVisual.set(result.checkpoint, {checkpoint: result.checkpoint, publicTask, journey});
       this.dialogue.askApproval(approval);
       return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {actions: result.actions, view, ...review});
     }
     if (publicTask && result.status === "needs-approval") return draft(view ? browseState(view) : this.dialogue.state, "goal", "공개 안내에서 이 정보를 확인하지 못했어요.", {actions: result.actions, view, ...review});
     if (result.status === "needs-approval" && result.pending) {
+      if (personal) return {...this.askClick(result.pending, view, "", result.actions, undefined, undefined, this.#replyLanguage()), ...review};
       const lead = `'${goal}'라고 하신 일을 하다가 `;
       if (result.pending.target?.name === this.web.profile.buttons.submit && isFormOpen(view)) {
         const asked = await this.form.prepareSubmit(ctx);
@@ -830,8 +884,9 @@ export class BrowseSkill {
       speech += ` ${label} 화면에서 확인했어요.`;
       this.#sourcesSpoken.add(label);
     }
-    return draft(state, "goal", speech, {actions: result.actions, view, sources, ...review, summary: result.status === "answered" ? speech : undefined,
-      taskQuestion: publicTask && result.status === "asked" ? result.speech : undefined,
+    return draft(state, "goal", speech, {actions: result.actions, view, sources, ...review, lang: personal && result.status === "asked" ? this.#replyLanguage() : undefined,
+      summary: result.status === "answered" ? speech : undefined,
+      taskQuestion: (publicTask || personal) && result.status === "asked" ? result.speech : undefined,
       researchEvidence: publicTask && result.status === "answered" ? result.speech : undefined, researchState: publicTask && result.status === "partial" ? "partial" : undefined});
   }
 
@@ -868,23 +923,28 @@ export class BrowseSkill {
       "모의 본인인증 화면이에요. 아이디와 비밀번호는 제가 입력하지 않아요. 키보드로 직접 입력하신 뒤 '다 했어' 또는 '인증 끝났어'라고 말씀해 주세요.", resume, current?.url);
   }
 
-  authWait(message = "지금은 사이트 화면에서 직접 확인하는 단계예요. 마치면 '다 했어', 중단하려면 '인증 취소'라고 알려 주세요."): Draft {
-    return draft("AUTH_HANDOFF", "auth-handoff", message);
+  authWait(message = "지금은 사이트 화면에서 직접 확인하는 단계예요. 마치면 '다 했어', 중단하려면 '인증 취소'라고 알려 주세요.", lang?: Lang): Draft {
+    return draft("AUTH_HANDOFF", "auth-handoff", message, {lang});
   }
 
-  finishAuth(status: HumanAuthHandoff["status"], speech: string, view?: PageView): Draft {
+  finishAuth(status: HumanAuthHandoff["status"], speech: string, view?: PageView, lang?: Lang): Draft {
     this.dialogue.finishAuth(status);
     this.dialogue.clearApproval();
-    return draft(view ? browseState(view) : "IDLE", "auth-handoff", speech, {view});
+    return draft(view ? browseState(view) : "IDLE", "auth-handoff", speech, {view, lang});
   }
 
   authEndIfUnavailable(ctx: ExecContext): Draft | undefined {
     const handoff = this.dialogue.authHandoff;
+    const lang = this.#personalAuthLang(ctx);
     if (!this.dialogue.authWaiting || !handoff) return draft(this.dialogue.state, "auth-handoff", "이어갈 인증 요청이 없어요.");
-    if ((this.deps.clock?.() ?? this.web.clock() / 1000) >= handoff.deadline) return this.finishAuth("expired", "인증 안내 시간이 지났어요. 필요하면 새로 요청해 주세요.");
+    if ((this.deps.clock?.() ?? this.web.clock() / 1000) >= handoff.deadline) {
+      return this.finishAuth("expired", PERSONAL_BROWSE_TEXT.authExpired[lang ?? "ko"], undefined, lang);
+    }
     const page = this.web.adapter.page;
     if (ctx.sessionId !== handoff.sessionId || !page || page !== handoff.browser || page.isClosed?.() === true) {
-      return this.finishAuth("interrupted", "인증하던 브라우저가 닫히거나 바뀌었어요. 다시 시작해 주세요.");
+      const message = lang === undefined
+        ? "인증하던 브라우저가 닫히거나 바뀌었어요. 다시 시작해 주세요." : PERSONAL_BROWSE_TEXT.authInterrupted[lang];
+      return this.finishAuth("interrupted", message, undefined, lang);
     }
     return undefined;
   }
@@ -902,24 +962,29 @@ export class BrowseSkill {
     return {...this.finishAuth("blocked", `${blockedSpeech(view.url, this.narrator.once)} 공식 문의는 ${name} ${number}입니다.`, view), actions};
   }
 
-  async authDone(ctx: ExecContext): Promise<Draft> {
+  async authDone(ctx: ExecContext, journey?: BrowserJourney): Promise<Draft> {
     const ended = this.authEndIfUnavailable(ctx);
     const handoff = this.dialogue.authHandoff;
     if (ended || !handoff) return ended ?? this.authWait();
+    const lang = this.#personalAuthLang(ctx);
     let view;
     try { view = await this.web.observe(ctx); }
-    catch { return this.finishAuth("interrupted", "인증하던 화면을 다시 확인하지 못했어요. 새로 시작해 주세요."); }
+    catch { return this.finishAuth("interrupted", PERSONAL_BROWSE_TEXT.authInterrupted[lang ?? "ko"], undefined, lang); }
     const interrupted = this.authEndIfUnavailable(ctx);
     if (interrupted) return interrupted;
-    if (stillNeedsAuth(view)) return this.authWait("아직 로그인·인증 화면이에요. 사이트에서 마치신 뒤 다시 알려 주세요.");
-    if (accessBlocked(view)) return this.blockedAuth(view);
+    if (stillNeedsAuth(view)) return this.authWait(PERSONAL_BROWSE_TEXT.authWaiting[lang ?? "ko"], lang);
+    if (accessBlocked(view)) return lang === undefined ? this.blockedAuth(view) : this.finishAuth("blocked", PERSONAL_BROWSE_TEXT.authBlocked[lang], view, lang);
     const url = tryUrl(view.url);
-    if (!url || url.origin !== handoff.expectedOrigin || url.pathname !== handoff.expectedPath) return this.authWait("인증 뒤 돌아갈 화면을 아직 확인하지 못했어요. 원래 작업 화면으로 돌아가서 다시 알려 주세요.");
+    const portalReturn = journey?.returnOrigin === handoff.expectedOrigin && view.loading !== true && view.pageId !== "blank";
+    if (!url || url.origin !== handoff.expectedOrigin || (!portalReturn && url.pathname !== handoff.expectedPath)) {
+      return this.authWait(PERSONAL_BROWSE_TEXT.authWrongPage[lang ?? "ko"], lang);
+    }
     this.afterNavigation(view);
-    const title = strip(view.title);
-    const head = `'${title.length > 0 ? title : "제목 없음"}' 화면으로 바뀌었어요.`;
     const pending = this.dialogue.takeAuthResume();
     this.dialogue.finishAuth("completed");
+    if (lang !== undefined) return draft(browseState(view), "auth-handoff", PERSONAL_BROWSE_TEXT.authResumed[lang], {view, lang});
+    const title = strip(view.title);
+    const head = `'${title.length > 0 ? title : "제목 없음"}' 화면으로 바뀌었어요.`;
     if (pending?.kind === "form" && isFormOpen(view)) return draft("APPLICATION_OPEN", "auth-handoff", strip(`${head} ${this.form.askNext(view)}`), {view});
     if (pending?.kind === "guided") return draft(browseState(view), "auth-handoff", strip(`${head} ${this.guidedResume?.(view) ?? ""}`), {view});
     return draft(browseState(view), "auth-handoff", head, {view});

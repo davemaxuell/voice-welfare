@@ -58,6 +58,23 @@ const runtime = createTestRuntime();
 export const openRecordedSession = openBrowserTranscript(runtime);
 export const closeTranscriptRuntime = runtime.close;
 
+// 원본 테이프의 공공업무 결정 프롬프트에서 개인 화면 탐색을 추가한 버전으로 옮긴다.
+const recordedPublicPrompt = "22a52d57ec64dd88f4e0a766ac2e27544d66000b9d8d5de14575c47c23251d49";
+const personalBrowserPrompt = "57b4481f6c2932d9ccc5493559dde4d63426a2ee855e0fdf2c36e9014315adb5";
+const conversationCase = "tests/e2e/test_conversation.py::";
+// 기존 답을 재생하기 전에 일반 탐색 명령을 해석하는 공공업무 모델 호출이 한 번 추가된다.
+const browserIntakeTurns = new Map([
+  ["probe/understanding_llm", 9],
+  [conversationCase + "test_brief_screen_vs_detailed", 2],
+  [conversationCase + "test_planner_understands_what_rules_miss[FOLLOW_LINK]", 4],
+  [conversationCase + "test_planner_understands_what_rules_miss[LIST_LINKS]", 4],
+  [conversationCase + "test_planner_understands_what_rules_miss[READ_MAIN]", 4],
+  [conversationCase + "test_planner_understands_what_rules_miss[REPHRASE]", 4],
+  [conversationCase + "test_planner_understands_what_rules_miss[SEARCH]", 4],
+  [conversationCase + "test_rephrase_that_changes_a_number_repeats_the_original", 2],
+  [conversationCase + "test_summary_with_unknown_number_dropped", 2],
+]);
+
 export function loadTranscript(base: URL, entry: IndexEntry) {
   const rows = readFileSync(new URL(entry.file, base), "utf8").trimEnd().split("\n");
   const [first, ...rest] = rows;
@@ -65,7 +82,29 @@ export function loadTranscript(base: URL, entry: IndexEntry) {
   const session = header.parse(JSON.parse(first));
   assert.equal(session.case, entry.case);
   assert.equal(rest.length, entry.turns);
-  return { session, turns: rest.map(line => turn.parse(JSON.parse(line))) };
+  const turns = rest.map(line => turn.parse(JSON.parse(line)));
+  for (const row of turns) {
+    row.llm = row.llm.map(call =>
+      call.schemaName === "public_service_decision" && call.systemHash === recordedPublicPrompt
+        ? { ...call, systemHash: personalBrowserPrompt } : call);
+  }
+  const intakeTurn = browserIntakeTurns.get(entry.case);
+  if (intakeTurn !== undefined) {
+    const row = turns[intakeTurn - 1];
+    assert(row?.call.method === "handle_turn", `missing browser intake in ${entry.file} turn ${intakeTurn}`);
+    row.llm.unshift({
+      schemaName: "public_service_decision", systemHash: personalBrowserPrompt, reply: {},
+      user: JSON.stringify({
+        utterance: row.call.args[0], replyLanguage: "ko", voice: false, koreaDate: session.calendarDay,
+        task: { agency: null, subject: "", goal: "", requestedFacts: [], exclusions: [], pendingQuestion: "", choices: [], searchMode: null },
+        selectedChoice: null, recent: [],
+      }),
+    });
+    const trace = z.array(fields).parse(row.result.trace);
+    trace.splice(1, 0, { agent: "orchestrator", phase: "PLANNING", note: "공공업무 결정" });
+    row.result.trace = trace;
+  }
+  return { session, turns };
 }
 
 class Normalizer {

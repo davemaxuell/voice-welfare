@@ -10,6 +10,7 @@ import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
 import { strip } from "../../../core/text.ts";
+import { isInspectionUrl, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
 import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts";
@@ -74,11 +75,16 @@ const MarksSchema = z.object({
   inputs: z.int(), passwords: z.int(), overlays: z.int(),
 });
 
+const InspectionControlSchema = z.union([
+  z.object({ kind: z.literal("navigation"), href: z.string(), signature: z.string() }),
+  z.object({ kind: z.enum(["disclosure", "ambiguous", "blocked"]), href: z.string().optional(), signature: z.string() }),
+]);
 const ControlItemSchema = z.looseObject({
   ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
-  context: z.string().optional(), pictureMasked: z.boolean().optional(),
+  context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
 });
 const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
+const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
 export type ControlItem = z.infer<typeof ControlItemSchema>;
 export type ControlWindow = z.infer<typeof ControlWindowSchema>;
 
@@ -164,6 +170,34 @@ async function optional<T>(signal: AbortSignal, work: () => Promise<T>): Promise
   try { return await call(signal, work); }
   catch { signal.throwIfAborted(); return undefined; }
 }
+type InspectionRequests = { blocked: number };
+
+async function guardedInspection<T>(
+  context: BrowserContext, owns: (page: Page) => boolean, run: (state: InspectionRequests) => Promise<T>,
+): Promise<T> {
+  const state: InspectionRequests = { blocked: 0 };
+  const guard = async (route: Route) => {
+    const request = route.request();
+    try {
+      const source = request.frame().page();
+      const opener = owns(source) ? null : await source.opener();
+      if (!owns(source) && (opener === null || !owns(opener))) {
+        await route.fallback();
+        return;
+      }
+    } catch { /* The first request in a new popup has no frame yet. */ }
+    if (!["GET", "HEAD", "OPTIONS"].includes(request.method()) ||
+      ((request.isNavigationRequest() || ["xhr", "fetch"].includes(request.resourceType())) && !isInspectionUrl(request.url()))) {
+      state.blocked++;
+      await route.abort("blockedbyclient");
+    } else await route.fallback();
+  };
+  // Context routing also sees the initial request of a popup triggered by a control.
+  await context.route("**/*", guard);
+  try { return await run(state); }
+  finally { await context.unroute("**/*", guard).catch(() => {}); }
+}
+
 /** 기록 이동이 양식(POST)을 다시 보내지 않게 한다. 자동화된 크롬은 '양식 다시 제출 확인' 없이 그냥 다시 보낸다. */
 async function guardedHistory<T>(page: Page, run: (blocked: string[]) => Promise<T>): Promise<T> {
   const blocked: string[] = [];
@@ -359,7 +393,19 @@ export class PlaywrightExecutionAdapter {
     return parseObservation({ ...raw, errors, loading, platform: "pc", capturedAt: new Date().toISOString() });
   }
 
-  async execute(action: Action, signal = new AbortController().signal): Promise<ActionResult> {
+  #inspectionRequests?: InspectionRequests;
+
+  async withInspection<T>(work: () => Promise<T>): Promise<T> {
+    if (this.#inspectionRequests !== undefined) return work();
+    await this.start();
+    return guardedInspection(this.#requirePage().context(), page => this.#loads.has(page), async state => {
+      this.#inspectionRequests = state;
+      try { return await work(); }
+      finally { this.#inspectionRequests = undefined; }
+    });
+  }
+
+  async execute(action: Action, signal = new AbortController().signal, inspection?: InspectionBinding): Promise<ActionResult> {
     const started = performance.now();
     const done = (result: Omit<ActionResult, "actionId" | "latencyMs">) => ({
       actionId: action.id, latencyMs: Math.trunc(performance.now() - started), ...result,
@@ -371,7 +417,17 @@ export class PlaywrightExecutionAdapter {
       page = this.#requirePage();
       const current = page;
       const result = await raceAbort(async active => {
-        const result = await this.#perform(current, action, active);
+        const result = inspection === undefined
+          ? await this.#perform(current, action, active)
+          : await this.withInspection(async () => {
+            const state = this.#inspectionRequests;
+            const before = state?.blocked;
+            const completed = await this.#perform(current, action, active, inspection);
+            if (inspection.kind === "control" && inspection.control.kind === "ambiguous" && state?.blocked !== before) {
+              throw new AdapterError("NOT_SUPPORTED", "화면을 확인하는 범위를 벗어난 사이트 동작을 막았어요.");
+            }
+            return completed;
+          });
         // 시연용 가상 커서: 페이지를 옮기면(새 문서·새 탭) 커서가 사라지므로 지금 화면에 다시 놓는다
         if (this.#options.visualCursor === true && result.ok && action.type !== "read") await this.#restCursor(active);
         return result;
@@ -462,10 +518,25 @@ export class PlaywrightExecutionAdapter {
     });
   }
 
-  async #perform(page: Page, action: Action, signal: AbortSignal): Promise<Completed> {
+  async #perform(page: Page, action: Action, signal: AbortSignal, inspection?: InspectionBinding): Promise<Completed> {
     signal.throwIfAborted();
     const { type, target } = action;
     const opts = { timeout: this.#actionTimeout, signal };
+    if (inspection !== undefined && inspection.kind !== "start" && page.url() !== inspection.url) {
+      throw new AdapterError("VERIFY_FAILED");
+    }
+    if (inspection?.kind === "search") {
+      const fresh = await call(signal, () => this.inspectionSearch(inspection.fieldId));
+      if (this.page !== page || fresh?.signature !== inspection.signature || fresh.url !== inspection.url ||
+        fresh.destination !== inspection.destination || fresh.parameter !== inspection.parameter ||
+        !isInspectionUrl(fresh.destination) || !this.#mayLoad(fresh.destination)) throw new AdapterError("VERIFY_FAILED");
+      const url = new URL(fresh.destination);
+      url.search = "";
+      url.searchParams.set(fresh.parameter, action.value ?? "");
+      if (!isInspectionUrl(url.href)) throw new AdapterError("NOT_SUPPORTED");
+      await this.#open(page, url.href, signal);
+      return ok;
+    }
     if (type === "navigate") {
       const url = action.url;
       if (url === undefined || url === "" || !this.#mayLoad(url)) throw new AdapterError("NAVIGATION_FAILED");
@@ -509,6 +580,15 @@ export class PlaywrightExecutionAdapter {
       if (await this.#linkFallback(page, target.name, signal)) return ok;
     }
     let loc = await this.#resolve(page, target, signal);
+    if (inspection?.kind === "control" && inspection.control.kind === "blocked") throw new AdapterError("NOT_SUPPORTED");
+    if (inspection?.kind === "control" && inspection.control.kind === "navigation") {
+      await this.#verifyInspectionControl(page, inspection, target, signal);
+      const href = inspection.control.href;
+      if (!isInspectionUrl(href) || !this.#mayLoad(href)) throw new AdapterError("NOT_SUPPORTED");
+      // Read a native link's destination without dispatching a page click handler.
+      await this.#open(page, href, signal);
+      return ok;
+    }
     if (this.#options.visualCursor === true && type !== "read") {
       await this.#showCursor(page, loc, CURSOR_MODE[type] ?? "move", signal);
     }
@@ -517,6 +597,19 @@ export class PlaywrightExecutionAdapter {
       // button must be rejected before the real click, including after cursor motion.
       if (type === "click") await call(signal, () => loc.click({ ...opts, trial: true }));
       loc = await this.#resolveRef(page, target, signal);
+    }
+    if (inspection?.kind === "control") {
+      await this.#verifyInspectionControl(page, inspection, target, signal);
+      if (inspection.control.kind === "disclosure") {
+        await call(signal, () => loc.evaluate(element => {
+          const details = element.parentElement;
+          if (!(details instanceof HTMLDetailsElement) || details.querySelector(":scope > summary") !== element) {
+            throw new Error("Disclosure changed");
+          }
+          details.open = !details.open;
+        }));
+        return ok;
+      }
     }
     switch (type) {
       case "click":
@@ -645,10 +738,31 @@ export class PlaywrightExecutionAdapter {
     return loc;
   }
 
-  /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
-  async controlWindow(text = "", offset = 0, { ref, exact = false }: { ref?: string; exact?: boolean } = {}): Promise<ControlWindow> {
+  async #verifyInspectionControl(page: Page, binding: Extract<InspectionBinding, {kind: "control"}>, target: ActionTarget | undefined, signal: AbortSignal): Promise<void> {
+    if (this.page !== page || page.url() !== binding.url) throw new AdapterError("VERIFY_FAILED");
+    const fresh = await call(signal, () => this.controlWindow("", 0, { ref: binding.ref, inspection: true }));
+    const [item] = fresh.items;
+    if (fresh.url !== binding.url || item?.ref !== binding.ref || item.disabled || item.role !== target?.role ||
+      item.name !== target?.name || item.inspection?.kind !== binding.control.kind ||
+      item.inspection.signature !== binding.control.signature || item.inspection.href !== binding.control.href) {
+      throw new AdapterError("VERIFY_FAILED");
+    }
+  }
+
+  async inspectionSearch(fieldId: string): Promise<z.infer<typeof InspectionSearchSchema> | undefined> {
     const page = this.#requirePage();
-    const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? 24 : 1, ref: ref ?? null, exact };
+    return InspectionSearchSchema.safeParse(JSON.parse(z.string().parse(
+      await page.evaluate(controlsJson({ searchField: fieldId })),
+    ))).data;
+  }
+
+  /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
+  async controlWindow(text = "", offset = 0, { ref, exact = false, inspection, destination }: {
+    ref?: string; exact?: boolean; inspection?: boolean; destination?: string;
+  } = {}): Promise<ControlWindow> {
+    const page = this.#requirePage();
+    const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? 24 : 1,
+      ref: ref ?? null, exact, inspection, destination };
     return ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
   }
 

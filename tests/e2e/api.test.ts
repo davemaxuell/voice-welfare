@@ -161,6 +161,7 @@ it("test_progress_endpoint_reports_code_built_steps", async () => {
       spoken: true,
       activity: "'장애인연금 안내'를 눌렀어요.",
       activitySpoken: true,
+      activitySeq: 10,
     });
   } finally {
     gate.release();

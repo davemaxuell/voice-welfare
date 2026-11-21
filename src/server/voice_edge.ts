@@ -319,7 +319,7 @@ export interface EdgeSession extends OfferSession {
   readonly consentStatus: string;
   readonly dialogue: { readonly authWaiting: boolean; readonly confirmation?: { readonly actionId?: string } | null | undefined };
   readonly linkOfferId?: string | null | undefined;
-  readonly progress: { snapshot(): { seq: number; running: boolean; spoken: boolean; latest: string | null } };
+  readonly progress: Pick<import("../core/progress.ts").Progress, "snapshot" | "shiftSpoken" | "hasSpoken">;
   handleTurn(text: string, options: { approvalId: string; fromVoice: true; linkOfferId?: string; difficulty?: string }): Promise<TurnResultLike>;
 }
 /** The browser side: it can only close the call. */

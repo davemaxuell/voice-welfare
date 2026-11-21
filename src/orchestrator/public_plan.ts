@@ -1,5 +1,6 @@
 // 공공업무 요청을 세션에서 받는 자리: 판단(public_task.ts)을 묻고, 읽기 전용 조회나 검토를 거치는 일로 보낸다.
 import { randomUUID } from "node:crypto";
+import type { BrowserJourney } from "../agents/web/journey.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree } from "../core/lexicon.ts";
@@ -12,8 +13,9 @@ import { isExactCommand, pictureCommandParts } from "../understanding/fastpath.t
 import { isPictureRequest } from "../understanding/rules.ts";
 import { mentionsKnownSite, publicServiceSite, siteLabel } from "../understanding/sites.ts";
 import { publicPatterns } from "./patterns.ts";
-import { ASK_SERVICE, LOOKUP_UNAVAILABLE, PublicTask, REJECTED, decide, reviewCompletion, type PublicDecision } from "./public_task.ts";
+import { ASK_SERVICE, FOREGROUND_BROWSER_INTENTS, LOOKUP_UNAVAILABLE, PublicTask, REJECTED, decide, publicDestinations, reviewCompletion, singleBrowserIntent, type PublicDecision } from "./public_task.ts";
 import { LIVE_DIFFICULTY, ReviewedTask } from "./review_loop.ts";
+import { pageMatches } from "./task_review.ts";
 import { withContext, type Detection, type PublicTurn, type SessionOrchestrator, type Turn } from "./session.ts";
 import { wordSuggestions } from "./speech_repair.ts";
 
@@ -26,7 +28,7 @@ export interface QuietAnswer {
 }
 export interface PlanningContext { language: Lang; agency: string; service: string; recentTurns: PublicTurn[]; region?: string }
 type SearchMode = PublicTask["searchMode"];
-interface Bounds { research?: boolean; maxSteps?: number; continuePage?: boolean; requestedSteps?: readonly string[] }
+interface Bounds { research?: boolean; maxSteps?: number; continuePage?: boolean; requestedSteps?: readonly string[]; journey?: BrowserJourney }
 
 const PLAN_STATES = new Set(["IDLE", "BROWSING", "NEEDS_CLARIFICATION"]);
 const LOOKUPS = { browser: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
@@ -54,7 +56,8 @@ export class PublicPlanner {
     return s.deps.publicPlanning !== false && s.deps.llm !== undefined && s.consentStatus === "granted" &&
       PLAN_STATES.has(s.state) && !s.dialogue.hasPendingInteraction &&
       sensitive.kinds.length === 0 && !text.includes(REDACTED) && s.speakable(text) &&
-      !isExactCommand(text) && !isPictureRequest(rstripChars(text, ".!。")) && pictureCommandParts(text, s.rules).length === 0 &&
+      (!isExactCommand(text) || FOREGROUND_BROWSER_INTENTS.has(s.rules.parseSync(text, {state: s.state}).type)) &&
+      !isPictureRequest(rstripChars(text, ".!。")) && pictureCommandParts(text, s.rules).length === 0 &&
       (s.publicTask.question.length > 0 || ackKind(text) === undefined);
   }
 
@@ -77,6 +80,12 @@ export class PublicPlanner {
     return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${result.speech}` : result.speech, sources: result.sources }];
   }
 
+  async command(turn: Turn, type: Intent["type"], execute: () => Promise<Draft>): Promise<TurnResult> {
+    const s = this.session;
+    turn.intentType = type;
+    return s.finish(turn, s.gate([type]) ?? await execute());
+  }
+
   async plan(text: Redacted, turn: Turn, { research = false }: { research?: boolean } = {}): Promise<TurnResult | undefined> {
     const s = this.session;
     const llm = s.deps.llm;
@@ -84,7 +93,11 @@ export class PublicPlanner {
     const lang = s.lang;
     let task = s.publicTask;
     const asking = task.question.length > 0;
-    if (task.goal.length === 0 && !asking && s.activeService !== undefined) {
+    const last = s.inspectedScreen;
+    const onInspectedPage = !research && !asking && task.goal.length === 0 && last !== undefined &&
+      pageMatches(last, s.web.currentView, s.privateValuesForRedaction(), true);
+    if (onInspectedPage) task = last.task;
+    else if (task.goal.length === 0 && !asking && s.activeService !== undefined) {
       task = new PublicTask({ ...task, agency: s.activeService[0], subject: s.activeService[1] });
     }
     const clarify = (speech: string) => {
@@ -94,6 +107,7 @@ export class PublicPlanner {
     const reply = agree(text);
     if (asking && reply === "no") {
       s.publicTask = new PublicTask();
+      s.reviewQuestion = undefined;
       return clarify(spoken(REJECTED, lang));
     }
     if (asking && reply === "yes" && task.choices.length > 1) return clarify(`${task.question} ${task.choices.join(" / ")}`);
@@ -105,37 +119,47 @@ export class PublicPlanner {
     const scanner = s.deps.scanner;
     const decision = await decide(llm, text, lang, task, {
       voice: turn.fromVoice, recent, signal: turn.ctx.signal, ...(research ? { research: true } : {}),
+      currentInspectionScreen: onInspectedPage,
       ...(notes.length > 0 ? { savedNotes: notes } : {}),
       speechCandidates: candidates.slice(0, 2).map(c => c.label), corroborated: clear,
       ...(scanner === undefined ? {} : { scan: (texts: readonly string[]) => scanner.scan(texts) }),
     });
     if (s.superseded(turn) || turn.ctx.signal.aborted) return s.finish(turn, draft("STOPPED", "none", FIXED.stopBusy[lang], { lang }));
     if (decision === undefined) return asking ? clarify(task.question) : undefined;
+    if (!research && !asking) s.inspectedScreen = undefined;
     const previousReview = s.reviewQuestion;
     s.reviewQuestion = undefined;
     const source = decision.source ?? undefined;
+    const personal = decision.kind === "inspect_personal";
     const lookup = decision.kind === "find_information" || decision.kind === "review_before_output";
-    if (previousReview !== undefined && previousReview[0] === task && decision.continuation && lookup && source !== undefined) {
-      const run = previousReview[1];
+    if (research && personal) return undefined;
+    const continuingReview = previousReview?.[0] === task && decision.continuation ? previousReview[1] : undefined;
+    if (continuingReview?.inspection !== undefined && (personal || decision.kind === "clarify")) {
+      turn.ctx = withContext(turn.ctx, {browsingScope: "personal-inspection"});
+    }
+    if (continuingReview !== undefined &&
+        (continuingReview.inspection !== undefined ? personal : lookup && source !== undefined)) {
+      const run = continuingReview;
       run.task = task.advance(decision);
-      run.route = source;
-      s.publicTask = run.task;
+      run.route = source ?? "browser";
+      s.publicTask = run.inspection !== undefined ? new PublicTask() : run.task;
       turn.intentType = "REVIEW_BEFORE_OUTPUT";
       return s.finish(turn, await s.review.run(run, turn));
     }
     // 독립된 단서 없이 발음만 비슷한 기관·증명서 중 하나를 실행하지 않는다.
-    if (candidates.length > 1 && !clear && (decision.kind === "open_agency" || lookup)) return undefined;
+    if (candidates.length > 1 && !clear && (decision.kind === "open_agency" || lookup || personal)) return undefined;
     if (research && !(decision.kind === "clarify" || decision.kind === "find_information" ||
         (decision.kind === "review_before_output" && source !== undefined))) return undefined;
     const live = LIVE_DIFFICULTY.getStore();
-    if (decision.kind === "review_before_output" || (!research && decision.kind === "find_information" && live === "hard")) {
+    if (personal || decision.kind === "review_before_output" || (!research && decision.kind === "find_information" && live === "hard")) {
       const requirements = decision.requirements ?? [];
       const reviewed = new ReviewedTask({
-        request: text, task: task.advance(decision), requirements: requirements.length > 0 ? requirements : [text],
-        route: source ?? "existing", difficulty: live ?? decision.difficulty ?? "medium", counter: turn.ctx.counter, background: research,
+        request: personal ? publicDestinations(text).text : text, task: task.advance(decision), requirements: requirements.length > 0 ? requirements : [text],
+        route: personal ? "browser" : source ?? "existing", difficulty: live ?? decision.difficulty ?? "medium",
+        counter: turn.ctx.counter, background: research, inspection: personal ? decision.outcome ?? "answer" : undefined,
       });
       turn.intentType = "REVIEW_BEFORE_OUTPUT";
-      s.publicTask = reviewed.task;
+      s.publicTask = personal ? new PublicTask() : reviewed.task;
       const result = await s.review.run(reviewed, turn);
       if (research) turn.researchState = result.review?.status ?? "incomplete";
       return s.finish(turn, result);
@@ -159,10 +183,14 @@ export class PublicPlanner {
       turn.intentType = "CHAT";
       return s.finish(turn, draft(s.state, "chat", decision.reply ?? "", { lang }));
     }
+    if (decision.command) {
+      const intent = singleBrowserIntent(decision.command);
+      return this.command(turn, intent.type, () => s.route(intent, turn));
+    }
     if (decision.kind === "read_skill") {
       if (decision.skill == null) throw new RangeError("읽기 기술이 없는 결정");
-      turn.intentType = decision.skill;
-      return s.finish(turn, s.gate([decision.skill]) ?? await s.dispatch(skillIntent(decision.skill), turn, decision.exclusions));
+      const intent = skillIntent(decision.skill);
+      return this.command(turn, intent.type, () => s.dispatch(intent, turn, decision.exclusions));
     }
     if (decision.kind === "existing") {
       if (asking) s.publicTask = new PublicTask({ ...task, question: "", choices: [] });
@@ -172,6 +200,10 @@ export class PublicPlanner {
     if (decision.kind === "clarify") {
       turn.researchState = "needs_input";
       s.publicTask = task;
+      if (continuingReview !== undefined) {
+        continuingReview.task = task;
+        s.reviewQuestion = [task, continuingReview];
+      }
       return clarify(task.question);
     }
     turn.ctx = withContext(turn.ctx, { publicLookup: true });
@@ -194,10 +226,10 @@ export class PublicPlanner {
   }
 
   /** 판단이 고른 읽기 전용 일을 한다. turn.intentType이 무엇을 할지 정한다(OPEN_SITE·FIND_PLACE·POLICY_QUESTION·GOAL). */
-  async execute(task: PublicTask, turn: Turn, mode: SearchMode | undefined, { research = false, maxSteps, continuePage = false, requestedSteps = [] }: Bounds = {}): Promise<Draft> {
+  async execute(task: PublicTask, turn: Turn, mode: SearchMode | undefined, { research = false, maxSteps, continuePage = false, requestedSteps = [], journey }: Bounds = {}): Promise<Draft> {
     const s = this.session;
     const lang = s.lang;
-    const bounds = maxSteps === undefined ? {} : { maxSteps, continuePage, requestedSteps };
+    const bounds = maxSteps === undefined ? {} : { maxSteps, continuePage, requestedSteps, journey };
     const kind = turn.intentType;
     if (!research && (kind === "OPEN_SITE" || mode === "visible")) await s.web.showBrowser();
     if (kind === "OPEN_SITE") return s.browse.openSite(task.agency ?? "", turn.ctx);

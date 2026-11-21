@@ -9,6 +9,7 @@ export class Progress {
   #activitySeq = 0;
   #generation = 0;
   #quiet: string | null = null;
+  #lastMilestone?: string;
   #queue: { seq: number; text: string }[] = [];
 
   get running(): boolean { return this.#running; }
@@ -23,6 +24,7 @@ export class Progress {
     this.#activitySpoken = false;
     this.#activitySeq = 0;
     this.#quiet = null;
+    this.#lastMilestone = undefined;
     this.#queue = [];
     this.#generation++;
   }
@@ -33,8 +35,19 @@ export class Progress {
   }
 
   note(text: string, speak: boolean): void {
+    this.#publish(text, speak && this.#reviews === 0);
+  }
+
+  milestone(key: string, text: string): void {
+    if (this.#lastMilestone === key) return;
+    this.#lastMilestone = key;
+    this.add(text);
+    this.#publish(text, true);
+  }
+
+  #publish(text: string, speak: boolean): void {
     this.#seq++;
-    const audible = speak && this.spoken && this.#reviews === 0;
+    const audible = speak && this.spoken;
     if (audible) {
       this.#queue.push({ seq: this.#seq, text });
       this.#activity = text;
@@ -79,6 +92,15 @@ export class Progress {
 
   finish(): void { this.#running = false; }
 
+  interrupt(): void {
+    this.#running = false;
+    this.#generation++;
+    this.#queue = [];
+    this.#quiet = this.#activity = null;
+    this.#activitySpoken = false;
+    this.#activitySeq = 0;
+  }
+
   /** 검토가 끝날 때까지 자동 음성 안내만 보류한다. 사용자가 물으면 최신 단계는 그대로 읽을 수 있다. */
   async review<T>(work: () => T | Promise<T>): Promise<T> {
     this.#reviews++;
@@ -91,8 +113,9 @@ export class Progress {
 
   snapshot() {
     return {
-      running: this.running, seq: this.#seq, latest: this.latest ?? null, spoken: this.spoken && this.#reviews === 0,
+      running: this.running, seq: this.#seq, latest: this.latest ?? null, spoken: this.spoken && (this.#reviews === 0 || this.#activitySpoken),
       activity: this.#activity, activitySpoken: this.#activitySpoken,
+      ...(this.#activitySpoken ? { activitySeq: this.#activitySeq } : {}),
     };
   }
 }

@@ -49,3 +49,13 @@ it("test_file_transcript_needs_consent_and_never_executes_or_enters_history", as
   expect(await (await app.request(prefix + "/state")).json()).toEqual(before);
   await post(prefix + "/cancel"); expect((await audio()).status).toBe(403); expect(transcribe).toHaveBeenCalledTimes(1);
 });
+
+it("test_background_research_never_gets_a_vision_model_because_it_cannot_ask_for_consent", async () => {
+  const { runtime } = await service({OPENAI_API_KEY: "test", LLM_PROVIDER: "openai"});
+  const foreground = await runtime.createSession();
+  const background = await runtime.createSession({background: true});
+  try {
+    expect(foreground.deps.visionLlm).toBeDefined();
+    expect(background.deps.visionLlm).toBeUndefined();
+  } finally { await foreground.close(); await background.close(); }
+});

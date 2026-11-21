@@ -151,7 +151,8 @@ export class ApplicationCommands {
     const run = pending !== undefined && "reviewedTask" in pending ? pending.reviewedTask : undefined;
     if (!(run instanceof ReviewedTask)) return this.#execute(turn);
     // 1회 승인과 같은 지문을 확인해야 기존 작업을 이어 간다.
-    turn.ctx = withContext(turn.ctx, { actionLimit: REVIEW_LIMITS[run.difficulty][2], counter: run.counter });
+    turn.ctx = withContext(turn.ctx, { actionLimit: REVIEW_LIMITS[run.difficulty][2], counter: run.counter,
+      ...(run.inspection !== undefined ? { browsingScope: "personal-inspection" } : {}) });
     return s.progress.review(async () => s.review.run(run, turn, await this.#execute(turn)));
   }
 

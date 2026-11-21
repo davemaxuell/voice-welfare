@@ -1,4 +1,5 @@
 import type { StructuredLlm } from "../core/llm.ts";
+import { redactPictureText } from "../safety/privacy.ts";
 import { josa } from "./phrasing.ts";
 
 export type ActivityPhase = "thinking" | "pulling" | "tool" | "checking" | "step";
@@ -58,7 +59,7 @@ export async function describeActivity(llm: StructuredLlm | undefined, fact: Act
   try {
     const data = await llm.generate({
       system: "한 문장의 공손한 한국어만 쓰세요. ok가 true가 아니면 열었거나, 찾았거나, 끝났거나, 눌렀다고 말하지 마세요.",
-      user: JSON.stringify(body),
+      user: redactPictureText(JSON.stringify(body)),
       schemaName: "activity_line",
       schema: { type: "object", additionalProperties: false, required: ["line"], properties: { line: { type: "string" } } },
       signal,

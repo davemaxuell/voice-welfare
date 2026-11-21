@@ -1,9 +1,13 @@
 import type { Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
+import type { InspectionControl } from "../../../safety/guard.ts";
 
-export interface ControlQuery { text?: string; offset?: number; limit?: number; ref?: string | null; exact?: boolean }
+export interface ControlQuery {
+  text?: string; offset?: number; limit?: number; ref?: string | null; exact?: boolean;
+  inspection?: boolean; destination?: string; searchField?: string;
+}
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 type RefElement = HTMLElement | SVGElement;
-type Item = InteractiveItem & { context?: string };
+type Item = InteractiveItem & { context?: string; inspection?: InspectionControl };
 type RawObservation = Omit<Observation, "platform" | "capturedAt" | "outline"> &
   { outline?: Omit<ScreenOutline, "screenTarget"> & { screenTarget: ScreenTarget | null } };
 declare global {
@@ -30,11 +34,43 @@ export function observePage(query: ControlQuery | null = null) {
   };
   // 외부 사이트 입력란은 id가 없는 경우가 많아 관찰할 때 임시 ID를 붙여 다시 찾을 수 있게 한다.
   let seq = 0;
-  const idOf = (c: Control) => {
+  const idOf = (c: HTMLElement) => {
     if (c.id.length > 0) return c.id;
     if ((c.dataset.cheongeumId ?? "").length === 0) c.dataset.cheongeumId = 'cheongeum-' + (++seq) + '-' + Math.random().toString(36).slice(2, 6);
     return c.dataset.cheongeumId!;
   };
+  const refs = window.__cheongeumElementRefs ??= new WeakMap();
+  const refOf = (el: RefElement, context?: string) => {
+    const previous = refs.get(el);
+    const href = el instanceof HTMLAnchorElement ? el.href : null;
+    if (previous && previous.href === href && el.dataset.cheongeumRef === previous.ref
+      && (context === undefined || previous.context === undefined || previous.context === context)) {
+      if (context !== undefined) previous.context = context;
+      return previous.ref;
+    }
+    window.__cheongeumRefSeq = (window.__cheongeumRefSeq ?? 0) + 1;
+    const ref = 'r' + window.__cheongeumRefSeq + '-' + Math.random().toString(36).slice(2, 6);
+    el.dataset.cheongeumRef = ref;
+    refs.set(el, { ref, href, context });
+    return ref;
+  };
+  if (query?.searchField !== undefined) {
+    const id = CSS.escape(query.searchField);
+    const matches = Array.from(document.querySelectorAll('[id="' + id + '"], [data-cheongeum-id="' + id + '"]')).filter(isVisible);
+    const [el] = matches;
+    const form = el instanceof HTMLInputElement ? el.form : null;
+    const valid = matches.length === 1 && el instanceof HTMLInputElement && form !== null && !el.matches(':disabled') &&
+      !el.readOnly && el.name.length > 0 && (el.type === 'search' || (el.type === 'text' && el.getAttribute('role') === 'searchbox' &&
+        form.getAttribute('role') === 'search')) && !/password|one-time-code|cc-/i.test(el.autocomplete) &&
+      form.getAttribute('method')?.toLowerCase() === 'get' &&
+      Array.from(form.elements).every(other => other === el ||
+        !(control(other) || other instanceof HTMLButtonElement) || other.name.length === 0 ||
+        other.matches(':disabled') || ['submit', 'button', 'reset'].includes(other.type));
+    if (!valid) return { url: location.href };
+    // Bind the live form instance as well as the field, method, and parameter.
+    return { url: location.href, destination: form.action, parameter: el.name,
+      signature: JSON.stringify([refOf(el), refOf(form), el.type, el.name, form.action, form.method]) };
+  }
   const controls = query ? [] : Array.from(document.querySelectorAll<Control>('input, select, textarea'))
     .filter((c) => c.type !== 'hidden' && c.type !== 'submit' && c.type !== 'button' && c.type !== 'image' && c.type !== 'reset')
     .filter((c) => c.id.length > 0 || isVisible(c))
@@ -220,22 +256,6 @@ export function observePage(query: ControlQuery | null = null) {
     .filter(Boolean)
     .join(' / ')
     .slice(0, 600);
-  const refs = window.__cheongeumElementRefs ??= new WeakMap();
-  const refOf = (el: RefElement, context?: string) => {
-    const previous = refs.get(el);
-    const href = el instanceof HTMLAnchorElement ? el.href : null;
-    if (previous && previous.href === href && el.dataset.cheongeumRef === previous.ref
-      && (context === undefined || previous.context === undefined || previous.context === context)) {
-      if (context !== undefined) previous.context = context;
-      return previous.ref;
-    }
-    window.__cheongeumRefSeq = (window.__cheongeumRefSeq ?? 0) + 1;
-    const ref = 'r' + window.__cheongeumRefSeq + '-' + Math.random().toString(36).slice(2, 6);
-    el.dataset.cheongeumRef = ref;
-    refs.set(el, { ref, href, context });
-    return ref;
-  };
-
   const CANDIDATE = 'a[href], button, summary, input[type="submit"], input[type="button"], [role="link"], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
   const INTERACTIVE = CANDIDATE + ', input, select, textarea, label';
   const TAG_ROLE: Record<string, InteractiveItem["role"]> = { A: 'link', BUTTON: 'button', SUMMARY: 'button', INPUT: 'button' };
@@ -250,6 +270,46 @@ export function observePage(query: ControlQuery | null = null) {
     if (r === 'menuitem' || r === 'menuitemcheckbox' || r === 'menuitemradio') return 'menuitem';
     if (r === 'link' || el.tagName === 'A') return 'scriptlink';
     return TAG_ROLE[el.tagName] ?? 'generic';
+  };
+  const inspect = (el: RefElement, context: string): InspectionControl => {
+    const rawHref = el.getAttribute('href');
+    const anchor = el instanceof HTMLAnchorElement;
+    const href = anchor && ['http:', 'https:'].includes(el.protocol) && (rawHref?.trim().length ?? 0) > 0 ? el.href : undefined;
+    const form = el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? el.form : el.closest('form');
+    const htmlRole = el.getAttribute('role');
+    const type = el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? el.type : null;
+    const disclosure = el instanceof HTMLElement && el.tagName === 'SUMMARY' &&
+      el.parentElement instanceof HTMLDetailsElement && el.parentElement.querySelector(':scope > summary') === el;
+    const actions: Array<[string, string]> = [];
+    for (let node: Element | null = el; node !== null; node = node.parentElement) {
+      for (const attr of node.attributes) {
+        if (/^on(?:click|pointer|mouse|key)|^data-(?:action|confirm|(?:[\w-]+-)?method)$/i.test(attr.name)) {
+          actions.push([attr.name, attr.value]);
+        }
+      }
+    }
+    const download = el.hasAttribute('download');
+    const signature = JSON.stringify([
+      el.tagName, htmlRole, type, rawHref, href, el.getAttribute('target'), el.getAttribute('ping'), download, actions,
+      form?.action, form?.method, el.getAttribute('aria-controls'), el.getAttribute('aria-haspopup'), context,
+    ]);
+    const unsupportedScheme = rawHref !== null && anchor && href === undefined && !['javascript:', ''].includes(el.protocol);
+    const writeAction = /\b(?:submit|requestSubmit|delete|logout|signout|pay|purchase|checkout|send|approve|upload|withdraw)\b/i;
+    const declaredWrite = actions.some(([key, value]) => key.endsWith('method') ? !/^get$/i.test(value) : writeAction.test(value)) ||
+      (rawHref !== null && href === undefined && writeAction.test(rawHref));
+    const formSubmit = type === 'submit' || type === 'image' || type === 'reset';
+    const privateForm = form?.querySelector('input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"]');
+    const changesSelection = htmlRole === 'menuitemcheckbox' || htmlRole === 'menuitemradio';
+    const externalTarget = href === undefined && (el.getAttribute('target')?.toLowerCase() ?? '_self') !== '_self';
+    if (unsupportedScheme || download || declaredWrite || (form !== null && formSubmit) || privateForm || changesSelection || externalTarget) {
+      return { kind: 'blocked', ...(href === undefined ? {} : { href }), signature };
+    }
+    const passive = actions.length === 0 && form === null && !el.hasAttribute('aria-haspopup') && !el.hasAttribute('aria-controls');
+    if (href !== undefined && passive && !el.hasAttribute('ping') && (htmlRole === null || htmlRole === 'link')) {
+      return { kind: 'navigation', href, signature };
+    }
+    if (disclosure && passive) return { kind: 'disclosure', signature };
+    return { kind: 'ambiguous', ...(href === undefined ? {} : { href }), signature };
   };
   const MENU_AREA = 'nav, header, [role="navigation"], [role="banner"]';
   const OUT_AREA = 'nav, header, footer, [role="navigation"], [role="banner"], [role="contentinfo"]';
@@ -295,6 +355,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (!isVisible(el)) continue;
     const name = nameOf(el);
     if (name.length === 0) continue;
+    if (query?.destination !== undefined && (!(el instanceof HTMLAnchorElement) || el.href !== query.destination)) continue;
     let context = '';
     if (query) {
       if (disabled(el) || el.getAttribute('aria-disabled') === 'true') continue;
@@ -315,6 +376,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (!standard) generics++;
     const item: Item = { ref: refOf(el, query ? context : undefined), role, name, region: regionOf(el), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' };
     if (context.length > 0 && context !== name) item.context = context;
+    if (query?.inspection === true) item.inspection = inspect(el, context);
     if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
     if (role === 'link' && isSearchResult(el)) item.searchResult = true;
     const sel = el.getAttribute('aria-selected');

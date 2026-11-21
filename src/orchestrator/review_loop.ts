@@ -1,15 +1,19 @@
 // 여러 단계를 거치는 요청을 끝까지 하고, 답하기 전에 원래 요청과 대조하는 고리(task_review.ts가 판정한다).
 import { AsyncLocalStorage } from "node:async_hooks";
+import { BrowserJourney } from "../agents/web/journey.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import type { Redacted } from "../core/llm.ts";
-import { strip } from "../core/text.ts";
+import { hasText, strip } from "../core/text.ts";
+import { tryUrl } from "../core/url.ts";
+import { todayIso } from "../core/time.ts";
 import { AGENT_IDS, draft, type Draft, type DraftAction, type SourceCitation, type TaskReviewSummary } from "../core/turn.ts";
 import { FIXED, translateIn } from "../language/i18n.ts";
+import { PERSONAL_BROWSE_TEXT } from "../speech/browse_phrases.ts";
 import { redactPictureText, redactText } from "../safety/privacy.ts";
-import { PublicTask } from "./public_task.ts";
+import { PublicTask, publicDestinations } from "./public_task.ts";
 import { PLAN_STOP_STATES, byLengthDesc, isAbort, replaceValues, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
-import { evidenceFromDraft, pageMatches, reviewBeforeOutput, type ReviewEvidence, type Route } from "./task_review.ts";
+import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, type ReviewEvidence, type Route } from "./task_review.ts";
 
 // 검토 횟수, 전체 탐색 판단 횟수, 실제 브라우저 조작 횟수. 재시도와 승인 후 재개가 함께 사용한다.
 export const REVIEW_LIMITS = { easy: [2, 8, 8], medium: [3, 16, 16], hard: [5, 32, 32] } as const;
@@ -33,6 +37,7 @@ interface ReviewedFields {
   originalOperations?: Set<string>;
   privateValues?: string[];
   background?: boolean;
+  inspection?: "answer" | "arrival";
 }
 
 /** 검토를 거치는 일 하나. 승인·되물음·본인인증으로 멈췄다 이어 가도 같은 횟수 한도와 근거를 쓴다. */
@@ -53,6 +58,9 @@ export class ReviewedTask {
   readonly privateValues: string[];
   readonly retries = new Set<string>();
   readonly background: boolean;
+  readonly journey?: BrowserJourney;
+  readonly inspection?: "answer" | "arrival";
+  readonly entryOrigin?: string;
 
   constructor(fields: ReviewedFields) {
     this.request = fields.request;
@@ -66,6 +74,12 @@ export class ReviewedTask {
     this.originalOperations = fields.originalOperations ?? new Set();
     this.privateValues = fields.privateValues ?? [];
     this.background = fields.background ?? false;
+    this.inspection = this.background ? undefined : fields.inspection;
+    if (this.inspection !== undefined) {
+      const supplied = publicDestinations(fields.request).urls;
+      if (supplied.size === 1) this.entryOrigin = [...supplied.keys()][0];
+    }
+    if (!this.background) this.journey = new BrowserJourney(REVIEW_LIMITS[this.difficulty][1]);
   }
 }
 
@@ -106,14 +120,21 @@ export class ReviewLoop {
   async #review(run: ReviewedTask, turn: Turn, resumed: Draft | undefined): Promise<Draft> {
     const s = this.session;
     const [rounds, , actions] = REVIEW_LIMITS[run.difficulty];
-    turn.ctx = withContext(turn.ctx, { counter: run.counter, actionLimit: actions });
+    const personal = run.inspection !== undefined;
+    const privateValues = personal ? [...new Set([...run.privateValues, ...s.privateValuesForRedaction()])] : run.privateValues;
+    turn.ctx = withContext(turn.ctx, { counter: run.counter, actionLimit: actions,
+      ...(personal ? { browsingScope: "personal-inspection" } : {}) });
     const logs: DraftAction[] = [];
     let last = resumed;
     let missing: readonly string[] = run.requirements;
 
-    const record = (result: Draft) => {
+    const record = async (result: Draft) => {
       logs.push(...result.actions ?? []);
       run.browserSteps += result.browserIterations ?? 0;
+      if (personal) {
+        if (hasText(result.summary)) run.evidence.push(...await inspectionEvidence(result, s.deps.scanner, privateValues));
+        return;
+      }
       for (const source of result.sources ?? []) run.sources.set(source.url, source);
       run.evidence.push(...evidenceFromDraft(result));
     };
@@ -127,6 +148,10 @@ export class ReviewLoop {
       const pending = d.approval;
       const clarification = d.clarification;
       const handoff = d.authHandoff;
+      if (run.journey) {
+        if (result.state === "WAITING_FOR_USER_CONFIRMATION") run.journey.blockedBy = "approval";
+        if (result.state === "AUTH_HANDOFF") run.journey.pause(handoff?.kind === "captcha" ? "captcha" : "auth", handoff?.expectedOrigin);
+      }
       if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
       else if (clarification !== undefined && result.state === "NEEDS_CLARIFICATION") {
         clarification.reviewedTask = run;
@@ -137,30 +162,46 @@ export class ReviewLoop {
       } else if (result.state === "AUTH_HANDOFF" && d.authWaiting && handoff !== undefined) s.authReview = [handoff.id, run];
       else if (d.placeAsk !== undefined) s.placeReview = [d.placeAsk, run];
       else if (result.state !== "AUTH_HANDOFF" && result.state !== "STOPPED" && !run.background) {
-        return { ...result, actions: logs, review: summary("incomplete"), speech: result.speech + " 전체 요청은 아직 완료하지 못했어요." };
+        const speech = personal
+          ? strip(`${(result.lang ?? "ko") === s.lang ? result.speech : ""} ${PERSONAL_BROWSE_TEXT.incomplete[s.lang]}`)
+          : result.speech + " 전체 요청은 아직 완료하지 못했어요.";
+        return { ...result, actions: logs, review: summary("incomplete"), speech, lang: personal ? s.lang : result.lang };
       }
       return { ...result, actions: logs, review: summary("needs_input") };
     };
 
     const settled = await s.progress.review(async (): Promise<Draft | undefined> => {
       if (resumed !== undefined) {
-        record(resumed);
+        await record(resumed);
         if (needsInput(resumed) || resumed.semanticAction === "none") return pause(resumed);
+        if (run.journey?.blockedBy === "approval") run.journey.resumeAfterApproval();
       }
       let resuming = resumed !== undefined;
       while (run.rounds < rounds) {
         if (turn.ctx.signal.aborted || s.superseded(turn)) return this.#stopped();
-        if (run.route === "existing") {
+        if (personal) {
+          if (turn.ctx.publicLookup || s.web.guard.config.publicLookupOnly === true) break;
+          const remaining = REVIEW_LIMITS[run.difficulty][1] - run.browserSteps;
+          if (remaining <= 0) break;
+          const refused = s.gate(["GOAL"]);
+          if (refused) return pause(refused);
+          await s.web.showBrowser();
+          last = await s.browse.runGoal(run.task.goal, turn.ctx, { journey: run.journey, agency: run.task.agency, entryOrigin: run.entryOrigin, inspectionOutcome: run.inspection, privateValues,
+            maxSteps: remaining, continuePage: run.browserSteps > 0 || resuming, exclusions: run.task.exclusions, requestedSteps: missing });
+          await record(last);
+          if (needsInput(last)) return pause(last);
+          if (!hasText(last.summary)) break;
+        } else if (run.route === "existing") {
           for await (const work of this.actions(run, turn, missing[0] ?? "", { resuming })) {
             last = work;
-            record(work);
+            await record(work);
             if (needsInput(work)) return pause(work);
           }
         } else if (!resuming) {
           const work = await this.lookup(run, turn, missing);
           if (work === undefined) break;
           last = work;
-          record(work);
+          await record(work);
           if (needsInput(work)) return pause(work);
         }
         resuming = false;
@@ -172,7 +213,7 @@ export class ReviewLoop {
           turn.ctx.trace("VERIFYING", AGENT_IDS.orchestrator, `요청 완료 검토 ${run.rounds}/${rounds}`);
           const correction = repair;
           verdict = await raceAbort(signal => reviewBeforeOutput(s.deps.llm, s.historySpeech(run.request), run.evidence, signal, {
-            language: s.lang, requirements: run.requirements, privateValues: run.privateValues, repairReason: correction,
+            language: s.lang, requirements: run.requirements, privateValues, repairReason: correction, inspection: run.inspection,
           }), turn.ctx.signal);
           if (repair.length > 0 || run.rounds >= rounds || verdict.repairReason.length === 0) break;
           repair = verdict.repairReason;
@@ -180,7 +221,18 @@ export class ReviewLoop {
         if (verdict.status === "complete" && run.remaining.length === 0) {
           if (verdict.confirmedPage !== undefined && verdict.confirmedPage.length > 0) {
             const current = await s.web.observe(turn.ctx).catch(() => undefined);
-            if (!pageMatches(verdict, current, run.privateValues)) break;
+            if (!pageMatches(verdict, current, privateValues, personal)) break;
+            if (personal && verdict.currentQuotes !== undefined && verdict.currentQuotes.length > 0) {
+              const confirmed = await inspectionEvidence({ view: current, reviewQuotes: verdict.currentQuotes }, s.deps.scanner, privateValues);
+              if (!verdict.currentQuotes.every(quote => confirmed.some(e => e.kind === "fact" && e.text === quote))) break;
+            }
+            if (turn.ctx.signal.aborted || s.superseded(turn)) return this.#stopped();
+            const site = personal && current ? tryUrl(current.url) : undefined;
+            if (site) {
+              s.inspectedScreen = {task: run.task, confirmedPageKey: verdict.confirmedPageKey};
+              const url = site.origin + "/";
+              run.sources.set(url, {url, title: site.host, lastCheckedAt: todayIso(), note: PERSONAL_BROWSE_TEXT.currentPage[s.lang]});
+            }
           }
           return draft(last?.state ?? s.state, "review-before-output", verdict.answer, {
             lang: s.lang, review: summary("completed"), actions: logs, sources: [...run.sources.values()],
@@ -188,7 +240,7 @@ export class ReviewLoop {
         }
         missing = verdict.missing.length > 0 ? verdict.missing : run.requirements;
         if (verdict.status !== "retry" || verdict.nextRoute === undefined) break;
-        let route = verdict.nextRoute;
+        let route = personal ? "browser" as const : verdict.nextRoute;
         const mode = run.task.searchMode;
         if (mode === "quiet" && route === "browser") route = "quiet";
         if (mode === "visible" && route === "quiet") route = "browser";
@@ -208,8 +260,12 @@ export class ReviewLoop {
 
     const said = replaceValues(s.historySpeech(missing.join(" / ")), run.privateValues.filter(value => value.length > 0));
     const detail = Array.from(strip(redactPictureText(said))).slice(0, 320).join("");
-    const speech = "요청을 모두 확인하지 못했어요." + (detail.length > 0 ? ` 아직 확인이 필요한 내용은 ‘${detail}’예요.` : "");
-    return draft(last?.state ?? s.state, "review-before-output", speech, { review: summary("incomplete"), actions: logs, sources: [...run.sources.values()] });
+    const lang = personal ? s.lang : "ko";
+    const milestone = run.journey?.lastMilestone;
+    const checkpoint = personal && hasText(milestone) ? `${milestone} ` : "";
+    const speech = checkpoint + PERSONAL_BROWSE_TEXT.incomplete[lang] +
+      (detail.length > 0 ? " " + PERSONAL_BROWSE_TEXT.missing[lang].replace("{detail}", () => detail) : "");
+    return draft(last?.state ?? s.state, "review-before-output", speech, { lang, review: summary("incomplete"), actions: logs, sources: [...run.sources.values()] });
   }
 
   /** 사용자가 말한 조작을 차례로 한다. 기존 권한 문을 통과한 요청만 실행하고, 검토 결과로 승인이나 입력을 만들지 않는다. */
@@ -260,7 +316,7 @@ export class ReviewLoop {
         // 남은 조작은 그대로 둔다. 다음 검토가 무엇이 빠졌는지 본다.
         if (run.browserSteps >= steps) return;
         last = await s.browse.runGoal(intent.goal, local.ctx, {
-          maxSteps: steps - run.browserSteps, exclusions: run.task.exclusions, requestedSteps: [intent.goal],
+          maxSteps: steps - run.browserSteps, exclusions: run.task.exclusions, requestedSteps: [intent.goal], journey: run.journey,
         });
       } else {
         last = await s.route(intent, local);
@@ -289,7 +345,7 @@ export class ReviewLoop {
     if (mode === "visible" && run.browserSteps >= steps) return undefined;
     const step: Turn = { ...turn, intentType: kind, ctx: withContext(turn.ctx, { publicLookup: true }) };
     return s.planner.execute(subtask, step, mode, {
-      research: run.background, maxSteps: Math.max(0, steps - run.browserSteps), continuePage: run.browserSteps > 0,
+      research: run.background, maxSteps: Math.max(0, steps - run.browserSteps), continuePage: run.browserSteps > 0, journey: run.journey,
       requestedSteps: mode === "visible" ? missing.map(part => replaceValues(part, hidden)) : [],
     });
   }

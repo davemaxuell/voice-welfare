@@ -305,3 +305,79 @@ it("공유 브라우저에서 각 세션은 자신이 연 팝업만 따라간다
   await popup.close();
   await vi.waitFor(() => expect(a.adapter.page).toBe(a.page));
 });
+
+it("distinguishes native navigation from an ambiguous link and a disguised form submit", async () => {
+  const { adapter, page, site, nav } = await formFixture();
+  const home = site.url + "/inspection";
+  await nav(home);
+  await page.setContent(`
+    <a id="link" href="/guide">안내</a>
+    <a href="/details" data-action="toggle-details">자세히 보기</a>
+    <form method="post" action="/submit"><button>다음</button></form>
+    <details><summary>펼치기</summary><p>추가 설명</p></details>
+  `);
+  await page.locator("#link").evaluate(el => el.addEventListener("click", () => sessionStorage.setItem("click-fired", "yes")));
+  const seen = await adapter.controlWindow("", 0, { inspection: true });
+  for (const [name, kind] of [["안내", "navigation"], ["자세히 보기", "ambiguous"], ["다음", "blocked"], ["펼치기", "disclosure"]]) {
+    expect(seen.items.find(item => item.name === name)?.inspection?.kind, name).toBe(kind);
+  }
+  const link = seen.items.find(item => item.name === "안내")!;
+  const click = action("click", { target: { ref: link.ref, role: link.role, name: link.name } });
+  const proof = { kind: "control", url: home, ref: link.ref, control: link.inspection! } as const;
+  await page.locator("#link").evaluate(el => el.setAttribute("data-confirm", "위험"));
+  expect(await adapter.execute(click, undefined, proof)).toMatchObject({ ok: false, errorCode: "VERIFY_FAILED" });
+  await page.locator("#link").evaluate(el => el.removeAttribute("data-confirm"));
+  expect(await adapter.execute(click, undefined, proof)).toMatchObject({ ok: true, verified: true });
+  expect(page.url()).toBe(site.url + "/guide");
+  expect(await page.evaluate(() => sessionStorage.getItem("click-fired"))).toBeNull();
+});
+
+it("reads a verified same-site search form as a GET without filling or submitting the page", async () => {
+  const { adapter, page, site, nav } = await formFixture();
+  const home = site.url + "/inspection";
+  await nav(home);
+  await page.setContent(`
+    <form id="search" method="get" action="/search">
+      <label for="q">검색</label><input id="q" type="search" name="q"><button>찾기</button>
+    </form>
+  `);
+  const search = await adapter.inspectionSearch("q");
+  expect(search).toMatchObject({ url: home, destination: site.url + "/search", parameter: "q" });
+  const proof = { kind: "search", fieldId: "q", ...search! } as const;
+  const run = () => adapter.execute(action("press", { target: { fieldId: "q", role: "searchbox" }, value: "배송 안내" }), undefined, proof);
+  await page.locator("#search").evaluate(el => el.insertAdjacentHTML("beforeend", '<input type="hidden" name="account" value="123">'));
+  expect(await adapter.inspectionSearch("q")).toBeUndefined();
+  expect(await run()).toMatchObject({ ok: false, errorCode: "VERIFY_FAILED" });
+  await page.locator("input[type=hidden]").evaluate(el => el.remove());
+  await page.locator("#search").evaluate(el => el.addEventListener("submit", () => sessionStorage.setItem("submit-fired", "yes")));
+  expect(await run()).toMatchObject({ ok: true, verified: true });
+  expect(new URL(page.url()).searchParams.get("q")).toBe("배송 안내");
+  expect(await page.evaluate(() => sessionStorage.getItem("submit-fired"))).toBeNull();
+  expect(site.posts()).toBe(0);
+});
+
+it("holds the inspection request guard through delayed page effects and releases it for the resident", async () => {
+  const { adapter, page, site, nav } = await formFixture();
+  const url = site.url + "/inspection";
+  await nav(url);
+  await page.setContent('<button id="more" type="button">더 보기</button><p id="result"></p>');
+  await page.locator("#more").evaluate(el => el.addEventListener("click", () => {
+    setTimeout(() => {
+      void fetch("/interaction", { method: "POST" }).then(
+        () => { document.querySelector("#result")!.textContent = "sent"; },
+        () => { document.querySelector("#result")!.textContent = "blocked"; },
+      );
+    }, 300);
+  }));
+  const [item] = (await adapter.controlWindow("더 보기", 0, { inspection: true })).items;
+  expect(item?.inspection?.kind).toBe("ambiguous");
+  const click = action("click", { target: { ref: item!.ref, role: item!.role, name: item!.name } });
+  await adapter.withInspection(async () => {
+    await adapter.execute(click, undefined, { kind: "control", url, ref: item!.ref, control: item!.inspection! });
+    await page.getByText("blocked", { exact: true }).waitFor();
+    expect(site.posts()).toBe(0);
+  });
+  await page.locator("#more").click();
+  await page.getByText("sent", { exact: true }).waitFor();
+  expect(site.posts()).toBe(1);
+});

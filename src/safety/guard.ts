@@ -2,7 +2,7 @@ import { parseAction, type Action, type ActionType } from "../core/actions.ts";
 import type { PolicyDecision } from "../core/turn.ts";
 import { hasText, strip } from "../core/text.ts";
 import { tryUrl } from "../core/url.ts";
-import { detectSensitive } from "./privacy.ts";
+import { detectSensitive, redactPictureText } from "./privacy.ts";
 
 export type AccessTier = "full" | "read-only" | "none";
 export interface PolicyConfig {
@@ -23,9 +23,21 @@ export interface PolicyContext {
   approvals?: ReadonlySet<string>;
   actionsThisTurn?: number;
   publicLookup?: boolean;
+  browsingScope?: "personal-inspection";
+  inspection?: InspectionBinding;
+  inspectionApproved?: boolean;
   actionLimit?: number;
 }
 export type ClickTier = "free" | "ask" | "hard";
+
+export type InspectionControl =
+  | { kind: "navigation"; href: string; signature: string }
+  | { kind: "disclosure" | "ambiguous" | "blocked"; href?: string; signature: string };
+
+export type InspectionBinding =
+  | { kind: "start" | "back"; url: string }
+  | { kind: "control"; url: string; ref: string; control: InspectionControl }
+  | { kind: "search"; url: string; fieldId: string; destination: string; parameter: string; signature: string };
 
 export const guardPatterns = {
   secretLabel: /(비밀\p{White_Space}*번호|password|OTP|인증\p{White_Space}*번호|주민\p{White_Space}*(등록)?\p{White_Space}*번호|계좌|카드\p{White_Space}*번호)/iu,
@@ -56,6 +68,26 @@ export function clickTier(role: string | undefined, name: string): ClickTier {
   if (role === "tab" || role === "scriptlink") return isActionName(name) ? "ask" : "free";
   if (role === "button" || role === "menuitem") return guardPatterns.riskyButton.test(name) ? "ask" : "free";
   return "ask";
+}
+
+const writeEndpoint = /^(?:pay(?:ment)?|checkout|purchase|submit|send|delete|remove|logout|sign[-_ ]?out|sign[-_ ]?up|register|consent|vote|upload|withdraw|commit|confirm|save|update)(?:\.[a-z0-9]+)?$/iu;
+const endpointParameter = /^(?:_?method|action|operation|op|cmd|command|do)$/iu;
+const searchParameter = /^(?:[\p{L}\p{N}_-]{1,64})$/u;
+const secretParameter = /^(?:password|passwd|pwd|otp|pin|one[-_ ]?time[-_ ]?code|card[-_ ]?number)$/iu;
+const decodePath = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
+
+export function isInspectionUrl(value: string): boolean {
+  const url = URL.parse(value);
+  if (url === null || (url.protocol !== "https:" && url.protocol !== "http:") || url.username !== "" || url.password !== "") return false;
+  const segments = decodePath(url.pathname).split("/").filter(Boolean);
+  const endpoint = segments.at(-1) ?? "";
+  const resourceAction = /^\d+$/u.test(endpoint) ? segments.at(-2) ?? "" : "";
+  if (writeEndpoint.test(endpoint) || writeEndpoint.test(resourceAction) ||
+    guardPatterns.hardAction.test(endpoint) && isActionName(endpoint)) return false;
+  return ![...url.searchParams].some(([key, val]) =>
+    secretParameter.test(key) || (endpointParameter.test(key) &&
+      (writeEndpoint.test(val) || /^(?:POST|PUT|PATCH|DELETE)$/iu.test(val) ||
+        (guardPatterns.hardAction.test(val) && isActionName(val)))));
 }
 
 function deny(code: string, reason: string): PolicyDecision {
@@ -109,7 +141,8 @@ export class PolicyGuard {
     if (this.publicLookup(ctx)) {
       const role = action.target?.role;
       const name = action.target?.name ?? "";
-      if (action.risk !== "low" || action.requiresConfirmation
+      if (ctx.browsingScope === "personal-inspection" && action.type !== "read" && action.type !== "scroll"
+        || action.risk !== "low" || action.requiresConfirmation
         || action.type === "capture" || action.type === "select" || action.type === "check"
         || ((action.type === "fill" || action.type === "press") && role !== "searchbox")
         || (action.type === "click" && (role === undefined || !clickRoles.has(role) || name.length === 0
@@ -118,6 +151,7 @@ export class PolicyGuard {
       }
       return this.checkReadOnly(action, ctx);
     }
+    if (this.inspectionEnabled(ctx)) return this.checkInspection(action, ctx);
     if (tier === "read-only") return this.checkReadOnly(action, ctx);
 
     const target = action.target;
@@ -142,6 +176,50 @@ export class PolicyGuard {
 
   private publicLookup(ctx: PolicyContext): boolean {
     return this.config.publicLookupOnly === true || ctx.publicLookup === true;
+  }
+
+  inspectionEnabled(ctx: PolicyContext): boolean {
+    return ctx.browsingScope === "personal-inspection" && !this.publicLookup(ctx);
+  }
+
+  private checkInspection(action: Action, ctx: PolicyContext): PolicyDecision {
+    const { type, target, value } = action;
+    const proof = ctx.inspection;
+    const refused = () => deny("DENIED_TASK_SCOPE", "이 화면의 내용을 확인하는 범위에서만 조작할 수 있어요.");
+    const missing = () => deny("DENIED_INSPECTION_BINDING", "현재 화면에서 조작할 대상을 다시 확인하지 못했어요.");
+    const allowed = { allowed: true, code: "ALLOWED_INSPECTION", reason: "화면 정보를 확인하는 조작입니다." };
+    if (action.risk !== "low" || action.requiresConfirmation) return refused();
+    if (type === "navigate") {
+      return proof?.kind === "start" && action.url === proof.url && isInspectionUrl(proof.url) ? allowed : refused();
+    }
+    if (type === "read" || type === "scroll") return action.target === undefined ? allowed : refused();
+    if (type === "back") return action.url === undefined && proof?.kind === "back" && proof.url === ctx.currentUrl ? allowed : refused();
+    if (inputTypes.has(type) && (guardPatterns.secretLabel.test((target?.label ?? "") + " " + (target?.name ?? "")) ||
+      target?.fieldId !== undefined && this.config.secretFieldIds.includes(target.fieldId) ||
+      value !== undefined && detectSensitive(value).hasSecretValue)) {
+      return deny("DENIED_SECRET", "민감 정보는 사이트에서 직접 입력해 주세요.");
+    }
+    if (type === "press") {
+      if (proof?.kind !== "search" || proof.url !== ctx.currentUrl || target?.fieldId !== proof.fieldId ||
+        target.role !== "searchbox" || Object.keys(target).length !== 2 || action.url !== proof.destination ||
+        !hasText(value) || [...value].length > 100 || detectSensitive(value).hasSecretValue || redactPictureText(value) !== value ||
+        !searchParameter.test(proof.parameter) || secretParameter.test(proof.parameter) || endpointParameter.test(proof.parameter) ||
+        !isInspectionUrl(proof.destination) || URL.parse(proof.destination)?.origin !== URL.parse(proof.url)?.origin) return refused();
+      return allowed;
+    }
+    if (type !== "click") return refused();
+    if (proof?.kind !== "control" || proof.url !== ctx.currentUrl || proof.ref !== target?.ref ||
+      !hasText(target?.name) || Object.keys(target).length !== 3) return missing();
+    const name = target.name;
+    const control = proof.control;
+    if (control.kind === "blocked" || control.href !== undefined && !isInspectionUrl(control.href) ||
+      (guardPatterns.hardAction.test(name) && isActionName(name))) {
+      return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
+    }
+    if ((control.kind === "navigation" || control.kind === "disclosure") && !guardPatterns.loginName.test(name)) return allowed;
+    return ctx.inspectionApproved === true
+      ? { allowed: true, code: "APPROVED", reason: "사용자가 이 화면에서 이 항목을 누르도록 확인했습니다." }
+      : deny("NEEDS_CONFIRMATION", "이 항목을 누르기 전에 사용자 확인이 필요합니다.");
   }
 
   private riskyControl(target: Action["target"]): boolean {
