@@ -109,7 +109,7 @@ export interface SettingsDialog {
 }
 
 /** 화면 상태(바뀌면 App이 해당 부분만 다시 그린다) */
-let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: Lang | undefined; settingsSeq: number; commandReset: number; consentDetailsOpen: number; errorSeq: number } = {
+let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: Lang | undefined; settingsSeq: number; commandReset: number; consentDetailsOpen: number; errorSeq: number; backgroundMic?: "speech" | "text" | undefined } = {
   sessionId: undefined,
   state: "IDLE",
   last: undefined,
@@ -267,8 +267,8 @@ function announce(text: string, channel: "status" | "transcript" = "status", lan
   else set({ announcement: { text, seq: ui.announcement.seq + 1 } });
 }
 
-function setError(message: string) {
-  set({ error: message, errorSeq: ui.errorSeq + 1 });
+function setError(message: string, backgroundMic?: "speech" | "text") {
+  set({ error: message, errorSeq: ui.errorSeq + 1, backgroundMic });
 }
 
 let focusSeq = 0;
@@ -317,10 +317,11 @@ function publishDesktop() {
     card: desk.card,
     pending: desk.card !== undefined && desk.consumed.has(desk.card.id),
   });
-  const text = JSON.stringify(view);
+  const snapshot = { ...view, micDiagnostic: view.mode === "problem" && ui.backgroundMic !== undefined ? ui.error : undefined };
+  const text = JSON.stringify(snapshot);
   if (text === desk.sent) return;
   desk.sent = text;
-  desktop.publish({ instance: desk.instance, revision: ++desk.revision, ...view });
+  desktop.publish({ instance: desk.instance, revision: ++desk.revision, ...snapshot });
 }
 
 function setPhase(p: Phase) {
@@ -597,8 +598,9 @@ export async function startConversation() {
       offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: setError,
       captureChanged,
       activity(text) {
-        if (ticket !== conversationStarts) return;
+        if (ticket !== conversationStarts || ui.activity === text) return;
         set({ activity: text });
+        announce(text, "transcript");
       },
       caption(event) {
         if (ticket !== conversationStarts || event.delta === undefined || event.delta.length === 0) return;
@@ -661,6 +663,14 @@ export async function startConversation() {
   startingLoop = current;
   const micTrouble =
     t("마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.");
+  function reportMicTrouble(ended: boolean) {
+    const background = BACKGROUND && desktop?.isDesktop === true;
+    const speakError = background && ended && ui.tts && ui.voiceMode.tts;
+    setError(micTrouble, background ? speakError ? "speech" : "text" : undefined);
+    if (ended) void cue("problem").then(() => {
+      if (speakError && ui.error === micTrouble) void speakAndWait(micTrouble);
+    });
+  }
   try {
     // 저장된 마이크가 없으면 권한을 받은 뒤 내장 마이크를 골라 다시 연다(아이폰 연속성 마이크 회피).
     await current.start(ui.micId);
@@ -680,8 +690,7 @@ export async function startConversation() {
     startingLoop = undefined;
     microphoneTrouble = true;
     setPhase("off");
-    setError(micTrouble);
-    void cue("problem");
+    reportMicTrouble(true);
     return;
   }
   if (ticket !== conversationStarts) {
@@ -697,11 +706,10 @@ export async function startConversation() {
       else captureChanged();
       return;
     }
-    setError(micTrouble);
+    reportMicTrouble(reason === "ended");
     // 잠깐 끊김(mute)은 다시 연결될 수 있으니 대화를 끝내지 않는다. 장치가 아예 사라졌을 때만 끝낸다.
     if (reason === "ended") {
       endConversation(false);
-      void cue("problem");
     }
   };
   void current.startClapDetector(() => talkNow(), ui.micId);
