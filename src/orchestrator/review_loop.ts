@@ -13,7 +13,7 @@ import { FIXED, translateIn } from "../language/i18n.ts";
 import { PERSONAL_BROWSE_TEXT } from "../speech/browse_phrases.ts";
 import { HISTORY_DESCRIBED } from "../speech/picture.ts";
 import { redactPictureText, redactText } from "../safety/privacy.ts";
-import { PublicTask, publicDestinations } from "./public_task.ts";
+import { PublicTask, publicDestinations, type SearchMode } from "./public_task.ts";
 import { PLAN_STOP_STATES, byLengthDesc, isAbort, replaceValues, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
 import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, reviewEvidence, type ReviewEvidence, type Route } from "./task_review.ts";
 
@@ -46,6 +46,13 @@ interface ReviewedFields {
   background?: boolean;
   inspection?: "answer" | "arrival";
   publicArrival?: boolean;
+}
+
+/** 이 조회가 실제로 쓰는 검색 방식. 길이 브라우저이면 quiet으로 정했을 때만 빼고 보이는 창을 쓴다. 결정이 방식을 비워 둬도 같다. */
+export function lookupMode(run: ReviewedTask): SearchMode | undefined {
+  const requested = run.background && run.task.searchMode !== "quiet" ? undefined : run.task.searchMode;
+  if (run.route === "quiet" || (requested === "quiet" && run.route === "browser")) return "quiet";
+  return run.route === "browser" ? "visible" : requested;
 }
 
 /** 검토를 거치는 일 하나. 승인·되물음·본인인증으로 멈췄다 이어 가도 같은 횟수 한도와 근거를 쓴다. */
@@ -248,7 +255,7 @@ export class ReviewLoop {
           last = work;
           await record(work);
           if (needsInput(work)) return pause(work);
-          if (!run.background && run.task.searchMode === "visible" && work.view && (work.browserIterations ?? 0) > 0 &&
+          if (!run.background && lookupMode(run) === "visible" && work.view && (work.browserIterations ?? 0) > 0 &&
               !run.retries.has("blocked-public-entry") && (stillNeedsAuth(work.view) || accessBlocked(work.view))) {
             run.retries.add("blocked-public-entry");
             continue;
@@ -415,9 +422,7 @@ export class ReviewLoop {
     const hidden = [...new Set(run.privateValues.filter(value => value.length > 0))].sort(byLengthDesc);
     let subtask = new PublicTask({ ...run.task, goal: replaceValues(goal, hidden), subject: replaceValues(run.task.subject, hidden) });
     if ((run.rounds > 0 || run.publicArrival && subtask.facts.length === 0) && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
-    let mode = run.background && run.task.searchMode !== "quiet" ? undefined : run.task.searchMode;
-    if (run.route === "quiet" || (mode === "quiet" && run.route === "browser")) mode = "quiet";
-    else if (run.route === "browser") mode = "visible";
+    const mode = lookupMode(run);
     if (run.route === "existing") throw new RangeError("조회가 아닌 길");
     const kind = LOOKUP_KINDS[run.route];
     const refused = s.gate([kind]);

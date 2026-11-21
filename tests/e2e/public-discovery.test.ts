@@ -132,11 +132,8 @@ it.each([
   } finally { opened.mockRestore(); await runtime.close(); }
 }, 180_000);
 
-it("finds a public route to the requested screen after the first result requires login", async () => {
-  const goal = "대여 서비스 이용 안내 화면을 열어줘. 신청은 하지 마.";
-  const {session: create} = await service({PRACTICE_MODE: "false", WEB_SEARCH_URL: searchOrigin + "/?q={q}"});
-  const {session} = await create();
-  const page = pageFor(session);
+/** 첫 검색 결과는 로그인 화면이고, 다시 검색하면 공개 안내 화면으로 가는 누리집. */
+async function blockedEntrySite(page: ReturnType<typeof pageFor>) {
   const login = "https://loan.example.go.kr/login", guide = "https://loan.example.go.kr/guide";
   const visits: string[] = [];
   await page.route("**/*", route => {
@@ -150,6 +147,14 @@ it("finds a public route to the requested screen after the first result requires
     visits.push(searched ? searchOrigin : url.href);
     return route.fulfill({contentType: "text/html; charset=utf-8", body});
   });
+  return {login, guide, visits};
+}
+
+it("finds a public route to the requested screen after the first result requires login", async () => {
+  const goal = "대여 서비스 이용 안내 화면을 열어줘. 신청은 하지 마.";
+  const {session: create} = await service({PRACTICE_MODE: "false", WEB_SEARCH_URL: searchOrigin + "/?q={q}"});
+  const {session} = await create();
+  const {login, guide, visits} = await blockedEntrySite(pageFor(session));
   withLlm(session, new FakeLlm(({schemaName, user}) => {
     if (schemaName === "public_service_decision") return {kind: "review_before_output", source: "browser", searchMode: "visible",
       goal, requestedFacts: [], outcome: "arrival", requirements: [goal], exclusions: ["application"], difficulty: "medium", choices: [], continuation: false};
@@ -174,4 +179,32 @@ it("finds a public route to the requested screen after the first result requires
   expect(result.observation?.url).toBe(guide);
   expect(visits).toEqual([searchOrigin, login, searchOrigin, guide]);
   expect(result.actions.some(entry => entry.action.type === "fill")).toBe(false);
+});
+
+it("retries a blocked first result without spending a review round when the decision omits the search mode", async () => {
+  const goal = "대여 서비스 이용 안내에서 방문 전에 무엇을 확인해야 하는지 알려줘.";
+  const quote = "방문 전에 안내문을 확인하세요.";
+  const {session: create} = await service({PRACTICE_MODE: "false", WEB_SEARCH_URL: searchOrigin + "/?q={q}"});
+  const {session} = await create();
+  const {login, guide, visits} = await blockedEntrySite(pageFor(session));
+  withLlm(session, new FakeLlm(({schemaName, user}) => {
+    if (schemaName === "public_service_decision") return {kind: "review_before_output", source: "browser",
+      goal, requestedFacts: ["other"], outcome: null, requirements: [goal], exclusions: [], difficulty: "medium", choices: [], continuation: false};
+    if (schemaName === "public_browse_step") {
+      const {page} = z.object({page: z.object({title: z.string()}).nullable()}).parse(JSON.parse(user));
+      if (page === null) return {action: "search", target: visits.includes(login) ? "대여 서비스 공식 공개 안내" : "대여 서비스 이용안내", claims: []};
+      return page.title === "검색" ? {action: "click", target: "대여 서비스", claims: []} : {action: "answer", claims: [{fact: "other", quote}]};
+    }
+    if (schemaName === "review_before_output") {
+      const {evidence} = z.object({evidence: z.array(z.object({id: z.number(), text: z.string()}))}).parse(JSON.parse(user));
+      const citations = evidence.filter(row => row.text === quote).map(row => ({id: row.id, quote}));
+      return {checks: [{request: goal, kind: "fact", citations}], nextRoute: citations.length > 0 ? null : "browser", answer: citations.length > 0 ? quote : ""};
+    }
+    return undefined;
+  }));
+  const result = await session.handleTurn(goal);
+  expect(visits).toEqual([searchOrigin, login, searchOrigin, guide]);
+  expect(result.review?.status).toBe("completed");
+  expect(result.review?.rounds).toBe(1);
+  expect(result.speech).toContain(quote);
 });
