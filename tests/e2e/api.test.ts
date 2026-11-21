@@ -156,9 +156,11 @@ it("test_progress_endpoint_reports_code_built_steps", async () => {
     ]);
     expect(await (await app.request(url)).json()).toEqual({
       running: true,
-      seq: 2,
+      seq: 12,
       latest: "127.0.0.1에서 '장애인연금 안내'를 눌렀어요.",
       spoken: true,
+      activity: "'장애인연금 안내'를 눌렀어요.",
+      activitySpoken: true,
     });
   } finally {
     gate.release();
