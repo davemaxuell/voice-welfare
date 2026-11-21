@@ -36,3 +36,18 @@ it("세션을 닫은 뒤 새 마이크 요청은 이전 세션의 취소에 묶�
   expect(t.measure(previous, "track-live")).toBeUndefined();
   expect(t.measure(next, "track-live")?.record.turn).toBe(next.record.turn);
 });
+
+it("음성 멈춤은 확인한 시점에 진행 중인 작업을 취소로 표시한다", () => {
+  const t = new ClientTiming();
+  const capture = t.begin("capture-end");
+  const sent = t.measure(capture, "turn-sent");
+  const sentAt = performance.now();
+  const stop = t.confirmedStop(sentAt);
+  expect(stop.time).toBe(sentAt);
+  expect(sent?.record.cancelled).toBe(true);
+  expect(t.measure(sent, "result-applied")).toBeUndefined();
+  expect(t.data.records.filter(r => r.turn === stop.record.turn).map(r => r.stage))
+    .toEqual(["stop-requested", "cancel-acknowledged"]);
+  const native = t.confirmedStop();
+  expect(t.data.records.filter(r => r.turn === native.record.turn).map(r => r.stage)).toEqual(["stop-observed"]);
+});
