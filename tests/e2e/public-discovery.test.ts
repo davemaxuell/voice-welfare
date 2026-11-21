@@ -6,9 +6,26 @@ import { SettingsStore } from "../../src/server/settings.ts";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { adapterFor, pageFor, runtimeCases } from "./browser-runtime-cases.ts";
 
-const request = "별빛생활주간에 가려는데 어디로 가면 되고 토요일에는 몇 시까지 들어갈 수 있어?";
-const requirements = ["별빛생활주간에 가려는데 어디로 가면 되고", "토요일에는 몇 시까지 들어갈 수 있어"];
-const venue = "별빛생활주간 행사는 솔바람전시관에서 열립니다.";
+const referral = {
+  request: "별빛생활주간에 가려는데 어디로 가면 되고 토요일에는 몇 시까지 들어갈 수 있어?",
+  requirements: ["별빛생활주간에 가려는데 어디로 가면 되고", "토요일에는 몇 시까지 들어갈 수 있어"],
+  firstFact: "location",
+  firstQuote: "별빛생활주간 행사는 솔바람전시관에서 열립니다.",
+  firstTitle: "행사 안내",
+  firstLink: "별빛생활주간 행사 안내",
+  publicQuery: "별빛생활주간 솔바람전시관 토요일 입장 안내",
+  kind: "review_before_output",
+};
+const comparison = {
+  request: "별가람박물관은 토요일에 언제 문을 닫아? 그리고 솔바람전시관은 토요일에 몇 시까지 들어갈 수 있어?",
+  requirements: ["별가람박물관은 토요일에 언제 문을 닫아", "그리고 솔바람전시관은 토요일에 몇 시까지 들어갈 수 있어"],
+  firstFact: "dates",
+  firstQuote: "별가람박물관은 토요일 오후 8시에 문을 닫습니다.",
+  firstTitle: "별가람박물관 이용 안내",
+  firstLink: "별가람박물관 이용 안내",
+  publicQuery: "별가람박물관 솔바람전시관 토요일 관람 시간",
+  kind: "find_information",
+};
 const admission = "토요일 마지막 입장은 오후 4시 20분입니다.";
 const listing = "https://culture.example.go.kr/notice";
 const hours = "https://venue.example.go.kr/visitors";
@@ -16,23 +33,29 @@ const searchOrigin = "https://search.example.org";
 const live = process.env.CHEONGEUM_LIVE_EVAL === "1";
 const service = runtimeCases();
 
-it.each([true, false])("discovers the venue and checks the requested day's admission cutoff (published=%s)", async published => {
+it.each([
+  {description: "referral with the cutoff", task: referral, published: true},
+  {description: "referral with the cutoff missing", task: referral, published: false},
+  {description: "two websites for the same fact kind", task: comparison, published: true},
+])("checks $description", async ({task, published}) => {
+  const {request, requirements, firstFact, firstQuote, firstTitle, firstLink, publicQuery, kind} = task;
   function responseFor(schemaName: string, user: string) {
-    if (schemaName === "public_service_decision") return {kind: "review_before_output", source: "browser", searchMode: "quiet",
-      goal: request, agency: null, subject: "별빛생활주간", requestedFacts: ["location", "dates"], requirements,
+    if (schemaName === "public_service_decision") return {kind, source: "browser", searchMode: "quiet",
+      goal: request, agency: null, requestedFacts: [...new Set([firstFact, "dates"])], requirements,
       difficulty: "medium", continuation: false, exclusions: [], choices: []};
     if (schemaName === "public_browse_step") {
-      const {page} = z.object({page: z.object({title: z.string()})}).parse(JSON.parse(user));
-      if (page.title === "검색 결과") return {action: "click", target: "별빛생활주간 행사 안내", claims: []};
-      if (page.title === "행사 안내") return {action: "click", target: "전시관 이용 안내", claims: [{fact: "location", quote: venue}]};
+      const {page, history} = z.object({page: z.object({title: z.string()}).nullable(), history: z.array(z.string())}).parse(JSON.parse(user));
+      if (page === null) return {action: "search", target: history.length === 0 ? request : publicQuery, claims: []};
+      if (page.title === "검색 결과") return {action: "click", target: firstLink, claims: []};
+      if (page.title === firstTitle) return {action: "click", target: "전시관 이용 안내", claims: [{fact: firstFact, quote: firstQuote}]};
       return published ? {action: "answer", claims: [{fact: "dates", quote: admission}]} : {action: "fail", claims: []};
     }
     if (schemaName === "review_before_output") {
       const {evidence} = z.object({evidence: z.array(z.object({id: z.number(), text: z.string()}))}).parse(JSON.parse(user));
-      const checks = [venue, admission].map((quote, i) => ({request: requirements[i], kind: "fact",
+      const checks = [firstQuote, admission].map((quote, i) => ({request: requirements[i], kind: "fact",
         citations: evidence.filter(row => row.text === quote).map(row => ({id: row.id, quote}))}));
       const supported = checks.every(check => check.citations.length > 0);
-      return {checks, answer: supported ? venue + " " + admission : "", nextRoute: supported ? null : "quiet"};
+      return {checks, answer: supported ? firstQuote + " " + admission : "", nextRoute: supported ? null : "quiet"};
     }
     return undefined;
   }
@@ -49,9 +72,10 @@ it.each([true, false])("discovers the venue and checks the requested day's admis
     TAVILY_API_KEY: ""});
   const runtime = await AgentRuntime.create(config, live ? fetch : completions, settings);
   const visited: string[] = [];
+  const queries: (string | null)[] = [];
   const bodies = new Map([
-    [searchOrigin, '<title>검색 결과</title><main><a href="' + listing + '">별빛생활주간 행사 안내</a></main>'],
-    [listing, '<title>행사 안내</title><main><p>' + venue + '</p><a href="' + hours + '">전시관 이용 안내</a></main>'],
+    [searchOrigin, `<title>검색 결과</title><main><a href="${listing}">${firstLink}</a></main>`],
+    [listing, `<title>${firstTitle}</title><main><p>${firstQuote}</p><a href="${hours}">전시관 이용 안내</a></main>`],
     [hours, '<title>솔바람전시관 이용 안내</title><main><p>금요일 마지막 입장은 오후 6시입니다.</p><p>' +
       (published ? admission : "토요일 입장 마감 시각은 추후 공지합니다.") + '</p></main>'],
   ]);
@@ -66,6 +90,7 @@ it.each([true, false])("discovers the venue and checks the requested day's admis
       const body = bodies.get(key);
       if (body === undefined) return route.abort();
       visited.push(key);
+      if (key === searchOrigin) queries.push(url.searchParams.get("q"));
       return route.fulfill({contentType: "text/html; charset=utf-8", body});
     });
     return session;
@@ -76,9 +101,12 @@ it.each([true, false])("discovers the venue and checks the requested day's admis
       const result = await session.handleTurn(request);
       const why = JSON.stringify({speech: result.speech, review: result.review, visited, trace: result.trace.map(step => step.note)});
       expect(visited, why).toEqual(expect.arrayContaining([searchOrigin, listing, hours]));
+      expect(queries).not.toContain(request);
+      if (!live) expect(queries[0]).toBe(publicQuery);
+      expect(session.progress.shiftSpoken()).toBe("공식 사이트를 직접 확인하고 있어요.");
       if (published) {
         expect(result.review?.status, why).toBe("completed");
-        expect(result.speech, why).toContain("솔바람전시관");
+        expect(result.speech, why).toContain(task === referral ? "솔바람전시관" : "별가람박물관");
         expect(result.speech, why).toMatch(/(?:4시\s*20분|16시\s*20분|16:20)/u);
         expect(result.sources.map(source => source.url), why).toEqual(expect.arrayContaining([listing, hours]));
       } else {
@@ -115,7 +143,8 @@ it("finds a public route to the requested screen after the first result requires
     if (schemaName === "public_service_decision") return {kind: "review_before_output", source: "browser", searchMode: "visible",
       goal, requestedFacts: [], outcome: "arrival", requirements: [goal], exclusions: ["application"], difficulty: "medium", choices: [], continuation: false};
     if (schemaName === "public_browse_step") {
-      const {page} = z.object({page: z.object({title: z.string()})}).parse(JSON.parse(user));
+      const {page} = z.object({page: z.object({title: z.string()}).nullable()}).parse(JSON.parse(user));
+      if (page === null) return {action: "search", target: visits.includes(login) ? "대여 서비스 공식 공개 안내" : "대여 서비스 이용안내", claims: []};
       return page.title === "검색" ? {action: "click", target: "대여 서비스", claims: []} :
         {action: "answer", claims: [{fact: "other", quote: "방문 전에 안내문을 확인하세요."}]};
     }

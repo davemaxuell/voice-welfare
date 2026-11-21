@@ -250,7 +250,8 @@ export class AgentRuntime {
   private readonly browsePublicSources: NonNullable<OrchestratorDeps["browsePublicSources"]> = async (task, ctx, maxSteps, requestedSteps) => {
     const [spans] = await this.scanner.scan([task.goal]);
     if (safeInput(task.goal, 1600, spans) === undefined || ctx.signal.aborted || ctx.isStopped()) return undefined;
-    const worker = await this.createSession({ background: true });
+    const worker = await this.createSession({ background: true }).catch(() => undefined);
+    if (worker === undefined) return undefined;
     try {
       if (ctx.signal.aborted || ctx.isStopped()) return undefined;
       return await worker.browse.runGoal(task.goal, withContext(ctx, { publicLookup: true }), {
