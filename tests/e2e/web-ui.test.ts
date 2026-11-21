@@ -438,3 +438,32 @@ it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽�
     await voice.close();
   }
 });
+
+it("진행 상황을 물어도 실행 중인 작업의 단계는 계속 표시한다", async () => {
+  const voice = await startUi(true, { PRACTICE_MODE: "false" });
+  try {
+    await recordCues(page, true);
+    await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
+    const audio = holdNext("**/api/audio/turn?**");
+    const question = holdNext("**/api/audio/stop?**");
+    let polls = 0;
+    await page.route(progressRoute, route => {
+      polls++;
+      return route.fulfill({ json: { ...finishedReport, activitySpoken: false } });
+    });
+    await consent(voice.url);
+    const [pendingAudio, pendingQuestion] = await Promise.all([audio, question]);
+    const activity = page.locator("#st-activity");
+    await browserExpect(activity).toHaveText(finishedStep);
+    await pendingQuestion.continue();
+    await browserExpect(page.locator("#log .user").last()).toContainText("어디까지");
+    const before = polls;
+    await browserExpect.poll(() => polls).toBeGreaterThan(before);
+    await browserExpect(activity).toBeVisible();
+    await browserExpect(activity).toHaveText(finishedStep);
+    await pendingAudio.fulfill({ status: 409, json: { message: "시험을 마쳤어요." } });
+  } finally {
+    await page.close();
+    await voice.close();
+  }
+});
