@@ -1,6 +1,43 @@
 // Korean strings are also the fallback for the first render, before a session exists.
 // 낱말표는 src/cheongeum/web/static/workspace-language.js에서 그대로 옮겼다.
+export const captureKeys = {
+  off: "마이크 꺼짐", requesting: "마이크 준비 중", on: "마이크 켜짐", paused: "마이크 일시 정지", error: "마이크 연결 오류",
+} as const;
+export const taskKeys = {
+  idle: "기다리고 있어요.", working: "처리하는 중이에요.", awaiting_choice: "선택을 기다리고 있어요.",
+  awaiting_approval: "승인을 기다리고 있어요.", auth_handoff: "사이트에서 직접 진행해 주세요.",
+  stopping: "멈추는 중이에요.", stopped: "멈췄어요.", failed: "문제가 생겼어요.",
+} as const;
+export const phaseKeys = {
+  off: { active: "꺼짐", manual: "꺼짐" }, starting: { active: "준비 중", manual: "준비 중" },
+  listening: { active: "듣고 있어요 — 말씀하세요", manual: "음성 입력: 듣고 있어요" },
+  hearing: { active: "말씀을 듣는 중…", manual: "말씀을 듣는 중…" },
+  thinking: { active: "처리 중…", manual: "요청을 처리하고 있어요" },
+  speaking: { active: "안내하는 중…", manual: "음성 안내 중" },
+} as const;
+const taskTranslations = {
+  '기다리고 있어요.': ['Ready when you are.', '我在等您。', 'お待ちしています。'],
+  '처리하는 중이에요.': ['Working on your request.', '正在处理请求。', '処理中です。'],
+  '선택을 기다리고 있어요.': ['Waiting for your choice.', '等待您选择。', '選択をお待ちしています。'],
+  "승인을 기다리고 있어요.": ["Waiting for your approval.", "正在等待您的批准。", "承認をお待ちしています。"],
+  '사이트에서 직접 진행해 주세요.': ['Please continue on the website.', '请在网站上继续。', 'サイトで操作を続けてください。'],
+  "멈추는 중이에요.": ["Stopping.", "正在停止。", "停止しています。"],
+  '멈췄어요.': ['Stopped.', '已停止。', '停止しました。'],
+  "문제가 생겼어요.": ["Something went wrong.", "出现了问题。", "問題が発生しました。"],
+} as const;
+export function taskText(task: keyof typeof taskKeys, language: string | undefined): string {
+  const key = taskKeys[task];
+  const index = language === "en" ? 0 : language === "zh" ? 1 : language === "ja" ? 2 : undefined;
+  return index === undefined ? key : taskTranslations[key][index];
+}
 const copy: Readonly<Record<string, readonly [string, string, string]>> = {
+  ...taskTranslations,
+  "마이크 꺼짐": ["Mic off", "麦克风已关", "マイクオフ"],
+  "마이크 켜짐": ["Mic on", "麦克风已开", "マイクオン"],
+  "마이크 준비 중": ["Preparing the microphone", "正在准备麦克风", "マイクを準備中"],
+  "마이크 일시 정지": ["Microphone paused", "麦克风已暂停", "マイクを一時停止中"],
+  "마이크 연결 오류": ["Microphone connection error", "麦克风连接错误", "マイク接続エラー"],
+  "지금 다른 요청을 처리하고 있어요. 잠시 후 다시 선택해 주세요.": ["A request is in progress. Please choose again in a moment.", "正在处理请求，请稍后再选择。", "リクエストを処理中です。少し待ってからもう一度選んでください。"],
   "{speed}배": ["{speed}×", "{speed} 倍", "{speed}倍"],
   '이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.': ['No on-device voice is available for this language. Your private reply is on screen.', '此设备没有可用的本地语音，私人回复已显示在屏幕上。', 'この端末で利用できる音声がないため、個人情報を含む案内は画面に表示しました。'],
   '시작 전 안내를 듣고 동의해 주세요.': ['Please review the introduction and choose whether to start.', '请查看使用说明，再选择是否开始。', '開始時の案内を確認し、同意するか選んでください。'],
@@ -46,15 +83,10 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '청음을 준비하는 중이에요.': ['Getting ready.', '正在准备。', '準備中です。'],
   '이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요.': ['Session ended. Select me to start again.', '本次使用已结束。点我重新开始。', '利用を終了しました。私を押すと再開できます。'],
   '시작 전에 동의가 필요해요.': ['Waiting for your consent.', '等待您同意。', '同意をお待ちしています。'],
-  '사이트에서 직접 진행해 주세요.': ['Please continue on the website.', '请在网站上继续。', 'サイトで操作を続けてください。'],
-  '선택을 기다리고 있어요.': ['Waiting for your choice.', '等待您选择。', '選択をお待ちしています。'],
-  '처리하는 중이에요.': ['Working on your request.', '正在处理请求。', '処理中です。'],
   '말하는 중이에요.': ['Speaking.', '正在说话。', '話しています。'],
   '듣는 중이에요. 말씀하세요.': ['Listening. Go ahead.', '正在听，请讲。', '聞いています。どうぞ。'],
   '음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.': ['Voice chat is off. Select me to type a question.', '语音对话已关闭。点我输入问题。', '音声会話はオフです。私を押すと文字で質問できます。'],
   '대화 중이에요.': ['Voice chat is on.', '语音对话中。', '音声会話中です。'],
-  '멈췄어요.': ['Stopped.', '已停止。', '停止しました。'],
-  '기다리고 있어요.': ['Ready when you are.', '我在等您。', 'お待ちしています。'],
   '청음': ['Cheongeum', '青音', 'チョンウム'],
   '청음 — 공공서비스 음성 도우미': ['Cheongeum — Public service voice assistant', '青音 — 公共服务语音助手', 'チョンウム — 公共サービス音声アシスタント'],
   '공공서비스 음성 도우미': ['Public service voice assistant', '公共服务语音助手', '公共サービス音声アシスタント'],

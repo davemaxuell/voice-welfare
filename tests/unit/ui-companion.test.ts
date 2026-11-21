@@ -39,7 +39,8 @@ it("아바타 카드에는 승인할 값과 목적이 실리지 않는다", () =
   expect(text).not.toContain("900101");
   expect(text).not.toContain("주민번호 입력");
   expect(text).not.toContain("actionId");
-  expect(view).toMatchObject({ mode: "choice", choiceSetId: "i-1", prompt: "입력란을 채울까요?", site: "복지로", message: null });
+  expect(view).toMatchObject({ mode: "choice", task: "awaiting_approval", taskLabel: "승인을 기다리고 있어요.",
+    choiceSetId: "i-1", prompt: "입력란을 채울까요?", site: "복지로", message: null });
 });
 
 it("응답 알림은 답 글을 옮기지 않고 앱이 정한 문장만 쓴다", () => {
