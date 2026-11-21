@@ -245,6 +245,7 @@ it("test_repeated_announcement_reaches_screen_reader", async () => {
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
   const announce = await watchLiveRegion("announce");
   const replies = await watchLiveRegion("log", true);
+  await browserExpect(page.getByRole("log", { name: "대화 기록" })).toHaveAttribute("aria-live", "polite");
   await send("이름은 김하늘");
   await browserExpect(page.locator("#fields")).toContainText("입력됨: 김하늘", turnTimeout);
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
@@ -406,8 +407,27 @@ it("같은 세션의 두 번째 요청에서는 지난 단계 문장을 다시 �
   const firstTurn = await heldTurn();
   const announcement = await watchLiveRegion("announce");
   const replies = await watchLiveRegion("log", true);
+  const regions = await page.evaluateHandle(step => {
+    const selectors = ["[role=log]", "#error", "#st-activity", "#mic-check-result", "#announce", "#intro-text", "#phase",
+      "#first-run-live", "#recording-status", "#setup-error", "#workflow-feedback", "#status"];
+    return selectors.map(selector => {
+      const node = document.querySelector(selector);
+      const live = node?.getAttribute("aria-live") ?? node?.getAttribute("role");
+      const row = { selector, writes: 0, active: live != null && live !== "off" };
+      if (node !== null) new MutationObserver(records => {
+        for (const record of records) {
+          const written = record.type === "characterData" ? [record.target] : [...record.addedNodes];
+          if (written.some(item => item.textContent?.includes(step) === true)) row.writes++;
+        }
+      }).observe(node, { childList: true, characterData: true, subtree: true });
+      return row;
+    });
+  }, finishedStep);
   await afterProgress(await firstProgress);
   await browserExpect.poll(() => spoken.filter(text => text === finishedStep)).toHaveLength(1);
+  const counts = await regions.jsonValue();
+  expect(counts.filter(row => row.active && row.writes > 0).map(row => row.selector)).toEqual(["[role=log]"]);
+  console.info("진행 안내 관찰", { regions: counts, speechRequests: spoken.filter(text => text === finishedStep).length });
   expect(await replies.count()).toBe(1);
   expect(await announcement.count()).toBe(0);
   await browserExpect(page.locator("#st-activity")).not.toHaveAttribute("aria-live", "polite");

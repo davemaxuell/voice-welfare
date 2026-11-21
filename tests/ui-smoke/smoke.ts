@@ -126,7 +126,6 @@ try {
   await shot(ui, "04-granted");
 
   const before = await ui.locator(".msg.assistant").count();
-  const announcement = await text(ui, "#announce");
   await ui.locator("#command").fill("장애인연금 얼마 받아?");
   await ui.keyboard.press("Enter");
   await ui.waitForFunction(n => document.querySelectorAll(".msg.assistant").length > n, before);
@@ -135,8 +134,7 @@ try {
   check(await focusedId(ui) === "command", "글로 보낸 뒤에도 입력란에 초점이 남는다");
   const answer = await ui.locator(".msg.assistant").last().textContent();
   const afterTurn = { status: await shown(ui, ".work-status"), form: await shown(ui, "#command-form"), side: await shown(ui, "#sources-panel") };
-  check(await ui.getByRole("log").getAttribute("aria-live") === "polite" && (await text(ui, "#announce")) === announcement,
-    "답변은 대화 기록에 추가되고 별도 상태 안내를 반복하지 않는다");
+  check((await text(ui, "#announce")).startsWith("상태: "), "응답 상태를 화면 낭독기에 알린다");
   await shot(ui, "05-text-turn");
 
   await ui.locator("#stop-all").click();
