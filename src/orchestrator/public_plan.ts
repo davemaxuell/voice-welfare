@@ -35,6 +35,10 @@ type ResearchReply = [string, ResearchOutcome<z.infer<typeof ResearchSource>>];
 
 const PLAN_STATES = new Set(["IDLE", "BROWSING", "NEEDS_CLARIFICATION"]);
 const LOOKUPS = { browser: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
+const CHECKING_OFFICIAL_SITES = {
+  ko: "공식 사이트를 직접 확인하고 있어요.", en: "I’m checking the official websites directly.",
+  zh: "我正在直接查阅官方网站。", ja: "公式サイトを直接確認しています。",
+} satisfies Record<Lang, string>;
 const LIMITED = {
   ko: "찾은 자료로는 질문 전체를 확인하기 어려워요.", en: "The sources cover only part of your question.",
   zh: "现有资料只涵盖了问题的一部分。", ja: "見つかった資料では、ご質問の一部しか確認できませんでした。",
@@ -222,7 +226,7 @@ export class PublicPlanner {
       }
     }
     const compoundLookup = decision.kind === "find_information" && source === "browser" &&
-      decision.searchMode === "quiet" && new Set(decision.requestedFacts).size > 1;
+      (new Set(parts).size > 1 || decision.searchMode === "quiet" && new Set(decision.requestedFacts).size > 1);
     if (personal || decision.kind === "review_before_output" || compoundLookup || (!research && decision.kind === "find_information" && live === "hard")) {
       const requirements = decision.requirements ?? [];
       const reviewed = new ReviewedTask({
@@ -302,7 +306,7 @@ export class PublicPlanner {
   async execute(task: PublicTask, turn: Turn, mode: SearchMode | undefined, { research = false, maxSteps, continuePage = false, requestedSteps = [], journey }: Bounds = {}): Promise<Draft> {
     const s = this.session;
     const lang = s.lang;
-    const bounds = maxSteps === undefined ? {} : { maxSteps, continuePage, requestedSteps, journey };
+    const bounds = { research, maxSteps, continuePage, requestedSteps, journey };
     const kind = turn.intentType;
     if (!research && (kind === "OPEN_SITE" || mode === "visible")) await s.web.showBrowser();
     if (kind === "OPEN_SITE") return s.browse.openSite(task.agency ?? "", turn.ctx);
@@ -328,7 +332,7 @@ export class PublicPlanner {
   }
 
   /** 현재 탭과 저장 작업을 건드리지 않고 이 턴에서 공개 출처를 확인한다. */
-  async quietLookup(task: PublicTask, turn: Turn, { maxSteps, requestedSteps }: Bounds = {}): Promise<Draft> {
+  async quietLookup(task: PublicTask, turn: Turn, { maxSteps, requestedSteps, research }: Bounds = {}): Promise<Draft> {
     const s = this.session;
     const lang = s.lang;
     const signal = turn.ctx.signal;
@@ -350,8 +354,8 @@ export class PublicPlanner {
     let result: Draft | undefined;
     if (permitted && browse !== undefined && maxSteps !== 0 && task.facts.length > 0) {
       turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, "공개 웹 자료에서 근거 확인");
-      try { result = await raceAbort(() => browse(task, turn.ctx, maxSteps, requestedSteps), signal); }
-      catch { /* The isolated browser may be unavailable. */ }
+      if (research !== true) s.progress.milestone(`official-browser:${turn.id}`, CHECKING_OFFICIAL_SITES[lang]);
+      result = await raceAbort(() => browse(task, turn.ctx, maxSteps, requestedSteps), signal);
     }
     if (signal.aborted) return draft("STOPPED", "none", FIXED.stopBusy[lang], { lang });
     if (result?.sources !== undefined && result.sources.length > 0 && (result.reviewQuotes?.length ?? 0) > 0) {
