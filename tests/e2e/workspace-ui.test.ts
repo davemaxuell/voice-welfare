@@ -220,7 +220,7 @@ it.each(["en", "zh", "ja"] as const)("%s 화면과 접근성 이름에서 번역
   const source = { title: "Practice source", url: "http://localhost/fixture", lastCheckedAt: "2026-01-01" };
   const turns = [
     { state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: { actionId: "test", kind: "field-entry", purpose: "Input", site: "Practice", values: [{ label: "Name", value: "Sample" }] } },
-    { state: "AUTH_HANDOFF", authHandoff: { id: "test", taskId: "task", kind: "login", site: "Practice", status: "waiting" } },
+    { state: "AUTH_HANDOFF", authHandoff: { id: "test", taskId: "task", kind: "login", site: "Practice", status: "waiting" }, offeredChoices: [{ key: "auth-cancel", label: "Cancel" }] },
     { state: "DONE", answerCard: { serviceName: "Service", answer: "OK", grounded: true, source, dataKind: "stored", dataOrigin: "fixture", nextAction: "Continue" } },
     undefined,
     { intentType: "SETUP_RESTART" },
@@ -236,10 +236,20 @@ it.each(["en", "zh", "ja"] as const)("%s 화면과 접근성 이름에서 번역
   await page.locator("#confirm-yes").click();
   await screen(page.locator("#confirm-panel")).toBeHidden();
   expect(await untranslated(page.locator("body"))).toEqual([]);
-  for (const id of ["#auth-title", "#answer-title", "#error"]) {
+  await page.route("**/api/session/*/choice", route => route.fulfill({ json: { ...common, turnId: "cancelled", userUtterance: "인증 취소" } }));
+  await send("test");
+  await check("#auth-title");
+  const cancel = page.locator("#auth-cancel");
+  const cancelled = await cancel.innerText();
+  await cancel.click();
+  await screen(page.locator("#log .user").last()).toContainText(cancelled);
+  for (const id of ["#answer-title", "#error"]) {
     await send("test");
     await check(id);
   }
+  await page.locator("#stop-all").click();
+  await screen(page.locator("#st-state")).toHaveAttribute("data-state", "STOPPED");
+  expect(await untranslated(page.locator("body"))).toEqual([]);
   await page.locator("#open-settings").click();
   await screen(page.locator("#setup-language")).toHaveValue(lang);
   await check("#settings-dialog");
