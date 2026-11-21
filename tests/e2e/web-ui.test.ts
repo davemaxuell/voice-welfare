@@ -2,6 +2,7 @@ import { chromium, expect as browserExpect, type Browser, type Page } from "@pla
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type * as Speaker from "../../web/src/speaker.ts";
 import { axeScript } from "../../src/core/assets.ts";
+import { latch } from "./browser-cases.ts";
 import { recordCues, startUi } from "./web-ui-fixtures.ts";
 
 let browser: Browser;
@@ -82,6 +83,35 @@ it("test_decline_and_high_contrast", async () => {
   await browserExpect(page.getByRole("button", { name: "대화 시작 (Enter)" })).toBeDisabled();
   await page.getByRole("button", { name: "고대비 꺼짐" }).click();
   await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
+});
+
+it("멈춘 뒤 늦게 온 응답은 기록하거나 읽지 않는다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  const received = latch(), release = latch();
+  const late = "늦게 도착한 연습 응답입니다.";
+  const speech: string[] = [];
+  try {
+    await page.route("**/api/turn", async route => {
+      const response = await route.fetch();
+      const json: unknown = await response.json();
+      if (typeof json !== "object" || json === null) throw new Error("시험 응답이 없습니다.");
+      received.resolve();
+      await release.promise;
+      await route.fulfill({ json: { ...json, speech: late } });
+    });
+    page.on("request", r => { if (new URL(r.url()).pathname === "/api/audio/speak") speech.push(r.postData() ?? ""); });
+    await page.goto(voice.url);
+    await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+    await send("장애인연금이 뭐야");
+    await received.promise;
+    await page.locator("#stop-all").click();
+    await browserExpect(state()).toHaveText("중단됨", turnTimeout);
+    const messages = await page.locator("#log .assistant").allTextContents();
+    release.resolve();
+    await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
+    expect(await page.locator("#log .assistant").allTextContents()).toEqual(messages);
+    expect(speech.some(text => text.includes(late))).toBe(false);
+  } finally { release.resolve(); await page.close(); await voice.close(); }
 });
 
 it("test_sound_cues_stay_under_mic_detector_limits", async () => {
