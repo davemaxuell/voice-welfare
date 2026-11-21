@@ -32,7 +32,7 @@ import { AGENT_IDS, LANGS, draft, parseTurnResult, type Draft, type HumanAuthHan
   type SourceCitation, type TraceEntry, type TurnResult } from "../core/turn.ts";
 import { tryUrl } from "../core/url.ts";
 import { recheck } from "../agents/web/approval.ts";
-import { approvalAction, approvalNarration, approvalPresentation, type ApprovalNotice, FIXED, detectLangSwitch, detectScriptLang, translateIn, translateOut } from "../language/i18n.ts";
+import { approvalAction, approvalNarration, approvalPresentation, type ApprovalNotice, type ClickPresentation, FIXED, detectLangSwitch, detectScriptLang, translateIn, translateOut } from "../language/i18n.ts";
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, foreignVaultSave, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalDialogue, vaultReply } from "../personal/dialogue.ts";
@@ -220,7 +220,7 @@ export class SessionOrchestrator {
   #consent: Consent;
   #history: HistoryRow[] = [];
   #queue = new TurnQueue();
-  #approvalPageTitles = new WeakMap<object, string>();
+  #clickPresentations = new WeakMap<object, ClickPresentation>();
   #controller = new AbortController();
   #approvals = new Set<string>();
   #busy = false;
@@ -515,8 +515,8 @@ export class SessionOrchestrator {
 
   #approvalPresentation() {
     const waiting = this.dialogue.approval ?? this.dialogue.vaultConfirm;
-    const pageTitle = waiting?.kind === "click" ? this.#approvalPageTitles.get(waiting.action) : undefined;
-    return approvalPresentation(waiting, this.lang, this.personal.persistent, pageTitle);
+    const page = waiting?.kind === "click" ? this.#clickPresentations.get(waiting.action) : undefined;
+    return approvalPresentation(waiting, this.lang, this.personal.persistent, page);
   }
 
   snapshot() {
@@ -1289,12 +1289,18 @@ export class SessionOrchestrator {
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
     const pending = d.approval;
-    const newRequest = pending !== undefined && pending.confirmation.actionId !== turn.initialApprovalId &&
+    const newRequest = (pending !== undefined || d.vaultConfirm?.kind === "vault-clear") && d.confirmation?.actionId !== turn.initialApprovalId &&
       out.state === "WAITING_FOR_USER_CONFIRMATION" && turn.intentType !== "APPROVE";
-    if (newRequest && pending.kind === "click" && hasText(out.view?.title)) this.#approvalPageTitles.set(pending.action, out.view.title);
+    if (newRequest && pending?.kind === "click") {
+      this.#clickPresentations.set(pending.action, {
+        title: hasText(out.view?.title) ? out.view.title : pending.confirmation.site,
+        inspection: turn.ctx.browsingScope === "personal-inspection" && out.lang !== undefined,
+      });
+    }
+    const shown = stopped ? undefined : this.#approvalPresentation();
     const approvalNotice = turn.approvalNotice ?? (newRequest ? "ask" : undefined);
     const containsValue = d.confirmation?.values.some(({ value }) => value.length > 0 && speech.includes(value)) === true;
-    const localApproval = !stopped && this.lang !== "ko" && d.confirmation !== undefined && (approvalNotice !== undefined || containsValue);
+    const localApproval = shown !== undefined && (approvalNotice !== undefined || containsValue);
     const privateHistory = localApproval || turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
     // 금고 값(저장 대기 포함)은 사용자에게는 읽어 주되, LLM에 가는 기록에는 넣지 않는다.
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
@@ -1340,7 +1346,6 @@ export class SessionOrchestrator {
       return { ...a, result: { actionId: a.action.id, ok: false, verified: false, errorCode: "UNKNOWN", latencyMs: 0, message: "조작 기록을 남기지 못했습니다." } };
     });
     const suggestions = (out.publicSuggestions ?? []).filter(label => VOCAB.has(label));
-    const shown = stopped ? undefined : this.#approvalPresentation();
     const approvalReply = stopped ? undefined : approvalNarration(approvalNotice, this.lang, speech, shown?.speech);
     return parseTurnResult({
       sessionId: this.id, turnId: turn.id, userUtterance: turn.original ?? turn.text, localSpeechOnly: localSpeechOnly ? true : undefined,

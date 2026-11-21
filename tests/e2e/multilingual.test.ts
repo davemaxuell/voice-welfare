@@ -1,6 +1,8 @@
 import { afterAll, afterEach, expect, it } from "vitest";
 import type { SessionOrchestrator } from "../../src/orchestrator/session.ts";
-import { FakeLlm, fieldValue, PORTAL, withLlm } from "../helpers.ts";
+import { FakeLlm, fieldValue, PORTAL, step, withLlm } from "../helpers.ts";
+import { inspectionClickQuestion } from "../../src/speech/browse_phrases.ts";
+import { layouts, mountPortal, portalOrigin } from "./personal-journey-portal.ts";
 import { createTestRuntime } from "./session-runtime.ts";
 
 const runtime = createTestRuntime();
@@ -217,4 +219,42 @@ it("test_question_about_saving_an_address_still_reaches_general_language_routing
   const text = "How do I save my address on a public form?";
   expect((await s.handleTurn(text)).pendingConfirmation).toBeUndefined();
   expect(model.calls.some(call => call.user.includes(text))).toBe(true);
+});
+
+it("개인 조회에서 누르기 전 불확실성과 승인·거절 방법을 언어를 바꿔도 읽는다", async () => {
+  const inspection = createTestRuntime({ practiceMode: false });
+  try {
+    const { session, page } = await inspection.createBrowserSession();
+    const layout = { ...layouts[1]!, ask: "Check whether my sample request has a result." };
+    const { visited } = await mountPortal(page, layout);
+    await page.goto(portalOrigin + layout.home);
+    await page.getByRole("link", { name: layout.account }).evaluate(link => {
+      const button = document.createElement("button");
+      button.textContent = link.textContent;
+      button.onclick = () => location.assign((link as HTMLAnchorElement).href);
+      link.replaceWith(button);
+    });
+    const model = new FakeLlm(({ schemaName }) => {
+      if (schemaName === "public_service_decision") return { kind: "inspect_personal", source: null, agency: null, subject: null,
+        goal: layout.ask, requestedFacts: [], exclusions: [], continuation: false, question: null, choices: [],
+        reply: null, skill: null, difficulty: "medium", requirements: [layout.ask] };
+      if (schemaName === "browse_step") return { ...step("click", layout.account), assessment: "progress", expected: "Open the sample area" };
+      return undefined;
+    });
+    withLlm(session, model);
+    session.deps.webLlm = session.deps.goalLlm = model;
+    await session.setLanguage("en");
+    const first = await session.handleTurn(layout.ask, { fromVoice: true });
+    const card = first.pendingConfirmation;
+    expect(card?.kind).toBe("click");
+    if (!card) throw new Error("승인 카드가 없습니다.");
+    for (const lang of ["en", "ja", "ko", "zh"] as const) {
+      const turn = lang === "en" ? first : await session.setLanguage(lang);
+      const question = inspectionClickQuestion(lang, card.site, layout.title, layout.account);
+      expect(turn.speech).toContain(question);
+      expect(turn.localSpeechOnly).toBe(true);
+      expect(session.snapshot().pendingConfirmation).toMatchObject({ actionId: card.actionId, description: question });
+    }
+    expect(visited).not.toContain(layout.accountPath);
+  } finally { await inspection.close(); }
 });
