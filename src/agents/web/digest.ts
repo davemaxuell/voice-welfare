@@ -80,7 +80,7 @@ function classify(view: WebObservation, main: string, linkCount: number, inputCo
   return body.length > 600 ? "article" : "page";
 }
 
-export function digestPage(view: WebObservation): PageDigest {
+export function digestPage(view: WebObservation, { preserveRows = false } = {}): PageDigest {
   const o = view.outline;
   const menu = unique(o?.menuLinks ?? []).filter(name => !p.utility.test(name));
   const menuSet = new Set(menu);
@@ -89,8 +89,12 @@ export function digestPage(view: WebObservation): PageDigest {
   const buttons = unique((o?.buttons ?? []).filter(b => b.disabled !== true).map(b => b.name ?? ""));
   const fields = (view.fields ?? []).filter(f => f.visible === true);
   const hasSearchBox = fields.some(f => f.searchable === true), inputCount = fields.filter(f => f.searchable !== true).length;
-  const main = unique((o?.mainText ?? "").split(p.newlines))
-    .filter(line => (Array.from(line).length > 2 || p.digit.test(line)) && !menuSet.has(line) && !p.utility.test(line)).join("\n");
+  const rows = (o?.mainText ?? "").split(p.newlines);
+  // 근거로 쓸 표의 짧은 값과 반복 행은 순서대로 남기고, 메뉴와 화면 도구는 제외한다.
+  const main = (preserveRows ? rows.map(clean) : unique(rows)).filter(line =>
+    !menuSet.has(line) && !p.utility.test(line) && (preserveRows
+      ? line.length > 0 && !p.utilityButton.test(line) && !p.uiLine.test(line)
+      : Array.from(line).length > 2 || p.digit.test(line))).join("\n");
   const title = view.title ?? "";
   const headings = unique((o?.headings ?? []).map(h => h.text ?? "")).filter(heading => heading !== strip(title));
   const kind = classify(view, main, contentLinks.length, inputCount);
