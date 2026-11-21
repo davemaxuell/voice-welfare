@@ -249,8 +249,9 @@ export class WebExecutionAgent {
     visual?: boolean;
   } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
+    const tab = this.adapter.page;
     const view = await this.observe(ctx);
-    if (visual && planShot(view) instanceof ShotRefusal) {
+    if (visual && (this.adapter.page !== tab || planShot(view) instanceof ShotRefusal)) {
       return {status: "failed", actions: log, view, message: "화면이 바뀌어 사진에서 확인한 메뉴를 누르지 않았어요."};
     }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
@@ -277,6 +278,9 @@ export class WebExecutionAgent {
         if (window.url === view.url && candidates.length === 1 && !window.more) item = candidates[0];
       }
       if (item === undefined) return this.notLocated(view, name, located.hits);
+    }
+    if (visual && this.adapter.page !== tab) {
+      return {status: "failed", actions: log, view, message: "탭이 바뀌어 사진에서 확인한 메뉴를 누르지 않았어요."};
     }
     const target = { ref: item.ref, role: item.role, name: item.name };
     const result = await this.run(this.action({ type: "click", target, reason: `'${item.name}' 누르기(${item.role})` }), ctx, log);

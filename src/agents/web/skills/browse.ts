@@ -137,7 +137,7 @@ const WEB_ANSWER_SCHEMA = {
 };
 
 function descriptionKey(view: PageView): string {
-  return createHash("sha256").update(JSON.stringify([screenKey(view), view.outline?.screenTarget])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([screenKey(view), view.outline?.mainText, view.outline?.screenTarget])).digest("hex");
 }
 
 export class BrowseSkill {
