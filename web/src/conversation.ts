@@ -1,3 +1,4 @@
+import { timing, type TimingPoint } from "./perf.ts";
 // 청음 대화 창의 상태와 동작(Python app.js). 화면은 App.tsx가 이 상태(snapshot)를 그린다.
 // 입력란·버튼은 다시 만들지 않으므로 포커스가 유지된다(화면낭독기 사용자를 위해).
 import { STATE_LABELS_KO, type Lang } from "../../src/core/turn.ts";
@@ -345,7 +346,7 @@ async function readyForInput() {
 
 // ---------------------------------------------------------------- 응답·음성
 
-async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
+async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, sent?: TimingPoint, capture?: TimingPoint) {
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
@@ -395,6 +396,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true) {
     push({ role: "user", text: r.userUtterance });
     push({ role: "assistant", text: r.speech });
   }
+  timing?.measure(sent, "result-applied");
+  timing?.afterPaint(capture, "transcript-shown");
   announce(workspaceText("상태", ui.lang) + ": " + workspaceText(STATE_LABELS_KO[r.state], ui.lang));
   const kind = stopped && !sleepOnStop ? undefined : transitionCue(prevState, r.state);
   if (kind !== undefined && !(kind === "stopped" && Date.now() - stopCuedAt < STOP_CUE_WINDOW_MS)) await cue(kind);
@@ -679,11 +682,11 @@ export async function startConversation() {
     void cue("done");
     setPhase("thinking");
     try {
-      const r = await voiceTurn(audio, asked, current);
+      const { result: r, capture, sent } = await voiceTurn(audio, asked, current);
       if (loop !== current) break;
       failures = 0;
       missed = 0;
-      await applyResult(r, r.state === "STOPPED");
+      await applyResult(r, r.state === "STOPPED", true, sent, capture);
       if (loop !== current) break;
       setPhase("speaking");
       // 끼어들기: 안내 중에 사용자가 말하면 안내를 멈추고 바로 듣는다.
@@ -711,9 +714,9 @@ export async function startConversation() {
         void cue("done");
         setPhase("thinking");
         try {
-          const again = await voiceTurn(clip, bargeAsked, current);
+          const { result: again, capture, sent } = await voiceTurn(clip, bargeAsked, current);
           if (loop !== current) break;
-          await applyResult(again, again.state === "STOPPED");
+          await applyResult(again, again.state === "STOPPED", true, sent, capture);
           if (loop !== current) break;
           setPhase("speaking");
           await speakTurn(again);
@@ -759,8 +762,14 @@ function parseTurn(raw: unknown): Turn {
 /** 대화 모드의 음성 한 턴. 보내는 동안 떠 있는 카드를 잡아 버튼과 말이 함께 나가지 않게 한다. */
 async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
   const held = holdCard();
+  const capture = timing?.begin("capture-end");
+  const sent = timing?.measure(capture, "turn-sent");
   try {
-    return await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, asked), voice));
+    const result = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, asked), voice));
+    return { result, capture, sent };
+  } catch (error) {
+    timing?.measure(sent, "turn-failed");
+    throw error;
   } finally {
     releaseCard(held);
   }
@@ -1011,11 +1020,15 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   }
   if (reminderNight && /^아침[.! ]*$/.test(t)) return;
   const stop = stoppedGeneration;
+  const input = timing?.begin("input-received");
   set({ busy: true, error: undefined });
+  timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
+  const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.turn(ui.sessionId, t, actionId));
-    if (stop === stoppedGeneration) await applyResult(result);
+    if (stop === stoppedGeneration) await applyResult(result, true, true, sent);
   } catch (e) {
+    timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
   } finally {
     set({ busy: false });
@@ -1058,6 +1071,8 @@ export function stopAll() {
 }
 
 async function stopSession() {
+  const requested = timing?.stop();
+  const localIndicator = ui.listening || ui.phase !== "off" || ui.speaking;
   const stop = ++stoppedGeneration;
   const wake = desk.wakeCount;
   const previousTurn = ui.last;
@@ -1072,14 +1087,22 @@ async function stopSession() {
   recording?.cancel();
   recording = undefined;
   set({ listening: false, error: undefined });
+  if (localIndicator) timing?.afterPaint(requested, "local-stop-shown", () =>
+    stop === stoppedGeneration && !ui.listening && ui.phase === "off" && !ui.speaking);
   if (ui.sessionId === undefined) return;
   try {
     const result = await api.cancel(ui.sessionId);
+    timing?.measure(requested, "cancel-acknowledged");
     if (stop !== stoppedGeneration) return;
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
-    else await applyResult(result, stillSleeping, stillSleeping);
+    else {
+      const applied = applyResult(result, stillSleeping, stillSleeping);
+      timing?.afterPaint(requested, "stopped-state-paint", () =>
+        stop === stoppedGeneration && document.getElementById("st-state")?.dataset.state === "STOPPED");
+      await applied;
+    }
   } catch (e) {
     if (stop !== stoppedGeneration || wake !== desk.wakeCount) return;
     desk.sleeping = false;
@@ -1091,11 +1114,15 @@ async function stopSession() {
 async function confirm(approve: boolean, actionId: string) {
   if (ui.sessionId === undefined || ui.recovery !== undefined) return;
   const stop = stoppedGeneration;
+  const input = timing?.begin("input-received");
   set({ busy: true });
+  timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
+  const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.confirm(ui.sessionId, approve, actionId));
-    if (stop === stoppedGeneration) await applyResult(result);
+    if (stop === stoppedGeneration) await applyResult(result, true, true, sent);
   } catch (e) {
+    timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
   } finally {
     set({ busy: false });
@@ -1221,11 +1248,14 @@ export async function toggleMic() {
     set({ listening: false, busy: true });
     announce("인식 중입니다.");
     const audio = await rec.stop();
+    const capture = timing?.begin("capture-end");
     void cue("done");
+    const sent = timing?.measure(capture, "turn-sent");
     try {
       const result = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, rec.asked)));
-      if (generation === stoppedGeneration) await applyResult(result);
+      if (generation === stoppedGeneration) await applyResult(result, true, true, sent, capture);
     } catch (e) {
+      timing?.measure(sent, "turn-failed");
       if (generation === stoppedGeneration) setError(errorMessage(e));
     } finally {
       set({ busy: false });
@@ -1428,6 +1458,7 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 }
 
 export async function endSession() {
+  timing?.cancelPending();
   const sid = ui.sessionId;
   desk.message = null;
   desk.sleeping = false;
