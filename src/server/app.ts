@@ -185,6 +185,9 @@ export function makeApp<S extends HttpSession>(
     get embedding() { return runtime.embedding; }, get moderation() { return runtime.moderation; },
     scan: texts => runtime.scanner?.scan(texts) ?? Promise.resolve(texts.map(() => [])), createSession: opts => runtime.createSession(opts),
   }, options.workflowDsn);
+  const recoveryAvailable = () => runtime.config?.pilotProfile !== "shared" &&
+    !(runtime.settings?.completed === true && runtime.settings.preferences.deviceUse === "shared") &&
+    (runtime.config?.pilotProfile === "personal" || workflows.personal);
   const live = new LiveAudio();
   const writerRequired = () => error(409, "SESSION_WRITER_REQUIRED", "이 탭에서 작업을 제어할 수 없어요.");
   const accessWriter = (sid: string, writer: string, recovery = false): S | Response => {
@@ -307,7 +310,7 @@ export function makeApp<S extends HttpSession>(
       submissionScope: "practice-only", practiceMode: runtime.config?.practiceMode ?? true,
       voiceSpeed: tts.speed ?? runtime.settings?.preferences.speed ?? runtime.config?.voice.ttsSpeed,
       setupRequired: runtime.settings !== undefined && !runtime.settings.completed, settingsAvailable: runtime.settings !== undefined,
-      firstRun: runtime.settings?.firstRun ?? "done", recoveryAvailable: runtime.config?.pilotProfile === "personal",
+      firstRun: runtime.settings?.firstRun ?? "done", recoveryAvailable: recoveryAvailable(),
     });
   });
   const noSettings = () => error(404, "NO_SETTINGS", "이 실행 환경에는 이용 설정이 없습니다.");
@@ -356,7 +359,7 @@ export function makeApp<S extends HttpSession>(
     if (body === undefined || Object.entries(body).some(([key, value]) => !["recovery", "attached"].includes(key) || typeof value !== "boolean")) {
       return error(400, "BAD_REQUEST", "세션 설정을 확인해 주세요.");
     }
-    if (body.recovery === true && runtime.config?.pilotProfile !== "personal") {
+    if (body.recovery === true && !recoveryAvailable()) {
       return error(403, "RECOVERY_UNAVAILABLE", "확인된 개인 프로필에서만 작업 복구를 켤 수 있어요.");
     }
     return await sessions.creating.run(async () => {
@@ -375,6 +378,7 @@ export function makeApp<S extends HttpSession>(
     });
   });
   app.post("/api/session/recover", async c => {
+    if (!recoveryAvailable()) return noSession();
     const { token, attempt } = await jsonBody(c.req.raw) ?? {};
     if (typeof token !== "string" || token.length !== 43 || /[^\x00-\x7f]/u.test(token) ||
         typeof attempt !== "string" || attempt.length !== 36 || /[^\x00-\x7f]/u.test(attempt)) return error(400, "BAD_REQUEST", "복구 정보를 확인해 주세요.");
@@ -581,7 +585,7 @@ export function makeApp<S extends HttpSession>(
       return voiceError(e);
     }
   });
-  app.get("/api/events", () => Response.json({ events: runtime.events.all() }));
+  app.get("/api/events", () => Response.json({ events: [...runtime.events.all(), ...workflows.events.all()] }));
   app.get("/api/welfare/services", async (c) =>
     Response.json({
       mode: runtime.welfareProvider.mode,

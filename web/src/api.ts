@@ -87,7 +87,7 @@ const RecoveredSchema = CredentialsSchema.extend({ sessionId: text, state: opt(S
 const CheckpointSchema = z.object({
   state: SessionStateSchema, lang: opt(LangSchema), consent: z.enum(["pending", "granted", "declined"]),
   stopGeneration: opt(z.number()), approvalKind: opt(text), progressSeq: opt(z.number()), step: opt(z.number()),
-  authHandoff: opt(AuthHandoffSchema),
+  authHandoff: opt(AuthHandoffSchema), turnId: opt(text), offeredChoices: opt(z.array(z.object({ key: text, label: text }))),
 });
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
 const ProgressSchema = z.object({
@@ -96,7 +96,12 @@ const ProgressSchema = z.object({
 });
 const JobSchema = z.object({
   id: text, prompt: text, state: text,
-  result: opt(z.object({ text: opt(text), sources: opt(z.array(z.object({ url: text, title: text }))) })),
+  questionRevision: opt(z.number().int().positive()),
+  result: opt(z.object({
+    text: opt(text), sources: opt(z.array(z.object({ url: text, title: text, lastCheckedAt: opt(text), version: opt(text) }))),
+    missing: opt(z.array(text)),
+    data: opt(z.object({ kind: z.enum(["live", "stored", "private-program"]), origin: text, date: opt(text) })),
+  })),
 });
 const NoteSchema = z.object({ id: text, body: text });
 export type Note = z.infer<typeof NoteSchema>;

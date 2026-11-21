@@ -22,6 +22,23 @@ function modelFake(replies: unknown[]) {
 }
 const queryOf = (body: unknown) => typeof body === "object" && body !== null && "query" in body ? body.query : undefined;
 
+it("fetches the vetted notice when document search excerpts lack the requirements", async () => {
+  const official = { ...PAGE, content: "사업을 안내합니다." };
+  const quote = "신청서와 주민등록등본이 필요합니다.";
+  const fetch = searchFake([
+    { results: [official, { ...official, url: PAGE.url + "?session=test" }, { ...official, url: "https://agency.example/" }] },
+    { results: [{ url: "https://another.go.kr/notice", raw_content: "잘못된 기관" }, { url: PAGE.url, raw_content: quote }] },
+  ]);
+  const model = modelFake([
+    { answer: "", citations: [], retryQuery: null },
+    { answer: quote, citations: [{ index: 0, quote }], retryQuery: null },
+  ]);
+  const result = await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson })
+    .search(new PublicTask({ goal: "신청 서류", facts: ["documents"] }), "ko", signal());
+  expect(fetch.payloads[1]).toMatchObject({ urls: [PAGE.url] });
+  expect(result).toMatchObject({ speech: quote, reviewQuoteSources: { [quote]: [PAGE.url] } });
+});
+
 it("test_refines_empty_results_and_cites_the_matching_official_excerpt", async () => {
   const fetch = searchFake([{ results: [] }, { results: [{ ...PAGE, url: "https://korea.kr.example.org/holiday" }, PAGE] }]);
   const model = modelFake([

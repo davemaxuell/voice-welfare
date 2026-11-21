@@ -244,6 +244,8 @@ Use conversation only for social exchanges. Give a short reply in replyLanguage.
 
 Use review_before_output for a task requiring a sequence of dependent actions, navigation through multiple
 levels, or combining evidence from several pages or agents to deliver the user's whole request.
+For saved public research, use it when there are several independently answerable requests, such as
+document and deadline questions about several programs. Keep each item explicit in requirements.
 Keep short, independent commands on their ordinary routes. For a reviewed task, list every independently
 verifiable requested deliverable in requirements as exact consecutive spans of the user's original utterance,
 in order. Preserve all requested conditions. Set difficulty by the amount of work expected (easy, medium,
@@ -376,7 +378,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     system += "\nThis is an already confirmed background research job. Use find_information for the public "
       + "factual question and omit any background or saving instructions from goal. Use clarify for missing "
       + "details and existing for unsupported or non-read-only tasks. Use review_before_output for complex "
-      + "read-only research with several dependent steps. Always give it an information source.";
+      + "read-only research with several requested outcomes, including independent items. Always give it an information source.";
   }
   const destination = publicDestinations(utterance);
   const raw = await llm.generate({

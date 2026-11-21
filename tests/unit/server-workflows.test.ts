@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { researchSummary, type ResearchCheckpoint, type ResearchPlan } from "../../src/core/research.ts";
 import { DIMENSIONS, LEASE_SECONDS, WorkflowRejected, WorkflowStore, canonicalUuid, installationOwner } from "../../src/server/workflow_store.ts";
 import { Workflows, publicResult, safeInput, type ResearchOutcome, type ResearchSession } from "../../src/server/workflows.ts";
 
@@ -25,6 +26,29 @@ async function database(dsn: string) {
 
 describe.each(databases)("%s", (kind, dsn) => {
   const options = { skip: kind === "postgres" && dsn === "" };
+  it("only an unexpired holder can renew or publish a result", options, async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const [store, otherOwner] = await database(dsn);
+      const id = await store.enqueue(randomUUID(), "공개 서류 확인", "ko");
+      const job = await store.claim();
+      if (job === undefined) throw new Error("Expected a claimed job");
+      expect(await otherOwner.renewClaim(job)).toBe(false);
+      vi.advanceTimersByTime(LEASE_SECONDS * 1000);
+      expect(await store.renewClaim(job)).toBe(false);
+      expect(await store.finish(job, "completed")).toBe(false);
+      const next = await store.claim();
+      if (next === undefined) throw new Error("Expected a replacement claim");
+      expect(next.attempts).toBe(2);
+      expect(await store.renewClaim(job)).toBe(false);
+      expect(await store.cancel(id)).toBe(true);
+      expect(await store.renewClaim(next)).toBe(false);
+      expect(await store.finish(next, "completed")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("test_claim_cancel_retry_restart_and_isolation", options, async () => {
     const [store, other] = await database(dsn);
     const key = randomUUID();
@@ -140,8 +164,217 @@ function personalRuntime(research: (prompt: string) => Promise<readonly [string,
   return { runtime, closed };
 }
 const session = { consentStatus: "granted", lang: "ko", generation: 1 };
+const firstSource = { title: "기관 자료", url: "https://example.go.kr/guide", lastCheckedAt: "2026-11-21" };
+const secondSource = { ...firstSource, url: "https://example.go.kr/notice" };
+const savedPlan: ResearchPlan = {
+  route: "quiet", goal: "가 제도의 서류와 나 제도의 마감일", subject: "", exclusions: [],
+  steps: [
+    { requirement: "가 제도의 서류", attempts: 1, outcome: { status: "verified", finding: {
+      text: "신청서를 준비하세요.", sources: [firstSource], proof: [{ quote: "신청서를 준비하세요.", url: firstSource.url }],
+    } } },
+    { requirement: "나 제도의 마감일", attempts: 0 },
+  ],
+};
 
 describe("research worker", () => {
+  it("lets another job run between windows and only continues the remaining step", async () => {
+    vi.useFakeTimers();
+    const held = gate(), release = gate();
+    const { runtime } = personalRuntime(async () => ["incomplete", {}]);
+    const calls: string[] = [];
+    const service = new Workflows({ ...runtime, createSession: async () => ({
+      ...await runtime.createSession(),
+      async researchPublic(prompt, _language, progress) {
+        if (prompt === "다른 공개 질문") {
+          calls.push("other");
+          return ["completed", { text: "별도 자료", sources: [secondSource] }];
+        }
+        if (progress === undefined) throw new Error("Expected durable research");
+        if (progress.checkpoint === undefined) {
+          calls.push("first");
+          await progress.save(savedPlan);
+          held.open();
+          await release.opened;
+          return ["incomplete", {}];
+        }
+        calls.push("remaining");
+        const plan = progress.checkpoint.plan;
+        const next = await progress.save({ ...plan, steps: plan.steps.map(step => step.outcome ? step : {
+          ...step, attempts: 1, outcome: { status: "verified", finding: {
+            text: "공고문에 적힌 기한입니다.", sources: [secondSource], proof: [{ quote: "공고문에 적힌 기한입니다.", url: secondSource.url }],
+          } },
+        }) });
+        return researchSummary(next);
+      },
+    }) });
+    try {
+      const id = await service.enqueue(session, randomUUID(), savedPlan.goal);
+      await held.opened;
+      await service.enqueue(session, randomUUID(), "다른 공개 질문");
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+      const jobs = await (await service.store()).jobs();
+      expect(calls).toEqual(["first", "other", "remaining"]);
+      expect(jobs.find(job => job.id === id)).toMatchObject({ state: "completed", result: { sources: [firstSource, secondSource] } });
+      expect(service.events.all().map(event => event.errorCode)).toEqual(["budget", "verified", "verified"]);
+    } finally {
+      release.open();
+      await service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reopens checkpoints after a lost process and fences both replacement and resident follow-up", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const [store, other] = await database("");
+      const id = await store.enqueue(randomUUID(), savedPlan.goal, "ko");
+      const first = await store.claim();
+      if (!first) throw new Error("Expected job");
+      const checkpoint: ResearchCheckpoint = { version: 1, plan: savedPlan, activeMs: 3, continuations: 0 };
+      expect(await store.saveProgress(first, 0, checkpoint)).toBe(true);
+      expect(await other.saveProgress(first, 1, checkpoint)).toBe(false);
+      expect(await store.saveProgress(first, 0, checkpoint)).toBe(false);
+      vi.advanceTimersByTime(LEASE_SECONDS * 1000);
+      const reopened = await WorkflowStore.open(store.path, store.owner);
+      const rival = await WorkflowStore.open(store.path, store.owner);
+      const claims = await Promise.all([reopened.claim(), rival.claim()]);
+      expect(claims.filter(Boolean)).toHaveLength(1);
+      const replacement = claims.find(job => job !== undefined);
+      if (!replacement) throw new Error("Expected replacement");
+      expect(await reopened.progress(replacement)).toEqual({ revision: 1, checkpoint });
+      expect(await store.saveProgress(first, 1, checkpoint)).toBe(false);
+      const waiting: ResearchPlan = { ...savedPlan, steps: savedPlan.steps.map(step => step.outcome ? step :
+        { ...step, attempts: 1, outcome: { status: "waiting", question: "어떤 지역인가요?" } }) };
+      expect(await reopened.saveProgress(replacement, 1, { ...checkpoint, plan: waiting })).toBe(true);
+      expect(await reopened.finish(replacement, "needs_input", { text: "어떤 지역인가요?" })).toBe(true);
+      expect(await other.answer(id, 2, "서울")).toBe(false);
+      expect(await reopened.answer(id, 1, "서울")).toBe(false);
+      expect(await reopened.answer(id, 2, "서울")).toBe(true);
+      expect(await rival.answer(id, 2, "부산")).toBe(false);
+      const resumed = await reopened.claim();
+      if (!resumed) throw new Error("Expected resumed job");
+      expect((await reopened.progress(resumed))?.checkpoint).toMatchObject({
+        plan: { steps: [savedPlan.steps[0], { requirement: "나 제도의 마감일", attempts: 1, clarification: "서울" }] },
+      });
+      expect(await reopened.cancel(id)).toBe(true);
+      expect(await reopened.progress(resumed)).toBeUndefined();
+      expect(await reopened.deleteJob(id)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("finishes one slow public lookup across lease windows without restarting it", async () => {
+    vi.useFakeTimers();
+    const started = gate(), release = gate();
+    const research = vi.fn(async (): Promise<readonly [string, ResearchOutcome]> => {
+      started.open();
+      await release.opened;
+      return ["completed", { text: "공식 안내", sources: [{ url: "https://example.go.kr/guide" }] }];
+    });
+    const service = new Workflows(personalRuntime(research).runtime);
+    try {
+      const id = await service.enqueue(session, randomUUID(), "공개 서류 확인");
+      await started.opened;
+      await vi.advanceTimersByTimeAsync(130_000);
+      const store = await service.store();
+      const otherWorker = await WorkflowStore.open(store.path, store.owner);
+      expect(await otherWorker.claim()).toBeUndefined();
+      release.open();
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await otherWorker.jobs())[0]).toMatchObject({ id, state: "completed", result: { text: "공식 안내" } });
+      expect(research).toHaveBeenCalledTimes(1);
+    } finally {
+      release.open();
+      await service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends a lookup that exhausts its time budget without replaying it", async () => {
+    vi.useFakeTimers();
+    const started = gate(), release = gate();
+    const research = vi.fn(async (): Promise<readonly [string, ResearchOutcome]> => {
+      started.open();
+      await release.opened;
+      return ["completed", { text: "늦은 답", sources: [{ url: "https://example.go.kr/guide" }] }];
+    });
+    const service = new Workflows(personalRuntime(research).runtime);
+    try {
+      const id = await service.enqueue(session, randomUUID(), "오래 걸리는 공개 자료 조사");
+      await started.opened;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect((await (await service.store()).jobs())[0]).toMatchObject({ id, state: "incomplete" });
+      release.open();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect((await (await service.store()).jobs())[0]).toMatchObject({ id, state: "incomplete", result: null });
+      expect(research).toHaveBeenCalledTimes(1);
+    } finally {
+      release.open();
+      await service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the next job when a background session takes too long to open", async () => {
+    vi.useFakeTimers();
+    const opening = gate(), release = gate();
+    const lookup = vi.fn(async (prompt: string): Promise<readonly [string, ResearchOutcome]> =>
+      ["completed", { text: prompt, sources: [{ url: "https://example.go.kr/guide" }] }]);
+    const { runtime, closed } = personalRuntime(lookup);
+    const createSession = vi.fn(runtime.createSession).mockImplementationOnce(async () => {
+      opening.open();
+      await release.opened;
+      return await runtime.createSession();
+    });
+    const service = new Workflows({ ...runtime, createSession });
+    try {
+      const first = await service.enqueue(session, randomUUID(), "첫째 공개 자료");
+      await opening.opened;
+      const second = await service.enqueue(session, randomUUID(), "둘째 공개 자료");
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+      const jobs = await (await service.store()).jobs();
+      expect(jobs.find(job => job.id === first)?.state).toBe("incomplete");
+      expect(jobs.find(job => job.id === second)?.state).toBe("completed");
+      release.open();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(lookup.mock.calls).toEqual([["둘째 공개 자료"]]);
+      expect(closed).toEqual(["cancel", "close", "cancel", "close"]);
+    } finally {
+      release.open();
+      await service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases a claim received during shutdown without spending an attempt", async () => {
+    const lookup = vi.fn(async (): Promise<readonly [string, ResearchOutcome]> => ["incomplete", {}]);
+    const service = new Workflows(personalRuntime(lookup).runtime);
+    const store = await service.store();
+    const id = await store.enqueue(randomUUID(), "공개 자료 확인", "ko");
+    const claimed = gate(), release = gate();
+    const claim = store.claim.bind(store);
+    vi.spyOn(store, "claim").mockImplementationOnce(async () => {
+      const job = await claim();
+      claimed.open();
+      await release.opened;
+      return job;
+    });
+    try {
+      await service.reconfigure();
+      await claimed.opened;
+      const stopped = service.close();
+      release.open();
+      await stopped;
+      expect((await store.jobs())[0]).toMatchObject({ id, state: "queued" });
+      expect(await store.claim()).toMatchObject({ id, attempts: 1 });
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      release.open();
+      await service.close();
+    }
+  });
+
   it("runs a delegated job to a verified public result and closes its session", async () => {
     const { runtime, closed } = personalRuntime(async prompt => ["completed", { text: prompt + " 답", sources: [{ url: "https://www.kosaf.go.kr/a", title: "한국장학재단" }] }]);
     const service = new Workflows(runtime);

@@ -2,12 +2,12 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { api, errorCode, WorkspaceSchema, type Note, type Workspace } from "./api.ts";
-import { copy, states } from "./workflows-text.ts";
+import { copy, resultCopy, states } from "./workflows-text.ts";
 
 const LANG_ORDER = ["ko", "en", "zh", "ja"];
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
 
-export function WorkflowPanel({ sessionId, lang: language }: { sessionId: string | undefined; lang: string }) {
+export function WorkflowPanel({ sessionId, lang: language, onRead }: { sessionId: string | undefined; lang: string; onRead: (text: string) => void }) {
   const lang = copy[language] !== undefined ? language : "ko";
   const t = (index: number) => (copy[lang] ?? copy.ko)?.[index] ?? "";
   const [snapshot, setSnapshot] = useState<Workspace | undefined>(undefined);
@@ -95,6 +95,7 @@ export function WorkflowPanel({ sessionId, lang: language }: { sessionId: string
     });
   };
   const stateColumn = Math.max(0, LANG_ORDER.indexOf(lang));
+  const label = (key: keyof typeof resultCopy) => resultCopy[key][stateColumn] ?? resultCopy[key][0];
   const matches = filter ?? snapshot?.notes ?? [];
 
   return <details id="workflow-panel" className="panel settings" hidden={sessionId === undefined} ref={panel} onToggle={() => void refresh()}>
@@ -107,11 +108,29 @@ export function WorkflowPanel({ sessionId, lang: language }: { sessionId: string
     </form>
     <ul id="research-list">{snapshot?.jobs.map(job => {
       const inProgress = job.state === "queued" || job.state === "running";
+      const found = job.result?.text ?? "";
+      const missing = job.result?.missing ?? [];
+      const sources = (job.result?.sources ?? []).filter(source => /^https:\/\//i.test(source.url));
+      const data = job.result?.data;
       return <li key={job.id}>
         <p>{job.prompt + " · " + (states[job.state]?.[stateColumn] ?? job.state)}</p>
-        {job.result?.text !== undefined && job.result.text.length > 0 && <p>{job.result.text}</p>}
-        {(job.result?.sources ?? []).filter(source => /^https:\/\//i.test(source.url)).map((source, i) =>
-          <Fragment key={`${source.url}-${i}`}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{" "}</Fragment>)}
+        {found.length > 0 && <p>{found}</p>}
+        {missing.length > 0 && <><p>{label("missing")}</p><ul>{missing.map((part, i) => <li key={i}>{part}</li>)}</ul></>}
+        {data !== undefined && <p>{label(data.kind)} · {label("dataDate")} {data.date ?? label("unknownDate")}</p>}
+        {sources.map((source, i) => <Fragment key={`${source.url}-${i}`}>
+          <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{" · "}{label("checked")} {source.lastCheckedAt ?? label("unknownDate")}{" "}
+        </Fragment>)}
+        {(found.length > 0 || missing.length > 0) && <button type="button" onClick={() => onRead([
+          job.prompt, found, ...sources.map(source => `${source.title}. ${label("checked")} ${source.lastCheckedAt ?? label("unknownDate")}`),
+          ...(missing.length > 0 ? [label("missing"), ...missing] : []),
+        ].filter(Boolean).join(". "))}>{label("read")}</button>}
+        {job.questionRevision !== undefined && <form key={job.questionRevision} onSubmit={event => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const text = new FormData(form).get("text");
+          void change("/research/" + job.id + "/answer", "POST", { text, consent: true, questionRevision: job.questionRevision }, () => form.reset());
+        }}><label>{label("answer")} <input name="text" maxLength={600} required/></label>
+          <button type="submit">{label("resume")}</button></form>}
         <button type="button" onClick={() => void change("/research/" + job.id + (inProgress ? "/claim" : ""), "DELETE")}>{t(inProgress ? 9 : 10)}</button>
         {["needs_input", "incomplete", "failed", "partial"].includes(job.state) &&
           <button type="button" onClick={() => { if (researchInput.current !== null) { researchInput.current.value = job.prompt; researchInput.current.focus(); } }}>{t(11)}</button>}

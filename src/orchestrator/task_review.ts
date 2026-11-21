@@ -26,6 +26,7 @@ export interface ReviewEvidence {
   readonly publicPhone: boolean;
   readonly valueVerified: boolean;
   readonly pageKey: string;
+  readonly sourceUrls?: readonly string[];
 }
 
 export function reviewEvidence(kind: EvidenceKind, text: string, extra: Partial<Omit<ReviewEvidence, "kind" | "text">> = {}): ReviewEvidence {
@@ -41,6 +42,7 @@ export interface ReviewDecision {
   readonly confirmedPageKey: string;
   readonly currentQuotes?: readonly string[];
   readonly repairReason: RepairReason | "";
+  readonly facts?: Readonly<Record<string, readonly string[]>>;
 }
 
 function decision(extra: Partial<ReviewDecision> = {}): ReviewDecision {
@@ -360,7 +362,7 @@ export function evidenceFromDraft(draft: Pick<Draft, "view" | "actions" | "revie
     const publicPhone = contacts.has(quote);
     const clean = safe(quote, privateValues, publicPhone ? [quote] : []);
     if (labels.length > 0 && clean.length > 0 && !clean.includes(REDACTED)) {
-      evidence.push(reviewEvidence("fact", clip(clean, 1400), { sources: labels, publicPhone }));
+      evidence.push(reviewEvidence("fact", clip(clean, 1400), { sources: labels, publicPhone, sourceUrls: urls.filter(url => sources.has(url)) }));
     }
   }
   return evidence;
@@ -397,11 +399,13 @@ interface ReviewOptions {
   requirements?: readonly string[];
   privateValues?: readonly string[];
   repairReason?: string;
+  publicFactsOnly?: boolean;
+  publicContext?: string;
 }
 
 export async function reviewBeforeOutput(
   model: StructuredLlm | undefined, request: string, evidence: readonly ReviewEvidence[], signal: AbortSignal,
-  { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection }: ReviewOptions = {},
+  { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection, publicFactsOnly = false, publicContext }: ReviewOptions = {},
 ): Promise<ReviewDecision> {
   const personal = inspection !== undefined;
   if (signal.aborted || model === undefined || points(request).length > 8000) return decision();
@@ -414,7 +418,7 @@ export async function reviewBeforeOutput(
   // 같은 이름의 두 번 실행, 같은 페이지 재방문은 순서대로 남긴다. 실행 번호는 모델에 보내지 않는다.
   const seenActions = new Set<string>();
   const publicPhones = evidence.filter(e => e.publicPhone).map(e => e.text);
-  let records: { kind: EvidenceKind; text: Redacted; sources: Redacted[]; valueVerified: boolean; pageKey: string }[] = [];
+  let records: { kind: EvidenceKind; text: Redacted; sources: Redacted[]; valueVerified: boolean; pageKey: string; urls: readonly string[] }[] = [];
   for (const e of evidence) {
     if (e.kind === "action") {
       const key = e.receiptId.length > 0 ? e.receiptId : e.text;
@@ -424,14 +428,21 @@ export async function reviewBeforeOutput(
     const text = redactText(clip(safe(e.text, values, e.publicPhone ? [e.text] : []), 1400));
     if (text.length === 0) continue;
     records.push({ kind: e.kind, text, sources: e.sources.slice(0, 8).map(s => redactText(clip(safe(s, values), 300))),
-      valueVerified: e.valueVerified, pageKey: e.pageKey });
+      valueVerified: e.valueVerified, pageKey: e.pageKey, urls: e.sourceUrls ?? [] });
   }
-  records = records.slice(-128);
+  if (records.length > 128) {
+    const older = records.slice(0, -64);
+    const receipts = older.filter(record => record.kind === "action");
+    const earliestFacts = older.filter(record => record.kind === "fact" && record.sources.length > 0).slice(0, Math.max(0, 64 - receipts.length));
+    const retained = new Set([...receipts.slice(0, 64), ...earliestFacts]);
+    records = [...older.filter(record => retained.has(record)), ...records.slice(-64)];
+  }
   const lastPage = records.findLastIndex(r => r.kind === "page");
   const currentPageId = lastPage < 0 ? undefined : lastPage;
   const correction = new Map(Object.entries(REPAIRS)).get(repairReason);
   const payload = {
     request: question, requirements: required, replyLanguage: redactText(language), currentPageId: currentPageId ?? null,
+    ...(publicContext === undefined ? {} : { publicContext: safe(clip(publicContext, 1500), values) }),
     evidence: records.map((r, id) => ({
       id, kind: redactText(r.kind), text: r.text,
       ...(r.sources.length > 0 ? { sources: r.sources } : {}), ...(r.valueVerified ? { valueVerified: true } : {}),
@@ -442,7 +453,9 @@ export async function reviewBeforeOutput(
   try {
     const limit = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
     raw = await raceAbort(within => model.generate({
-      system: personal ? REVIEW_SYSTEM + "\nThis is a personal inspection. A request for the user's status requires a fact about their matching record on the current screen. A general guide, link or dashboard cannot establish it. An explicit empty result can establish no matching records. For facts cite the entire relevant evidence text verbatim, including any conditions or negation. Use arrival only when the requested outcome is just reaching a screen." : REVIEW_SYSTEM,
+      system: personal ? REVIEW_SYSTEM + "\nThis is a personal inspection. A request for the user's status requires a fact about their matching record on the current screen. A general guide, link or dashboard cannot establish it. An explicit empty result can establish no matching records. For facts cite the entire relevant evidence text verbatim, including any conditions or negation. Use arrival only when the requested outcome is just reaching a screen."
+        : publicFactsOnly ? REVIEW_SYSTEM + "\nVerify only the requested item. Use publicContext to resolve its program, jurisdiction, applicant group and date. A different program's evidence or a general guide cannot establish the fact."
+        : REVIEW_SYSTEM,
       user: redactedJson(payload), schemaName: "review_before_output", schema: REVIEW_SCHEMA, signal: within,
     }), limit);
   } catch {
@@ -460,6 +473,7 @@ export async function reviewBeforeOutput(
     return decision({ repairReason: "coverage" });
   }
   const missing: string[] = [], quotes: string[] = [];
+  const facts = new Map<string, string[]>();
   let lastAction = -1, lastStep = -1;
   const current = currentPageId === undefined ? undefined : records[currentPageId];
   const currentQuotes: string[] = [];
@@ -472,7 +486,7 @@ export async function reviewBeforeOutput(
     const kind: EvidenceKind = check.kind === "arrival" || check.kind === "visit" ? "page" : check.kind;
     const cited = check.citations.map(cite => ({ ...cite, source: records[cite.id] }));
     if (cited.some(c => c.source === undefined)) return decision({ repairReason: "citation" });
-    const primary = cited.filter(c => c.source?.kind === kind);
+    const primary = cited.filter(c => c.source?.kind === kind && (!publicFactsOnly || (kind === "fact" && c.source.urls.length > 0)));
     if (primary.length === 0) return decision({ repairReason: "proof" });
     if (personal && (!current || primary.some(c => c.source?.pageKey !== current.pageKey))) return decision({ repairReason: "arrival" });
     if (personal && kind === "fact") {
@@ -522,6 +536,9 @@ export async function reviewBeforeOutput(
         lastStep = cite.id;
       }
       quotes.push(quote);
+      if (source.kind === "fact" && source.urls.length > 0) {
+        facts.set(quote, [...new Set([...facts.get(quote) ?? [], ...source.urls])]);
+      }
     }
   }
   const [firstMissing] = missing;
@@ -548,5 +565,5 @@ export async function reviewBeforeOutput(
   const speech = inspection === "answer" ? await inspectionSpeech(model, answer, currentQuotes, signal) : answer;
   if (signal.aborted) return decision();
   return decision({ status: "complete", answer: speech, confirmedPage: page?.text, confirmedPageKey: page?.pageKey ?? "",
-    ...(personal ? {currentQuotes} : {}) });
+    ...(personal ? {currentQuotes} : {}), ...(publicFactsOnly ? { facts: Object.fromEntries(facts) } : {}) });
 }
