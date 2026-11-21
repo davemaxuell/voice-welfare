@@ -87,6 +87,7 @@ export interface OrchestratorDeps {
   firstRunProgress?: (step: string) => void;
   recallNotes?: (text: string) => Promise<string[]>;
   delegateResearch?: (id: string, goal: string) => Promise<boolean>;
+  readResearch?: (lang: Lang) => Promise<Draft | undefined>;
   /** 개인 정보 금고·신청 기록 저장소(없으면 이번 대화 메모리에만) */
   personal?: PersonalStore;
   /** 암호화된 조작 기록(없으면 '오늘 한 일'은 비어 있다고 답함) */
@@ -101,6 +102,7 @@ export interface OrchestratorDeps {
   places?: PlaceFinder;
   publicPlanning?: boolean;
   quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal) => Promise<QuietAnswer>;
+  browsePublicSources?: (task: PublicTask, ctx: ExecContext, maxSteps?: number, requirements?: readonly string[]) => Promise<Draft | undefined>;
   /** 알려지지 않은 기관의 공식 누리집 후보를 공공 도메인 안에서 찾는다(없으면 목표 수행이 이 길을 쓰지 않는다). */
   findPortal?: (query: string, signal: AbortSignal) => Promise<readonly { url: string; title: string }[]>;
 }
@@ -124,7 +126,7 @@ export interface TurnOptions {
   maxCodePoints?: number;
 }
 interface ProcessOptions { fromVoice?: boolean; staleLinkOffer?: boolean }
-interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string }
+interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string; navigationHandoff?: Draft["navigationHandoff"] }
 /** 공공업무 판단에 주는 지난 대화 한 줄. 기관을 모르면 agency는 null(모델에 가는 JSON 그대로). */
 export interface PublicTurn { agency: string | null; request: string; reply: string }
 export interface RecoveryCheckpoint {
@@ -155,7 +157,7 @@ const SiteGuessSchema = z.object({
 });
 
 /** Python dataclasses.replace(ctx, ...): 승인·중단 신호는 그대로 두고 조작 한도와 조회 전용 표시만 바꾼 새 문맥 */
-export function withContext(ctx: ExecContext, changes: Partial<Pick<ExecContext, "counter" | "publicLookup" | "actionLimit" | "browsingScope">>): ExecContext {
+export function withContext(ctx: ExecContext, changes: Partial<Pick<ExecContext, "counter" | "publicLookup" | "actionLimit" | "browsingScope" | "signal">>): ExecContext {
   return new ExecContext({ ...ctx, ...changes });
 }
 
@@ -350,6 +352,7 @@ export class SessionOrchestrator {
     const d = this.dialogue;
     const askedVault = d.vaultConfirm, askedAction = d.approval, askedHandoff = d.authHandoff, askedTask = this.publicTask;
     const offered = linkOfferId ?? this.linkOfferId;
+    const navigation = this.#offer?.navigationHandoff;
     const presented = approvalId ?? (fromVoice ? "" : d.confirmation?.actionId ?? "");
 
     const work = async (): Promise<TurnResult> => {
@@ -359,6 +362,13 @@ export class SessionOrchestrator {
       if (epoch !== this.#queue.epoch) return this.voided();
       const spoken = redactText(stripAddress(safeText(spans)));
       const sensitive = detectSensitive(normalized, spans);
+      if (!sensitive.hasSecretValue && navigation !== undefined) {
+        const spokenLabel = stripChars(spoken, " .!?。！？").replace(/\s+/gu, "").toLowerCase();
+        if (LANGS.some(lang => choiceLabel("resume-navigation", lang).replace(/\s+/gu, "").toLowerCase() === spokenLabel)) {
+          if (navigation !== this.#offer?.navigationHandoff) return this.fixedReply(redactText("[계속하기]"), "안내하던 작업이 바뀌었어요. 지금 하려는 일을 알려 주세요.", "ko");
+          return this.process(spoken, sensitive, {type: "RESUME"}, {fromVoice});
+        }
+      }
       const staleLinkOffer = offered !== this.linkOfferId;
       if (staleLinkOffer && !d.hasPendingInteraction && this.publicTask.question.length === 0 &&
           (linkReference(spoken, this.browse.linkChoices) !== undefined || agree(spoken) !== undefined)) {
@@ -451,10 +461,19 @@ export class SessionOrchestrator {
         const view = await this.web.observe(check.ctx).catch(() => undefined);
         if (view?.url !== offer.url) return undefined;
       }
-      this.#offer = undefined;
+      if (chosen !== "resume-navigation") this.#offer = undefined;
       const { text, intent } = CHOICE_TURNS[chosen];
       return this.process(redactText(text ?? choiceLabel(chosen, "ko", offer.authKind)), NO_SECRET, { ...intent });
     });
+  }
+
+  async #resumeNavigation(handoff: NonNullable<Draft["navigationHandoff"]>, turn: Turn): Promise<Draft> {
+    this.#offer = undefined;
+    const refused = this.gate(["GOAL"]);
+    if (refused !== undefined) return refused;
+    const result = await this.browse.resumeNavigation(handoff, turn.ctx);
+    const reviewed = handoff.reviewedTask;
+    return reviewed instanceof ReviewedTask ? this.review.run(reviewed, turn, result) : result;
   }
 
   /** 이 응답 뒤에 버튼으로 고를 수 있는 것. 승인을 기다리면 승인 카드가 맡으므로 내지 않는다. */
@@ -464,6 +483,7 @@ export class SessionOrchestrator {
     if (this.dialogue.authWaiting && handoff !== undefined) {
       return { turnId: turn.id, keys: ["auth-done", "auth-cancel"], handoffId: handoff.id, authKind: handoff.kind };
     }
+    if (out.navigationHandoff !== undefined) return {turnId: turn.id, keys: ["resume-navigation"], navigationHandoff: out.navigationHandoff};
     if (state === "BROWSING" && (out.semanticAction === "open-site" || out.semanticAction === "follow-link" || out.semanticAction === "back") &&
         view !== undefined && view.url.length > 0) {
       return { turnId: turn.id, keys: ["read-main"], url: view.url };
@@ -526,7 +546,7 @@ export class SessionOrchestrator {
   reminders() { return dueReminder(this.personal.applications(), this.today); }
 
   /** 저장해 둔 조사 한 건을 한다. 격리된 새 작업 세션에서만 부른다. */
-  researchPublic(text: string, language: Lang) { return this.planner.research(text, language); }
+  researchPublic(...args: Parameters<PublicPlanner["research"]>) { return this.planner.research(...args); }
 
   /** 받아쓴 말이 비었을 때 다시 말해 달라는 안내 */
   missedSpeechHint(): string {
@@ -576,10 +596,20 @@ export class SessionOrchestrator {
         catch { return { interrupted: true }; }
         if (this.state !== "STOPPED") this.dialogue.commit(this.dialogue.authWaiting ? "AUTH_HANDOFF" : browseState(view));
       }
+      if (this.dialogue.authWaiting) {
+        const ended = this.browse.authEndIfUnavailable(turn.ctx);
+        if (ended !== undefined) this.dialogue.commit(ended.state);
+      }
       const handoff = this.dialogue.authHandoff;
+      const offer = this.dialogue.authWaiting
+        ? this.#offerFor(turn, this.state, this.browse.authWait(), this.web.currentView)
+        : undefined;
+      this.#offer = offer;
       return {
         ...checkpoint, state: this.state, ...(this.state === "STOPPED" ? { stopGeneration: this.#queue.epoch } : {}),
         authHandoff: this.dialogue.authWaiting && handoff !== undefined ? handoff.public() : null,
+        ...(offer === undefined ? {} : { turnId: offer.turnId,
+          offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })) }),
       };
     });
   }
@@ -674,6 +704,8 @@ export class SessionOrchestrator {
 
   /** busy: 다른 턴이 대기열을 잡고 일하는 중(목표 수행이 아니면 단계 기록이 없다) */
   progressDraft(busy: boolean): Draft {
+    const navigationHandoff = this.#offer?.navigationHandoff;
+    if (!busy && navigationHandoff !== undefined) return draft(this.state, "read-state", navigationHandoff.prompt, {navigationHandoff});
     const p = this.progress;
     const latest = p.latest !== undefined && p.latest.length > 0 ? p.latest : undefined;
     const speech = p.running && latest !== undefined ? `지금까지 ${p.count}단계 했어요. 방금 ${latest}` :
@@ -1019,6 +1051,12 @@ export class SessionOrchestrator {
         d.profileDone();
       }
       if (forced === undefined) {
+        const savedResearch = /^(?:맡긴 조사 결과 읽어\s*줘|저장한 조사 결과 읽어\s*줘|read (?:my |the )?saved research(?: results?)?|朗读(?:已保存的)?调查结果|保存した調査結果を読んで)[.!?。]?$/iu;
+        if (this.deps.readResearch !== undefined && !d.hasPendingInteraction && savedResearch.test(original ?? text)) {
+          turn.intentType = "READ_RESEARCH";
+          const result = await this.deps.readResearch(this.lang);
+          if (result !== undefined) return this.finish(turn, { ...result, state: this.state });
+        }
         // 라벨(intentType)은 await 전에 적는다. 그 안에서 예외가 나면 RECOVERING 결과가 이 라벨을 보고한다.
         // 실제 사이트 칸 채우기. 진행 중이면 그 대답으로 받고, 아니면 '하나씩 채워줘'로 시작한다.
         // 승인 대기(칸에 넣을지 물음) 중이면 칸 채우기 대답으로 가로채지 않고 승인 문으로 보낸다.
@@ -1483,7 +1521,9 @@ export class SessionOrchestrator {
     };
   }
 
-  async route(intent: Intent, turn: Turn, { plannedQuestion = false }: { plannedQuestion?: boolean } = {}): Promise<Draft> {
+  async route(intent: Intent, turn: Turn, { plannedQuestion = false, exclusions, confirmPicture = false }: {
+    plannedQuestion?: boolean; exclusions?: readonly string[]; confirmPicture?: boolean;
+  } = {}): Promise<Draft> {
     if (intent.type === "FOLLOW_LINK" && turn.staleLinkOffer) return this.changedLinkReply();
     // 모델이 풀어 쓴 질문을 번호 선택이나 입력 칸의 값으로 받아들이지 않는다.
     if (plannedQuestion) {
@@ -1540,11 +1580,11 @@ export class SessionOrchestrator {
     const refused = this.consentGate(intent);
     if (refused !== undefined) return refused;
     const before = this.web.currentView;
-    return this.browse.recognizeAuthPage(await this.dispatch(intent, turn), before, turn.ctx);
+    return this.browse.recognizeAuthPage(await this.dispatch(intent, turn, exclusions, confirmPicture), before, turn.ctx);
   }
 
   /** 의도 종류 → 처리(동의 문을 지난 뒤). 의도 표의 종류가 모두 있는지는 registry 테스트가 본다. */
-  async dispatch(intent: Intent, turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
+  async dispatch(intent: Intent, turn: Turn, exclusions: readonly string[] = [], confirmPicture = false): Promise<Draft> {
     const ctx = turn.ctx;
     const welfare = this.deps.welfare;
     switch (intent.type) {
@@ -1569,10 +1609,10 @@ export class SessionOrchestrator {
       case "PREPARE_SUBMIT": return this.form.prepareSubmit(ctx);
       case "APPROVE": return this.application.approve(turn);
       case "REJECT": return this.form.reject();
-      case "RESUME": return this.browse.resume(ctx);
+      case "RESUME": return this.#offer?.navigationHandoff === undefined ? this.browse.resume(ctx) : this.#resumeNavigation(this.#offer.navigationHandoff, turn);
       case "CURRENT_STEP": return this.browse.currentStep(ctx);
       case "DESCRIBE_PICTURE": return this.browse.picture(intent.question, ctx);
-      case "DESCRIBE_SCREEN": return this.replies.describeScreen(turn, exclusions);
+      case "DESCRIBE_SCREEN": return this.replies.describeScreen(turn, exclusions, confirmPicture);
       case "ABOUT_SITE": return this.browse.aboutSite();
       case "REPHRASE": return this.replies.rephrase(turn);
       case "GOAL": return this.browse.runGoal(intent.goal, ctx);

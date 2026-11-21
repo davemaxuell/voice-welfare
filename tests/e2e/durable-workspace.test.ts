@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { launchBrowser } from "../../src/agents/web/browser/index.ts";
 import { EmbeddingService } from "../../src/core/model_stack.ts";
+import { draft } from "../../src/core/turn.ts";
 import { AgentRuntime } from "../../src/server/runtime.ts";
 import { SettingsInput } from "../../src/server/settings.ts";
 import { DIMENSIONS } from "../../src/server/workflow_store.ts";
@@ -87,6 +88,70 @@ it("test_restart_without_foreground_session_then_cancel_running_job", async () =
   } finally {canceled.resolve(); await restarted.close(); await prior.close();}
 });
 
+it.each(["partial", "needs_input"])("serves verified public findings as %s and preserves progress", async initialState => {
+  const {app, runtime, post, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  const parts = ["가 제도의 서류", "나 제도의 마감일"];
+  const prompt = parts.join(" 그리고 ");
+  const quote = "가 제도에 필요한 것은 신청서입니다.";
+  const deadline = "나 제도의 서울 접수는 금요일에 마감합니다.";
+  const notice = { ...checked, url: "https://www.gov.kr/notices/test", title: "마감 안내" };
+  const lookedUp: string[] = [];
+  const create = runtime.createSession.bind(runtime);
+  vi.spyOn(runtime, "createSession").mockImplementation(async options => {
+    const session = await create(options);
+    if (options?.background !== true) return session;
+    const execute = session.planner.execute.bind(session.planner);
+    vi.spyOn(session.planner, "execute").mockImplementation(async (task, turn, mode, bounds) => {
+      if (initialState === "needs_input" && task.goal.startsWith("확인할 항목: 나") && !task.goal.includes("서울")) {
+        lookedUp.push(task.goal.split("\n")[0] ?? "");
+        return draft("NEEDS_CLARIFICATION", "clarify", "어느 지역인가요?", { taskQuestion: "어느 지역인가요?" });
+      }
+      return execute(task, turn, mode, bounds);
+    });
+    session.deps.quietSearch = async task => {
+      lookedUp.push(task.goal.split("\n")[0] ?? "");
+      if (task.goal.startsWith("확인할 항목: 가")) return { speech: quote, sources: [checked], reviewQuotes: [quote] };
+      return task.goal.includes("서울") ? { speech: deadline, sources: [notice], reviewQuotes: [deadline] } : {};
+    };
+    withLlm(session, new FakeLlm(({schemaName, user}) => {
+      if (schemaName === "public_service_decision") return {kind: "review_before_output", goal: prompt,
+        source: "browser", searchMode: "quiet", subject: null, agency: null, requestedFacts: ["documents", "dates"], requirements: parts,
+        exclusions: [], continuation: false, question: null, choices: [], difficulty: "medium"};
+      const input = z.object({request: z.string(), evidence: z.array(z.object({id: z.number(), text: z.string()}))}).parse(JSON.parse(user));
+      const proof = input.evidence.find(e => e.text === quote || e.text === deadline);
+      return {answer: proof?.text ?? "", nextRoute: null, checks: [
+        {request: input.request, kind: "fact", citations: proof ? [{id: proof.id, quote: proof.text}] : []},
+      ]};
+    }));
+    return session;
+  });
+  const {id, session} = await newSession();
+  const base = "/api/session/" + id + "/workspace";
+  const created = await post(base + "/research", {text: prompt, requestId: randomUUID(), consent: true});
+  expect(created.status).toBe(200);
+  const {id: jobId} = z.object({id: z.string()}).parse(await created.json());
+  const status = async () => z.object({jobs: z.array(z.object({
+    id: z.string(), state: z.string(), result: z.unknown(), questionRevision: z.number().optional(),
+  }))}).parse(await (await app.request(base)).json()).jobs[0];
+  await expect.poll(async () => (await status())?.state, {timeout: 12_000}).toMatch(/partial|incomplete|completed|needs_input/);
+  expect(await status()).toMatchObject({ state: initialState, result: { sources: [checked], missing: [parts[1]],
+    proof: [{quote, url: checked.url}] } });
+  expect(await status()).toMatchObject({ result: { text: expect.stringContaining(quote) } });
+  expect(lookedUp).toEqual(parts.map(part => "확인할 항목: " + part));
+  expect((await session.handleTurn("맡긴 조사 결과 읽어줘")).speech).toContain(parts[1]);
+  if (initialState === "needs_input") {
+    const revision = (await status())?.questionRevision;
+    const path = base + "/research/" + jobId + "/answer";
+    expect((await post(path, {text: "서울", consent: true, questionRevision: 1})).status).toBe(409);
+    expect((await post(path, {text: "서울", consent: true, questionRevision: revision})).status).toBe(200);
+    await expect.poll(async () => (await status())?.state, {timeout: 12_000}).toBe("completed");
+    expect(await status()).toMatchObject({ id: jobId, result: { sources: [checked, notice], text: quote + "\n\n" + deadline } });
+    expect(lookedUp).toEqual([...parts, parts[1]].map(part => "확인할 항목: " + part));
+  }
+});
+
 it("test_workspace_panel_save_recall_and_forget_through_installed_ui", async () => {
   const {config, settings, seal} = await service(), prefs = settings();
   prefs.save(SettingsInput.parse({deviceUse: "personal", language: "en"})); prefs.setFirstRun("done");
@@ -97,6 +162,7 @@ it("test_workspace_panel_save_recall_and_forget_through_installed_ui", async () 
     const browser = await launchBrowser(true);
     try {
       const page = await browser.newPage(); await page.goto(ui.url);
+      await page.locator("#recovery-no").click();
       const panel = page.locator("#workflow-title"); await panel.click(); await expectPage(panel).toHaveText("Research and saved notes");
       await page.locator("#note-input").fill("Scholarship paperwork"); await page.locator("#note-consent").check(); await page.locator("#note-add").click();
       await expectPage(page.locator("#note-list")).toContainText("Scholarship paperwork");

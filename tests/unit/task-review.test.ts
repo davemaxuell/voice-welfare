@@ -190,7 +190,9 @@ it("test_receipts_require_success_permission_and_matching_id_and_never_contain_f
   expect(rows[1]?.kind).toBe("page");
   const sources = [source("https://office.example/visit", "Schedule")];
   const cited = evidenceFromDraft(draft("IDLE", "none", "I submitted everything.", { ...base, sources, view: view(page, "Visit guide", { fields }) }));
-  expect(cited.at(-1)).toEqual(reviewEvidence("fact", "Applications close on Friday.", { sources: ["Schedule · https://office.example/visit"] }));
+  expect(cited.at(-1)).toEqual(reviewEvidence("fact", "Applications close on Friday.", {
+    sources: ["Schedule · https://office.example/visit"], sourceUrls: ["https://office.example/visit"],
+  }));
   const locked = view(page, "Visit guide", { fields: [...fields, field("p", { type: "password" })] });
   expect(evidenceFromDraft(draft("IDLE", "none", "I submitted everything.", { ...base, sources, view: locked })).map(row => row.kind)).not.toContain("page");
 });

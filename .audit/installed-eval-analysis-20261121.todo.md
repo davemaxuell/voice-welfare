@@ -1,0 +1,7 @@
+- [x] Trace the code the question is about. For motivation questions, also route through the **why** skill.
+- [x] Throughput checkpoint stays one line: throughput checkpoint: n/a, read-only investigation
+- [x] Produce the output (Overview / Key Concepts / How It Works / Where Things Live / Gotchas), or a recommendation with a tradeoffs table if the request is a decision between alternatives.
+- [x] Apply the **unslop** skill to the reply.
+- [x] Reconcile the original classifications and reproduce the amount verifier on the release source.
+- [x] Repeat the endurance workload, collect full-budget live turn traces, and capture a restart job stop code.
+- [x] Validate evidence references and all reported counts.

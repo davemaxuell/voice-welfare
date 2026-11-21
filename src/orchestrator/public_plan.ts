@@ -5,6 +5,8 @@ import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree } from "../core/lexicon.ts";
 import type { Redacted } from "../core/llm.ts";
+import { ResearchFinding, ResearchPlan, researchSummary, type ResearchOutcome, type ResearchProgress, type ResearchSource } from "../core/research.ts";
+import type { z } from "zod";
 import { rstripChars, stripChars } from "../core/text.ts";
 import { AGENT_IDS, draft, type Draft, type Lang, type SourceCitation, type TurnResult } from "../core/turn.ts";
 import { FIXED } from "../language/i18n.ts";
@@ -15,7 +17,7 @@ import { mentionsKnownSite, publicServiceSite, siteLabel } from "../understandin
 import { publicPatterns } from "./patterns.ts";
 import { ASK_SERVICE, FOREGROUND_BROWSER_INTENTS, LOOKUP_UNAVAILABLE, PublicTask, REJECTED, decide, publicDestinations, reviewCompletion, singleBrowserIntent, type PublicDecision } from "./public_task.ts";
 import { LIVE_DIFFICULTY, ReviewedTask } from "./review_loop.ts";
-import { pageMatches } from "./task_review.ts";
+import { coverage, pageMatches } from "./task_review.ts";
 import { withContext, type Detection, type PublicTurn, type SessionOrchestrator, type Turn } from "./session.ts";
 import { wordSuggestions } from "./speech_repair.ts";
 
@@ -29,6 +31,7 @@ export interface QuietAnswer {
 export interface PlanningContext { language: Lang; agency: string; service: string; recentTurns: PublicTurn[]; region?: string }
 type SearchMode = PublicTask["searchMode"];
 interface Bounds { research?: boolean; maxSteps?: number; continuePage?: boolean; requestedSteps?: readonly string[]; journey?: BrowserJourney }
+type ResearchReply = [string, ResearchOutcome<z.infer<typeof ResearchSource>>];
 
 const PLAN_STATES = new Set(["IDLE", "BROWSING", "NEEDS_CLARIFICATION"]);
 const LOOKUPS = { browser: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
@@ -62,14 +65,22 @@ export class PublicPlanner {
   }
 
   /** 저장해 둔 조사 한 건. 격리된 새 작업 세션에서만 부른다. */
-  async research(prompt: string, language: Lang): Promise<[state: string, result: { text?: string; sources?: SourceCitation[] }]> {
+  async research(prompt: string, language: Lang, progress?: ResearchProgress): Promise<ResearchReply> {
     const s = this.session;
     if (s.consentStatus !== "granted" || s.deps.llm === undefined || detectSensitive(prompt).hasSecretValue) return ["incomplete", {}];
     const text = redactText(prompt);
     s.lang = language;
     const turn = s.beginTurn(text);
-    const planned = await this.plan(text, turn, { research: true });
-    if (planned === undefined) return ["incomplete", {}];
+    if (progress !== undefined) turn.ctx = withContext(turn.ctx, { signal: AbortSignal.any([turn.ctx.signal, progress.signal]) });
+    const saved = progress?.checkpoint?.plan;
+    if (saved !== undefined && progress !== undefined) return this.#continueResearch(saved, turn, progress);
+    let outcome: ResearchReply | undefined;
+    const planned = await this.plan(text, turn, { research: true, durable: progress === undefined ? undefined : async plan => {
+      outcome = await this.#continueResearch(await progress.save(plan), turn, progress);
+      return outcome;
+    } });
+    if (outcome !== undefined) return outcome;
+    if (planned === undefined) return ["incomplete", { reason: "no_progress" }];
     let limited = false;
     if (turn.researchState === "completed" && planned.review === undefined) {
       turn.researchState = await reviewCompletion(s.deps.webLlm, text, turn.researchEvidence, turn.ctx.signal);
@@ -77,7 +88,51 @@ export class PublicPlanner {
       limited = turn.researchState === "partial";
     }
     const result = await s.localize(planned);
-    return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${result.speech}` : result.speech, sources: result.sources }];
+    const card = result.answerCard;
+    return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${result.speech}` : result.speech, sources: result.sources,
+      ...(card === undefined ? {} : { data: { kind: card.dataKind, origin: card.dataOrigin, date: card.dataDate } }) }];
+  }
+
+  async #continueResearch(initial: ResearchPlan, turn: Turn, progress: ResearchProgress): Promise<ResearchReply> {
+    const s = this.session;
+    let plan = initial;
+    for (let i = 0; i < plan.steps.length; i++) {
+      turn.ctx.signal.throwIfAborted();
+      const item = plan.steps[i];
+      if (item === undefined || item.outcome !== undefined) continue;
+      const updated = plan.steps.map((step, index) => index === i ? { ...step, attempts: Math.min(2, step.attempts + 1) } : step);
+      if (item.attempts >= 2) {
+        plan = await progress.save({ ...plan, steps: updated.map((step, index) => index === i
+          ? { ...step, outcome: { status: "unavailable" } } : step) });
+        continue;
+      }
+      plan = await progress.save({ ...plan, steps: updated });
+      const context = [plan.goal, item.clarification === undefined ? "" :
+        `이 항목에 관한 이용자의 추가 답변: ${item.clarification}`].filter(Boolean).join("\n");
+      const lookup = new PublicTask({
+        agency: plan.agency, subject: plan.subject,
+        goal: `확인할 항목: ${item.requirement}\n원래 대상과 조건: ${context}`,
+        exclusions: plan.exclusions, facts: ["other"], searchMode: plan.route === "quiet" ? "quiet" : undefined,
+      });
+      const scope = withContext(turn.ctx, { publicLookup: true });
+      const attempt = { ...turn, ctx: scope };
+      const work = await s.review.run(new ReviewedTask({
+        request: redactText(item.requirement), task: lookup, requirements: [item.requirement], route: plan.route,
+        difficulty: "easy", background: true, publicFactsOnly: true,
+      }), attempt);
+      s.dialogue.takePlaceAsk();
+      s.placeReview = undefined;
+      const checked = ResearchFinding.safeParse({
+        text: work.speech, sources: work.sources, proof: Object.entries(work.reviewQuoteSources ?? {}).flatMap(([quote, urls]) =>
+          urls.map(url => ({ quote, url }))),
+      });
+      const resolution = work.review?.status === "completed" && checked.success ? { status: "verified", finding: checked.data } as const
+        : work.review?.status === "needs_input" && work.semanticAction !== "stop" ? { status: "waiting", question: work.taskQuestion ?? work.speech } as const
+        : { status: "unavailable" } as const;
+      turn.ctx.signal.throwIfAborted();
+      plan = await progress.save({ ...plan, steps: plan.steps.map((step, index) => index === i ? { ...step, outcome: resolution } : step) });
+    }
+    return researchSummary(plan);
   }
 
   async command(turn: Turn, type: Intent["type"], execute: () => Promise<Draft>): Promise<TurnResult> {
@@ -86,7 +141,10 @@ export class PublicPlanner {
     return s.finish(turn, s.gate([type]) ?? await execute());
   }
 
-  async plan(text: Redacted, turn: Turn, { research = false }: { research?: boolean } = {}): Promise<TurnResult | undefined> {
+  async plan(text: Redacted, turn: Turn, { research = false, durable }: {
+    research?: boolean;
+    durable?: ((plan: ResearchPlan) => Promise<ResearchReply>) | undefined;
+  } = {}): Promise<TurnResult | undefined> {
     const s = this.session;
     const llm = s.deps.llm;
     if (llm === undefined) return undefined;
@@ -151,12 +209,27 @@ export class PublicPlanner {
     if (research && !(decision.kind === "clarify" || decision.kind === "find_information" ||
         (decision.kind === "review_before_output" && source !== undefined))) return undefined;
     const live = LIVE_DIFFICULTY.getStore();
-    if (personal || decision.kind === "review_before_output" || (!research && decision.kind === "find_information" && live === "hard")) {
+    const parts = decision.requirements ?? [];
+    if (durable !== undefined && source !== undefined && parts.length > 1 && new Set(parts).size === parts.length && coverage(text, parts)) {
+      const approved = task.advance(decision);
+      const plan = ResearchPlan.safeParse({
+        route: approved.searchMode === "quiet" ? "quiet" : source, goal: approved.goal, subject: approved.subject,
+        agency: approved.agency, exclusions: approved.exclusions, steps: parts.map(requirement => ({ requirement, attempts: 0 })),
+      });
+      if (plan.success) {
+        await durable(plan.data);
+        return undefined;
+      }
+    }
+    const compoundLookup = decision.kind === "find_information" && source === "browser" &&
+      decision.searchMode === "quiet" && new Set(decision.requestedFacts).size > 1;
+    if (personal || decision.kind === "review_before_output" || compoundLookup || (!research && decision.kind === "find_information" && live === "hard")) {
       const requirements = decision.requirements ?? [];
       const reviewed = new ReviewedTask({
         request: personal ? publicDestinations(text).text : text, task: task.advance(decision), requirements: requirements.length > 0 ? requirements : [text],
         route: personal ? "browser" : source ?? "existing", difficulty: live ?? decision.difficulty ?? "medium",
         counter: turn.ctx.counter, background: research, inspection: personal ? decision.outcome ?? "answer" : undefined,
+        publicArrival: !personal && decision.outcome === "arrival",
       });
       turn.intentType = "REVIEW_BEFORE_OUTPUT";
       s.publicTask = personal ? new PublicTask() : reviewed.task;
@@ -235,33 +308,35 @@ export class PublicPlanner {
     if (kind === "OPEN_SITE") return s.browse.openSite(task.agency ?? "", turn.ctx);
     if (kind === "FIND_PLACE") {
       const found = s.replies.findPlace({ ...turn, text: redactText(task.goal) });
-      return mode === "quiet" && found.semanticAction === "find-place" && (found.sources ?? []).length === 0 ? this.quietLookup(task, turn) : found;
+      return mode === "quiet" && found.semanticAction === "find-place" && (found.sources ?? []).length === 0 ? this.quietLookup(task, turn, bounds) : found;
     }
     if (kind === "POLICY_QUESTION") {
       const answer = await s.deps.welfare.publicFacts(task.subject, task.goal, task.facts, turn.ctx.signal);
       if (answer !== undefined) return s.replies.welfareDraft(answer, "welfare-retrieval");
+      if (mode === "quiet" && task.goal.length > 0) return this.quietLookup(task, turn, bounds);
       if (task.subject.length === 0) {
+        if (task.goal.length > 0) return s.browse.runGoal(task.goal, turn.ctx, { publicTask: task, ...bounds });
         const prompt = spoken(ASK_SERVICE, lang);
         return { ...draft(s.state, "clarify", prompt, { lang }), taskQuestion: prompt };
       }
       if (turn.ctx.signal.aborted) return draft("STOPPED", "none", FIXED.stopBusy[lang], { lang });
-      if (mode === "quiet") return this.quietLookup(task, turn);
       const official = new PublicTask({ ...task, agency: task.agency != null && task.agency.length > 0 ? task.agency : "복지로" });
       return s.browse.runGoal(official.goal, turn.ctx, { publicTask: official, ...bounds });
     }
-    if (mode === "quiet") return this.quietLookup(task, turn);
+    if (mode === "quiet") return this.quietLookup(task, turn, bounds);
     return s.browse.runGoal(task.goal, turn.ctx, { publicTask: task, ...bounds });
   }
 
   /** 현재 탭과 저장 작업을 건드리지 않고 이 턴에서 공개 출처를 확인한다. */
-  async quietLookup(task: PublicTask, turn: Turn): Promise<Draft> {
+  async quietLookup(task: PublicTask, turn: Turn, { maxSteps, requestedSteps }: Bounds = {}): Promise<Draft> {
     const s = this.session;
     const lang = s.lang;
     const signal = turn.ctx.signal;
     const search = s.deps.quietSearch;
     let answer: QuietAnswer = {};
-    if (search !== undefined && s.consentStatus === "granted" && !signal.aborted &&
-        [task.goal, task.subject].every(term => s.speakable(term) && detectSensitive(term).kinds.length === 0)) {
+    const permitted = s.consentStatus === "granted" && !signal.aborted &&
+      [task.goal, task.subject].every(term => s.speakable(term) && detectSensitive(term).kinds.length === 0);
+    if (search !== undefined && permitted) {
       try { answer = await raceAbort(within => search(task, lang, within), signal); }
       catch { answer = {}; }
     }
@@ -271,7 +346,24 @@ export class PublicPlanner {
         sources: answer.sources, reviewQuotes: answer.reviewQuotes, reviewQuoteSources: answer.reviewQuoteSources, lang,
       });
     }
-    return draft(s.state, "web-answer", spoken(LOOKUP_UNAVAILABLE, lang), { lang });
+    const browse = s.deps.browsePublicSources;
+    let result: Draft | undefined;
+    if (permitted && browse !== undefined && maxSteps !== 0 && task.facts.length > 0) {
+      turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, "공개 웹 자료에서 근거 확인");
+      try { result = await raceAbort(() => browse(task, turn.ctx, maxSteps, requestedSteps), signal); }
+      catch { /* The isolated browser may be unavailable. */ }
+    }
+    if (signal.aborted) return draft("STOPPED", "none", FIXED.stopBusy[lang], { lang });
+    if (result?.sources !== undefined && result.sources.length > 0 && (result.reviewQuotes?.length ?? 0) > 0) {
+      return draft(s.state, "web-answer", result.speech, { lang: result.lang ?? "ko", sources: result.sources,
+        browserIterations: result.browserIterations, researchState: result.researchState, researchEvidence: result.researchEvidence,
+        reviewQuotes: result.reviewQuotes, reviewQuoteSources: result.reviewQuoteSources });
+    }
+    if (result?.taskQuestion !== undefined && result.taskQuestion.length > 0 && s.speakable(result.taskQuestion)) {
+      return draft(s.state, "clarify", result.taskQuestion, { lang: result.lang ?? "ko",
+        taskQuestion: result.taskQuestion, browserIterations: result.browserIterations });
+    }
+    return draft(s.state, "web-answer", spoken(LOOKUP_UNAVAILABLE, lang), { lang, browserIterations: result?.browserIterations });
   }
 
   /** 계획에 주는 지금 맥락: 어느 기관·업무 이야기인지와 그 기관의 최근 대화 */

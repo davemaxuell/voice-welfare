@@ -6,6 +6,8 @@ export interface ActionEvent {
   success: boolean;
   latencyMs: number;
   errorCode?: string;
+  attempts?: number;
+  toolCalls?: number;
   at: string;
 }
 

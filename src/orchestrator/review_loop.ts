@@ -1,6 +1,7 @@
 // 여러 단계를 거치는 요청을 끝까지 하고, 답하기 전에 원래 요청과 대조하는 고리(task_review.ts가 판정한다).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BrowserJourney } from "../agents/web/journey.ts";
+import { accessBlocked, stillNeedsAuth } from "../agents/web/auth_page.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import type { Redacted } from "../core/llm.ts";
@@ -10,10 +11,11 @@ import { todayIso } from "../core/time.ts";
 import { AGENT_IDS, draft, type Draft, type DraftAction, type SourceCitation, type TaskReviewSummary } from "../core/turn.ts";
 import { FIXED, translateIn } from "../language/i18n.ts";
 import { PERSONAL_BROWSE_TEXT } from "../speech/browse_phrases.ts";
+import { HISTORY_DESCRIBED } from "../speech/picture.ts";
 import { redactPictureText, redactText } from "../safety/privacy.ts";
 import { PublicTask, publicDestinations } from "./public_task.ts";
 import { PLAN_STOP_STATES, byLengthDesc, isAbort, replaceValues, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
-import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, type ReviewEvidence, type Route } from "./task_review.ts";
+import { evidenceFromDraft, inspectionEvidence, pageMatches, reviewBeforeOutput, reviewEvidence, type ReviewEvidence, type Route } from "./task_review.ts";
 
 // 검토 횟수, 전체 탐색 판단 횟수, 실제 브라우저 조작 횟수. 재시도와 승인 후 재개가 함께 사용한다.
 export const REVIEW_LIMITS = { easy: [2, 8, 8], medium: [3, 16, 16], hard: [5, 32, 32] } as const;
@@ -25,6 +27,11 @@ export function isDifficulty(value: unknown): value is Difficulty {
 export const LIVE_DIFFICULTY = new AsyncLocalStorage<Difficulty | undefined>();
 
 type Step = readonly [intent: Intent, said: Redacted];
+interface PlannedAction {
+  readonly id: number;
+  readonly step: Step;
+  status: "ready" | "waiting" | "observed" | "unresolved";
+}
 interface ReviewedFields {
   request: Redacted;
   task: PublicTask;
@@ -38,6 +45,7 @@ interface ReviewedFields {
   privateValues?: string[];
   background?: boolean;
   inspection?: "answer" | "arrival";
+  publicArrival?: boolean;
 }
 
 /** 검토를 거치는 일 하나. 승인·되물음·본인인증으로 멈췄다 이어 가도 같은 횟수 한도와 근거를 쓴다. */
@@ -54,15 +62,17 @@ export class ReviewedTask {
   readonly sources = new Map<string, SourceCitation>();
   readonly attempted = new Set<string>();
   readonly originalOperations: Set<string>;
-  readonly remaining: Step[];
+  readonly plan: PlannedAction[] = [];
+  readonly publicFactsOnly: boolean;
   readonly privateValues: string[];
   readonly retries = new Set<string>();
   readonly background: boolean;
   readonly journey?: BrowserJourney;
   readonly inspection?: "answer" | "arrival";
+  readonly publicArrival: boolean;
   readonly entryOrigin?: string;
 
-  constructor(fields: ReviewedFields) {
+  constructor(fields: ReviewedFields & { publicFactsOnly?: boolean }) {
     this.request = fields.request;
     this.task = fields.task;
     this.requirements = fields.requirements;
@@ -70,16 +80,22 @@ export class ReviewedTask {
     this.difficulty = fields.difficulty;
     this.counter = fields.counter ?? { actions: 0 };
     this.rounds = fields.rounds ?? 0;
-    this.remaining = fields.remaining ?? [];
+    this.addSteps(fields.remaining ?? []);
+    this.publicFactsOnly = fields.publicFactsOnly ?? false;
     this.originalOperations = fields.originalOperations ?? new Set();
     this.privateValues = fields.privateValues ?? [];
     this.background = fields.background ?? false;
     this.inspection = this.background ? undefined : fields.inspection;
+    this.publicArrival = !this.background && fields.publicArrival === true;
     if (this.inspection !== undefined) {
       const supplied = publicDestinations(fields.request).urls;
       if (supplied.size === 1) this.entryOrigin = [...supplied.keys()][0];
     }
     if (!this.background) this.journey = new BrowserJourney(REVIEW_LIMITS[this.difficulty][1]);
+  }
+
+  addSteps(steps: readonly Step[]): void {
+    for (const step of steps) this.plan.push({ id: this.plan.length + 1, step, status: "ready" });
   }
 }
 
@@ -87,12 +103,14 @@ const RETRY_READS: ReadonlySet<string> = new Set(["OPEN_SITE", "FOLLOW_LINK", "G
   "ABOUT_SITE", "CURRENT_STEP", "POLICY_QUESTION", "FIND_PLACE"]);
 const ALLOWED: ReadonlySet<string> = new Set(["OPEN_SITE", "OPEN_OFFICIAL", "OPEN_BROWSER", "FOLLOW_LINK", "GOAL", "SEARCH",
   "START_APPLICATION", "FILL", "NEXT", "PREV", "READ_FIELD", "REVIEW", "PREPARE_SUBMIT",
-  "LOGIN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
+  "LOGIN", "DESCRIBE_SCREEN", "READ_MAIN", "CURRENT_STEP", "ABOUT_SITE", "LIST_LINKS", "POLICY_QUESTION", "FIND_PLACE"]);
 const EXCLUDED: ReadonlyMap<string, readonly string[]> = new Map([
   ["personal_input", ["FILL"]], ["submission", ["PREPARE_SUBMIT"]], ["login", ["LOGIN"]],
   ["application", ["START_APPLICATION", "FILL", "PREPARE_SUBMIT"]],
 ]);
 const LIMITED_READS = ["login", "application", "submission", "personal_input"];
+const INDEPENDENT_LOOKUPS = new Set<Intent["type"]>(["POLICY_QUESTION", "FIND_PLACE"]);
+const SCREEN_READS = new Set<Intent["type"]>(["DESCRIBE_SCREEN", "READ_MAIN", "ABOUT_SITE", "CURRENT_STEP", "LIST_LINKS", "READ_FIELD", "REVIEW"]);
 const LOOKUP_KINDS = { browser: "GOAL", quiet: "GOAL", welfare: "POLICY_QUESTION", places: "FIND_PLACE" } as const;
 const evidenceKey = (e: ReviewEvidence) => JSON.stringify([e.kind, e.text, e.receiptId, e.sources, e.publicPhone, e.valueVerified, e.pageKey]);
 
@@ -110,9 +128,29 @@ export class ReviewLoop {
   }
 
   async run(run: ReviewedTask, turn: Turn, resumed?: Draft): Promise<Draft> {
-    try { return await this.#review(run, turn, resumed); }
+    const started = Date.now();
+    const previousActions = run.counter.actions;
+    const record = (result: Draft): Draft => {
+      const status = result.review?.status;
+      const reason = status === "completed" ? "verified" : result.state === "STOPPED" ? "cancelled"
+        : status === "needs_input" ? "needs_input" : result.actions?.some(action => !action.policy.allowed) === true ? "policy"
+        : run.rounds >= REVIEW_LIMITS[run.difficulty][0] || run.browserSteps >= REVIEW_LIMITS[run.difficulty][1] ? "budget"
+        : run.evidence.length === 0 && run.route !== "existing" ? "source_unavailable" : "no_progress";
+      this.session.deps.events?.record({ sessionId: this.session.id, turnId: turn.id, actionType: "task-review", success: status === "completed",
+        errorCode: reason, latencyMs: Date.now() - started, at: new Date().toISOString(), toolCalls: run.counter.actions - previousActions });
+      return result;
+    };
+    try {
+      const result = await this.#review(run, turn, resumed);
+      // 사진 속 내용은 검토 모델과 대화 기록에 보내지 않고, 확인한 조작 결과와 함께 한 번 읽어 준다.
+      if (resumed?.semanticAction === "describe-screen" && resumed.pictureHistory === HISTORY_DESCRIBED &&
+          result.state !== "STOPPED" && !turn.ctx.signal.aborted && !this.session.superseded(turn)) {
+        return record({...result, speech: strip(`${resumed.speech} ${result.speech}`), pictureHistory: HISTORY_DESCRIBED, privateHistory: true});
+      }
+      return record(result);
+    }
     catch (error) {
-      if (isAbort(error)) return this.#stopped();
+      if (isAbort(error)) return record(this.#stopped());
       throw error;
     }
   }
@@ -137,12 +175,16 @@ export class ReviewLoop {
       }
       for (const source of result.sources ?? []) run.sources.set(source.url, source);
       run.evidence.push(...evidenceFromDraft(result));
+      if (result.semanticAction === "describe-screen" && result.pictureHistory === HISTORY_DESCRIBED) {
+        const captured = result.actions?.find(({action, policy, result: receipt}) => action.type === "capture" && policy.allowed &&
+          receipt?.ok === true && "verified" in receipt && receipt.verified && receipt.actionId === action.id);
+        if (captured) run.evidence.push(reviewEvidence("action", "화면 사진을 확인해 음성 설명을 준비했어요.", {receiptId: captured.action.id}));
+      }
     };
     const summary = (status: TaskReviewSummary["status"]): TaskReviewSummary =>
       ({ status, difficulty: run.difficulty, rounds: run.rounds, maxRounds: rounds, browserIterations: run.browserSteps });
     const asks = (result: Draft) => result.taskQuestion !== undefined && result.taskQuestion.length > 0;
-    const needsInput = (result: Draft) => PLAN_STOP_STATES.has(result.state) || asks(result) || s.dialogue.placeAsk !== undefined ||
-      result.semanticAction === "clarify" || result.semanticAction === "consent";
+    const needsInput = (result: Draft) => this.#needsInput(result);
     const pause = (result: Draft): Draft => {
       const d = s.dialogue;
       const pending = d.approval;
@@ -152,7 +194,8 @@ export class ReviewLoop {
         if (result.state === "WAITING_FOR_USER_CONFIRMATION") run.journey.blockedBy = "approval";
         if (result.state === "AUTH_HANDOFF") run.journey.pause(handoff?.kind === "captcha" ? "captcha" : "auth", handoff?.expectedOrigin);
       }
-      if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
+      if (result.navigationHandoff !== undefined) result.navigationHandoff.reviewedTask = run;
+      else if (pending !== undefined && result.state === "WAITING_FOR_USER_CONFIRMATION") Object.assign(pending, { reviewedTask: run });
       else if (clarification !== undefined && result.state === "NEEDS_CLARIFICATION") {
         clarification.reviewedTask = run;
         clarification.reviewedUrl = s.web.currentView?.url;
@@ -173,6 +216,8 @@ export class ReviewLoop {
     const settled = await s.progress.review(async (): Promise<Draft | undefined> => {
       if (resumed !== undefined) {
         await record(resumed);
+        const waiting = run.plan.find(action => action.status === "waiting");
+        if (waiting !== undefined && !needsInput(resumed)) waiting.status = this.#actionSucceeded(resumed) ? "observed" : "unresolved";
         if (needsInput(resumed) || resumed.semanticAction === "none") return pause(resumed);
         if (run.journey?.blockedBy === "approval") run.journey.resumeAfterApproval();
       }
@@ -203,6 +248,11 @@ export class ReviewLoop {
           last = work;
           await record(work);
           if (needsInput(work)) return pause(work);
+          if (!run.background && run.task.searchMode === "visible" && work.view && (work.browserIterations ?? 0) > 0 &&
+              !run.retries.has("blocked-public-entry") && (stillNeedsAuth(work.view) || accessBlocked(work.view))) {
+            run.retries.add("blocked-public-entry");
+            continue;
+          }
         }
         resuming = false;
         if (turn.ctx.signal.aborted) return this.#stopped();
@@ -213,12 +263,15 @@ export class ReviewLoop {
           turn.ctx.trace("VERIFYING", AGENT_IDS.orchestrator, `요청 완료 검토 ${run.rounds}/${rounds}`);
           const correction = repair;
           verdict = await raceAbort(signal => reviewBeforeOutput(s.deps.llm, s.historySpeech(run.request), run.evidence, signal, {
-            language: s.lang, requirements: run.requirements, privateValues, repairReason: correction, inspection: run.inspection,
+            language: s.lang, requirements: run.requirements, exclusions: run.task.exclusions, privateValues, repairReason: correction,
+            inspection: run.inspection, publicArrival: run.publicArrival,
+            publicFactsOnly: run.publicFactsOnly, ...(run.publicFactsOnly ? { publicContext: run.task.goal } : {}),
           }), turn.ctx.signal);
           if (repair.length > 0 || run.rounds >= rounds || verdict.repairReason.length === 0) break;
           repair = verdict.repairReason;
         }
-        if (verdict.status === "complete" && run.remaining.length === 0) {
+        if (verdict.status === "complete" && !run.plan.some(action => action.status === "ready" || action.status === "waiting" ||
+            (action.status === "unresolved" && !RETRY_READS.has(action.step[0].type)))) {
           if (verdict.confirmedPage !== undefined && verdict.confirmedPage.length > 0) {
             const current = await s.web.observe(turn.ctx).catch(() => undefined);
             if (!pageMatches(verdict, current, privateValues, personal)) break;
@@ -236,6 +289,7 @@ export class ReviewLoop {
           }
           return draft(last?.state ?? s.state, "review-before-output", verdict.answer, {
             lang: s.lang, review: summary("completed"), actions: logs, sources: [...run.sources.values()],
+            reviewQuotes: verdict.facts === undefined ? undefined : Object.keys(verdict.facts), reviewQuoteSources: verdict.facts,
           });
         }
         missing = verdict.missing.length > 0 ? verdict.missing : run.requirements;
@@ -273,7 +327,7 @@ export class ReviewLoop {
     const s = this.session;
     const [, steps, actions] = REVIEW_LIMITS[run.difficulty];
     const signal = turn.ctx.signal;
-    if (run.remaining.length === 0 && !resuming) {
+    if (!run.plan.some(action => action.status === "ready") && !resuming) {
       let requested: Redacted | undefined = run.rounds === 0 ? run.request : redactText(missing);
       const translator = s.deps.webLlm ?? s.deps.llm;
       if (s.lang !== "ko") {
@@ -285,23 +339,37 @@ export class ReviewLoop {
       const step: Turn = { ...turn, text: said, original: undefined };
       const understood = await raceAbort(() => s.understand(said, step, { maxSteps: actions }), signal);
       if (run.rounds === 0) for (const intent of understood.intents) run.originalOperations.add(JSON.stringify(intent));
-      run.remaining.push(...understood.intents.map((intent): Step => [intent, said]));
+      const intents = understood.intents.filter(intent => run.rounds === 0 ||
+        (RETRY_READS.has(intent.type) && !run.attempted.has(JSON.stringify(intent))));
+      run.addSteps(intents.map((intent): Step => [intent, said]));
     }
-    for (;;) {
-      const next = signal.aborted ? undefined : run.remaining.shift();
-      if (next === undefined) return;
-      const [intent, said] = next;
+    const failures: Intent["type"][] = [];
+    for (const action of run.plan) {
+      if (signal.aborted) return;
+      const [intent, said] = action.step;
       const kind = intent.type;
+      if (action.status !== "ready") {
+        if (action.status === "unresolved") failures.push(kind);
+        continue;
+      }
+      if (failures.length > 0 && !INDEPENDENT_LOOKUPS.has(kind) &&
+          !(SCREEN_READS.has(kind) && failures.every(failed => SCREEN_READS.has(failed)))) continue;
       const operation = JSON.stringify(intent);
-      if (!ReviewLoop.intentAllowed(kind, run.task.exclusions)) break;
+      if (!ReviewLoop.intentAllowed(kind, run.task.exclusions)) {
+        action.status = "unresolved";
+        failures.push(kind);
+        continue;
+      }
       if (intent.type === "FILL") {
         const values = intent.fills.map(fill => fill.value);
-        if (values.some(value => !said.includes(value))) break;
+        if (values.some(value => !said.includes(value))) {
+          action.status = "unresolved";
+          failures.push(kind);
+          continue;
+        }
         run.privateValues.push(...values);
       }
-      if (run.rounds > 0 && run.attempted.has(operation)) continue;
       const retryRead = run.rounds > 0 && !run.originalOperations.has(operation);
-      if (retryRead && !RETRY_READS.has(kind)) break;
       run.attempted.add(operation);
       const limitedRead = retryRead || ((kind === "GOAL" || kind === "FOLLOW_LINK" || kind === "SEARCH") &&
         LIMITED_READS.some(item => run.task.exclusions.includes(item)));
@@ -319,12 +387,23 @@ export class ReviewLoop {
           maxSteps: steps - run.browserSteps, exclusions: run.task.exclusions, requestedSteps: [intent.goal], journey: run.journey,
         });
       } else {
-        last = await s.route(intent, local);
+        last = await s.route(intent, local, {exclusions: run.task.exclusions, confirmPicture: true});
       }
+      action.status = this.#needsInput(last) ? "waiting" : this.#actionSucceeded(last) ? "observed" : "unresolved";
+      if (action.status === "unresolved") failures.push(kind);
       yield last;
-      if (last.semanticAction === "none" || (last.actions ?? []).some(a => !a.policy.allowed || a.result?.ok !== true)) break;
+      if (action.status === "waiting") return;
     }
-    run.remaining.length = 0;
+  }
+
+  #needsInput(result: Draft): boolean {
+    return PLAN_STOP_STATES.has(result.state) || hasText(result.taskQuestion) || this.session.dialogue.placeAsk !== undefined ||
+      result.semanticAction === "clarify" || result.semanticAction === "consent";
+  }
+
+  #actionSucceeded(result: Draft): boolean {
+    return result.semanticAction !== "none" && (result.actions ?? []).every(({ action, policy, result: receipt }) =>
+      policy.allowed && receipt?.ok === true && "verified" in receipt && receipt.verified === true && receipt.actionId === action.id);
   }
 
   /** 쌓인 근거를 보존하고, 재시도는 원래 기관·조건 안에서 빠진 항목만 조사한다. */
@@ -334,8 +413,8 @@ export class ReviewLoop {
     const goal = run.rounds === 0 ? run.task.goal : `확인할 항목: ${missing[0] ?? ""}\n원래 대상과 조건: ${run.task.goal}`;
     const hidden = [...new Set(run.privateValues.filter(value => value.length > 0))].sort(byLengthDesc);
     let subtask = new PublicTask({ ...run.task, goal: replaceValues(goal, hidden), subject: replaceValues(run.task.subject, hidden) });
-    if (run.rounds > 0 && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
-    let mode = run.background ? undefined : run.task.searchMode;
+    if ((run.rounds > 0 || run.publicArrival && subtask.facts.length === 0) && run.route === "browser") subtask = new PublicTask({ ...subtask, facts: ["other"] });
+    let mode = run.background && run.task.searchMode !== "quiet" ? undefined : run.task.searchMode;
     if (run.route === "quiet" || (mode === "quiet" && run.route === "browser")) mode = "quiet";
     else if (run.route === "browser") mode = "visible";
     if (run.route === "existing") throw new RangeError("조회가 아닌 길");
@@ -346,7 +425,7 @@ export class ReviewLoop {
     const step: Turn = { ...turn, intentType: kind, ctx: withContext(turn.ctx, { publicLookup: true }) };
     return s.planner.execute(subtask, step, mode, {
       research: run.background, maxSteps: Math.max(0, steps - run.browserSteps), continuePage: run.browserSteps > 0, journey: run.journey,
-      requestedSteps: mode === "visible" ? missing.map(part => replaceValues(part, hidden)) : [],
+      requestedSteps: missing.map(part => replaceValues(part, hidden)),
     });
   }
 }

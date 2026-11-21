@@ -4,6 +4,7 @@ import { closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, rmS
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { ResearchCheckpoint, researchSummary } from "../core/research.ts";
 import { casefold, strip } from "../core/text.ts";
 import { AsyncLock } from "./recovery.ts";
 
@@ -59,7 +60,7 @@ export class WorkflowRejected extends Error {
 }
 
 export interface ClaimedJob { id: string; prompt: string; language: string; attempts: number; lease: string }
-export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown }
+export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; questionRevision?: number }
 export interface Note { id: string; body: string }
 export type JobState = "completed" | "partial" | "needs_input" | "incomplete";
 
@@ -72,7 +73,8 @@ interface Sql {
 
 const count = z.object({ n: z.union([z.number(), z.bigint(), z.string()]).transform(Number) });
 const claimRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), attempts: z.number() });
-const jobRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), state: z.string(), result: z.string().nullable() });
+const jobRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), state: z.string(), result: z.string().nullable(),
+  checkpoint: z.string().nullable(), revision: z.number().nullable() });
 const noteRow = z.object({ id: z.string(), body: z.string() });
 const noteVectorRow = noteRow.extend({ embedding: z.string().nullable(), model: z.string().nullable() });
 const scoreRow = z.object({ id: z.string(), score: z.number() });
@@ -96,6 +98,8 @@ function numbered(statement: string): string {
 }
 
 const now = () => Date.now() / 1000;
+const liveClaim = "owner=? AND id=? AND state='running' AND lease=? AND expires>?";
+const savedProgress = z.object({ revision: z.number(), checkpoint: z.string() });
 
 /** Python 3.12 sum() of floats: Neumaier compensated summation. */
 function floatSum(values: Iterable<number>): number {
@@ -137,6 +141,9 @@ export class WorkflowStore {
                 attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, expires DOUBLE PRECISION,
                 result TEXT, UNIQUE(owner,request_id))`);
       await sql.run("CREATE INDEX IF NOT EXISTS cg_jobs_queue ON cg_jobs(owner,state,created)");
+      await sql.run(`CREATE TABLE IF NOT EXISTS cg_job_progress (
+                id TEXT PRIMARY KEY REFERENCES cg_jobs(id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL, checkpoint TEXT NOT NULL)`);
       const embedding = dsn !== "" ? `vector(${DIMENSIONS})` : "TEXT";
       await sql.run(`CREATE TABLE IF NOT EXISTS cg_notes (
                 id TEXT PRIMARY KEY, owner TEXT NOT NULL, body TEXT NOT NULL, created DOUBLE PRECISION NOT NULL,
@@ -218,12 +225,13 @@ export class WorkflowStore {
       await sql.run(`UPDATE cg_jobs SET state='failed',lease=NULL,expires=NULL WHERE owner=? AND state='running'
                    AND attempts>=? AND expires<=?`, [this.owner, MAX_ATTEMPTS, at]);
       const [found] = await sql.rows(`SELECT id,prompt,language,attempts FROM cg_jobs WHERE owner=? AND state IN ('queued','running')
-                         AND (expires IS NULL OR expires<=?) ORDER BY created,id LIMIT 1`, [this.owner, at]);
+                         AND (expires IS NULL OR expires<=?) ORDER BY COALESCE(expires,created),created,id LIMIT 1`, [this.owner, at]);
       if (found === undefined) return undefined;
       const row = claimRow.parse(found);
       const lease = randomUUID();
-      await sql.run("UPDATE cg_jobs SET state='running',attempts=attempts+1,lease=?,expires=? WHERE id=? AND owner=?",
-        [lease, at + LEASE_SECONDS, row.id, this.owner]);
+      const updated = await sql.run(`UPDATE cg_jobs SET state='running',attempts=attempts+1,lease=?,expires=? WHERE id=? AND owner=?
+        AND state IN ('queued','running') AND (expires IS NULL OR expires<=?)`, [lease, at + LEASE_SECONDS, row.id, this.owner, at]);
+      if (updated !== 1) return undefined;
       return { ...row, attempts: row.attempts + 1, lease };
     });
   }
@@ -233,35 +241,99 @@ export class WorkflowStore {
       const state = shutdown || job.attempts < MAX_ATTEMPTS ? "queued" : "failed";
       const delay = shutdown ? 0 : 2 ** job.attempts;
       await sql.run(`UPDATE cg_jobs SET state=?,expires=?,lease=NULL,attempts=attempts-?
-                   WHERE owner=? AND id=? AND state='running' AND lease=?`,
-        [state, now() + delay, shutdown ? 1 : 0, this.owner, job.id, job.lease]);
+                   WHERE ${liveClaim}`,
+        [state, now() + delay, shutdown ? 1 : 0, this.owner, job.id, job.lease, now()]);
     });
   }
 
   async finish(job: ClaimedJob, state: string, result?: object): Promise<boolean> {
     const encoded = result !== undefined && Object.keys(result).length > 0 ? JSON.stringify(result) : null;
-    return await this.transaction(async sql => await sql.run(`UPDATE cg_jobs SET state=?,result=?,lease=NULL,expires=NULL
-                          WHERE owner=? AND id=? AND state='running' AND lease=?`,
-      [state, encoded, this.owner, job.id, job.lease]) === 1);
+    return await this.transaction(async sql => {
+      const updated = await sql.run(`UPDATE cg_jobs SET state=?,result=?,lease=NULL,expires=NULL WHERE ${liveClaim}`,
+        [state, encoded, this.owner, job.id, job.lease, now()]) === 1;
+      if (updated && state !== "needs_input") await sql.run("DELETE FROM cg_job_progress WHERE id=?", [job.id]);
+      return updated;
+    });
+  }
+
+  async progress(job: ClaimedJob): Promise<{ revision: number; checkpoint: ResearchCheckpoint } | undefined> {
+    return await this.transaction(async sql => {
+      const [raw] = await sql.rows(`SELECT revision,checkpoint FROM cg_job_progress WHERE id IN
+        (SELECT id FROM cg_jobs WHERE ${liveClaim})`, [this.owner, job.id, job.lease, now()]);
+      if (raw === undefined) return undefined;
+      const stored = savedProgress.parse(raw);
+      return { revision: stored.revision, checkpoint: ResearchCheckpoint.parse(JSON.parse(stored.checkpoint)) };
+    }, { write: false });
+  }
+
+  async saveProgress(job: ClaimedJob, revision: number, checkpoint: ResearchCheckpoint, { yieldJob = false } = {}): Promise<boolean> {
+    const encoded = JSON.stringify(ResearchCheckpoint.parse(checkpoint));
+    return await this.transaction(async sql => {
+      // 잠금 순서를 작업 행 → 진행 행으로 고정한다. 취소·만료 이후에는 저장할 수 없다.
+      if (await sql.run(`UPDATE cg_jobs SET lease=lease WHERE ${liveClaim}`, [this.owner, job.id, job.lease, now()]) !== 1) return false;
+      const changed = revision === 0
+        ? await sql.run("INSERT INTO cg_job_progress(id,revision,checkpoint) VALUES(?,1,?) ON CONFLICT DO NOTHING", [job.id, encoded])
+        : await sql.run("UPDATE cg_job_progress SET revision=revision+1,checkpoint=? WHERE id=? AND revision=?", [encoded, job.id, revision]);
+      if (changed === 1 && yieldJob) {
+        await sql.run("UPDATE cg_jobs SET state='queued',lease=NULL,expires=?,attempts=attempts-1 WHERE id=?", [now(), job.id]);
+      }
+      return changed === 1;
+    });
+  }
+
+  async answer(jobId: string, revision: number, answer: string): Promise<boolean> {
+    return await this.transaction(async sql => {
+      const id = [this.owner, jobId];
+      if (await sql.run("UPDATE cg_jobs SET state=state WHERE owner=? AND id=? AND state='needs_input'", id) !== 1) return false;
+      const [raw] = await sql.rows("SELECT revision,checkpoint FROM cg_job_progress WHERE id=?", [jobId]);
+      if (raw === undefined) return false;
+      const row = savedProgress.parse(raw);
+      if (row.revision !== revision) return false;
+      const saved = ResearchCheckpoint.parse(JSON.parse(row.checkpoint));
+      const waiting = saved.plan.steps.findIndex(step => step.outcome?.status === "waiting");
+      if (waiting < 0 || (saved.plan.steps[waiting]?.attempts ?? 2) >= 2) return false;
+      const plan = { ...saved.plan, steps: saved.plan.steps.map((step, i) => i === waiting ? { ...step, outcome: undefined, clarification: answer } : step) };
+      await sql.run("UPDATE cg_job_progress SET revision=revision+1,checkpoint=? WHERE id=?",
+        [JSON.stringify({ ...saved, plan }), jobId]);
+      await sql.run("UPDATE cg_jobs SET state='queued',expires=?,attempts=0 WHERE owner=? AND id=?", [now(), ...id]);
+      return true;
+    });
   }
 
   async ownsClaim(job: ClaimedJob): Promise<boolean> {
-    return await this.transaction(async sql => (await sql.rows("SELECT 1 FROM cg_jobs WHERE owner=? AND id=? AND state='running' AND lease=?",
-      [this.owner, job.id, job.lease])).length > 0, { write: false });
+    return await this.transaction(async sql => (await sql.rows(`SELECT 1 FROM cg_jobs WHERE ${liveClaim}`,
+      [this.owner, job.id, job.lease, now()])).length > 0, { write: false });
+  }
+
+  async renewClaim(job: ClaimedJob): Promise<boolean> {
+    return await this.transaction(async sql => {
+      const at = now();
+      return await sql.run(`UPDATE cg_jobs SET expires=? WHERE ${liveClaim}`,
+        [at + LEASE_SECONDS, this.owner, job.id, job.lease, at]) === 1;
+    });
   }
 
   async cancel(jobId: string): Promise<boolean> {
-    return await this.transaction(async sql => await sql.run(`UPDATE cg_jobs SET state='cancelled',lease=NULL,expires=NULL WHERE owner=? AND id=?
-                          AND state IN ('queued','running')`, [this.owner, jobId]) === 1);
+    return await this.transaction(async sql => {
+      const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',lease=NULL,expires=NULL WHERE owner=? AND id=?
+                          AND state IN ('queued','running','needs_input')`, [this.owner, jobId]) === 1;
+      if (cancelled) await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
+      return cancelled;
+    });
   }
 
   async jobs(): Promise<JobRow[]> {
     return await this.transaction(async sql => {
-      const rows = await sql.rows("SELECT id,prompt,language,state,result FROM cg_jobs WHERE owner=? ORDER BY created DESC,id", [this.owner]);
+      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
+        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id`, [this.owner]);
       return rows.map(raw => {
-        const row = jobRow.parse(raw);
-        const result: unknown = row.result !== null && row.result !== "" ? JSON.parse(row.result) : null;
-        return { ...row, result };
+        const { checkpoint, revision, ...row } = jobRow.parse(raw);
+        const saved = checkpoint === null ? undefined : ResearchCheckpoint.parse(JSON.parse(checkpoint));
+        const fallback = row.state === "failed" && saved !== undefined ? researchSummary(saved.plan)[1] : null;
+        const result: unknown = row.result !== null && row.result !== "" ? JSON.parse(row.result) : fallback;
+        const waiting = saved?.plan.steps.find(step => step.outcome?.status === "waiting");
+        const questionRevision = row.state === "needs_input" && waiting !== undefined && waiting.attempts < 2 ? revision ?? undefined : undefined;
+        return { ...row, result, ...(questionRevision === undefined ? {} : { questionRevision }) };
       });
     }, { write: false });
   }

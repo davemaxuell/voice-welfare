@@ -1,0 +1,247 @@
+{
+  "schemaVersion": "2.0",
+  "disclaimer": "이음 평가 데이터셋 v2 — 다국어(영·중·일) 전환·질문·복귀. 합성·사용자 테스트 재현 발화이며 실존 개인정보 없음.",
+  "baseUrl": "http://localhost:5174",
+  "scenarios": [
+    {
+      "id": "L01-en-switch",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "한국어로 전환 요청",
+      "steps": [
+        {
+          "utterance": "영어로 말해줘",
+          "expect": {
+            "lang": "en",
+            "intentType": "SET_LANGUAGE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L02-en-question",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "영어 질문 → 영어 답(숫자 보존)",
+      "steps": [
+        {
+          "utterance": "Speak English",
+          "expect": {
+            "lang": "en"
+          }
+        },
+        {
+          "utterance": "What is basic pension and from what age?",
+          "expect": {
+            "lang": "en",
+            "goldFacts": [
+              "65"
+            ],
+            "noUnsupportedNumbers": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "L03-en-back-ko",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "받아쓰기 변형 전환·복귀",
+      "steps": [
+        {
+          "utterance": "Please English.",
+          "expect": {
+            "lang": "en"
+          }
+        },
+        {
+          "utterance": "Korean please",
+          "expect": {
+            "lang": "ko"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L04-zh-question",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "중국어 질문(숫자 보존)",
+      "steps": [
+        {
+          "utterance": "说中文",
+          "expect": {
+            "lang": "zh"
+          }
+        },
+        {
+          "utterance": "基础养老金每个月最多多少钱？",
+          "expect": {
+            "lang": "zh",
+            "goldFacts": [
+              "349,700"
+            ],
+            "noUnsupportedNumbers": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "L05-ja-question",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "일본어 질문",
+      "steps": [
+        {
+          "utterance": "日本語で話して",
+          "expect": {
+            "lang": "ja"
+          }
+        },
+        {
+          "utterance": "基礎年金は何歳からもらえますか？",
+          "expect": {
+            "lang": "ja",
+            "goldFacts": [
+              "65"
+            ],
+            "noUnsupportedNumbers": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "L06-en-open-portal",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "외국어로 사이트 열기",
+      "steps": [
+        {
+          "utterance": "Speak English",
+          "expect": {}
+        },
+        {
+          "utterance": "Open 127.0.0.1:5174/external.html",
+          "expect": {
+            "lang": "en",
+            "titleIncludes": "외부 포털"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L07-ja-about",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "외국어로 사이트 소개",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "日本語で話して",
+          "expect": {
+            "lang": "ja"
+          }
+        },
+        {
+          "utterance": "このサイトは何ですか",
+          "expect": {
+            "lang": "ja",
+            "intentType": "ABOUT_SITE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L08-auto-detect",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "글자로 자동 전환·복귀",
+      "steps": [
+        {
+          "utterance": "What can you do for me?",
+          "expect": {
+            "lang": "en"
+          }
+        },
+        {
+          "utterance": "장애인연금 신청 도와줘",
+          "expect": {
+            "lang": "ko"
+          }
+        }
+      ]
+    },
+    {
+      "id": "L09-ko-back-phrase",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multilingual",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "일본어로 한국어 복귀",
+      "steps": [
+        {
+          "utterance": "일본어로 해줘",
+          "expect": {
+            "lang": "ja"
+          }
+        },
+        {
+          "utterance": "韓国語でお願いします",
+          "expect": {
+            "lang": "ko"
+          }
+        }
+      ]
+    }
+  ]
+}

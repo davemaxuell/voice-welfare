@@ -80,7 +80,7 @@ function classify(view: WebObservation, main: string, linkCount: number, inputCo
   return body.length > 600 ? "article" : "page";
 }
 
-export function digestPage(view: WebObservation): PageDigest {
+export function digestPage(view: WebObservation, { preserveRows = false } = {}): PageDigest {
   const o = view.outline;
   const menu = unique(o?.menuLinks ?? []).filter(name => !p.utility.test(name));
   const menuSet = new Set(menu);
@@ -89,8 +89,10 @@ export function digestPage(view: WebObservation): PageDigest {
   const buttons = unique((o?.buttons ?? []).filter(b => b.disabled !== true).map(b => b.name ?? ""));
   const fields = (view.fields ?? []).filter(f => f.visible === true);
   const hasSearchBox = fields.some(f => f.searchable === true), inputCount = fields.filter(f => f.searchable !== true).length;
-  const main = unique((o?.mainText ?? "").split(p.newlines))
-    .filter(line => (Array.from(line).length > 2 || p.digit.test(line)) && !menuSet.has(line) && !p.utility.test(line)).join("\n");
+  const rows = (o?.mainText ?? "").split(p.newlines);
+  // Evidence needs short values and repeated labels in their original row order.
+  const main = (preserveRows ? rows.map(clean).filter(Boolean) : unique(rows)
+    .filter(line => (Array.from(line).length > 2 || p.digit.test(line)) && !menuSet.has(line) && !p.utility.test(line))).join("\n");
   const title = view.title ?? "";
   const headings = unique((o?.headings ?? []).map(h => h.text ?? "")).filter(heading => heading !== strip(title));
   const kind = classify(view, main, contentLinks.length, inputCount);

@@ -1,0 +1,737 @@
+{
+  "schemaVersion": "2.0",
+  "disclaimer": "이음 평가 데이터셋 v2 — 복지 질문 정확도(공식 API 스냅숏 기준 정답). 합성·사용자 테스트 재현 발화이며 실존 개인정보 없음.",
+  "baseUrl": "http://localhost:5174",
+  "scenarios": [
+    {
+      "id": "Q01-basic-pension-age",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "기초연금은 몇 살부터 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "65"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q02-basic-pension-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "기초연금 한 달에 최대 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "349,700"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q03-basic-pension-payday",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "기초연금은 매달 며칠에 들어와?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "25"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q04-basic-pension-threshold",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "기초연금 단독가구 선정기준액이 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "2,470,000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q05-basic-pension-contact",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "기초연금 문의 전화번호 알려줘",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "1355"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q06-disability-pension-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애인연금 한 달에 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "349,700"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q07-disability-pension-age",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애인연금은 몇 살부터 받을 수 있어?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "18"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q08-disability-pension-threshold",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애인연금 단독가구 선정기준액 알려줘",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "140만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q09-disability-allowance-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애수당은 한 달에 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "6만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q10-disability-allowance-target",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애수당은 누가 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "speechIncludesAny": [
+              "차상위",
+              "수급"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q11-child-disability-age",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애아동수당은 몇 살 미만이 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "18"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q12-child-disability-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애아동수당 중증이고 생계급여 수급자면 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "22만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q13-activity-support-age",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "이름에 연금·수당·급여가 없는 제도(인식 범위 확인)",
+      "steps": [
+        {
+          "utterance": "장애인활동지원은 몇 살이 신청할 수 있어?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "64"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q14-activity-support-income",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "장애인활동지원은 소득 기준이 있어?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "speechIncludesAny": [
+              "무관",
+              "상관없"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q15-housing-target",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "주거급여는 누가 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "48"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q16-housing-seoul-rent",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "주거급여 서울 1인 가구 기준임대료가 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "369,000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q17-livelihood-threshold",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "생계급여 1인 가구 기준이 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "820,556"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q18-livelihood-where",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "생계급여는 어디서 신청해?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "speechIncludesAny": [
+              "주민센터",
+              "읍면동",
+              "행정복지센터"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q19-education-elementary",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "교육급여 초등학생은 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "502,000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q20-education-high",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "교육급여 고등학생 교육활동지원비는 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "860,000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q21-child-allowance-age",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "아동수당은 몇 살까지 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "9"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q22-child-allowance-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "아동수당은 한 달에 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "13만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q23-parent-benefit-0",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "부모급여 0세는 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "100만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q24-parent-benefit-1",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "부모급여 1세는 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "50만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q25-energy-contact",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "에너지바우처 문의 전화번호 알려줘",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "1600-3190"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q26-energy-what",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "",
+      "steps": [
+        {
+          "utterance": "에너지바우처로 뭘 살 수 있어?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "speechIncludesAny": [
+              "전기",
+              "가스",
+              "난방",
+              "등유",
+              "연탄"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q27-emergency-1person",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "이름이 \"지원\"으로 끝나는 제도(인식 범위 확인)",
+      "steps": [
+        {
+          "utterance": "긴급복지 생계지원 1인 가구는 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "requiresSource": true,
+            "goldFacts": [
+              "783,000"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q28-not-in-source",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "근거에 없으면 지어내지 않음",
+      "steps": [
+        {
+          "utterance": "장애인연금 받으면 교통비도 할인돼?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "speechIncludesAny": [
+              "찾지 못했",
+              "없어요",
+              "확인해",
+              "129"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q29-not-in-source-2",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "근거에 없으면 지어내지 않음",
+      "steps": [
+        {
+          "utterance": "기초연금 받으면 지하철이 무료야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "speechIncludesAny": [
+              "찾지 못했",
+              "없어요",
+              "확인해",
+              "129"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Q30-no-name",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "welfare-qa",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "제도 이름이 없으면 되묻기",
+      "steps": [
+        {
+          "utterance": "한 달에 얼마 나와?",
+          "expect": {
+            "speechIncludesAny": [
+              "어떤 제도",
+              "제도 이름"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

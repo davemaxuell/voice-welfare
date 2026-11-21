@@ -1,0 +1,457 @@
+{
+  "schemaVersion": "2.0",
+  "disclaimer": "이음 평가 데이터셋 v2 — 대화 맥락(되묻기 후 대답·짧은 대답·이어 묻기·목록 가리키기). 합성·사용자 테스트 재현 발화이며 실존 개인정보 없음.",
+  "baseUrl": "http://localhost:5174",
+  "scenarios": [
+    {
+      "id": "D01-clarify-then-number",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "error-recovery",
+      "feature": "dialogue",
+      "difficulty": "hard",
+      "source": "user-test",
+      "purpose": "되묻기 뒤 \"1번\" 대답을 다시 되묻지 않음",
+      "steps": [
+        {
+          "utterance": "그거 해줘",
+          "expect": {
+            "action": "clarify"
+          }
+        },
+        {
+          "utterance": "1번.",
+          "expect": {
+            "notSemanticAction": "clarify"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D02-ack-in-form",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "error-recovery",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "\"알았어\"·\"아니\"를 값으로 넣지 않음",
+      "steps": [
+        {
+          "utterance": "장애인연금 신청 도와줘",
+          "expect": {
+            "state": "APPLICATION_OPEN"
+          }
+        },
+        {
+          "utterance": "알았어",
+          "expect": {
+            "speechIncludes": "성명을 말씀해 주세요",
+            "domField": {
+              "id": "applicantName",
+              "value": ""
+            }
+          }
+        },
+        {
+          "utterance": "아니",
+          "expect": {
+            "speechIncludes": "비워 둘게요",
+            "domField": {
+              "id": "applicantName",
+              "value": ""
+            }
+          }
+        },
+        {
+          "utterance": "알았고 이름은 김하늘",
+          "expect": {
+            "domField": {
+              "id": "applicantName",
+              "value": "김하늘"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "D03-ack-alone",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "easy",
+      "source": "user-test",
+      "purpose": "맞장구·부정 단독",
+      "steps": [
+        {
+          "utterance": "알았어",
+          "expect": {
+            "action": "none",
+            "speechMaxChars": 10
+          }
+        },
+        {
+          "utterance": "아니",
+          "expect": {
+            "speechIncludes": "무엇을 도와드릴까요"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D04-profile-filler",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "\"음 맞아\" 같은 군말 섞인 대답",
+      "steps": [
+        {
+          "utterance": "나한테 맞는 복지 찾아줘",
+          "expect": {
+            "action": "discover",
+            "speechIncludes": "나이"
+          }
+        },
+        {
+          "utterance": "스물다섯 살이야",
+          "expect": {
+            "speechIncludes": "장애"
+          }
+        },
+        {
+          "utterance": "응 심한 장애가 있어",
+          "expect": {
+            "speechIncludes": "기초생활수급자"
+          }
+        },
+        {
+          "utterance": "음 맞아.",
+          "expect": {
+            "speechIncludes": "시·도"
+          }
+        },
+        {
+          "utterance": "부산광역시",
+          "expect": {
+            "action": "discover",
+            "speechIncludes": "1번"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D05-list-reference-number",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "목록 번호로 가리키기",
+      "steps": [
+        {
+          "utterance": "나한테 맞는 복지 찾아줘",
+          "expect": {}
+        },
+        {
+          "utterance": "70살",
+          "expect": {}
+        },
+        {
+          "utterance": "아니",
+          "expect": {}
+        },
+        {
+          "utterance": "모름",
+          "expect": {}
+        },
+        {
+          "utterance": "건너뛰기",
+          "expect": {
+            "speechIncludes": "1번"
+          }
+        },
+        {
+          "utterance": "1번 자세히",
+          "expect": {
+            "action": "discover",
+            "notSemanticAction": "clarify"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D06-list-apply-reference",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "hard",
+      "source": "user-test",
+      "purpose": "\"1번 신청\" = 방금 찾은 목록의 1번",
+      "steps": [
+        {
+          "utterance": "나한테 맞는 복지 찾아줘",
+          "expect": {}
+        },
+        {
+          "utterance": "70살",
+          "expect": {}
+        },
+        {
+          "utterance": "아니",
+          "expect": {}
+        },
+        {
+          "utterance": "모름",
+          "expect": {}
+        },
+        {
+          "utterance": "건너뛰기",
+          "expect": {}
+        },
+        {
+          "utterance": "1번 신청하고 싶어",
+          "expect": {
+            "semanticActionIn": [
+              "agent-handoff",
+              "clarify"
+            ],
+            "speechExcludes": "어떤 제도를 신청하시려고요"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D07-followup-amount",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "이어 묻기(제도 이름 생략)",
+      "steps": [
+        {
+          "utterance": "기초연금은 몇 살부터 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "65"
+            ]
+          }
+        },
+        {
+          "utterance": "그럼 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "349,700"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "D08-followup-where",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "이어 묻기(신청 경로)",
+      "steps": [
+        {
+          "utterance": "장애인연금 지원 대상이 누구야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "18"
+            ]
+          }
+        },
+        {
+          "utterance": "그럼 어디서 신청해?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "speechIncludesAny": [
+              "주민센터",
+              "행정복지센터",
+              "복지로"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "D09-followup-switch-service",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "이어 묻기(금액)",
+      "steps": [
+        {
+          "utterance": "장애수당은 누가 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "speechIncludesAny": [
+              "차상위",
+              "수급"
+            ]
+          }
+        },
+        {
+          "utterance": "얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "6만"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "D10-profile-interrupt-command",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "error-recovery",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "regression",
+      "purpose": "질문 도중 다른 명령은 바로 처리",
+      "steps": [
+        {
+          "utterance": "나한테 맞는 복지 찾아줘",
+          "expect": {}
+        },
+        {
+          "utterance": "70살",
+          "expect": {}
+        },
+        {
+          "utterance": "기초연금 신청했어",
+          "expect": {
+            "intentType": "PERSONAL_APP_RECORD"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D11-rephrase",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "직전 안내 쉬운 말로",
+      "steps": [
+        {
+          "utterance": "장애인연금 얼마 받아?",
+          "expect": {}
+        },
+        {
+          "utterance": "쉽게 말해줘",
+          "expect": {
+            "action": "rephrase"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D12-vague-asks",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "대상 없는 요청은 추측하지 않고 되묻기",
+      "steps": [
+        {
+          "utterance": "그거 알려줘",
+          "expect": {
+            "action": "clarify"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D13-question-in-form-resumes",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "신청 중 질문에 답하고 하던 항목으로 복귀",
+      "steps": [
+        {
+          "utterance": "장애인연금 신청 도와줘",
+          "expect": {}
+        },
+        {
+          "utterance": "근데 장애인연금은 한 달에 얼마야?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "349,700"
+            ],
+            "speechIncludes": "성명"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D14-no-service-asks",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "dialogue",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "제도 없이 금액 질문 → 되묻기",
+      "steps": [
+        {
+          "utterance": "얼마 받을 수 있어?",
+          "expect": {
+            "speechIncludesAny": [
+              "어떤 제도",
+              "제도 이름"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

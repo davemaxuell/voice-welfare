@@ -3,7 +3,7 @@ import { LangSchema } from "../../src/core/turn.ts";
 import {
   answerConsent, answerRecovery, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
   focusCommand, hearConsent, openSettings, selectLanguage, selectMic, send, setConversationMode, skipIntro, snapshot, soundCheck, speakConsent,
-  stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
+  speakResearch, stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
   type Snapshot,
 } from "./conversation.ts";
 import { FirstRunDialog } from "./FirstRun.tsx";
@@ -378,7 +378,7 @@ export function App() {
             </li>)}</ol>
           </section>
           <SoundPanel view={view} ui={ui} t={t}/>
-          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang}/>
+          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch}/>
           <details className="support-details">
             <summary id="unsupported-title">지원하지 않는 기능</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{u}</li>)}</ul>
           </details>

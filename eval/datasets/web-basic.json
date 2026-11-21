@@ -1,0 +1,426 @@
+{
+  "schemaVersion": "2.0",
+  "disclaimer": "이음 평가 데이터셋 v2 — 웹 기본 조작(열기·읽기·화면 설명·링크·검색·인계). 합성·사용자 테스트 재현 발화이며 실존 개인정보 없음.",
+  "baseUrl": "http://localhost:5174",
+  "scenarios": [
+    {
+      "id": "W01-open-portal",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "주소로 사이트 열기, 짧은 첫 안내",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털",
+            "speechMaxChars": 300
+          }
+        }
+      ]
+    },
+    {
+      "id": "W02-read-main-skips-menu",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "메뉴 글자 대신 본문부터 읽기",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "본문 읽어줘",
+          "expect": {
+            "action": "read-main",
+            "speechIncludes": "기준액이 조정",
+            "speechExcludes": [
+              "검색어",
+              "로그인"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "W03-read-more",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "이어 읽기",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "본문 읽어줘",
+          "expect": {
+            "action": "read-main"
+          }
+        },
+        {
+          "utterance": "계속 읽어줘",
+          "expect": {
+            "action": "read-main",
+            "speechIncludes": "이어서"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W04-describe-brief",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "짧은 화면 설명(디테일 나열 금지)",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "화면 설명해줘",
+          "expect": {
+            "action": "describe-screen",
+            "speechIncludes": "외부 포털",
+            "speechExcludes": "누를 수 있는 버튼",
+            "speechMaxChars": 350
+          }
+        }
+      ]
+    },
+    {
+      "id": "W05-describe-detailed",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "요청 시에만 자세히",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "화면 자세히 설명해줘",
+          "expect": {
+            "action": "describe-screen",
+            "speechIncludes": "화면 전체를 위에서부터"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W06-link-list-number",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "링크 목록 → 번호로 열기",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "링크 목록 알려줘",
+          "expect": {
+            "action": "list-links"
+          }
+        },
+        {
+          "utterance": "1번",
+          "expect": {
+            "semanticActionIn": [
+              "follow-link"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "W07-follow-and-back",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "링크 따라가기·뒤로",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "장애인연금 안내 링크 눌러줘",
+          "expect": {
+            "action": "follow-link",
+            "titleIncludes": "안내 기사"
+          }
+        },
+        {
+          "utterance": "뒤로 가줘",
+          "expect": {
+            "action": "back",
+            "titleIncludes": "외부 포털"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W08-site-search",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "사이트 안 검색창 사용",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "기초연금 검색해줘",
+          "expect": {
+            "action": "search",
+            "titleIncludes": "'기초연금' 검색 결과"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W09-about-site",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "사이트 소개(모르는 사이트는 추측 안 함)",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "이 사이트 뭐야?",
+          "expect": {
+            "intentType": "ABOUT_SITE",
+            "speechIncludes": "주요 메뉴"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W10-main-screen",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "\"메인 화면\" = 현재 사이트 첫 화면",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external2.html 열어줘",
+          "expect": {
+            "action": "open-site"
+          }
+        },
+        {
+          "utterance": "메인 화면 눌러줘",
+          "expect": {
+            "urlIncludes": "127.0.0.1:5174/"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W11-click-not-discover",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "regression",
+      "purpose": "\"맞춤형 ○○ 눌러줘\"를 맞춤 복지 찾기로 오해하지 않음",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "맞춤형 급여 안내 눌러줘",
+          "expect": {
+            "intentType": "FOLLOW_LINK"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W12-login-link-handoff",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "user-test",
+      "purpose": "로그인 페이지까지만 열고 인계",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "로그인 눌러줘. 그 뒤로는 내가 할게",
+          "expect": {
+            "action": "auth-handoff",
+            "urlIncludes": "login.html"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W13-login-ask-only",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "명시적 요청 없으면 안내만",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘",
+          "expect": {
+            "action": "open-site",
+            "accessMode": "read-only",
+            "titleIncludes": "외부 포털"
+          }
+        },
+        {
+          "utterance": "로그인하고 싶어",
+          "expect": {
+            "action": "auth-handoff",
+            "noSuccessfulActions": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "W14-unknown-site-search",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "모르는 사이트는 주소를 지어내지 않고 검색",
+      "steps": [
+        {
+          "utterance": "우리동네복지관 사이트 열어줘",
+          "expect": {
+            "action": "open-site",
+            "speechIncludes": "검색"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W15-open-browser",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "web",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "사이트 없이 브라우저만",
+      "steps": [
+        {
+          "utterance": "크롬 켜줘",
+          "expect": {
+            "action": "open-browser"
+          }
+        }
+      ]
+    }
+  ]
+}

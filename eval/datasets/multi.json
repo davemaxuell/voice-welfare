@@ -1,0 +1,206 @@
+{
+  "schemaVersion": "2.0",
+  "disclaimer": "이음 평가 데이터셋 v2 — 여러 질문·여러 명령 한 번에. 합성·사용자 테스트 재현 발화이며 실존 개인정보 없음.",
+  "baseUrl": "http://localhost:5174",
+  "scenarios": [
+    {
+      "id": "M01-plan-apply-fill-next",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "신청+입력 2개+다음을 한 문장으로",
+      "steps": [
+        {
+          "utterance": "장애인연금 신청 도와줘 그리고 이름은 김하늘이고 주소는 부산광역시 예시구 예시로 10, 다음으로 넘어가줘",
+          "expect": {
+            "intentType": "PLAN",
+            "domField": {
+              "id": "address",
+              "value": "부산광역시 예시구 예시로 10"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "M02-two-questions",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "질문 2개",
+      "steps": [
+        {
+          "utterance": "기초연금은 몇 살부터고 얼마 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "intentType": "MULTI_QUESTION",
+            "goldFacts": [
+              "65",
+              "349,700"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "M03-amount-and-where",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "금액+신청 경로",
+      "steps": [
+        {
+          "utterance": "장애수당은 얼마고 어디서 신청해?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "intentType": "MULTI_QUESTION",
+            "goldFacts": [
+              "6만"
+            ],
+            "speechIncludesAny": [
+              "주민센터",
+              "복지로"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "M04-two-services",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "제도 2개를 한 번에",
+      "steps": [
+        {
+          "utterance": "부모급여는 0세면 얼마고 아동수당은 몇 살까지 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "intentType": "MULTI_QUESTION",
+            "goldFacts": [
+              "100만",
+              "9"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "M05-three-questions",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "질문 3개",
+      "steps": [
+        {
+          "utterance": "장애인연금 대상은 누구고, 얼마 받고, 어디서 신청해?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "18",
+              "349,700"
+            ],
+            "speechIncludesAny": [
+              "주민센터",
+              "복지로"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "M06-open-and-read",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "medium",
+      "source": "synthetic",
+      "purpose": "열기+읽기",
+      "steps": [
+        {
+          "utterance": "127.0.0.1:5174/external.html 열어줘 그리고 본문 읽어줘",
+          "expect": {
+            "intentType": "PLAN",
+            "speechIncludes": "기준액"
+          }
+        }
+      ]
+    },
+    {
+      "id": "M07-two-fills",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "easy",
+      "source": "synthetic",
+      "purpose": "항목 2개 동시 입력",
+      "steps": [
+        {
+          "utterance": "장애인연금 신청 도와줘",
+          "expect": {}
+        },
+        {
+          "utterance": "이름은 김하늘, 주소는 부산광역시 예시구 예시로 10",
+          "expect": {
+            "domField": {
+              "id": "address",
+              "value": "부산광역시 예시구 예시로 10"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "M08-housing-two",
+      "platform": "pc",
+      "phase": "eval-v2",
+      "status": "active",
+      "category": "normal",
+      "feature": "multi",
+      "difficulty": "hard",
+      "source": "synthetic",
+      "purpose": "대상 기준+금액",
+      "steps": [
+        {
+          "utterance": "주거급여는 누가 받고 서울 1인 가구는 얼마까지 받아?",
+          "expect": {
+            "noUnsupportedNumbers": true,
+            "speechMaxChars": 320,
+            "goldFacts": [
+              "48",
+              "369,000"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
