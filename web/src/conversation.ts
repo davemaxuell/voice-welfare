@@ -3,12 +3,12 @@ import { timing, type TimingPoint } from "./perf.ts";
 // 입력란·버튼은 다시 만들지 않으므로 포커스가 유지된다(화면낭독기 사용자를 위해).
 import { LangSchema, STATE_LABELS_KO, type Lang } from "../../src/core/turn.ts";
 import {
-  api, errorCode, errorMessage, errorStatus, type Health, type Session, type Settings, type SettingsInput, type Turn,
+  api, ApiError, errorCode, errorMessage, errorStatus, type Health, type Session, type Settings, type SettingsInput, type Turn,
 } from "./api.ts";
 import { getSpeechLang, setSpeechLang, unlockAudio } from "./audio.ts";
 import { currentDecision, desktopView, turnNotice, type Consent, type Decision } from "./companion.ts";
 import { createFirstRun } from "./first-run.ts";
-import type { Capture } from "./presentation.ts";
+import { issues, type Capture, type IssueKey, type IssueAction } from "./presentation.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
 import { watchProgress } from "./progress-watch.ts";
 import {
@@ -266,8 +266,94 @@ function announce(text: string) {
   set({ announcement: { text, seq: ui.announcement.seq + 1 } });
 }
 
-function setError(message: string) {
-  set({ error: message, errorSeq: ui.errorSeq + 1 });
+function setError(key: IssueKey) {
+  if (ui.cancelUnconfirmed === true && key !== "cancelFailed") return;
+  set({ error: key, errorSeq: ui.errorSeq + 1, ...(key === "offline" ? { offline: true } : {}) });
+}
+
+function kindOf(error: unknown, fallback: IssueKey = "turnFailed"): IssueKey {
+  if (!(error instanceof ApiError)) return fallback;
+  if (error.kind === "timeout" || error.kind === "expired") return error.kind;
+  if (error.kind === "network") return "offline";
+  const code = error.code ?? "";
+  if (/^(?:VOICE|STT|TTS)_/u.test(code)) return "voiceDown";
+  if (code.includes("BLOCK") || code === "SITE_NOT_ALLOWED") return "blocked";
+  return fallback;
+}
+
+let missedHeartbeats = 0;
+let pendingResult: { sessionId: string; generation: number } | undefined;
+let checkingResult: Promise<void> | undefined;
+
+function connectionChanged(path: string, failure?: ApiError) {
+  const sid = ui.sessionId;
+  if ((sid === undefined && path !== "/api/session" && path !== "/api/health") || path.endsWith("/detach") ||
+      (path.startsWith("/api/session/") && !path.startsWith("/api/session/" + sid + "/"))) return;
+  if (failure === undefined) {
+    if (path.endsWith("/heartbeat") || ui.offline === true) missedHeartbeats = 0;
+    if (ui.offline === true) {
+      set({ offline: false, error: ui.error === "offline" ? undefined : ui.error });
+      if (pendingResult !== undefined && !path.endsWith("/state") && !path.endsWith("/resume")) void reconcileResult();
+    }
+    return;
+  }
+  const lost = path.endsWith("/heartbeat") ? ++missedHeartbeats >= 2 : failure.kind === "network";
+  if (lost && ui.offline !== true) {
+    set({ offline: true, activity: null, error: ui.cancelUnconfirmed === true ? "cancelFailed" : pendingResult ? "lostTurn" : "offline", errorSeq: ui.errorSeq + 1 });
+  }
+}
+
+async function reconcileResult() {
+  if (checkingResult) return checkingResult;
+  const pending = pendingResult;
+  if (!pending || pending.sessionId !== ui.sessionId || pending.generation !== stoppedGeneration) return;
+  const current = () => pendingResult === pending && ui.sessionId === pending.sessionId && stoppedGeneration === pending.generation;
+  const run = async () => {
+    try {
+      // 복구를 켠 개인 세션만 복구 체크포인트를 읽는다. 이미 붙어 있는 세션은 현재 상태만 조회한다.
+      let state: Awaited<ReturnType<typeof api.resume>> | Awaited<ReturnType<typeof api.sessionState>>;
+      if (recoverable) {
+        try { state = await api.resume(pending.sessionId); }
+        catch (e) { if (errorCode(e) !== "RECOVERY_NOT_WAITING") throw e; state = await api.sessionState(pending.sessionId); }
+      } else state = await api.sessionState(pending.sessionId);
+      if (!current()) return;
+      pendingResult = undefined;
+      if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
+      const last = "consent" in state
+        ? { authHandoff: state.authHandoff, turnId: state.turnId, offeredChoices: state.offeredChoices }
+        : { pendingConfirmation: state.pendingConfirmation };
+      set({ state: state.state, last, error: ui.error === "timeout" ? "timeout" : "lostTurn", activity: null });
+    } catch { if (current() && ui.error !== "timeout") setError("lostTurn"); }
+  };
+  checkingResult = run().finally(() => { checkingResult = undefined; });
+  return checkingResult;
+}
+
+function turnFailed(error: unknown, sid: string, generation: number) {
+  if (sid !== ui.sessionId || generation !== stoppedGeneration) return;
+  const key = kindOf(error);
+  if (key === "offline" || key === "timeout") {
+    if (desk.card !== undefined) desk.dropped.add(desk.card.key);
+    pendingResult = { sessionId: sid, generation };
+    setError(key === "timeout" ? "timeout" : "lostTurn");
+    void reconcileResult();
+  } else setError(key);
+}
+
+export async function actOnIssue(action: IssueAction) {
+  if (action === "stop") return stopAll();
+  if (action === "type") { focus("command"); return; }
+  if (action === "microphone") {
+    const dialog = document.getElementById("microphone-settings");
+    if (dialog instanceof HTMLDialogElement && !dialog.open) dialog.showModal();
+    return;
+  }
+  if (pendingResult) return reconcileResult();
+  if (ui.sessionId === undefined) { await chooseSession(); return; }
+  try {
+    await api.heartbeat(ui.sessionId);
+    if (ui.cancelUnconfirmed !== true && (ui.error === "expired" || ui.error === "timeout")) set({ error: undefined });
+  } catch (error) { setError(kindOf(error)); }
 }
 
 let focusSeq = 0;
@@ -331,7 +417,7 @@ function desktopNotice(text: string | null) {
 }
 
 function wakeAvatar() {
-  if (!desk.sleeping) return;
+  if (!desk.sleeping || ui.cancelUnconfirmed === true) return;
   desk.sleeping = false;
   desk.wakeCount += 1;
   stopSpeaking();
@@ -341,6 +427,7 @@ function wakeAvatar() {
 // The first deliberate request after Stop waits for that specific cancellation.
 // Opening chat wakes the figure alone. Recording and commands also wake the session.
 async function readyForInput() {
+  if (ui.offline === true || ui.cancelUnconfirmed === true) return false;
   const sid = ui.sessionId;
   const stop = stoppedGeneration;
   wakeAvatar();
@@ -358,7 +445,7 @@ async function readyForInput() {
   }).catch((error: unknown) => {
     if (current()) {
       desk.sleeping = true;
-      setError(errorMessage(error));
+      setError(kindOf(error));
     }
     return false;
   });
@@ -506,11 +593,11 @@ async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speechPrefs.
   if (!ui.tts || !ui.voiceMode.tts) return;
   try {
     const result = await serverTts.speak(text, (chunk, speed) => api.speak(chunk, lang, speed), fromChunk, rate);
-    if (result === "blocked") setError(t("소리를 재생하려면 화면을 한 번 누른 뒤 소리 확인을 선택해 주세요."));
+    if (result === "blocked") setError("voiceDown");
   } catch (error) {
     const code = errorCode(error);
     if (code === "VOICE_KEY" || code === "VOICE_LIMIT") desktop?.showSetup?.();
-    setError(code !== undefined && code.length > 0 ? errorMessage(error) : t("음성 API 안내를 재생하지 못했어요. 연결을 확인해 주세요. 안내는 화면에서도 읽을 수 있어요."));
+    setError(kindOf(error, "voiceDown"));
   }
 }
 
@@ -522,7 +609,7 @@ async function speakTurn(result: Spoken, text = result.speech) {
   if (!ui.tts) return;
   const status = await speakOnDevice(text, result.lang ?? "ko");
   if (status === "unavailable") {
-    setError(workspaceText("이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.", ui.lang));
+    setError("voiceDown");
   }
 }
 
@@ -580,12 +667,12 @@ export async function startConversation() {
   if (!await readyForInput() || ticket !== conversationStarts || ui.last?.authHandoff?.status === "waiting") return;
   if (!ui.voiceMode.stt) {
     const fallback = t("지금은 연속 음성 대화를 사용할 수 없어요. {help}", { help: dictationHelp(ui.lang) });
-    setError(fallback);
+    setError("voiceDown");
     if (ui.tts) speak(fallback);
     return;
   }
   if (ui.consent !== "granted") {
-    setError(t("동의하지 않으셔서 음성 대화를 시작하지 않습니다. 복지 제도 질문은 텍스트로 입력할 수 있습니다."));
+    setError("consentRequired");
     return;
   }
   void preloadCues().catch(() => undefined);
@@ -597,7 +684,7 @@ export async function startConversation() {
     let captionEnd = -1;
     const approvalId = ui.last?.pendingConfirmation?.actionId ?? "";
     const current: LiveConversation = new LiveConversation(sessionId, {
-      offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: setError,
+      offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: () => setError("voiceDown"),
       captureChanged,
       activity(text) {
         if (ticket !== conversationStarts) return;
@@ -640,8 +727,9 @@ export async function startConversation() {
       failure(message) {
         if (ticket !== conversationStarts) return;
         endConversation(false);
-        setError(message);
-        announce(message);
+        const key = message === t("마이크 연결이 끊겼어요.") ? "micLost" : "voiceDown";
+        setError(key);
+        announce(t(issues[key][0]));
       },
     });
     edge = startingLoop = current;
@@ -655,7 +743,11 @@ export async function startConversation() {
       setPhase("listening");
       await cue("start");
     } catch (error) {
-      current.fail(errorMessage(error));
+      if (ticket !== conversationStarts) return;
+      if (error instanceof DOMException && ["NotAllowedError", "SecurityError"].includes(error.name)) {
+        endConversation(false);
+        setError("micDenied");
+      } else current.fail(errorMessage(error));
     }
     return;
   }
@@ -678,13 +770,13 @@ export async function startConversation() {
       set({ micId: preferred });
     }
     if (await current.isSilent()) throw new Error("silent");
-  } catch {
+  } catch (error) {
     current.stop();
     if (ticket !== conversationStarts) return;
     startingLoop = undefined;
     microphoneTrouble = true;
     setPhase("off");
-    setError(micTrouble);
+    setError(error instanceof DOMException && ["NotAllowedError", "SecurityError"].includes(error.name) ? "micDenied" : "micLost");
     announce(micTrouble);
     void cue("problem").then(() => speakAndWait(micTrouble));
     return;
@@ -696,13 +788,13 @@ export async function startConversation() {
   startingLoop = undefined;
   current.onTrouble = (reason) => {
     if (ticket !== conversationStarts) return;
-    microphoneTrouble = reason !== "unmuted";
+    microphoneTrouble = reason !== "unmuted" && reason !== "ended";
     if (reason === "unmuted") {
-      if (ui.error === micTrouble) set({ error: undefined });
+      if (ui.error === "micLost") set({ error: undefined });
       else captureChanged();
       return;
     }
-    setError(micTrouble);
+    setError("micLost");
     announce(micTrouble);
     // 잠깐 끊김(mute)은 다시 연결될 수 있으니 대화를 끝내지 않는다. 장치가 아예 사라졌을 때만 끝낸다.
     if (reason === "ended") {
@@ -792,7 +884,8 @@ export async function startConversation() {
         await speakAndWait(message);
         continue;
       }
-      setError(message);
+      if (e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) break;
+      setError(kindOf(e, "voiceDown"));
       if (++failures >= 3) {
         await cue("problem");
         await speakAndWait(t("문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요."));
@@ -811,14 +904,17 @@ function parseTurn(raw: unknown): Turn {
 
 /** 대화 모드의 음성 한 턴. 보내는 동안 떠 있는 카드를 잡아 버튼과 말이 함께 나가지 않게 한다. */
 async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
+  const sid = ui.sessionId ?? "";
+  const generation = stoppedGeneration;
   const held = holdCard();
   const capture = timing?.begin("capture-end");
   const sent = timing?.measure(capture, "turn-sent");
   try {
-    const result = await withProgressCues(whileBusy(api.audioTurn(ui.sessionId ?? "", audio, asked), voice));
+    const result = await withProgressCues(whileBusy(api.audioTurn(sid, audio, asked), voice));
     return { result, capture, sent };
   } catch (error) {
     timing?.measure(sent, "turn-failed");
+    if (error instanceof ApiError && (error.kind === "network" || error.kind === "timeout")) turnFailed(error, sid, generation);
     throw error;
   } finally {
     releaseCard(held);
@@ -943,6 +1039,7 @@ function listenForStopWhileBusy(voice: VoiceLoop) {
  *  안내 중이면 끊고 바로 듣기, 말하는 중이면 말 끝으로 보고 바로 보내기, 일하는 중이면 멈추기, 대화가 꺼져 있으면 시작.
  */
 export function talkNow() {
+  if (ui.offline === true) { void actOnIssue("reconnect"); return; }
   if (ui.settings !== undefined) return;
   // 백그라운드 데스크톱 앱: 창이 없어 Enter를 누를 수 없으므로 동의 안내 중의 단축키 = 동의
   if (ui.consent === "intro") { void hearConsent(); return; }
@@ -1044,7 +1141,7 @@ async function sendConsent(granted: boolean) {
       focus("command");
     }
   } catch (e) {
-    setError(errorMessage(e));
+    setError(kindOf(e));
   }
 }
 
@@ -1087,12 +1184,13 @@ const insideCommandArea = (el: Element | null) =>
 
 export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "", controlLabel?: string) {
   const t = text.trim();
-  if (t.length === 0 || ui.sessionId === undefined || ui.recovery !== undefined) return;
+  const sid = ui.sessionId;
+  if (t.length === 0 || sid === undefined || ui.recovery !== undefined) return;
   if (!await readyForInput()) return;
   const origin = document.activeElement;
   const fromForm = insideCommandArea(origin);
   if (reminderNight && /^지금[.! ]*$/.test(t)) {
-    const { text: due } = await api.reminders(ui.sessionId).catch(() => ({ text: undefined }));
+    const { text: due } = await api.reminders(sid).catch(() => ({ text: undefined }));
     if (due != null && due.length > 0) {
       reminderSeen = `${new Date().toDateString()}|${due}`;
       push({ role: "assistant", text: due });
@@ -1107,11 +1205,11 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
   const sent = timing?.measure(input, "turn-sent");
   try {
-    const result = await whileBusy(api.turn(ui.sessionId, t, actionId));
+    const result = await whileBusy(api.turn(sid, t, actionId));
     if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
-    setError(errorMessage(e));
+    turnFailed(e, sid, stop);
   } finally {
     set({ busy: false });
     if (fromForm && stop === stoppedGeneration && ui.recovery === undefined && ui.sessionId !== undefined &&
@@ -1135,16 +1233,20 @@ export function stageStarter() {
 }
 
 /** 입력란 보내기. 보냈으면 true(입력란을 비운다). */
-export function submitCommand(value: string) {
+export function submitCommand(value: string, completed?: () => void) {
   const text = value.trim();
-  if (text.length === 0 || ui.sessionId === undefined || ui.busy || ui.recovery !== undefined) return false;
+  if (text.length === 0 || ui.sessionId === undefined || ui.busy || ui.offline === true || ui.cancelUnconfirmed === true || ui.recovery !== undefined) return false;
   const actionId = commandActionId ?? "";
   commandActionId = undefined;
-  void send(text, actionId);
+  const session = ui.sessionId, generation = stoppedGeneration;
+  void send(text, actionId).then(() => {
+    if (ui.error === undefined && session === ui.sessionId && generation === stoppedGeneration) completed?.();
+  });
   return true;
 }
 
 export function stopAll() {
+  if (desk.stopping !== null) return desk.stopping;
   const operation = stopSession();
   desk.stopping = operation;
   return operation.finally(() => {
@@ -1156,6 +1258,7 @@ export function stopAll() {
 }
 
 async function stopSession() {
+  pendingResult = undefined;
   ui = { ...ui, stopping: true };
   microphoneTrouble = false;
   const requested = timing?.stop();
@@ -1184,32 +1287,33 @@ async function stopSession() {
     const result = await api.cancel(ui.sessionId);
     timing?.measure(requested, "cancel-acknowledged");
     if (stop !== stoppedGeneration) return;
-    ui = { ...ui, stopping: false };
+    ui = { ...ui, stopping: false, cancelUnconfirmed: false };
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
     else await applyResult(result, stillSleeping, stillSleeping, { stop: requested, controlLabel: t("[멈춤 버튼]") });
-  } catch (e) {
+  } catch {
     if (stop !== stoppedGeneration || wake !== desk.wakeCount) return;
-    desk.sleeping = false;
-    setError(errorMessage(e));
+    desk.sleeping = true;
+    set({ stopping: false, cancelUnconfirmed: true, state: "STOPPED", busy: false, error: "cancelFailed", errorSeq: ui.errorSeq + 1 });
   }
 }
 
 /** 승인·거절: 화면에 보여 준 승인 번호(actionId)로만 보낸다. */
 async function confirm(approve: boolean, actionId: string) {
-  if (ui.sessionId === undefined || ui.recovery !== undefined) return;
+  if (ui.sessionId === undefined || ui.recovery !== undefined || ui.offline === true || ui.cancelUnconfirmed === true) return;
   const stop = stoppedGeneration;
+  const sid = ui.sessionId;
   const input = timing?.begin("input-received");
   set({ busy: true });
   timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
   const sent = timing?.measure(input, "turn-sent");
   try {
-    const result = await whileBusy(api.confirm(ui.sessionId, approve, actionId));
+    const result = await whileBusy(api.confirm(sid, approve, actionId));
     if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel: approve ? t("[승인 버튼]") : t("[거절 버튼]") });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
-    setError(errorMessage(e));
+    turnFailed(e, sid, stop);
   } finally {
     set({ busy: false });
   }
@@ -1217,8 +1321,9 @@ async function confirm(approve: boolean, actionId: string) {
 
 /** 서버가 제안한 선택지(인증 마침·인증 취소·본문 읽기): 그 응답(turnId)과 인계 번호에 묶어 보낸다. */
 async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: string) {
-  if (ui.sessionId === undefined || ui.recovery !== undefined) return;
+  if (ui.sessionId === undefined || ui.recovery !== undefined || ui.offline === true || ui.cancelUnconfirmed === true) return;
   const stop = stoppedGeneration;
+  const sid = ui.sessionId;
   const generation = sessionGeneration;
   set({ busy: true, error: undefined });
   try {
@@ -1230,10 +1335,10 @@ async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: stri
       await applyResult(result, true, true, { controlLabel: ui.lang === "ko" ? undefined : label });
     }
   } catch (e) {
-    if (errorCode(e) !== "CHOICE_EXPIRED") setError(errorMessage(e));
+    if (errorCode(e) !== "CHOICE_EXPIRED") turnFailed(e, sid, stop);
     else {
       desk.dropped.add(card.key);
-      notice(errorMessage(e));
+      setError("expired");
     }
   } finally {
     set({ busy: false });
@@ -1351,7 +1456,7 @@ export async function toggleMic() {
       if (generation === stoppedGeneration) await applyResult(result, true, true, { sent, capture });
     } catch (e) {
       timing?.measure(sent, "turn-failed");
-      if (generation === stoppedGeneration) setError(errorMessage(e));
+      if (generation === stoppedGeneration && ui.sessionId !== undefined) turnFailed(e, ui.sessionId, generation);
     } finally {
       set({ busy: false });
     }
@@ -1385,7 +1490,7 @@ export async function toggleMic() {
   } catch {
     if (sessionId !== ui.sessionId || generation !== stoppedGeneration || authWaiting()) return;
     microphoneTrouble = true;
-    setError(t("마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요."));
+    setError("micDenied");
   } finally {
     openingMic = false;
     if (recording === undefined) manualStream = undefined;
@@ -1468,7 +1573,7 @@ export async function selectLanguage(lang: Lang) {
     await applyResult(r, !conversationOn, true, { controlLabel: workspaceText("[언어 선택]", lang) });
     if (conversationOn && current()) await speakTurn(r);
   } catch (err) {
-    if (current()) setError(err instanceof Error ? err.message : t("언어를 바꾸지 못했습니다."));
+    if (current()) setError(kindOf(err));
   } finally {
     if (current()) set({ requestedLanguage: undefined });
   }
@@ -1479,6 +1584,7 @@ export function focusCommand() { focus("command"); }
 // ---------------------------------------------------------------- 이벤트 연결
 
 function bind() {
+  api.onConnection(connectionChanged);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && skipIntro()) e.preventDefault();
   });
@@ -1568,13 +1674,16 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
   }
   clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(() => void api.heartbeat(s.sessionId).catch(() => undefined), 15000);
-  set({ sessionId: s.sessionId, state: s.state ?? "IDLE" });
+  missedHeartbeats = 0;
+  set({ sessionId: s.sessionId, state: s.state ?? "IDLE", offline: false, cancelUnconfirmed: false });
 }
 
 export async function endSession() {
   timing?.cancelPending();
   const sid = ui.sessionId;
   progressSession = undefined;
+  pendingResult = undefined;
+  missedHeartbeats = 0;
   desk.message = null;
   desk.sleeping = false;
   desk.stopGeneration = null;
@@ -1596,14 +1705,14 @@ export async function endSession() {
   setSpeechLang(desktopLanguage ?? "ko");
   commandActionId = undefined;
   set({
-    sessionId: undefined, state: "IDLE", last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: desktopLanguage ?? "ko", requestedLanguage: undefined,
+    sessionId: undefined, state: "IDLE", offline: false, cancelUnconfirmed: false, error: undefined, last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: desktopLanguage ?? "ko", requestedLanguage: undefined,
     messages: [], activity: null, commandReset: ui.commandReset + 1, sessionNew: true,
   });
   focus("session-new");
   try {
     if (sid !== undefined) await api.end(sid);
   } catch (error) {
-    if (errorStatus(error) !== 404) setError(errorMessage(error));
+    if (errorStatus(error) !== 404) setError(kindOf(error));
   } finally {
     if (ui.sessionId === undefined) api.writer(undefined);
   }
@@ -1648,7 +1757,7 @@ export async function answerRecovery(yes: boolean) {
   } catch (error) {
     const status = errorStatus(error);
     if (status === 410 || status === 404) await endSession();
-    setError(errorMessage(error));
+    setError(kindOf(error));
   } finally {
     if (ui.recovery !== undefined) set({ recovery: { ...ui.recovery, busy: false } });
   }
@@ -1733,7 +1842,7 @@ function refreshHealth() {
     });
     return h;
   }).catch((error: unknown) => {
-    setError(errorMessage(error));
+    setError(kindOf(error));
     return undefined;
   });
   return healthReady;
@@ -1833,7 +1942,7 @@ async function openSession(recovery: boolean) {
       if (desktop !== undefined) void hearConsent();
     }
   } catch (e) {
-    setError(t("세션을 시작하지 못했습니다. {reason}", { reason: errorMessage(e) }));
+    setError(kindOf(e));
     set({ sessionNew: true });
     focus("session-new");
   }

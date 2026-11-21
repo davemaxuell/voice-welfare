@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { trayTaskText } from "../../apps/desktop/src/protocol.ts";
 import { desktopView, type LiveView } from "../../web/src/companion.ts";
-import { presentationOf, type Capture } from "../../web/src/presentation.ts";
+import { presentationOf, type Capture, type IssueKey } from "../../web/src/presentation.ts";
 import { captureKeys, taskKeys } from "../../web/src/workspace-language.ts";
 import { viewOf, type UiState } from "../../web/src/view.ts";
 
@@ -19,6 +19,32 @@ const base: UiState = {
   conversationMode: "native", liveCaption: "", messages: [], announcement: { text: "", seq: 0 },
 };
 const live: LiveView = { capture: "off", speaking: false, recording: false, message: null, sleeping: false, introPose: null, card: undefined, pending: false };
+
+it("서비스가 끊기면 대기 중인 승인을 실행하지 않고 다시 연결할 수 있다", () => {
+  const ui = { ...base, offline: true, busy: true, error: "offline" as const };
+  const window = viewOf(ui, { background: false, mac: false });
+  const avatar = desktopView(ui, live);
+  expect([window.conversation.taskLabel, avatar.taskLabel]).toEqual(["연결이 끊겼어요", "연결이 끊겼어요"]);
+  expect(window.command).toMatchObject({ busy: false, sendDisabled: true, disabled: false });
+  expect(avatar).toMatchObject({ connected: false, busy: false, choices: [{ key: "reconnect", label: "다시 연결" }] });
+  expect(desktopView({ ...base, offline: false }, live)).toMatchObject({ connected: true, task: "idle" });
+});
+
+it("서버 확인이 없는 멈춤은 오류 안내와 함께 멈춤 상태를 유지한다", () => {
+  const ui = { ...base, cancelUnconfirmed: true, error: "cancelFailed" as const, sleeping: true };
+  expect(viewOf(ui, { background: false, mac: false }).error?.actions.map(a => a.key)).toEqual(["stop"]);
+  expect(desktopView(ui, { ...live, sleeping: true })).toMatchObject({ task: "stopped", sleeping: true, busy: false });
+});
+
+it.each(Object.entries({
+  offline: ["reconnect"], timeout: ["check", "type"], lostTurn: ["check", "type"], cancelFailed: ["stop"],
+  micDenied: ["microphone", "type"], micLost: ["microphone", "type"], voiceDown: ["type"], turnFailed: ["type"],
+  expired: ["check", "type"], blocked: ["type"], consentRequired: ["type"],
+} satisfies Record<IssueKey, string[]>))("오류 %s에 실행할 수 있는 동작이 있다", (key, actions) => {
+  const view = viewOf({ ...base, error: key as IssueKey }, { background: false, mac: false });
+  expect(view.error?.actions.map(a => a.key)).toEqual(actions);
+  expect(view.error?.text).toBeTruthy();
+});
 const approval = { id: "c", lang: "ko", key: "approval:a", kind: "approval" as const, choices: [], prompt: "", ref: { actionId: "a" } };
 
 function labels(patch: Partial<UiState>, activity: Partial<LiveView>) {
@@ -44,7 +70,7 @@ it("처리 중에 승인 카드가 있으면 두 화면 모두 승인 대기 상
 });
 
 it("마이크를 듣는 중이어도 작업 오류를 두 화면 모두 알린다", () => {
-  const { window, avatar } = labels({ phase: "listening", error: "연습 오류", capture: "on" }, { capture: "on" });
+  const { window, avatar } = labels({ phase: "listening", error: "turnFailed", capture: "on" }, { capture: "on" });
   expect([window.taskLabel, avatar.status]).toEqual(["문제가 생겼어요.", "문제가 생겼어요."]);
 });
 
@@ -56,7 +82,7 @@ it("장치·재생·작업 상태를 조합해도 창과 아바타는 같은 문
   for (const capture of captures) for (const speaking of flags) for (const busy of flags)
     for (const stopping of flags) for (const sleeping of flags) for (const failed of flags)
       for (const handoff of flags) for (const card of [undefined, approval, offer]) {
-        const ui: UiState = { ...base, capture, speaking, busy, stopping, sleeping, card, error: failed ? "오류" : undefined,
+        const ui: UiState = { ...base, capture, speaking, busy, stopping, sleeping, card, error: failed ? "turnFailed" : undefined,
           ...(handoff && { last: { authHandoff: { id: "h", kind: "login", taskId: "t", site: "연습", status: "waiting" } } }) };
         const expected = stopping ? "stopping" : handoff ? "auth_handoff" : card?.kind === "approval" ? "awaiting_approval"
           : card !== undefined ? "awaiting_choice" : failed ? "failed" : sleeping ? "stopped" : busy ? "working" : "idle";

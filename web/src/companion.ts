@@ -150,11 +150,12 @@ export function desktopView(ui: ViewInput, live: LiveView) {
     : mode === "consent" ? t("시작 전에 동의가 필요해요.")
     : mode === "ready" && display.task === "idle" && ui.consent === "declined"
       ? t("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.") : t(display.taskKey);
-  const card = live.card;
-  const busy = ui.busy || ui.phase === "thinking";
+  const offline = ui.offline === true, unconfirmed = ui.cancelUnconfirmed === true;
+  const card = offline || unconfirmed ? undefined : live.card;
+  const busy = !offline && !unconfirmed && (ui.busy || ui.phase === "thinking");
   const sleeping = live.sleeping && mode === "ready";
   return {
-    connected: true,
+    connected: !offline,
     mode,
     capture: display.capture,
     captureLabel: t(display.captureKey),
@@ -170,12 +171,13 @@ export function desktopView(ui: ViewInput, live: LiveView) {
     state: ui.state,
     reading: ui.state === "BROWSING" && ui.last?.semanticAction === "read-main",
     status,
+    reconnectLabel: offline ? t("다시 연결") : undefined,
     taskLabel: t(display.taskKey),
-    message: card !== undefined || ui.sessionId === undefined || mode === "problem" || sleeping ? null : live.message,
-    prompt: card?.prompt ?? null,
+    message: offline || unconfirmed || card !== undefined || ui.sessionId === undefined || mode === "problem" || sleeping ? null : live.message,
+    prompt: offline ? t("연결이 끊겼어요") : card?.prompt ?? null,
     site: card?.site ?? null,
-    choiceSetId: card?.id ?? null,
-    choices: card !== undefined ? card.choices.map(({ key, label, open }) => (open !== undefined ? { key, label, open } : { key, label })) : [],
+    choiceSetId: offline ? "reconnect" : card?.id ?? null,
+    choices: offline ? [{ key: "reconnect", label: t("다시 연결") }] : card !== undefined ? card.choices.map(({ key, label, open }) => (open !== undefined ? { key, label, open } : { key, label })) : [],
     pending: card !== undefined && live.pending,
   };
 }

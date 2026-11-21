@@ -20,6 +20,11 @@ it("마이크 권한을 거절해도 텍스트로 질문할 수 있다", async (
     await screen(page.locator("#mic-btn")).toBeEnabled();
     await page.locator("#mic-btn").click();
     await screen(page.locator("#error")).toContainText("브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요.");
+    await page.getByRole("button", { name: "마이크 설정 열기" }).click();
+    await screen(page.locator("#microphone-settings")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "글로 입력", exact: true }).click();
+    await screen(page.locator("#command")).toBeFocused();
     await screen(page.locator("#mic-btn")).toHaveAttribute("aria-pressed", "false");
     await page.locator("#command").fill("장애인연금이 뭐야");
     await page.locator("#command").press("Enter");
@@ -53,6 +58,8 @@ it("듣던 마이크가 끊기면 대화를 끄고 연결 안내를 보여 준�
     await screen(page.locator("#phase")).toHaveClass(/phase-listening/);
     await track.evaluate(end => end());
     await screen(page.locator("#error")).toContainText("마이크 연결이 끊겼거나");
+    await screen(page.locator("#capture-label")).toHaveText("마이크 꺼짐");
+    await screen(page.getByRole("button", { name: "마이크 설정 열기" })).toBeVisible();
     await screen(page.locator("#phase")).toHaveClass(/phase-off/);
     await screen(page.locator("#mic-btn")).toHaveAttribute("aria-pressed", "false");
   } finally { await page.close(); await voice.close(); }
