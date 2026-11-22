@@ -512,10 +512,16 @@ export class SessionOrchestrator {
 
   snapshot() {
     const guard = this.web.guard.config;
+    const offer = this.#offer;
     return omitAbsent({
       sessionId: this.id, state: this.state, stopGeneration: this.state === "STOPPED" ? this.#queue.epoch : undefined,
       platform: "pc" as const, observation: this.summarize(this.web.currentView),
       pendingConfirmation: this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
+      authHandoff: this.dialogue.authWaiting && this.dialogue.authHandoff !== undefined ? this.dialogue.authHandoff.public() : undefined,
+      ...(offer === undefined ? {} : {
+        turnId: offer.turnId,
+        offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
+      }),
       mockOnly: guard.readOnlyWeb !== true && guard.allowedOrigins.every(origin => origin === this.web.profile.origin),
       speechPrefs: this.personal.speech(),
     });

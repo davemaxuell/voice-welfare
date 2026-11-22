@@ -38,8 +38,8 @@ it("서버 확인이 없는 멈춤은 오류 안내와 함께 멈춤 상태를 �
 
 it.each(Object.entries({
   offline: ["reconnect"], timeout: ["check", "type"], lostTurn: ["check", "type"], cancelFailed: ["stop"],
-  micDenied: ["microphone", "type"], micLost: ["microphone", "type"], voiceDown: ["type"], turnFailed: ["type"],
-  expired: ["check", "type"], blocked: ["type"], consentRequired: ["type"],
+  micDenied: ["microphone", "type"], micLost: ["microphone", "type"], voiceDown: ["type"], localVoiceUnavailable: ["type"],
+  turnFailed: ["type"], languageFailed: [], expired: ["check", "type"], blocked: ["type"], consentRequired: ["type"],
 } satisfies Record<IssueKey, string[]>))("오류 %s에 실행할 수 있는 동작이 있다", (key, actions) => {
   const view = viewOf({ ...base, error: key as IssueKey }, { background: false, mac: false });
   expect(view.error?.actions.map(a => a.key)).toEqual(actions);
@@ -100,4 +100,14 @@ it("장치·재생·작업 상태를 조합해도 창과 아바타는 같은 문
       }
   expect(states.size).toBe(8);
 });
+
+it("phase가 없는 최소 상태에서도 표시 모델과 고대비 플래그를 안전하게 만든다", () => {
+  const display = presentationOf({ sessionId: "s", state: "IDLE", consent: "granted", lang: "ko", contrast: true });
+  expect(display.task).toBe("idle");
+  expect(display.mode).toBe("ready");
+  const avatar = desktopView({ sessionId: "s", state: "IDLE", consent: "granted", lang: "ko", contrast: true }, live);
+  expect(avatar.contrast).toBe(true);
+  expect(avatar.mode).toBe("ready");
+});
+
 
