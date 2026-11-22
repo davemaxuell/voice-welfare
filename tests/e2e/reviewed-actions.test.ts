@@ -1,8 +1,9 @@
 import type { Page } from "playwright";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
-import { FakeLlm, withLlm } from "../helpers.ts";
+import { FakeLlm, PORTAL, withLlm } from "../helpers.ts";
 import { browserCases, flat } from "./browser-cases.ts";
+import { apiFixture, Approval } from "./runtime-http-fixture.ts";
 
 const open = browserCases();
 const parts = ["정부24를 열고", "방문 안내 링크를 누르고", "별칭 칸에 민들레를 입력하고", "이용 시간 안내 링크를 열어줘"];
@@ -32,6 +33,40 @@ async function installPages(page: Page) {
   });
   return documents;
 }
+
+it("answers capability questions, describes the current page, and acts on a polite request to click", async () => {
+  const { session, page } = await open({ practiceMode: false });
+  const documents = await installPages(page);
+  await page.goto("https://www.gov.kr/guide");
+  const capability = "청음이 크롬 메뉴도 눌러 줄 수 있나요?";
+  const describe = "이 화면에 있는 별칭 입력란을 설명해 줄래요?";
+  const operate = "지금 탭에서 이용 시간 안내 링크를 눌러 줄래요?";
+  const explanation = "청음은 현재 탭에서 이름이 확인된 메뉴를 열 수 있어요.";
+  const description = "별칭 입력란이 있어요.";
+  withLlm(session, new FakeLlm(({ schemaName, user }) => {
+    if (schemaName === "intent_plan") {
+      const { utterance } = z.object({ utterance: z.string() }).parse(JSON.parse(user));
+      if (utterance === describe) return { steps: [flat("DESCRIBE_SCREEN")] };
+      if (utterance === operate) return { steps: [flat("FOLLOW_LINK", { topic: "이용 시간 안내" })] };
+      return { steps: [flat("UNKNOWN")] };
+    }
+    if (schemaName === "chat_route") return { route: "general", reply: explanation };
+    if (schemaName === "screen_text_decision") return { decision: "answer", answer: description, evidence: ["별칭"] };
+    return undefined;
+  }));
+
+  const answer = await session.handleTurn(capability);
+  expect(answer.speech).toContain(explanation);
+  expect(answer.actions).toEqual([]);
+  expect(answer.pendingConfirmation).toBeUndefined();
+  const inspected = await session.handleTurn(describe);
+  expect(inspected.speech).toContain(description);
+  expect(inspected.actions).toEqual([]);
+  expect(documents).toEqual(["/guide"]);
+  const opened = await session.handleTurn(operate);
+  expect(opened.actions.map(action => action.action.type), opened.speech).toEqual(["click"]);
+  expect(page.url()).toBe("https://www.gov.kr/hours");
+});
 
 function plannedModel(afterReview?: () => Promise<unknown>) {
   return new FakeLlm(async ({ schemaName, user }) => {
@@ -156,6 +191,22 @@ it.each(["approve", "decline", "stale", "stop"])("test_reviewed_open_click_fill_
   expect(await page.evaluate(() => sessionStorage.getItem("alias"))).toBeNull();
   expect(documents.filter(u => u === "/guide")).toHaveLength(1);
   expect(documents).not.toContain("/hours");
+});
+
+it("같은 입력 승인을 동시에 두 번 보내면 칸에는 한 번만 쓴다", async () => {
+  const fixture = apiFixture();
+  try {
+    const { sessionId } = z.object({ sessionId: z.string() }).parse(await (await fixture.post("/api/session")).json());
+    const say = (text: string) => fixture.post("/api/turn", { sessionId, text });
+    await say(PORTAL + " 열어줘");
+    const { actionId } = Approval.parse(await (await say("이름 칸에 김하늘 써줘")).json()).pendingConfirmation;
+    const confirm = () => fixture.post(`/api/session/${sessionId}/confirm`, { actionId, approve: true });
+    const results = await Promise.all([confirm(), confirm()]);
+    expect(results.map(r => r.status)).toEqual([200, 200]);
+    const { events } = z.object({ events: z.array(z.object({ actionType: z.string(), success: z.boolean() })) })
+      .parse(await (await fixture.api.request("/api/events")).json());
+    expect(events.filter(e => e.actionType === "fill" && e.success)).toHaveLength(1);
+  } finally { await fixture.close(); }
 });
 
 it("test_final_arrival_is_checked_after_the_reviewer_replies", async () => {

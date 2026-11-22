@@ -17,21 +17,22 @@ import { PROFILE_ORDER, parseProfileAnswer, profileQuestion, type ProfileSlot, t
 import { OpenData, type PlaceFinder } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
 import { CHOICE_TURNS, choiceLabel, type ChoiceKey } from "../core/choices.ts";
-import { APPROVAL_TTL_S, DialogueState } from "../core/dialogue.ts";
+import { APPROVAL_TTL_S, DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
-import type { Redacted, StructuredLlm } from "../core/llm.ts";
+import { ModelTransportError, type Redacted, type StructuredLlm } from "../core/llm.ts";
 import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { Progress } from "../core/progress.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { PUBLIC_AGENCIES } from "../core/sites.ts";
-import { rstripChars, strip, stripChars } from "../core/text.ts";
+import { hasText, rstripChars, strip, stripChars } from "../core/text.ts";
 import { AGENT_IDS, LANGS, draft, parseTurnResult, type Draft, type HumanAuthHandoff, type Lang, type SemanticAction, type SessionState,
   type SourceCitation, type TraceEntry, type TurnResult } from "../core/turn.ts";
 import { tryUrl } from "../core/url.ts";
-import { FIXED, detectLangSwitch, detectScriptLang, translateIn, translateOut } from "../language/i18n.ts";
+import { recheck } from "../agents/web/approval.ts";
+import { approvalAction, approvalNarration, approvalPresentation, type ApprovalNotice, type ClickPresentation, FIXED, detectLangSwitch, detectScriptLang, parseForeignFieldFill, translateIn, translateOut } from "../language/i18n.ts";
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, foreignVaultSave, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalDialogue, vaultReply } from "../personal/dialogue.ts";
@@ -102,7 +103,7 @@ export interface OrchestratorDeps {
   today?: () => string;
   places?: PlaceFinder;
   publicPlanning?: boolean;
-  quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal) => Promise<QuietAnswer>;
+  quietSearch?: (task: PublicTask, lang: Lang, signal: AbortSignal, requestedSteps?: readonly string[]) => Promise<QuietAnswer>;
   browsePublicSources?: (task: PublicTask, ctx: ExecContext, maxSteps?: number, requirements?: readonly string[]) => Promise<Draft | undefined>;
   /** 알려지지 않은 기관의 공식 누리집 후보를 공공 도메인 안에서 찾는다(없으면 목표 수행이 이 길을 쓰지 않는다). */
   findPortal?: (query: string, signal: AbortSignal) => Promise<readonly { url: string; title: string }[]>;
@@ -117,6 +118,7 @@ export interface Turn {
   original?: Redacted;
   fromVoice: boolean; linkQuestion: boolean; staleLinkOffer: boolean;
   progressReply: string; researchState: string; researchEvidence: string;
+  initialApprovalId?: string; initialApproval?: Approval; approvalNotice?: ApprovalNotice;
 }
 export interface TurnOptions {
   approvalId?: string;
@@ -219,6 +221,7 @@ export class SessionOrchestrator {
   #consent: Consent;
   #history: HistoryRow[] = [];
   #queue = new TurnQueue();
+  #clickPresentations = new WeakMap<object, ClickPresentation>();
   #controller = new AbortController();
   #approvals = new Set<string>();
   #busy = false;
@@ -511,12 +514,24 @@ export class SessionOrchestrator {
     catch { /* 첫 화면을 못 열어도 대화를 시작할 수 있다. */ }
   }
 
+  #approvalPresentation() {
+    const waiting = this.dialogue.approval ?? this.dialogue.vaultConfirm;
+    const page = waiting?.kind === "click" ? this.#clickPresentations.get(waiting.action) : undefined;
+    return approvalPresentation(waiting, this.lang, this.personal.persistent, page);
+  }
+
   snapshot() {
     const guard = this.web.guard.config;
+    const offer = this.#offer;
     return omitAbsent({
       sessionId: this.id, state: this.state, stopGeneration: this.state === "STOPPED" ? this.#queue.epoch : undefined,
       platform: "pc" as const, observation: this.summarize(this.web.currentView),
-      pendingConfirmation: this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
+      pendingConfirmation: this.#approvalPresentation()?.card ?? this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
+      authHandoff: this.dialogue.authWaiting && this.dialogue.authHandoff !== undefined ? this.dialogue.authHandoff.public() : undefined,
+      ...(offer === undefined ? {} : {
+        turnId: offer.turnId,
+        offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
+      }),
       mockOnly: guard.readOnlyWeb !== true && guard.allowedOrigins.every(origin => origin === this.web.profile.origin),
       speechPrefs: this.personal.speech(),
     });
@@ -744,7 +759,7 @@ export class SessionOrchestrator {
     const trace: TraceEntry[] = [];
     const id = randomUUID();
     return {
-      id, text, intentType: "NONE", started, epoch, trace, fromVoice: false, linkQuestion: false, staleLinkOffer: false,
+      id, text, intentType: "NONE", initialApprovalId: this.dialogue.confirmation?.actionId, initialApproval: this.dialogue.approval, started, epoch, trace, fromVoice: false, linkQuestion: false, staleLinkOffer: false,
       progressReply: "", researchState: "incomplete", researchEvidence: "",
       ctx: new ExecContext({
         signal: this.#controller.signal, approvals: this.#approvals,
@@ -806,6 +821,14 @@ export class SessionOrchestrator {
     if (this.linkOfferId.length > 0 && !d.hasPendingInteraction && this.publicTask.question.length === 0 && agree(text) !== undefined) {
       return this.localize(await this.#korean(text, sensitive, undefined, undefined, { fromVoice, staleLinkOffer }));
     }
+    if (!d.expectsConfirmation && !this.#secretHint) {
+      const labels = (this.web.currentView?.fields ?? []).filter(f => f.visible && !f.sensitive).map(f => f.label);
+      const localFills = parseForeignFieldFill(text, lang, labels);
+      if (localFills !== undefined) {
+        return this.localize(await this.#korean(redactText("[입력 요청]"), sensitive,
+          { type: "FILL", fills: localFills }, text, { fromVoice, staleLinkOffer }));
+      }
+    }
     // 외국어 공공업무는 원문에서 바로 판단한다. 별도 입력 번역으로 기관·부정·요구사항을 잃지 않는다.
     if (this.planner.canPlan(text, sensitive) && !this.#secretHint) {
       const turn = this.beginTurn(text);
@@ -863,6 +886,7 @@ export class SessionOrchestrator {
     if (to !== "ko" && this.deps.llm === undefined) return this.finish(turn, draft(this.state, "set-language", FIXED.needLlm[this.lang], { lang: this.lang }));
     this.lang = to;
     turn.ctx.trace("INTENT_DETECTED", AGENT_IDS.orchestrator, `SET_LANGUAGE ${to} (규칙)`);
+    turn.approvalNotice = "switch";
     return this.finish(turn, draft(this.state, "set-language", FIXED.switched[to], { lang: to }));
   }
 
@@ -1197,9 +1221,12 @@ export class SessionOrchestrator {
       // 전체 발화를 되풀이한 단계가 빠져 질문 하나만 남아도 모델이 쓴 질문으로 처리한다.
       const splitQuestion = intent.type === "UNKNOWN" && llm !== undefined && understood.by === llm.name && intent.text !== heard;
       if (rest.length > 0 || splitQuestion) return this.finish(turn, await this.runPlan(intents, turn));
-      return this.planner.command(turn, intent.type, () => this.route(intent, turn));
+      return await this.planner.command(turn, intent.type, () => this.route(intent, turn));
     } catch (error) {
       if (isAbort(error)) return this.voided();
+      if (error instanceof ModelTransportError) {
+        return this.finish(turn, draft("RECOVERING", "none", "웹 탐색에 필요한 AI 서비스에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요."));
+      }
       const name = error instanceof Error ? error.name : "Error";
       return this.finish(turn, draft("RECOVERING", "none", `처리 중 문제가 생겨 실행을 멈췄습니다(${name}). 다시 말씀해 주세요.`));
     }
@@ -1256,7 +1283,7 @@ export class SessionOrchestrator {
     }
     if (!inspection && intent === "LOGIN" && handoff?.kind === "login" && authInputDone(text)) return this.browse.login(text, turn.ctx);
     if ((intent === "APPROVE" || intent === "REJECT") && loginSubmit()) {
-      if (intent === "APPROVE") return this.application.approve(turn);
+      if (intent === "APPROVE") return this.#approve(turn);
       d.clearApproval();
       return this.browse.authWait("로그인 버튼을 누르지 않았어요. 사이트에서 직접 진행해 주세요.");
     }
@@ -1269,12 +1296,45 @@ export class SessionOrchestrator {
     return { ...this.browse.authWait(FIXED.authWait[lang]), lang };
   }
 
+  /** 실제 승인 경로를 한 번 실행하고, 반환된 결과에서 확인할 수 있는 사유만 현지화한다. */
+  async #approve(turn: Turn): Promise<Draft> {
+    const previous = this.dialogue.approval;
+    const expiresAt = this.clock() + APPROVAL_TTL_S - this.dialogue.approvalAge;
+    const out = await this.application.approve(turn);
+    if (this.lang === "ko" || previous === undefined || !("fingerprint" in previous) || this.superseded(turn)) return out;
+    const next = this.dialogue.approval;
+    if (next === undefined && out.view !== undefined && out.semanticAction === "none" && (out.actions?.length ?? 0) === 0) {
+      const actions = previous.kind === "assist" ? previous.actions : [previous.action];
+      if (previous.url !== out.view.url || recheck(previous.fingerprint, out.view, actions)[1] !== undefined) turn.approvalNotice = "changed";
+    } else if (next !== undefined && "fingerprint" in next && next.action === previous.action &&
+        next.confirmation.actionId !== previous.confirmation.actionId && out.state === "WAITING_FOR_USER_CONFIRMATION") {
+      if (this.clock() >= expiresAt && (out.actions?.length ?? 0) === 0) turn.approvalNotice = "expired";
+      else if (out.actions?.some(a => a.result?.ok === false) === true) turn.approvalNotice = "unverified";
+    }
+    return out;
+  }
+
   finish(turn: Turn, out: Draft): TurnResult {
     const stopped = this.superseded(turn) && out.semanticAction !== "stop";
     const state = stopped ? "STOPPED" : out.state;
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
-    const privateHistory = turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
+    const pending = d.approval;
+    const renewedSame = turn.intentType === "APPROVE" && pending !== undefined && turn.initialApproval !== undefined &&
+      "action" in pending && "action" in turn.initialApproval && pending.action === turn.initialApproval.action;
+    const newRequest = (pending !== undefined || d.vaultConfirm?.kind === "vault-clear") && d.confirmation?.actionId !== turn.initialApprovalId &&
+      out.state === "WAITING_FOR_USER_CONFIRMATION" && !renewedSame;
+    if (newRequest && pending?.kind === "click") {
+      this.#clickPresentations.set(pending.action, {
+        title: hasText(out.view?.title) ? out.view.title : pending.confirmation.site,
+        inspection: turn.ctx.browsingScope === "personal-inspection" && out.lang !== undefined,
+      });
+    }
+    const shown = stopped ? undefined : this.#approvalPresentation();
+    const approvalNotice = turn.approvalNotice ?? (newRequest ? "ask" : undefined);
+    const containsValue = d.confirmation?.values.some(({ value }) => value.length > 0 && speech.includes(value)) === true;
+    const localApproval = shown !== undefined && (approvalNotice !== undefined || containsValue);
+    const privateHistory = localApproval || turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
     // 금고 값(저장 대기 포함)은 사용자에게는 읽어 주되, LLM에 가는 기록에는 넣지 않는다.
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
     let localSpeechOnly = privateHistory || recorded !== speech || d.approval?.kind === "plan";
@@ -1319,13 +1379,16 @@ export class SessionOrchestrator {
       return { ...a, result: { actionId: a.action.id, ok: false, verified: false, errorCode: "UNKNOWN", latencyMs: 0, message: "조작 기록을 남기지 못했습니다." } };
     });
     const suggestions = (out.publicSuggestions ?? []).filter(label => VOCAB.has(label));
+    const approvalReply = stopped ? undefined : approvalNarration(approvalNotice, this.lang, speech, shown?.speech);
     return parseTurnResult({
       sessionId: this.id, turnId: turn.id, userUtterance: turn.original ?? turn.text, localSpeechOnly: localSpeechOnly ? true : undefined,
       intentType: turn.intentType, state, stopGeneration: state === "STOPPED" ? this.#queue.epoch : undefined,
       semanticAction: out.semanticAction, publicSuggestions: suggestions.length > 0 ? suggestions : undefined,
       field: out.field, value: out.value, page: view?.pageId, accessMode: view === undefined ? undefined : this.web.guard.tierOf(view.url),
-      speech, lang: out.lang ?? "ko", trace: turn.trace, actions, observation: this.summarize(view), verification: out.verification,
-      review: out.review, pendingConfirmation: d.confirmation, authHandoff: d.authHandoff?.public(), handoff: out.handoff,
+      speech: approvalReply ?? speech, lang: approvalReply === undefined ? out.lang ?? "ko" : this.lang, trace: turn.trace,
+      actions: this.lang === "ko" ? actions : actions.map(a => approvalAction(a, this.lang)),
+      observation: this.summarize(view), verification: out.verification,
+      review: out.review, pendingConfirmation: shown?.card ?? d.confirmation, authHandoff: d.authHandoff?.public(), handoff: out.handoff,
       answerCard: stopped ? undefined : out.answerCard, introScript: stopped ? undefined : out.introScript,
       sources: out.sources ?? [], missingFields: out.missingFields ?? [], pendingActions: 0, realSubmission: false,
       flags: { secretDetected: out.secretDetected === true, masked: out.masked === true }, latencyMs: Math.floor(performance.now() - turn.started),
@@ -1624,7 +1687,7 @@ export class SessionOrchestrator {
       case "REVIEW": return this.form.review(ctx);
       case "EXPLAIN": return this.application.explain(intent.fieldMention, turn);
       case "PREPARE_SUBMIT": return this.form.prepareSubmit(ctx);
-      case "APPROVE": return this.application.approve(turn);
+      case "APPROVE": return this.#approve(turn);
       case "REJECT": return this.form.reject();
       case "RESUME": return this.#offer?.navigationHandoff === undefined ? this.browse.resume(ctx) : this.#resumeNavigation(this.#offer.navigationHandoff, turn);
       case "CURRENT_STEP": return this.browse.currentStep(ctx);

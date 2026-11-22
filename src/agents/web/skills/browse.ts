@@ -8,7 +8,6 @@ import { LINK_ROLES } from "../../../core/actions.ts";
 import { AuthHandoff, type Approval, type DialogueState } from "../../../core/dialogue.ts";
 import { redactedJson, type StructuredLlm } from "../../../core/llm.ts";
 import type { Progress } from "../../../core/progress.ts";
-import { isOfficialPortal } from "../../../core/sites.ts";
 import { asciiDecimalDigits, hasText, strip } from "../../../core/text.ts";
 import { AGENT_IDS, draft, type Draft, type Lang, type HumanAuthHandoff } from "../../../core/turn.ts";
 import { todayIso } from "../../../core/time.ts";
@@ -141,7 +140,7 @@ const WEB_ANSWER_SCHEMA = {
 };
 
 function descriptionKey(view: PageView): string {
-  return createHash("sha256").update(JSON.stringify([screenKey(view), view.outline?.screenTarget])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([screenKey(view), view.outline?.mainText, view.outline?.screenTarget])).digest("hex");
 }
 
 export class BrowseSkill {
@@ -302,7 +301,7 @@ export class BrowseSkill {
       const url = tryUrl(current.url);
       if (url) return this.openSite(url.origin, ctx);
     }
-    const model = this.deps.webLlm ?? this.deps.llm;
+    const model = this.deps.webLlm;
     const out = await this.web.followLink(name, ctx, false, expected || !model ? {expected} : {picker: {model, scanner: this.deps.scanner}});
     const now = this.web.currentView;
     if (out.status === "needs-approval" && out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view ?? now, "", out.actions);
@@ -935,14 +934,6 @@ export class BrowseSkill {
     const currentPage = this.web.currentView;
     const blockedPublicPage = publicTask !== undefined && ctx.publicLookup && !personal && continuePage === true &&
       currentPage !== undefined && (stillNeedsAuth(currentPage) || accessBlocked(currentPage));
-    const needsEntry = !hasText(startUrl) && !hasText(siteUrl) && (!currentPage || currentPage.pageId === "blank");
-    if (model && publicTask && ctx.publicLookup && !personal && !checkpoint && (needsEntry || blockedPublicPage)) {
-      const [spans] = await this.deps.scanner?.scan([question]) ?? [];
-      if (!ctx.signal.aborted && question.length > 0 && !question.includes(REDACTED) && redactPictureText(question, spans) === question) {
-        const portal = blockedPublicPage ? tryUrl(siteUrl ?? currentPage.url) : undefined;
-        startUrl = this.searchUrl(portal && isOfficialPortal(portal) ? `site:${portal.hostname} ${question}` : question);
-      }
-    }
     if (!model) {
       // 현재 탭에서 할 일은 계획 모델이 없어도 실제로 읽은 항목을 번호로 고를 수 있다.
       if (!personal && !publicTask && !ctx.publicLookup && (continuePage === true || (!hasText(siteUrl) && !hasText(startUrl) && !agency))) {
@@ -975,7 +966,6 @@ export class BrowseSkill {
     let result;
     try {
       const conversation: Record<string, unknown> = personal ? {} : {...this.#planningContext?.(goal, siteUrl), ...publicTask?.context()};
-      if (blockedPublicPage) conversation.previousEntryUnavailable = true;
       if (requestedSteps.length > 0) conversation.requestedSteps = requestedSteps;
       const relatedSites = (links?.relatedSites ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       const forms = (links?.forms ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
@@ -984,7 +974,8 @@ export class BrowseSkill {
         const before = here;
         if (hasText(step.url)) here = step.url;
         if (!personal) this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
-      }, {siteUrl, startUrl: continuePage === true && !blockedPublicPage ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, continuation: options.continuation, visualControl, journey, privateValues: options.privateValues,
+      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, continuation: options.continuation, visualControl, journey, privateValues: options.privateValues,
+        retryPublicEntry: blockedPublicPage,
         discoveryAgency: personal && !hasText(siteUrl) ? options.agency : undefined,
         inspectionOutcome: options.inspectionOutcome, replyLanguage: this.#replyLanguage(),
         requestedFacts: publicTask?.facts.filter((fact): fact is PublicFact => Object.hasOwn(PUBLIC_FACT_LABELS, fact)), allowedUrls: relatedSites.map(site => site.url)}));
