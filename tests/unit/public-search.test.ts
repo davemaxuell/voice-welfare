@@ -81,6 +81,33 @@ it("stops a cycle of follow-up searches without claiming an answer", async () =>
   expect(result).toBeUndefined();
 });
 
+it("bounds evidence across rounds and leaves extraction disabled for ordinary lookups", async () => {
+  const batches = Array.from({length: 3}, (_, round) => ({
+    results: Array.from({length: 6}, (_, rank) => ({
+      ...PAGE, url: `https://www.korea.kr/news/${round}-${rank}`, content: `${round}-${rank} ${"공식 본문 ".repeat(550)}`,
+    })),
+  }));
+  const fetch = searchFake(batches);
+  const model = modelFake([{retryQuery: "공식 달력"}, {retryQuery: "공휴일 공고"}, {retryQuery: null}]);
+  await new TavilySearch("key", model.llm, undefined, {postJson: fetch.postJson}).search(QUESTION, "ko", signal());
+  expect(fetch.payloads.map(queryOf)).toEqual([QUESTION.goal, "공식 달력", "공휴일 공고"]);
+  const {excerpts} = z.object({excerpts: z.array(z.object({text: z.string()}))}).parse(JSON.parse(model.calls.at(-1)?.user ?? "{}"));
+  expect(excerpts).toHaveLength(12);
+  expect(excerpts.every(page => Array.from(page.text).length <= 2200)).toBe(true);
+  expect(excerpts[0]?.text).toMatch(/^0-0 /u);
+  expect(excerpts.at(-1)?.text).toMatch(/^2-3 /u);
+});
+
+it("explains requestedSteps to the model when it forwards them", async () => {
+  const fetch = searchFake([{ results: [PAGE] }]);
+  const model = modelFake([{ answer: "", citations: [], retryQuery: null }]);
+  const steps = ["어린이날 날짜", "그날이 공휴일인지"];
+  await new TavilySearch("test", model.llm, undefined, { postJson: fetch.postJson }).search(QUESTION, "ko", signal(), steps);
+  const [request] = model.calls;
+  expect(JSON.parse(request?.user ?? "{}")).toMatchObject({ requestedSteps: steps });
+  expect(request?.system).toContain("requestedSteps");
+});
+
 it("test_private_query_never_reaches_search_provider", async () => {
   const fetch = searchFake([]);
   const task = new PublicTask({ goal: "Search for tvly-" + "private-test-token" });

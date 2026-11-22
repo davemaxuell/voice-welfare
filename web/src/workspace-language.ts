@@ -1,6 +1,79 @@
 // Korean strings are also the fallback for the first render, before a session exists.
 // 낱말표는 src/cheongeum/web/static/workspace-language.js에서 그대로 옮겼다.
+export const captureKeys = {
+  off: "마이크 꺼짐", requesting: "마이크 준비 중", on: "마이크 켜짐", paused: "마이크 일시 정지", error: "마이크 연결 오류",
+} as const;
+export const issueActions = { reconnect: "다시 연결", stop: "다시 멈춤 요청", microphone: "마이크 설정 열기", type: "글로 입력", check: "현재 상태 확인" } as const;
+export const issueText = {
+  offline: "연결이 끊겼어요",
+  timeout: "응답 시간이 초과되어 요청 결과를 확인하지 못했어요.",
+  lostTurn: "요청 결과를 확인하지 못했어요. 요청을 다시 보내지 않았어요.",
+  cancelFailed: "서버가 멈춤을 확인하지 못했어요. 이 기기에서는 멈췄어요.",
+  micDenied: "마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요.",
+  micLost: "마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.",
+  voiceDown: "음성 서비스를 사용할 수 없어요. 글로 입력할 수 있어요.",
+  localVoiceUnavailable: "이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.",
+  turnFailed: "요청을 처리하지 못했어요.",
+  languageFailed: "언어를 바꾸지 못했습니다.",
+  expired: "요청한 작업이 만료됐어요.",
+  blocked: "이 사이트에서 이 작업을 할 수 없어요.",
+  consentRequired: "동의하지 않으셔서 음성 대화를 시작하지 않습니다. 복지 제도 질문은 텍스트로 입력할 수 있습니다.",
+} as const;
+
+export const taskKeys = {
+  idle: "기다리고 있어요.", working: "처리하는 중이에요.", awaiting_choice: "선택을 기다리고 있어요.",
+  awaiting_approval: "승인을 기다리고 있어요.", auth_handoff: "사이트에서 직접 진행해 주세요.",
+  stopping: "멈추는 중이에요.", stopped: "멈췄어요.", failed: "문제가 생겼어요.", offline: "연결이 끊겼어요",
+} as const;
+export const phaseKeys = {
+  off: { active: "꺼짐", manual: "꺼짐" }, starting: { active: "준비 중", manual: "준비 중" },
+  listening: { active: "듣고 있어요 — 말씀하세요", manual: "음성 입력: 듣고 있어요" },
+  hearing: { active: "말씀을 듣는 중…", manual: "말씀을 듣는 중…" },
+  thinking: { active: "처리 중…", manual: "요청을 처리하고 있어요" },
+  speaking: { active: "안내하는 중…", manual: "음성 안내 중" },
+} as const;
+const taskTranslations = {
+  "연결이 끊겼어요": ["Connection lost.", "连接已断开。", "接続が切れました。"],
+  '기다리고 있어요.': ['Ready when you are.', '我在等您。', 'お待ちしています。'],
+  '처리하는 중이에요.': ['Working on your request.', '正在处理请求。', '処理中です。'],
+  '선택을 기다리고 있어요.': ['Waiting for your choice.', '等待您选择。', '選択をお待ちしています。'],
+  "승인을 기다리고 있어요.": ["Waiting for your approval.", "正在等待您的批准。", "承認をお待ちしています。"],
+  '사이트에서 직접 진행해 주세요.': ['Please continue on the website.', '请在网站上继续。', 'サイトで操作を続けてください。'],
+  "멈추는 중이에요.": ["Stopping.", "正在停止。", "停止しています。"],
+  '멈췄어요.': ['Stopped.', '已停止。', '停止しました。'],
+  "문제가 생겼어요.": ["Something went wrong.", "出现了问题。", "問題が発生しました。"],
+} as const;
+export function taskText(task: keyof typeof taskKeys, language: string | undefined): string {
+  const key = taskKeys[task];
+  const index = language === "en" ? 0 : language === "zh" ? 1 : language === "ja" ? 2 : undefined;
+  return index === undefined ? key : taskTranslations[key][index];
+}
 const copy: Readonly<Record<string, readonly [string, string, string]>> = {
+  ...taskTranslations,
+  "다시 연결": ["Reconnect", "重新连接", "再接続"],
+  "다시 멈춤 요청": ["Request Stop again", "再次请求停止", "もう一度停止を要求"],
+  "마이크 설정 열기": ["Open microphone settings", "打开麦克风设置", "マイク設定を開く"],
+  "마이크 설정": ["Microphone settings", "麦克风设置", "マイク設定"],
+  "기기의 개인정보 설정과 브라우저에서 청음의 마이크 사용을 허용한 뒤 마이크 확인을 눌러 주세요.": ["Allow microphone access for Cheongeum in your device privacy settings and browser, then select Check microphone.", "请在设备隐私设置和浏览器中允许青音使用麦克风，然后选择检查麦克风。", "端末のプライバシー設定とブラウザーでマイクを許可し、「マイク確認」を選んでください。"],
+  "글로 입력": ["Type a request", "输入文字", "文字で入力"],
+  "현재 상태 확인": ["Check current status", "查看当前状态", "現在の状態を確認"],
+  "닫기": ["Close", "关闭", "閉じる"],
+  "응답 시간이 초과됐어요.": ["The request timed out.", "请求超时。", "応答がタイムアウトしました。"],
+  "응답 시간이 초과되어 요청 결과를 확인하지 못했어요.": ["The request timed out before its result could be confirmed.", "请求超时，未能确认结果。", "応答がタイムアウトしたため、結果を確認できませんでした。"],
+  "요청을 처리하지 못했어요.": ["Your request could not be completed.", "未能完成请求。", "依頼を処理できませんでした。"],
+  "요청한 작업이 만료됐어요.": ["This request has expired.", "请求已过期。", "依頼の期限が切れました。"],
+  "서버가 멈춤을 확인하지 못했어요. 이 기기에서는 멈췄어요.": ["The server did not confirm Stop. Activity on this device has stopped.", "服务器未确认停止。本机操作已停止。", "サーバーが停止を確認できませんでした。この端末では停止しました。"],
+  "요청 결과를 확인하지 못했어요. 요청을 다시 보내지 않았어요.": ["The result could not be confirmed. Your request was not sent again.", "未能确认结果。没有再次发送请求。", "結果を確認できませんでした。依頼は再送していません。"],
+  "이 사이트에서 이 작업을 할 수 없어요.": ["This action is unavailable on this site.", "无法在此网站执行该操作。", "このサイトではこの操作を実行できません。"],
+  "음성 서비스를 사용할 수 없어요. 글로 입력할 수 있어요.": ["Voice service is unavailable. You can type your request.", "语音服务不可用。您可以输入文字。", "音声サービスを利用できません。文字で入力できます。"],
+  "음성을 알아듣지 못했어요. 다시 말씀해 주세요.": ["I did not understand the audio. Please speak again.", "没有听清，请再说一次。", "音声を聞き取れませんでした。もう一度お話しください。"],
+  "마이크 꺼짐": ["Mic off", "麦克风已关", "マイクオフ"],
+  "마이크 켜짐": ["Mic on", "麦克风已开", "マイクオン"],
+  "마이크 준비 중": ["Preparing the microphone", "正在准备麦克风", "マイクを準備中"],
+  "마이크 일시 정지": ["Microphone paused", "麦克风已暂停", "マイクを一時停止中"],
+  "마이크 연결 오류": ["Microphone connection error", "麦克风连接错误", "マイク接続エラー"],
+  "지금 다른 요청을 처리하고 있어요. 잠시 후 다시 선택해 주세요.": ["A request is in progress. Please choose again in a moment.", "正在处理请求，请稍后再选择。", "リクエストを処理中です。少し待ってからもう一度選んでください。"],
+  "{speed}배": ["{speed}×", "{speed} 倍", "{speed}倍"],
   '이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.': ['No on-device voice is available for this language. Your private reply is on screen.', '此设备没有可用的本地语音，私人回复已显示在屏幕上。', 'この端末で利用できる音声がないため、個人情報を含む案内は画面に表示しました。'],
   '시작 전 안내를 듣고 동의해 주세요.': ['Please review the introduction and choose whether to start.', '请查看使用说明，再选择是否开始。', '開始時の案内を確認し、同意するか選んでください。'],
   '동의하고 음성 대화 시작': ['Agree and start voice chat', '同意并开始语音对话', '同意して音声会話を開始'],
@@ -45,15 +118,10 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '청음을 준비하는 중이에요.': ['Getting ready.', '正在准备。', '準備中です。'],
   '이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요.': ['Session ended. Select me to start again.', '本次使用已结束。点我重新开始。', '利用を終了しました。私を押すと再開できます。'],
   '시작 전에 동의가 필요해요.': ['Waiting for your consent.', '等待您同意。', '同意をお待ちしています。'],
-  '사이트에서 직접 진행해 주세요.': ['Please continue on the website.', '请在网站上继续。', 'サイトで操作を続けてください。'],
-  '선택을 기다리고 있어요.': ['Waiting for your choice.', '等待您选择。', '選択をお待ちしています。'],
-  '처리하는 중이에요.': ['Working on your request.', '正在处理请求。', '処理中です。'],
   '말하는 중이에요.': ['Speaking.', '正在说话。', '話しています。'],
   '듣는 중이에요. 말씀하세요.': ['Listening. Go ahead.', '正在听，请讲。', '聞いています。どうぞ。'],
   '음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.': ['Voice chat is off. Select me to type a question.', '语音对话已关闭。点我输入问题。', '音声会話はオフです。私を押すと文字で質問できます。'],
   '대화 중이에요.': ['Voice chat is on.', '语音对话中。', '音声会話中です。'],
-  '멈췄어요.': ['Stopped.', '已停止。', '停止しました。'],
-  '기다리고 있어요.': ['Ready when you are.', '我在等您。', 'お待ちしています。'],
   '청음': ['Cheongeum', '青音', 'チョンウム'],
   '청음 — 공공서비스 음성 도우미': ['Cheongeum — Public service voice assistant', '青音 — 公共服务语音助手', 'チョンウム — 公共サービス音声アシスタント'],
   '공공서비스 음성 도우미': ['Public service voice assistant', '公共服务语音助手', '公共サービス音声アシスタント'],
@@ -142,7 +210,7 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '다음으로': ['Go to the next step.', '进入下一步。', '次へ進んでください。'],
   '이 항목은 무슨 뜻이야?': ['What does this field mean?', '这个项目是什么意思？', 'この項目はどういう意味ですか？'],
   '화면 설명해줘': ['Describe the current page.', '请描述当前页面。', '現在の画面を説明してください。'],
-  '복지로 열어줘': ['Open Bokjiro.', '请打开韩国福祉路（복지로）。', '韓国の福祉ポータル、ポクチロ（복지로）を開いてください。'],
+  '복지로 열어줘': ['Open Bokjiro.', '请打开韩国福祉路。', '韓国の福祉ポータル、ポクチロを開いてください。'],
   '정부24에서 주민등록등본 발급 방법 찾아줘': ['Find out how to get a resident registration certificate on Government24.', '请在政府24上查找居民登记誊本的办理方法。', '政府24で住民登録謄本の交付方法を調べてください。'],
   '장학재단에서 국가장학금 신청 안내 찾아줘': ['Find the national scholarship application guide at the Korea Student Aid Foundation.', '请在韩国奖学财团查找国家奖学金申请指南。', '韓国奨学財団で国家奨学金の申請案内を探してください。'],
   '장학재단에서 국가장학금 신청 기간 알려줘': ['Find the national scholarship application dates at the Korea Student Aid Foundation.', '请在韩国奖学财团查找国家奖学金的申请时间。', '韓国奨学財団で国家奨学金の申請期間を調べてください。'],
@@ -154,13 +222,32 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '장애인연금 신청할 때 필요한 서류가 뭐야?': ['What documents do I need to apply for a Korean disability pension?', '申请韩国残疾人年金需要哪些材料？', '韓国の障害者年金の申請にはどんな書類が必要ですか？'],
   '지금까지 쓴 내용 읽어줘': ['Read back what I have entered so far.', '请朗读我已经填写的内容。', '入力した内容を読んでください。'],
   '모의 접수 내용을 확인했어': ['I have reviewed my practice application.', '我已核对模拟申请的内容。', '練習用の申請内容を確認しました。'],
+  '새 메시지 보기 ({count})': ['View new messages ({count})', '查看新消息（{count}）', '新しいメッセージを見る（{count}）'],
 };
+
+let supplemental: typeof copy | undefined;
+let loading: Promise<void> | undefined;
+
+/** 선택한 언어가 적용되기 전에 추가 화면 문구를 한 번만 읽는다. */
+export function loadWorkspaceLanguage(lang: string) {
+  if (lang === "ko" || supplemental !== undefined) return Promise.resolve();
+  return loading ??= import("./workspace-extra-text.ts").then(module => { supplemental = module.extraCopy; })
+    .catch((error: unknown) => { loading = undefined; throw error; });
+}
 
 const LANG_INDEX: Readonly<Record<string, 0 | 1 | 2>> = { en: 0, zh: 1, ja: 2 };
 
 /** 한국어 문구를 대화 언어로. 낱말표에 없거나 한국어면 그대로 돌려준다. */
-export function workspaceText(text: string, lang: string | undefined): string {
+export function workspaceText(text: string, lang: string | undefined, values?: Readonly<Record<string, string | number>>): string {
   const index = lang === undefined || !Object.hasOwn(LANG_INDEX, lang) ? undefined : LANG_INDEX[lang];
-  const row = Object.hasOwn(copy, text) ? copy[text] : undefined;
-  return index === undefined || row === undefined ? text : row[index];
+  const row = Object.hasOwn(copy, text) ? copy[text] : supplemental !== undefined && Object.hasOwn(supplemental, text) ? supplemental[text] : undefined;
+  const localized = index === undefined || row === undefined ? text : row[index];
+  return values === undefined ? localized : localized.replace(/\{(\w+)\}/gu, (slot: string, name: string) => String(values[name] ?? slot));
+}
+
+export const LANGUAGE_NAMES = [["ko", "한국어"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"]] as const;
+
+/** 앱의 안내와 구분해 사이트 원문·사용자 입력의 발음 언어를 표시한다. */
+export function sourceLanguage(text: string | undefined) {
+  return text !== undefined && /[가-힣]/u.test(text) ? "ko" : undefined;
 }

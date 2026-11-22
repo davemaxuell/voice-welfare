@@ -1,6 +1,8 @@
 // 아바타 창 E2E: node apps/desktop/test/avatar.e2e.cjs [시나리오 이름…]
 // 실제 Electron 앱을 띄워 아바타 창과 대화 창이 세션 하나를 함께 쓰는지 확인한다(창이 잠깐 화면에 뜬다).
 const assert = require('node:assert/strict');
+const { mkdir, writeFile } = require('node:fs/promises');
+const path = require('node:path');
 const { launch, windows, until } = require('./harness.cjs');
 
 const isController = (w) => w.url.includes('desktop=1');
@@ -19,7 +21,7 @@ async function overlayState(overlay) {
 }
 
 async function logLines(controller) {
-  return controller.locator('#log li').allInnerTexts();
+  return (await controller.locator('#log li').allInnerTexts()).map((line) => line.replace(/^(나|청음|안내):\n+/u, '$1: '));
 }
 
 /** 대화 창에 글로 명령한다(창이 숨어 있어도 같은 입력란). */
@@ -77,6 +79,62 @@ async function recordPoses(overlay) {
 }
 
 const scenarios = {
+  async soak({ app, controller, overlay, errors }) {
+    const dir = path.resolve(__dirname, '../../../reports/ux');
+    await mkdir(dir, { recursive: true });
+    const samples = [];
+    async function sample(cycle, phase) {
+      const processes = await app.evaluate(({ app, BrowserWindow }) => {
+        const roles = new Map([[process.pid, 'main']]);
+        for (const w of BrowserWindow.getAllWindows()) {
+          const url = w.webContents.getURL();
+          if (url.includes('desktop=1')) roles.set(w.webContents.getOSProcessId(), 'conversation');
+          if (url.includes('/avatar/')) roles.set(w.webContents.getOSProcessId(), 'overlay');
+        }
+        return app.getAppMetrics().map(({ pid, type, name, cpu, memory }) => ({
+          pid, role: roles.get(pid) ?? (name === '청음 서비스' ? 'service' : type),
+          cpuPercent: cpu.percentCPUUsage, workingSetKiB: memory.workingSetSize,
+        }));
+      });
+      for (const role of ['main', 'service', 'conversation', 'overlay']) {
+        assert.ok(processes.some(p => p.role === role), `측정할 프로세스가 없습니다: ${role}`);
+      }
+      samples.push({ cycle, phase, time: Date.now(), processes });
+    }
+    // 숨기기 뒤 갱신된 트레이 메뉴에서 실제 '아바타 보이기' 동작을 고른다.
+    await app.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate;
+      Menu.buildFromTemplate = function (template) {
+        const toggle = template.find(item => item.label === '아바타 보이기');
+        if (toggle) globalThis.__soakShow = () => toggle.click({ checked: true });
+        return build.call(this, template);
+      };
+    });
+    await consentByOverlay(overlay);
+    const stop = overlay.getByRole('button', { name: '멈춰' });
+    const talk = overlay.getByRole('button', { name: '말하기' });
+    const visible = async () => (await windows(app)).find(isOverlay).visible;
+    await until(async () => await liveTracks(controller) > 0, { what: '합성 마이크 시작' });
+    await stop.click();
+    await until(async () => await liveTracks(controller) === 0, { what: '초기 마이크 종료' });
+    await sample(0, 'idle');
+    for (let cycle = 1; cycle <= 20; cycle++) {
+      await overlay.getByRole('button', { name: '숨기기' }).click();
+      await until(async () => !await visible(), { what: '아바타 숨김' });
+      await app.evaluate(() => globalThis.__soakShow());
+      await until(visible, { what: '아바타 표시' });
+      await talk.click();
+      await until(async () => await liveTracks(controller) > 0, { what: '합성 마이크 시작' });
+      await sample(cycle, 'talk');
+      await stop.click();
+      await until(async () => await liveTracks(controller) === 0, { what: '마이크 트랙 해제' });
+      await sample(cycle, 'stopped');
+    }
+    assert.deepEqual(errors, []);
+    await writeFile(path.join(dir, 'soak.json'), JSON.stringify(samples, null, 2));
+    await overlay.screenshot({ path: path.join(dir, 'soak.png') });
+    return { cycles: 20, samples: samples.length };
+  },
   // 청음 소개: 줄마다 정한 동작을 차례로 보인다(말하는 동안에도 'speaking'이 아니라 그 동작)
   async intro({ controller, overlay }) {
     await consentByOverlay(overlay);
@@ -213,6 +271,28 @@ const scenarios = {
 
     const blocked = await overlay.evaluate(() => fetch('/api/health').then(() => 'reached', () => 'blocked'));
     assert.equal(blocked, 'blocked', 'overlay cannot call the API');
+    await app.evaluate(({ Tray }) => {
+      const original = Tray.prototype.setToolTip;
+      globalThis.__offlineTips = [];
+      Tray.prototype.setToolTip = function (text) {
+        globalThis.__offlineTips.push(text);
+        return original.call(this, text);
+      };
+    });
+    await controller.route('**/api/**', route => route.abort('internetdisconnected'));
+    const reconnect = overlay.getByRole('button', { name: '다시 연결' });
+    try {
+      await reconnect.waitFor({ timeout: 35000 });
+      assert.equal((await overlayState(overlay)).prompt, '연결이 끊겼어요');
+      await until(() => app.evaluate(() => globalThis.__offlineTips.at(-1)?.includes('연결이 끊겼어요')), { what: '트레이의 연결 끊김 안내' });
+      const dir = path.resolve(__dirname, '../../../reports/ux');
+      await mkdir(dir, { recursive: true });
+      await overlay.screenshot({ path: path.join(dir, 'overlay-offline.png') });
+    } finally { await controller.unroute('**/api/**'); }
+    await reconnect.click();
+    await until(async () => (await overlayState(overlay)).mode !== 'offline', { what: '아바타의 다시 연결' });
+    assert.deepEqual(await logLines(controller), lines, '다시 연결한 뒤 대화 기록을 반복하지 않는다');
+    assert.equal(voice.transcriptions, 1, '다시 연결해도 마이크를 열지 않는다');
     await overlay.getByRole('button', { name: '숨기기' }).click();
     await until(async () => !(await windows(app)).find(isOverlay).visible, { what: 'hide removes the avatar' });
     assert.equal((await windows(app)).find(isController).visible, false, 'hide leaves the session in place');
@@ -312,6 +392,8 @@ const scenarios = {
     assert.match(handoff.prompt, /에서 직접 로그인해 주세요\.$/);
     assert.deepEqual(handoff.choices.map((c) => c.label), ['로그인했어요', '인증 취소']);
     assert.equal(handoff.mic, '마이크 꺼짐');
+    assert.equal(await controller.locator('#capture-label').innerText(), handoff.mic);
+    assert.equal(await controller.locator('#task-label').innerText(), '사이트에서 직접 진행해 주세요.');
     assert.equal(await liveTracks(controller), 0, `mic tracks released at the handoff (${await trackReport(controller)})`);
     assert.equal((await windows(app)).find(isController).visible, false, 'conversation stays collapsed');
 
@@ -327,7 +409,8 @@ const scenarios = {
     }, { what: 'new card after an unchanged gate' });
     const waiting = await server(`/api/session/${sid}/state`);
     assert.equal(waiting.state, 'AUTH_HANDOFF', 'unchanged login page keeps waiting');
-    assert.ok((await logLines(controller)).some((l) => l.startsWith('나: 로그인했어요')), 'the choice is in the transcript as said');
+    const userChoice = controller.locator('#log li.user').filter({ hasText: /^나:\s+로그인했어요$/u });
+    assert.equal(await userChoice.count(), 1, '선택한 사용자의 말이 기록에 한 번 표시된다');
 
     const choicesBefore = requests.filter((r) => r.path.endsWith('/choice')).length;
     await overlay.evaluate((id) => window.cheongeumOverlay.choose(id, 'auth-done'), firstSet);
@@ -471,6 +554,7 @@ const scenarios = {
 };
 
 const OPTIONS = {
+  soak: { mic: { burstAt: null } },
   approvals: { mic: { burstAt: null } },
   'login-handoff': { mic: { burstAt: null } },
   motion: { mic: { burstAt: null } },

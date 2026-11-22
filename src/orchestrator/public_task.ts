@@ -226,6 +226,9 @@ viewing. For a follow-up, carry over the requested search mode unless the user c
 for clarification, preserve any explicit search-mode preference in goal. A reviewed lookup follows
 these same search-mode rules.
 
+If a lookup has multiple targets, list each independently verifiable requested outcome in requirements,
+even when all targets need the same kind of fact. Choose review_before_output for that lookup.
+If using find_information, keep any independently verifiable outcomes in requirements too.
 For a lookup about a named service, benefit or document, put its Korean name in subject. Write a concise, self-contained
 Korean goal with all requested facts, the intended action or answer, and relevant conditions, applicant
 group, place, and period. Preserve comparisons, corrections and negation. Resolve explicit relative dates
@@ -263,7 +266,7 @@ or hard). For information retrieval set source, searchMode and requestedFacts as
 For a sequence that actually interacts with controls or fills fields use null source and null searchMode,
 even when it ends with an information question. Keep the distinction between asking how to act and asking
 the app to act. The session executes the allowed work then reviews its evidence before replying.
-Use null requirements and difficulty for other kinds.
+Use null difficulty for other kinds. Use null requirements when the kind does not use them.
 
 Keep private details, credentials and saved personal notes out of outputs. Do not guess personal
 information, put URLs in outputs, invent facts, or claim any work was done. Set question only for clarify, skill
@@ -347,12 +350,11 @@ export function parseDecision(raw: unknown, spansFor: SpansFor = () => []): Publ
   if (d.kind === "find_information" && (d.goal === undefined || d.goal === "" || d.source === undefined || d.requestedFacts.length === 0)) return undefined;
   const publicArrival = d.kind === "review_before_output" && d.source === "browser" && d.searchMode === "visible" && d.outcome === "arrival";
   if (d.kind === "inspect_personal" ? (d.source !== undefined || d.searchMode !== undefined) : d.outcome !== undefined && !publicArrival) return undefined;
+  if (d.requirements?.some(item => strip(item) === "" || codePoints(item) > 8000) === true ||
+      (d.requirements?.length ?? 0) > 32) return undefined;
   if (d.kind === "review_before_output" || d.kind === "inspect_personal") {
-    if (d.goal === undefined || d.goal === "" || d.requirements === undefined || d.requirements.length === 0 || d.requirements.length > 32
-      || (d.source !== undefined && d.requestedFacts.length === 0 && !publicArrival)) {
-      return undefined;
-    }
-    if (d.requirements.some(item => strip(item) === "" || codePoints(item) > 8000)) return undefined;
+    if (d.goal === undefined || d.goal === "" || (d.requirements?.length ?? 0) === 0 ||
+        (d.source !== undefined && d.requestedFacts.length === 0 && !publicArrival)) return undefined;
   }
   return d;
 }
@@ -423,7 +425,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
       return {...decision, command: {...decision.command, target: urls[0]}};
     }
   }
-  if ((decision?.kind === "review_before_output" || decision?.kind === "inspect_personal") &&
+  if ((decision?.kind === "review_before_output" || decision?.kind === "inspect_personal" || decision?.kind === "find_information") &&
       (decision.requirements ?? []).some(item => !destination.text.includes(item))) {
     // A paraphrased planner output does not authorize another action. Keep the original objective for review.
     return { ...decision, requirements: [destination.text] };

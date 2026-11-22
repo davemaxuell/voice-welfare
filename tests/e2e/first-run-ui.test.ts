@@ -43,6 +43,7 @@ beforeEach(async () => {
   });
   await page.route("**/setup-audio/*/*.mp3", route => route.fulfill({ contentType: "audio/wav", body: silence }));
   await page.goto(ui.url);
+  await page.getByRole("button", { name: "복구 없이 시작", exact: true }).click();
   await page.getByRole("button", { name: "안내 듣고 시작하기 (Enter)" }).click();
   await page.getByRole("button", { name: "동의하고 시작 (Enter)" }).click();
   await screen(page.locator("#consent-panel")).toBeHidden();
