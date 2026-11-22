@@ -94,11 +94,14 @@ export interface WebAdapter {
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
   controlWindow?(text?: string, offset?: number, options?: {
-    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean; semanticOnly?: boolean;
   }): Promise<ControlWindow>;
   /** 이 조작 중에 취소하거나 받아 준 사이트의 confirm() 창(한 번만 가져간다). */
   takeNative?(actionId: string): NativeSeen | undefined;
   peekNative?(actionId: string): NativeSeen | undefined;
+  frameOrigins?(ref: string): readonly string[] | undefined;
+  hasOpaqueContent?(): Promise<boolean>;
+  findByMeaning?(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal): Promise<ControlWindow["items"][number] | undefined>;
   /** 대신 답할 수 있는 confirm() 기록을 모두 버린다. */
   dropNative?(): void;
   inspectionSearch?(fieldId: string): Promise<{ url: string; destination: string; parameter: string; signature: string } | undefined>;
@@ -259,7 +262,9 @@ export class WebExecutionAgent {
       const exact = pool.filter(item => normalizeTerm(item.name) === term);
       const matches = exact.length > 0 ? exact : pool.filter(item => [...term].length >= 2 && normalizeTerm(item.name).includes(term));
       const hits = [...new Set(matches.map(item => item.name))];
-      if (hits.length > 0) return { item: hits.length === 1 ? matches[0] : undefined, hits };
+      const same = hits.length === 1 ? all.filter(i => i.name === hits[0] && (!linksOnly || i.role === "link")) : [];
+      const repeatedFrameName = same.length > 1 && same.some(i => /^(?:f-|s\d+-)/u.test(i.ref));
+      if (hits.length > 0) return { item: hits.length === 1 && !repeatedFrameName ? matches[0] : undefined, hits };
     }
     return { item: undefined, hits: [] };
   }
@@ -288,7 +293,7 @@ export class WebExecutionAgent {
     }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
     if (matchedControl !== undefined) {
-      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref });
+      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref, semanticOnly:matchedControl.requireUnmasked });
       const requireUnmasked = visual || matchedControl.requireUnmasked === true;
       item = fresh?.items.find(it => !it.disabled && (!requireUnmasked || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
         it.context === matchedControl.context);
@@ -311,11 +316,20 @@ export class WebExecutionAgent {
         if (window.url === view.url && candidates.length === 1 && !window.more) item = candidates[0];
         if (picker && candidates.length === 0 && !window.more && window.url === view.url && !visual &&
           !ctx.publicLookup && this.guard.config.publicLookupOnly !== true && ctx.browsingScope === undefined && !ctx.isStopped()) {
-          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal);
+          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal) ??
+            await this.adapter.findByMeaning?.(name, linksOnly, view.url, picker, ctx.signal);
           if (picked) return this.followLink(picked.name, ctx, linksOnly, { matchedControl: { ...picked, url: view.url, requireUnmasked: true } });
         }
       }
-      if (item === undefined) return this.notLocated(view, name, located.hits);
+      if (item === undefined) {
+        if (located.hits.length === 1) return {status:"needs-clarification", actions:log, view,
+          message:"여러 영역에 같은 이름의 항목이 있어요. 화면에서 원하는 항목을 직접 선택해 주세요."};
+        if (located.hits.length === 0 && await this.adapter.hasOpaqueContent?.() === true) return {
+          status:"needs-clarification", actions:log, view,
+          message:"읽을 수 없는 영역이 있어요. 다른 항목 이름을 말씀하시거나 화면에서 직접 선택해 주세요.",
+        };
+        return this.notLocated(view, name, located.hits);
+      }
     }
     if (plan) {
       const target = plan.action.target;
@@ -690,6 +704,7 @@ export class WebExecutionAgent {
       ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
       : this.guard.check(action, {
         ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
+        frameOrigins: action.target?.ref === undefined ? undefined : this.adapter.frameOrigins?.(action.target.ref),
         notice: grants?.notice, native: grants?.native, plan: grants?.plan,
       }));
     if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {

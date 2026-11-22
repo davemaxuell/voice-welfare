@@ -5,7 +5,10 @@ import { strip } from "../../../core/text.ts";
 import type { InspectionBinding } from "../../../safety/guard.ts";
 import { AdapterError, call, cssEscape, observeWith, playwrightElement, playwrightTarget, type PageDriver } from "./driver.ts";
 import { observePage } from "./observe.ts";
-import { stagehandTab } from "./stagehand_browser.ts";
+import { observedSelectors, stagehandTab } from "./stagehand_browser.ts";
+import { framesOf } from "./frame_controls.ts";
+import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
+import type { SemanticObservation } from "./semantic_observation.ts";
 
 export interface ClickEvidence { grants?: ExecuteGrants; inspection?: InspectionBinding }
 
@@ -79,8 +82,24 @@ function installClickCheck(observe: typeof observePage, expected: ActionTarget, 
 export function stagehandDriver(page: Page, timeout: number): PageDriver {
   const selected = () => stagehandTab(page);
   const run = async <T>(script: string) => (await selected()).tab.evaluate<T>(script);
+  const observation = observeWith(run, page);
   return {
-    ...observeWith(run),
+    ...observation,
+    async findByMeaning(term, linksOnly, url, picker, signal) {
+      try {
+        const before = await call(signal, () => observation.controlWindow({limit:600, semanticOnly:true}));
+        if (before.url !== url || page.url() !== url) return undefined;
+        const semantic: SemanticObservation = {term, picker, controls:before.items.filter(i => !linksOnly || i.role === "link")};
+        const paths = await observedSelectors(page, term, picker.model, signal, semantic);
+        const original = semantic.selected;
+        if (original === undefined || paths.length !== 1 || page.url() !== url ||
+            await framesOf(page).path(original.ref) !== paths[0]) return undefined;
+        const fresh = await call(signal, () => observation.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true}));
+        const [item] = fresh.items;
+        return fresh.url === url && !fresh.more && fresh.items.length === 1 && item?.ref === original.ref && item.role === original.role &&
+          item.name === original.name && item.context === original.context && !item.disabled && item.pictureMasked !== true ? item : undefined;
+      } catch { signal.throwIfAborted(); return undefined; }
+    },
     scroll: signal => call(signal, async () => {
       const { tab } = await selected();
       signal.throwIfAborted();
@@ -99,6 +118,12 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
     },
     async resolve(target, signal) {
       const { tab } = await call(signal, selected);
+      if (target.ref !== undefined && isEmbeddedRef(target.ref)) {
+        const host = playwrightElement(await playwrightTarget(page, target, signal), signal, timeout);
+        const path = await framesOf(page).path(target.ref);
+        if (path === undefined || await call(signal, () => tab.locator(path).count({timeout})) !== 1) throw new AdapterError("VERIFY_FAILED");
+        return embeddedElement(page, target, signal, timeout, host);
+      }
       const hostLocator = target.ref === undefined ? await playwrightTarget(page, target, signal)
         : page.locator('[data-cheongeum-ref="' + cssEscape(target.ref) + '"]').filter({ visible: true });
       const host = playwrightElement(hostLocator, signal, timeout);

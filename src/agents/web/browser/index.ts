@@ -25,6 +25,9 @@ import { fullPageLayout } from "./full_page.ts";
 import { AdapterError, call, optional, playwrightDriver, type ControlWindow, type PageDriver, type ResolvedElement } from "./driver.ts";
 import { attachStagehand, browserDriver, stagehandLaunchOptions, type BrowserDriver } from "./stagehand_browser.ts";
 import { stagehandDriver } from "./stagehand_driver.ts";
+import { framesOf } from "./frame_controls.ts";
+import { isEmbeddedRef } from "./embedded_element.ts";
+import type { ControlPicker } from "../control_picker.ts";
 import { restingCursor } from "./rest_cursor.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
@@ -575,6 +578,14 @@ export class PlaywrightExecutionAdapter {
     return driver;
   }
 
+  frameOrigins(ref: string) { return framesOf(this.#requirePage()).origins(ref); }
+  hasOpaqueContent() { return framesOf(this.#requirePage()).hasOpaqueContent(); }
+  async findByMeaning(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal) {
+    const page = this.#requirePage();
+    const result = await this.#driver(page).findByMeaning?.(name, linksOnly, url, picker, signal);
+    return this.page === page && page.url() === url ? result : undefined;
+  }
+
   async bringToFront(signal = new AbortController().signal): Promise<void> {
     await this.start();
     const page = this.page;
@@ -892,7 +903,7 @@ export class PlaywrightExecutionAdapter {
     const driver = this.#driver(page);
     if (await driver.hasVisibleLink(name, signal)) return false;
     const window = await this.controlWindow(name, 0, { exact: true });
-    const links = window.items.filter(item => item.role === "link");
+    const links = window.items.filter(item => item.role === "link" && !isEmbeddedRef(item.ref));
     if (links.length > 1 || window.more) throw new AdapterError("AMBIGUOUS_TARGET");
     const [link] = links;
     if (link !== undefined) {
@@ -962,15 +973,15 @@ export class PlaywrightExecutionAdapter {
   }
 
   /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
-  async controlWindow(text = "", offset = 0, { ref, refs, exact = false, inspection, destination, notice }: {
-    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
+  async controlWindow(text = "", offset = 0, { ref, refs, exact = false, inspection, destination, notice, semanticOnly }: {
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean; semanticOnly?: boolean;
   } = {}): Promise<ControlWindow> {
     const page = this.#requirePage();
     const load = this.#loads.get(page);
     const document = load?.docSeq;
     // notice: ref로 찾은 단추가 팝업 안에 있으면 그 팝업의 사실을 새로 읽어 함께 돌려준다(ref가 있을 때만).
     const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? refs?.length ?? 24 : 1,
-      ref: ref ?? null, refs, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
+      ref: ref ?? null, refs, exact, inspection, destination, semanticOnly, notice: ref === undefined ? undefined : notice };
     const window = await this.#driver(page).controlWindow(query);
     // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
     for (const item of window.items) {

@@ -4,6 +4,9 @@ import type { InspectionControl } from "../../../safety/guard.ts";
 export interface ControlQuery {
   text?: string; offset?: number; limit?: number; ref?: string | null; refs?: readonly string[]; exact?: boolean;
   inspection?: boolean; destination?: string; searchField?: string;
+  /** 안쪽 문서에서는 확인할 수 있는 조작 이름과 상태만 읽는다. */
+  embedded?: boolean;
+  semanticOnly?: boolean;
   /** ref로 찾은 항목이 팝업 안에 있으면 그 팝업의 사실(notice)을 새로 읽어 함께 돌려준다. */
   notice?: boolean;
 }
@@ -47,13 +50,14 @@ export function observePage(query: ControlQuery | null = null) {
   const refOf = (el: RefElement, context?: string) => {
     const previous = refs.get(el);
     const href = el instanceof HTMLAnchorElement ? el.href : null;
-    if (previous && previous.href === href && el.dataset.cheongeumRef === previous.ref
+    const prefix = el.getRootNode() instanceof ShadowRoot ? 's' : 'r';
+    if (previous && previous.ref.startsWith(prefix) && previous.href === href && el.dataset.cheongeumRef === previous.ref
       && (context === undefined || previous.context === undefined || previous.context === context)) {
       if (context !== undefined) previous.context = context;
       return previous.ref;
     }
     window.__cheongeumRefSeq = (window.__cheongeumRefSeq ?? 0) + 1;
-    const ref = 'r' + window.__cheongeumRefSeq + '-' + Math.random().toString(36).slice(2, 6);
+    const ref = prefix + window.__cheongeumRefSeq + '-' + Math.random().toString(36).slice(2, 6);
     el.dataset.cheongeumRef = ref;
     refs.set(el, { ref, href, context });
     return ref;
@@ -75,6 +79,9 @@ export function observePage(query: ControlQuery | null = null) {
     return { url: location.href, destination: form.action, parameter: el.name,
       signature: JSON.stringify([refOf(el), refOf(form), el.type, el.name, form.action, form.method]) };
   }
+  if (query?.semanticOnly === true && Array.from(document.querySelectorAll(
+    'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"]',
+  )).some(isVisible)) return {url:location.href, items:[], more:false};
   const controls = query ? [] : Array.from(document.querySelectorAll<Control>('input, select, textarea'))
     .filter((c) => c.type !== 'hidden' && c.type !== 'submit' && c.type !== 'button' && c.type !== 'image' && c.type !== 'reset')
     .filter((c) => c.id.length > 0 || isVisible(c))
@@ -424,15 +431,25 @@ export function observePage(query: ControlQuery | null = null) {
   let matching = 0;
   const needle = (query?.text ?? '').trim().toLocaleLowerCase().replace(/\s+/g, '');
   const requestedRefs = query?.ref !== undefined && query.ref !== null && query.ref.length > 0 ? [query.ref] : query?.refs;
-  const candidates = requestedRefs === undefined ? (body ? body.getElementsByTagName('*') : [])
-    : requestedRefs.length === 0 ? [] : document.querySelectorAll(requestedRefs.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(','));
+  const selector = requestedRefs?.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(',');
+  const privateArea = pictureMask + ', [inert], [aria-hidden="true"], [hidden], [role="textbox"], [role="combobox"], [role="searchbox"], form:has(input[type="password"], input[autocomplete="one-time-code"])';
+  function* openElements(root: Element | ShadowRoot): Generator<Element> {
+    for (const el of root.querySelectorAll('*')) {
+      if (selector === undefined || el.matches(selector)) yield el;
+      if (el.shadowRoot !== null && !el.closest(privateArea) && isVisible(el)) yield* openElements(el.shadowRoot);
+    }
+  }
+  const candidates = selector === '' ? [] : selector !== undefined && !requestedRefs!.some(ref => ref.startsWith('s'))
+    ? document.querySelectorAll(selector) : body ? openElements(body) : [];
   for (const el of candidates) {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
+    const embedded = query?.embedded === true || el.getRootNode() instanceof ShadowRoot;
+    if ((embedded || query?.semanticOnly === true) && (el.closest(privateArea) || el.querySelector(privateArea))) continue;
     const standard = el.matches(CANDIDATE);
     if (standard) {
       if (el.classList.contains('skip-link')) continue;
     } else {
-      if (generics >= 20 || !pointerRoot(el)) continue;
+      if (embedded || generics >= 20 || !pointerRoot(el)) continue;
       if (el.closest(INTERACTIVE) || el.querySelector(INTERACTIVE)) continue;
       const t = text(el);
       if (t.length < 2 || t.length > 60) continue;
@@ -448,7 +465,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (query) {
       if (disabled(el) || el.getAttribute('aria-disabled') === 'true') continue;
       // 같은 '자세히 보기' 링크를 어느 제도·표 행에 속하는지로 구분한다. 입력값은 읽지 않는다.
-      const row = el.closest('li, tr, article, [role="row"], [role="listitem"]');
+      const row = embedded ? null : el.closest('li, tr, article, [role="row"], [role="listitem"]');
       if (row && !row.closest(pictureMask)) {
         const label = row.querySelector('h1, h2, h3, h4, th, [role="heading"]');
         const detail = first(accessibleText(label), row.querySelectorAll(CANDIDATE).length < 5 ? accessibleText(row) : '');
@@ -465,7 +482,7 @@ export function observePage(query: ControlQuery | null = null) {
     const item: Item = { ref: refOf(el, query ? context : undefined), role, name, region: regionOf(el), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' };
     if (context.length > 0 && context !== name) item.context = context;
     if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
-    if (query?.inspection === true) {
+    if (!embedded && query?.inspection === true) {
       item.inspection = inspect(el, context);
       // 입력·양식 제출·선택값을 바꾸는 요소는 여러 단계를 묶는 승인에서 제외한다.
       const input = 'label, ' + ARIA_FIELDS;
@@ -477,7 +494,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (role === 'link' && isSearchResult(el)) item.searchResult = true;
     const popup = popups.length > 0 ? dialogOf(el) : -1;
     if (popup >= 0) item.dialog = popup;
-    if (query?.notice === true && popup >= 0) item.notice = noticeOf(popups[popup]!, el, item.ref);
+    if (!embedded && query?.notice === true && popup >= 0) item.notice = noticeOf(popups[popup]!, el, item.ref);
     const sel = el.getAttribute('aria-selected');
     const cur = el.getAttribute('aria-current');
     if (sel !== null) item.selected = sel === 'true';
@@ -523,6 +540,16 @@ export function observePage(query: ControlQuery | null = null) {
     landmarks,
     items,
   };
+  for (const item of items.filter(item => item.ref.startsWith('s'))) {
+    if (item.role === 'link' || item.role === 'scriptlink') {
+      result.outline.linkCount!++;
+      if (result.outline.links.length < 300) result.outline.links.push(item.name);
+      const names = item.region === 'menu' ? result.outline.menuLinks! : result.outline.mainLinks!;
+      if (names.length < (item.region === 'menu' ? 40 : 80)) names.push(item.name);
+    } else if (item.role === 'button' && result.outline.buttons.length < 80) {
+      result.outline.buttons.push({name:item.name, disabled:item.disabled});
+    }
+  }
   const status = Array.from(document.querySelectorAll('[role="status"]')).filter(isVisible).map(text).filter(Boolean).join(' ').slice(0, 300);
   if (status.length > 0) result.status = status;
   return result;
