@@ -8,7 +8,7 @@ import "./overlay.css";
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
   micDiagnostic: z.string().optional(), contrast: z.boolean().optional(),
-  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
+  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(), reconnectLabel: z.string().optional(),
   mode: z.string().optional(), capture: z.string().default("off"), captureLabel: z.string().optional(), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
   state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(), task: z.string().optional(), taskLabel: z.string().optional(),
@@ -193,7 +193,7 @@ async function setupFigure() {
 function accept(raw: unknown): Snap | null {
   const parsed = SnapshotSchema.safeParse(raw);
   const next = parsed.success ? parsed.data : undefined;
-  if (next === undefined || next.connected === false) {
+  if (next === undefined || (next.connected === false && next.reconnectLabel === undefined)) {
     order = { instance: undefined, revision: -1 };
     return OFFLINE;
   }
@@ -229,7 +229,7 @@ function render() {
   setText($("mic-text"), micLabel);
   setText($("mic-short"), snap.capture === "on" ? copy.on : snap.capture === "off" ? copy.off : micLabel);
   $("mic").title = micLabel;
-  const status = live ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
+  const status = live || snap.reconnectLabel !== undefined ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
   // 동의는 카드의 '동의하고 음성 대화 시작'으로만(말하기 버튼이 동의가 되지 않게)
   button("talk").disabled = !live || ["ended", "starting", "consent", "auth-handoff"].includes(snap.mode ?? "");
   $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture !== "off");
@@ -356,8 +356,8 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
   if (choices.length > 0) {
     if (message != null) seenMessages.add(message.id);
     showBubble("choices", JSON.stringify([snap.instance, snap.choiceSetId, lang]), snap.prompt ?? "");
-    if (snap.taskLabel !== undefined) {
-      let label = document.getElementById("card-task");
+    let label = document.getElementById("card-task");
+    if (snap.taskLabel !== undefined && snap.reconnectLabel === undefined) {
       if (label === null) {
         label = document.createElement("p");
         label.id = "card-task";
@@ -366,7 +366,7 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
       }
       label.hidden = false;
       setText(label, snap.taskLabel);
-    }
+    } else if (label !== null) label.hidden = true;
     if (shownSet !== snap.choiceSetId) {
       shownSet = snap.choiceSetId;
       const setId = snap.choiceSetId ?? "";
@@ -416,6 +416,7 @@ function choiceButton(choiceSetId: string, choice: z.infer<typeof ChoiceSchema>)
   if (choice.open !== undefined) b.dataset.open = choice.open;
   b.addEventListener("click", () => {
     if ($("card").inert || !b.isConnected || b.disabled || shownSet !== choiceSetId) return;
+    if (choice.key === "reconnect" && snap.reconnectLabel !== undefined) { bridge.talk(); return; }
     if (choice.open !== undefined) { bridge.open(choice.open); return; }
     bridge.choose(choiceSetId, choice.key);
     bridge.release();

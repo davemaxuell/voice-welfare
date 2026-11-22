@@ -21,7 +21,7 @@ async function overlayState(overlay) {
 }
 
 async function logLines(controller) {
-  return controller.locator('#log li').allInnerTexts();
+  return (await controller.locator('#log li').allInnerTexts()).map((line) => line.replace(/^(나|청음|안내):\n+/u, '$1: '));
 }
 
 /** 대화 창에 글로 명령한다(창이 숨어 있어도 같은 입력란). */
@@ -271,6 +271,28 @@ const scenarios = {
 
     const blocked = await overlay.evaluate(() => fetch('/api/health').then(() => 'reached', () => 'blocked'));
     assert.equal(blocked, 'blocked', 'overlay cannot call the API');
+    await app.evaluate(({ Tray }) => {
+      const original = Tray.prototype.setToolTip;
+      globalThis.__offlineTips = [];
+      Tray.prototype.setToolTip = function (text) {
+        globalThis.__offlineTips.push(text);
+        return original.call(this, text);
+      };
+    });
+    await controller.route('**/api/**', route => route.abort('internetdisconnected'));
+    const reconnect = overlay.getByRole('button', { name: '다시 연결' });
+    try {
+      await reconnect.waitFor({ timeout: 35000 });
+      assert.equal((await overlayState(overlay)).prompt, '연결이 끊겼어요');
+      await until(() => app.evaluate(() => globalThis.__offlineTips.at(-1)?.includes('연결이 끊겼어요')), { what: '트레이의 연결 끊김 안내' });
+      const dir = path.resolve(__dirname, '../../../reports/ux');
+      await mkdir(dir, { recursive: true });
+      await overlay.screenshot({ path: path.join(dir, 'overlay-offline.png') });
+    } finally { await controller.unroute('**/api/**'); }
+    await reconnect.click();
+    await until(async () => (await overlayState(overlay)).mode !== 'offline', { what: '아바타의 다시 연결' });
+    assert.deepEqual(await logLines(controller), lines, '다시 연결한 뒤 대화 기록을 반복하지 않는다');
+    assert.equal(voice.transcriptions, 1, '다시 연결해도 마이크를 열지 않는다');
     await overlay.getByRole('button', { name: '숨기기' }).click();
     await until(async () => !(await windows(app)).find(isOverlay).visible, { what: 'hide removes the avatar' });
     assert.equal((await windows(app)).find(isController).visible, false, 'hide leaves the session in place');
