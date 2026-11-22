@@ -92,6 +92,7 @@ export interface OrchestratorDeps {
   readResearch?: (lang: Lang) => Promise<Draft | undefined>;
   /** 개인 정보 금고·신청 기록 저장소(없으면 이번 대화 메모리에만) */
   personal?: PersonalStore;
+  routeDevice?: () => boolean;
   /** 암호화된 조작 기록(없으면 '오늘 한 일'은 비어 있다고 답함) */
   actionLog?: ActionLog;
   /** 보호자 문자 보내는 길. 주지 않으면 미리 보기만 하고, null이면 보내는 길이 없다. */
@@ -246,6 +247,8 @@ export class SessionOrchestrator {
     this.browse = new BrowseSkill({
       web: deps.web, dialogue: this.dialogue, narrator: this.narrator, form: this.form, deps, progress: this.progress,
       replyLanguage: () => this.lang,
+      routeStore: () => deps.personal?.canRememberRoutes === true && deps.routeDevice?.() === true ? deps.personal : undefined,
+      routePrivateValues: () => this.privateValuesForRedaction(),
       officialText: url => deps.welfare.readableService(url),
       applicationGuideUrl: name => deps.welfare.applicationGuideUrl(name, region()),
       resolveGuideTarget: (question, { subject, siteUrl } = {}) => deps.welfare.resolveGuideTarget(question, { subject, siteUrl, ...region() }),

@@ -39,6 +39,9 @@ import { groundedScreenAnswer, sameScreen, screenContext, screenDecision, screen
 import { NOT_READY, stillBuilding } from "../effect.ts";
 import { nativeSpeech, noticeSpeech, questionSpeech, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "../notice.ts";
 import type { DownloadStore } from "../downloads.ts";
+import { routeGoalKey, routePage, routeMetadataSafe } from "../../../safety/route_metadata.ts";
+import { RouteLearning, type RouteStore } from "../goal_route.ts";
+import { replayGoal } from "./remembered_goal.ts";
 import { KnownPlans } from "./known_plan.ts";
 import { askAgain, blockedSpeech, browseState, isFormOpen, notOpen, outcomeFailure, pressResult } from "./common.ts";
 
@@ -120,11 +123,14 @@ interface GoalOptions {
   checkpoint?: BrowseCheckpoint;
   visualControl?: string;
   maxSteps?: number;
+  remainingRouteMs?: number;
   continuePage?: boolean;
   exclusions?: readonly string[];
   requestedSteps?: readonly string[];
 }
 interface Options {
+  routeStore?: () => RouteStore | undefined;
+  routePrivateValues?: () => readonly string[];
   applicationGuideUrl?(name: string): Promise<string | undefined>;
   resolveGuideTarget?(question: string, options?: {subject?: string; siteUrl?: string}): Promise<{url?: string; kind?: string; links?: GuideLinks} | undefined>;
   planningContext?(goal: string, siteUrl?: string): object;
@@ -151,6 +157,10 @@ export class BrowseSkill {
   readonly form: BrowseForm;
   readonly deps: BrowseDeps;
   readonly progress: Progress;
+  readonly #routeStore: Options["routeStore"];
+  readonly #routePrivateValues: Options["routePrivateValues"];
+  readonly #learning = new WeakMap<GoalContinuation, RouteLearning>();
+  readonly #routeApprovals = new WeakMap<Action, {before: PageView; learning: RouteLearning}>();
   readonly #officialText: Options["officialText"];
   guidedResume?: (view: PageView) => string;
   #readingText?: {url: string; text: string; official?: string};
@@ -169,7 +179,9 @@ export class BrowseSkill {
   readonly #resolveSiteLink: Options["resolveSiteLink"];
   readonly #replyLanguage: NonNullable<Options["replyLanguage"]>;
 
-  constructor({web, dialogue, narrator, form, deps, progress, officialText, resolveSiteLink, applicationGuideUrl, resolveGuideTarget, planningContext, replyLanguage = () => "ko"}: Options) {
+  constructor({web, dialogue, narrator, form, deps, progress, routeStore, routePrivateValues, officialText, resolveSiteLink, applicationGuideUrl, resolveGuideTarget, planningContext, replyLanguage = () => "ko"}: Options) {
+    this.#routeStore = routeStore;
+    this.#routePrivateValues = routePrivateValues;
     this.web = web;
     this.dialogue = dialogue;
     this.narrator = narrator;
@@ -390,11 +402,17 @@ export class BrowseSkill {
   async clickApproved(approval: ClickApproval, ctx: ExecContext): Promise<Draft> {
     // native가 있으면 사이트가 물었던 confirm() 질문에 사용자가 '진행'이라고 답한 것이다: 같은 조작을 한 번 되풀이하고 그 질문에만 답한다.
     const grants = approval.native === undefined ? undefined : {native: approval.native};
+    // 대기 중인 원본으로 학습 후보를 찾되, 실행에는 지문을 다시 확인한 사본만 쓴다.
+    const asked = this.dialogue.approval;
+    const original = asked?.kind === "click" && asked.action.id === approval.action.id ? asked.action : undefined;
+    const pending = original && this.#routeApprovals.get(original);
+    if (original) this.#routeApprovals.delete(original);
     const out = await this.web.withInspection(ctx, () => this.web.clickApproved(approval.action, ctx, grants));
+    if (pending) pending.learning.click(pending.before, out);
     return this.finishApprovedClick(out, approval, ctx);
   }
 
-  async finishApprovedClick(out: WebOutcome, approval: Pick<ClickApproval, "native" | "action" | "url" | "then">, ctx: ExecContext): Promise<Draft> {
+  async finishApprovedClick(out: WebOutcome, approval: Pick<ClickApproval, "native" | "action" | "url" | "then">, ctx: ExecContext, quiet = false): Promise<Draft> {
     if (out.status === "needs-approval" && out.native !== undefined && out.pending) {
       // 되풀이하는 중에 사이트가 또 물었다. 이전 승인은 이미 한 번 썼으니 새 질문으로만 이어 간다.
       this.dialogue.clearApproval();
@@ -425,6 +443,10 @@ export class BrowseSkill {
         next = await this.#loginPageGuide(out.view, out.actions, ctx, approval.url);
       } else next = {...await this.authDone(ctx), actions: out.actions};
       return {...next, speech: strip(`${noticeSpeech(out.notices ?? [])} ${next.speech}`)};
+    }
+    if (quiet) {
+      this.afterNavigation(out.view);
+      return draft(browseState(out.view), "confirm-click", noticeSpeech(out.notices ?? []), {view: out.view, actions: out.actions});
     }
     const pressed = josa(out.readValue ?? "", "을", "를");
     const speech = await this.#pressSpeech(out, out.view, ctx, pressed, `'${out.readValue}' 버튼을 눌렀어요.`);
@@ -934,6 +956,28 @@ export class BrowseSkill {
     const currentPage = this.web.currentView;
     const blockedPublicPage = publicTask !== undefined && ctx.publicLookup && !personal && continuePage === true &&
       currentPage !== undefined && (stillNeedsAuth(currentPage) || accessBlocked(currentPage));
+    const continuation = options.continuation;
+    const store = !personal && !publicTask && !ctx.publicLookup && this.web.guard.config.publicLookupOnly !== true &&
+      exclusions.length === 0 && (options.privateValues?.length ?? 0) === 0 && continuation && !continuation.publicLookup ? this.#routeStore?.() : undefined;
+    let learning = continuation && store ? this.#learning.get(continuation) : undefined;
+    if (store && continuation && !learning && !checkpoint) {
+      const values = this.#routePrivateValues?.() ?? [];
+      const request = continuation.request;
+      const [requestSpans, goalSpans] = await this.deps.scanner?.scan([request, goal]) ?? [];
+      const key = routeGoalKey(request, values, requestSpans);
+      const goalKey = routeGoalKey(goal, values, goalSpans);
+      if (key !== undefined && goalKey !== undefined) {
+        learning = new RouteLearning(key, values);
+        this.#learning.set(continuation, learning);
+        const entry = startUrl ?? siteUrl;
+        const page = entry ?? (await this.web.observe(ctx)).url;
+        const origin = routePage(page, values);
+        const route = origin === undefined ? undefined : store.rememberedRoute(new URL(origin).origin, learning.goalKey);
+        if (route) return replayGoal(this, {ctx, goal, route, entry, continuation, learning, journey, maxSteps: maxSteps ?? 10,
+          deviceAllowed: () => this.#routeStore?.() === store,
+          resume: (live, remaining, remainingRouteMs) => this.runGoal(goal, live, {...options, continuePage: true, maxSteps: remaining, remainingRouteMs})});
+      }
+    }
     if (!model) {
       // 현재 탭에서 할 일은 계획 모델이 없어도 실제로 읽은 항목을 번호로 고를 수 있다.
       if (!personal && !publicTask && !ctx.publicLookup && (continuePage === true || (!hasText(siteUrl) && !hasText(startUrl) && !agency))) {
@@ -959,27 +1003,50 @@ export class BrowseSkill {
     const vision = this.deps.visionLlm;
     const orientWith = offerVisual && vision !== undefined ? (question: string, url: string, run: ExecContext, log: WebAction[]) => orientScreen(this.web, vision, question, url, run, log) : undefined;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
-      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: maxSteps === undefined || options.continuation ? undefined : maxSteps * 12_000,
+      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: options.remainingRouteMs ?? (maxSteps === undefined || options.continuation ? undefined : maxSteps * 12_000),
       progress: this.progress, activityLlm: this.deps.webLlm, milestoneText: key => PERSONAL_BROWSE_TEXT[key][this.#replyLanguage()]});
     this.progress.start();
     if (options.continuation && checkpoint) this.progress.milestone("goal-continued", "이어서 요청하신 일을 진행할게요.");
     let result;
     try {
       const conversation: Record<string, unknown> = personal ? {} : {...this.#planningContext?.(goal, siteUrl), ...publicTask?.context()};
+      if (options.remainingRouteMs !== undefined && learning && learning.steps.length > 0) {
+        conversation.completedClicks = learning.steps.map(step => step.name);
+      }
       if (requestedSteps.length > 0) conversation.requestedSteps = requestedSteps;
       const relatedSites = (links?.relatedSites ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       const forms = (links?.forms ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       if (relatedSites.length > 0 || forms.length > 0) conversation.officialLinks = {...(relatedSites.length > 0 ? {relatedSites} : {}), ...(forms.length > 0 ? {forms} : {})};
       result = await this.web.withInspection(ctx, () => pilot.run(goal, new ExecContext({...ctx, actor: "goal", approvedGoalRefs: options.continuation?.approvedRefs}), step => {
+        if (learning && (["search", "back", "inspect_screen", "find_portal"].includes(step.action) ||
+            step.action === "open_url" && (learning.steps.length > 0 || step.url !== (startUrl ?? siteUrl)))) learning.eligible = false;
         const before = here;
         if (hasText(step.url)) here = step.url;
         if (!personal) this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
-      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, continuation: options.continuation, visualControl, journey, privateValues: options.privateValues,
+      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, continuation, visualControl, journey,
+        routeClick: learning ? (before, out) => {
+          if (!learning.eligible) return;
+          if (out.status === "needs-approval" && before && out.pending && !out.native) {
+            learning.pendingApprovalId = out.pending.id;
+            this.#routeApprovals.set(out.pending, {before, learning});
+          }
+          else learning.click(before, out);
+        } : undefined, privateValues: options.privateValues,
         retryPublicEntry: blockedPublicPage,
         discoveryAgency: personal && !hasText(siteUrl) ? options.agency : undefined,
         inspectionOutcome: options.inspectionOutcome, replyLanguage: this.#replyLanguage(),
         requestedFacts: publicTask?.facts.filter((fact): fact is PublicFact => Object.hasOwn(PUBLIC_FACT_LABELS, fact)), allowedUrls: relatedSites.map(site => site.url)}));
     } finally { this.progress.finish(); }
+    if (learning) {
+      if (result.status === "answered" && result.view && store && this.#routeStore?.() === store && !ctx.signal.aborted && !ctx.isStopped()) {
+        const route = learning.finish(result.view, result.reviewQuotes);
+        if (route && result.sources.length === 1 && result.sources[0]?.url === result.view.url) {
+          const labels = route.steps.map(step => step.name);
+          const spans = await this.deps.scanner?.scan(labels);
+          if (labels.every((label, i) => redactPictureText(label, spans?.[i]) === label) && this.#routeStore?.() === store && !ctx.signal.aborted && !ctx.isStopped()) store.saveRoute(route, routeMetadataSafe);
+        }
+      } else if (result.status !== "needs-approval" || result.native) learning.eligible = false;
+    }
     if (result.view) this.afterNavigation(result.view);
     const view = result.view ?? this.web.currentView;
     const review = {browserIterations: result.iterations, reviewQuotes: result.reviewQuotes, reviewPages: result.reviewPages, reviewQuoteSources: Object.fromEntries(result.quoteSources)};
