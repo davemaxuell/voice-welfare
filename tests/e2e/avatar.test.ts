@@ -197,10 +197,17 @@ it("test_controller_cards_carry_no_values_and_dispatch_once", async () => {
   await check(page.locator("#log li").last()).toContainText(answer.speech);
 });
 
-it("test_avatar_page_renders_cards_as_text_and_passes_axe", async () => {
+async function checkAvatarCardAccess(scheme: "light" | "dark") {
+  await page.emulateMedia({ colorScheme: scheme });
   await overlay(false); await send("prefs", { corner: "bottom-right", still: true });
   const choice = { ...approval, instance: "a" };
-  await snap(2, choice); await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
+  const start = await page.evaluate(() => performance.timeOrigin);
+  await snap(1, { ...choice, contrast: true });
+  await check(page.locator("#overlay")).toHaveClass(/high-contrast/u);
+  await snap(2, { ...choice, contrast: false });
+  await check(page.locator("#overlay")).not.toHaveClass(/high-contrast/u);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(start);
+  await check(page.locator("#card-prompt")).toHaveText("<b>누르기</b>");
   await check(button("<i>입력 승인</i>")).toBeVisible(); await check(page.locator("#card-site")).toHaveText("대상: 127.0.0.1:5174");
   await snap(1, { instance: "a" }); await check(page.locator("#card")).toBeVisible();
   await button("<i>입력 승인</i>").click(); await button("내용 확인").click();
@@ -227,7 +234,10 @@ it("test_avatar_page_renders_cards_as_text_and_passes_axe", async () => {
   await snap(3, { instance: "b", mode: "choice", busy: true, status: "처리하는 중이에요.", prompt: "버튼을 누를까요?",
     choiceSetId: "b-2", choices: [{ key: "approve", label: "누르기 승인" }, { key: "review", label: "내용 확인", open: "confirm" }] });
   await check(button("누르기 승인")).toBeDisabled(); await check(button("내용 확인")).toBeEnabled();
-});
+}
+
+it("test_avatar_page_renders_cards_as_text_and_passes_axe", () => checkAvatarCardAccess("light"));
+it("어두운 테마에서 아바타 카드를 안전한 텍스트로 그리고 접근성 검사를 통과한다", () => checkAvatarCardAccess("dark"));
 
 function figureBounds() {
   const figure = document.getElementById("figure")!;
@@ -376,4 +386,15 @@ it("test_voice_approval_binds_to_the_decision_shown_when_listening_began", async
   await check(page.locator("#fields")).not.toContainText("입력됨: 김하늘");
   await page.waitForFunction("window.__listening === true");
   await page.evaluate("window.__say('응')"); await check(page.locator("#fields")).toContainText("입력됨: 김하늘", { timeout:20000 });
+});
+
+it("마이크 권한 대기·일시중지·오류 상태에서도 아바타 멈춰 버튼을 보여 준다", async () => {
+  await overlay();
+  await send("prefs", { corner: "bottom-right", still: true });
+  await snap(1, { capture: "off", busy: false, speaking: false });
+  await check(page.locator("#stop")).toBeHidden();
+  for (const [i, capture] of (["requesting", "paused", "error"] as const).entries()) {
+    await snap(i + 2, { capture, busy: false, speaking: false });
+    await check(page.locator("#stop")).toBeVisible();
+  }
 });
