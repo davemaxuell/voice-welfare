@@ -21,7 +21,7 @@ async function overlayState(overlay) {
 }
 
 async function logLines(controller) {
-  return controller.locator('#log li').allInnerTexts();
+  return (await controller.locator('#log li').allInnerTexts()).map((line) => line.replace(/^(나|청음|안내):\n+/u, '$1: '));
 }
 
 /** 대화 창에 글로 명령한다(창이 숨어 있어도 같은 입력란). */
@@ -271,6 +271,28 @@ const scenarios = {
 
     const blocked = await overlay.evaluate(() => fetch('/api/health').then(() => 'reached', () => 'blocked'));
     assert.equal(blocked, 'blocked', 'overlay cannot call the API');
+    await app.evaluate(({ Tray }) => {
+      const original = Tray.prototype.setToolTip;
+      globalThis.__offlineTips = [];
+      Tray.prototype.setToolTip = function (text) {
+        globalThis.__offlineTips.push(text);
+        return original.call(this, text);
+      };
+    });
+    await controller.route('**/api/**', route => route.abort('internetdisconnected'));
+    const reconnect = overlay.getByRole('button', { name: '다시 연결' });
+    try {
+      await reconnect.waitFor({ timeout: 35000 });
+      assert.equal((await overlayState(overlay)).prompt, '연결이 끊겼어요');
+      await until(() => app.evaluate(() => globalThis.__offlineTips.at(-1)?.includes('연결이 끊겼어요')), { what: '트레이의 연결 끊김 안내' });
+      const dir = path.resolve(__dirname, '../../../reports/ux');
+      await mkdir(dir, { recursive: true });
+      await overlay.screenshot({ path: path.join(dir, 'overlay-offline.png') });
+    } finally { await controller.unroute('**/api/**'); }
+    await reconnect.click();
+    await until(async () => (await overlayState(overlay)).mode !== 'offline', { what: '아바타의 다시 연결' });
+    assert.deepEqual(await logLines(controller), lines, '다시 연결한 뒤 대화 기록을 반복하지 않는다');
+    assert.equal(voice.transcriptions, 1, '다시 연결해도 마이크를 열지 않는다');
     await overlay.getByRole('button', { name: '숨기기' }).click();
     await until(async () => !(await windows(app)).find(isOverlay).visible, { what: 'hide removes the avatar' });
     assert.equal((await windows(app)).find(isController).visible, false, 'hide leaves the session in place');
@@ -370,6 +392,8 @@ const scenarios = {
     assert.match(handoff.prompt, /에서 직접 로그인해 주세요\.$/);
     assert.deepEqual(handoff.choices.map((c) => c.label), ['로그인했어요', '인증 취소']);
     assert.equal(handoff.mic, '마이크 꺼짐');
+    assert.equal(await controller.locator('#capture-label').innerText(), handoff.mic);
+    assert.equal(await controller.locator('#task-label').innerText(), '사이트에서 직접 진행해 주세요.');
     assert.equal(await liveTracks(controller), 0, `mic tracks released at the handoff (${await trackReport(controller)})`);
     assert.equal((await windows(app)).find(isController).visible, false, 'conversation stays collapsed');
 
@@ -385,7 +409,8 @@ const scenarios = {
     }, { what: 'new card after an unchanged gate' });
     const waiting = await server(`/api/session/${sid}/state`);
     assert.equal(waiting.state, 'AUTH_HANDOFF', 'unchanged login page keeps waiting');
-    assert.ok((await logLines(controller)).some((l) => l.startsWith('나: 로그인했어요')), 'the choice is in the transcript as said');
+    const userChoice = controller.locator('#log li.user').filter({ hasText: /^나:\s+로그인했어요$/u });
+    assert.equal(await userChoice.count(), 1, '선택한 사용자의 말이 기록에 한 번 표시된다');
 
     const choicesBefore = requests.filter((r) => r.path.endsWith('/choice')).length;
     await overlay.evaluate((id) => window.cheongeumOverlay.choose(id, 'auth-done'), firstSet);

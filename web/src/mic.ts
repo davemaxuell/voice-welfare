@@ -22,11 +22,12 @@ interface PcmInput {
 }
 
 // The hardware stream is resampled by Web Audio before the worklet packs it for Realtime.
-async function pcmInput(stream: MediaStream): Promise<PcmInput> {
+async function pcmInput(stream: MediaStream, captureChanged?: () => void): Promise<PcmInput> {
   const context = new AudioContext({ sampleRate: 24000 });
   // Mute at capture so dictation, barge-in pre-roll, and existing uploads all receive silence.
   const syncMic = () => {
     for (const track of stream.getAudioTracks()) track.enabled = !isSpeakingOnDevice();
+    captureChanged?.();
   };
   const stopWatching = onSpeaking(syncMic);
   syncMic();
@@ -87,12 +88,20 @@ export interface Recording {
   cancel(): void;
 }
 
-export async function startRecording(openLive: OpenLive, deviceId: string | undefined, onMax: () => void): Promise<Recording> {
+export async function startRecording(openLive: OpenLive, deviceId: string | undefined, onMax: () => void,
+  acquired?: (stream: MediaStream) => boolean, captureChanged?: () => void): Promise<Recording> {
   const stream = await openMicrophone(deviceId);
+  if (acquired?.(stream) === false) {
+    stream.getTracks().forEach(track => track.stop());
+    throw new Error("stopped");
+  }
+  for (const track of stream.getAudioTracks()) {
+    track.onmute = track.onunmute = track.onended = () => captureChanged?.();
+  }
   let mic: PcmInput | undefined;
   let live: LiveAudio;
   try {
-    mic = await pcmInput(stream);
+    mic = await pcmInput(stream, captureChanged);
     live = openLive();
   } catch (error) {
     mic?.close();
@@ -109,6 +118,7 @@ export async function startRecording(openLive: OpenLive, deviceId: string | unde
     clearTimeout(timer);
     input.close();
     stream.getTracks().forEach(track => track.stop());
+    captureChanged?.();
   }
   return {
     async stop() { clearTimeout(timer); await input.flush(); release(); return live; },
@@ -132,7 +142,8 @@ export class VoiceLoop {
   analyser: AnalyserNode | undefined;
   /** 청음이 말하는 동안은 앞 소리(pre-roll)를 모으지 않는다. */
   ignore: (() => boolean) | undefined;
-  onTrouble: ((reason: "ended" | "muted") => void) | undefined;
+  onTrouble: ((reason: "ended" | "muted" | "unmuted") => void) | undefined;
+  captureChanged?: () => void;
   abort: (() => void) | undefined;
   finishNow: (() => boolean) | undefined;
   bargeFrames: ArrayBuffer[] | undefined;
@@ -153,8 +164,9 @@ export class VoiceLoop {
     if (track !== undefined) {
       track.onended = () => this.onTrouble?.("ended");
       track.onmute = () => this.onTrouble?.("muted");
+      track.onunmute = () => this.onTrouble?.("unmuted");
     }
-    const mic = await pcmInput(stream);
+    const mic = await pcmInput(stream, this.captureChanged);
     if (this.stopped) { mic.close(); throw new Error("stopped"); }
     this.mic = mic;
     this.analyser = mic.analyser;
