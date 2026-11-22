@@ -15,7 +15,7 @@ function observed(item: WebItem): LinkChoice {
   return { name: item.name ?? "", ref: item.ref ?? "", role: item.role ?? "" };
 }
 
-export type LinkSource = "list" | "search" | "picture";
+export type LinkSource = "list" | "search" | "picture" | "popup";
 
 export class LinkChoices {
   url: string;

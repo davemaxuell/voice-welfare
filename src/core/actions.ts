@@ -74,6 +74,27 @@ export const InteractiveItemSchema = z.object({
 export type InteractiveItem = z.infer<typeof InteractiveItemSchema>;
 export type ItemRole = InteractiveItem["role"];
 
+// 안내 팝업 증명(A2). 팝업 안의 한 단추를 '내용만 알리는 안내를 닫는 조작'으로 본다는 근거로, 누르기 직전의 새 관찰(controlWindow notice 질의)에서 얻는다.
+// 어댑터가 누르기 직전에 다시 관찰해 이 사실과 같을 때만 누르므로, 부르는 쪽은 정책을 낮출 수 없고 증명이 낡으면 누르지 않는다.
+// text는 600자까지만 담고 textLength는 전체 길이다(잘렸으면 둘이 다르다: 다 읽지 못한 안내는 안내로 보지 않는다).
+// buttons·buttonCount: 보이는 단추(button·[role=button]·입력 단추). others: 팝업 안의 그 밖의 조작 요소(링크·입력·라벨·탭) 수. popups: 이때 떠 있던 팝업 수.
+// root: 팝업 몸통의 ref. shadows: 팝업 안의 열린·닫힌 shadow root 수. 페이지 안에서는 닫힌 root를 볼 수 없어서 어댑터가 브라우저(CDP)의 DOM 정보로 세어 채운다.
+// 읽지 못했으면 -1이고, 0이 아니면 속을 알 수 없는 부분이 있다는 뜻이라 안내로 보지 않는다.
+export interface NoticeFacts {
+  kind: DialogKind; title: string; text: string; textLength: number; buttons: readonly string[]; buttonCount: number;
+  others: number; hasInputs: boolean; popups: number; signature: string; root: string; shadows: number;
+}
+export interface NoticeProof { kind: "notice"; url: string; ref: string; role: string; name: string; facts: NoticeFacts }
+// 사이트가 띄운 confirm() 창에 '예'라고 답해 같은 조작을 한 번 되풀이해도 된다는 허가. 어느 탭·문서·주소에서, 어떤 글(전체 해시와 길이)에 대해서만 쓴다.
+export interface NativeGrant { tab: string; document: string; url: string; hash: string; length: number }
+// 어댑터가 취소한 confirm() 창의 기록. preview는 앞 200자, risk는 전체 글로 가른 분류다(long: 소리로 다 읽어 줄 수 없는 긴 글).
+export interface NativeDialogRecord extends NativeGrant {
+  actionId: string; preview: string; risk: "routine" | "consequential" | "long";
+}
+export interface NativeSeen { cancelled: readonly NativeDialogRecord[]; accepted: boolean }
+/** 한 번의 조작에만 붙는 허가들. 정책 검사와 어댑터의 누르기 직전 확인에 같은 값이 쓰인다. */
+export interface ExecuteGrants { notice?: NoticeProof; native?: NativeGrant }
+
 export const ScreenTargetSchema = z.object({
   kind: z.enum(["selection", "focus", "hover"]), role: z.string(), label: z.string(), text: z.string(),
   position: optional(z.string()),

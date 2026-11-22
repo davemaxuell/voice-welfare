@@ -1,16 +1,20 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, errors, type Browser, type BrowserContext, type Download, type Locator, type Page, type Request, type Route } from "playwright";
+import { chromium, errors, type Browser, type BrowserContext, type CDPSession, type Dialog, type Download, type Locator, type Page, type Request, type Route } from "playwright";
 import { z } from "zod";
-import { parseObservation, type Action, type ActionResult, type ActionTarget, type ExecutionErrorCode } from "../../../core/actions.ts";
+import {
+  parseObservation, type Action, type ActionResult, type ActionTarget, type ExecuteGrants, type ExecutionErrorCode, type NativeDialogRecord, type NativeGrant,
+  type NativeSeen, type NoticeProof,
+} from "../../../core/actions.ts";
 import { browserAsset } from "../../../core/assets.ts";
 import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
 import { strip } from "../../../core/text.ts";
-import { isInspectionUrl, type InspectionBinding } from "../../../safety/guard.ts";
+import { isInspectionUrl, isNotice, nativeMessageRisk, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
 import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts";
@@ -79,9 +83,16 @@ const InspectionControlSchema = z.union([
   z.object({ kind: z.literal("navigation"), href: z.string(), signature: z.string() }),
   z.object({ kind: z.enum(["disclosure", "ambiguous", "blocked"]), href: z.string().optional(), signature: z.string() }),
 ]);
+// shadows는 페이지 안에서는 알 수 없어 읽은 그대로는 -1(세지 않음)이다. controlWindow가 브라우저의 DOM 정보로 세어 채운다.
+const NoticeFactsSchema = z.object({
+  kind: z.enum(["dialog", "layer"]), title: z.string(), text: z.string(), textLength: z.number(), buttons: z.array(z.string()),
+  buttonCount: z.number(), others: z.number(), hasInputs: z.boolean(), popups: z.number(), signature: z.string(), root: z.string(),
+  shadows: z.number().default(-1),
+});
 const ControlItemSchema = z.looseObject({
   ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
   context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
+  notice: NoticeFactsSchema.optional(),
 });
 const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
 const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
@@ -157,10 +168,59 @@ interface PageLoad {
   method: string;
   // 결과를 채우는 것으로 확인된 요청(undefined)은 끝날 때까지 센다.
   fetching: Map<Request, number | undefined>;
+  /** 이 탭의 번호(어댑터가 붙인다). confirm() 창에 대신 답하는 허가를 한 탭에 묶는다. */
+  tab: string;
+  /** 주 프레임이 새 문서로(같은 문서 안의 주소 이동 포함) 바뀔 때마다 늘어난다. 페이지가 바꿀 수 없다. */
+  docSeq: number;
+}
+
+// 사이트가 띄운 confirm() 창: 취소한 기록은 같은 조작을 사용자가 다시 확인했을 때만 한 번 대신 답하는 근거가 된다.
+// 기록(어댑터만 가진 것)과 허가·지금 실행 중인 조작이 모두 맞아야 하고, 어긋나면 늘 취소한다.
+// arm: 허가를 어댑터가 기록과 맞춰 본 결과. until(기록이 낡는 때)과 문서 번호는 실제로 누르기 직전에 다시 맞춰 본다. 첫 창이 뜨면(무엇이든) 한 번 쓴 것이다.
+interface NativeArm { grant: NativeGrant; used: boolean; until: number; docSeq: number }
+// open: 실제로 누르거나 입력하는 동안만 참. 그 밖(기다림·커서 움직임·확인 중)에 뜬 창은 이 조작이 띄운 것이 아니라서 기록도 받아 주지도 않고 늘 취소한다.
+interface Flight {
+  actionId: string; signal: AbortSignal; open: boolean;
+  revoked?: boolean; acceptance?: Promise<boolean>;
+  seen: { cancelled: NativeDialogRecord[]; accepted: boolean }; arm?: NativeArm;
+}
+interface NativePending { record: NativeDialogRecord; target: ActionTarget; until: number }
+// 기록이 낡아 쓸 수 없게 되는 시간. 사용자 승인의 2분(APPROVAL_TTL_S)은 오케스트레이터가 따로 지키고, 이것은 그보다 느슨한 최후의 한계다.
+const NATIVE_PENDING_MS = 600_000;
+const NATIVE_KEEP = 8;
+const sameNative = (a: NativeGrant, b: NativeGrant) =>
+  a.tab === b.tab && a.document === b.document && a.url === b.url && a.hash === b.hash && a.length === b.length;
+function trimmed(map: Map<string, unknown>): void {
+  for (const key of map.keys()) {
+    if (map.size <= NATIVE_KEEP) break;
+    map.delete(key);
+  }
 }
 
 const hostOf = (url: string) => tryUrl(url)?.hostname ?? "";
 const closedError = () => new AdapterError("NOT_SUPPORTED", "브라우저 세션이 종료됐어요.");
+
+// CDP DOM.describeNode가 돌려주는 노드 가운데 shadow root를 세는 데 쓰는 부분만(값·속성은 보지 않는다).
+interface DomNode {
+  shadowRootType?: string; shadowRoots?: DomNode[]; children?: DomNode[]; contentDocument?: DomNode; templateContent?: DomNode;
+}
+const SHADOW_SCAN_LIMIT = 20_000;
+/** 열린·닫힌 shadow root의 수(브라우저 내부 root는 제외). 노드가 너무 많아 다 보지 못했으면 -1. */
+export function shadowRootCount(root: DomNode): number {
+  let found = 0, visited = 0;
+  const pending: DomNode[] = [root];
+  for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+    if (++visited > SHADOW_SCAN_LIMIT) return -1;
+    for (const shadow of node.shadowRoots ?? []) {
+      if (shadow.shadowRootType !== "user-agent") found++;
+      pending.push(shadow);
+    }
+    for (const child of node.children ?? []) pending.push(child);
+    if (node.contentDocument !== undefined) pending.push(node.contentDocument);
+    if (node.templateContent !== undefined) pending.push(node.templateContent);
+  }
+  return found;
+}
 
 function call<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
   signal.throwIfAborted();
@@ -234,6 +294,12 @@ export class PlaywrightExecutionAdapter {
   #closed = false;
   #lastDownload?: DownloadRecord;
   #nativeDialogs: string[] = [];
+  /** 탭마다 지금 실행 중인 조작. confirm() 창이 어느 조작 때문에 떴는지는 여기서만 가린다(그 밖에 뜬 창은 늘 취소). */
+  readonly #flights = new Map<Page, Flight>();
+  /** 조작 번호별로 취소한 confirm() 창의 기록(대신 답할 수 있는 것만). 한 번 쓰면 지운다. */
+  readonly #nativePending = new Map<string, NativePending>();
+  /** 마지막으로 끝난 조작들이 겪은 confirm() 창. takeNative로 한 번만 가져간다. */
+  readonly #nativeSeen = new Map<string, NativeSeen>();
   readonly #loads = new Map<Page, PageLoad>();
   #onPage?: (page: Page) => void;
   #lifecycle = Promise.resolve();
@@ -321,8 +387,9 @@ export class PlaywrightExecutionAdapter {
   #attach(page: Page): void {
     this.page = page;
     claimed.add(page);
-    const load: PageLoad = { method: "GET", fetching: new Map() };
+    const load: PageLoad = { method: "GET", fetching: new Map(), tab: randomUUID(), docSeq: 0 };
     this.#loads.set(page, load);
+    page.on("framenavigated", frame => { if (frame === page.mainFrame()) load.docSeq++; });
     page.on("request", request => {
       let main = false;
       try { main = request.isNavigationRequest() && request.frame() === page.mainFrame(); }
@@ -337,15 +404,133 @@ export class PlaywrightExecutionAdapter {
     const ended = (request: Request) => { load.fetching.delete(request); };
     page.on("requestfinished", ended);
     page.on("requestfailed", ended);
-    page.on("dialog", dialog => {
-      this.#nativeDialogs.push(Array.from(dialog.message()).slice(0, 200).join(""));
-      void dialog.dismiss().catch(() => {});
-    });
+    page.on("dialog", dialog => this.#onDialog(page, load, dialog));
     page.on("close", () => {
       this.#loads.delete(page);
       if (this.page === page) this.page = [...this.#loads.keys()].at(-1);
     });
     page.on("download", download => { void this.#saveDownload(download).catch(() => {}); });
+  }
+
+  /**
+   * 사이트의 경고창·확인창. 늘 닫고, 닫은 글은 다음 관찰의 오류 줄로만 알린다.
+   * 지금 실행 중인 조작이 실제로 누르다가 띄운 confirm() 창이면 그 조작의 이름으로 기록해 둔다(대신 답할지는 사용자에게 묻는다).
+   * 같은 조작을 사용자가 다시 확인해 허가가 붙은 실행에서는, 실제로 누르는 동안 처음 뜬 창 하나만, 그것이 탭·문서·주소·글 전체(해시와 길이)가 기록과 모두 같은 confirm()일 때 받아 준다.
+   * 처음 뜬 창이 다른 질문이면 허가는 그 자리에서 버려져 뒤이어 같은 글이 떠도 받지 않는다.
+   * 그 밖의 창(누르는 동안이 아닐 때 뒤늦게 뜬 것, 글이 다른 것, alert·prompt·beforeunload, 두 번째 창)은 허가가 있어도 취소하고, 멈춤이 걸렸으면 받지 않는다.
+   */
+  #onDialog(page: Page, load: PageLoad, dialog: Dialog): void {
+    const message = dialog.message();
+    const confirm = dialog.type() === "confirm";
+    if (!confirm) this.#nativeDialogs.push(Array.from(message).slice(0, 200).join(""));
+    const flight = this.#flights.get(page);
+    const live = flight !== undefined && flight.open && flight.revoked !== true && !flight.signal.aborted;
+    if (flight === undefined || !live) {
+      if (flight?.arm !== undefined) flight.arm.used = true;
+      void dialog.dismiss().catch(() => {});
+      return;
+    }
+    const url = page.url();
+    const document = String(load.docSeq);
+    const hash = createHash("sha256").update(message, "utf8").digest("hex");
+    const length = Array.from(message).length;
+    const arm = flight.arm;
+    if (arm !== undefined && !arm.used) {
+      // 첫 창이 허가를 쓴다. 맞으면 받아 주고, 맞지 않으면 허가는 버려진다.
+      arm.used = true;
+      if (confirm && this.page === page && performance.now() <= arm.until && arm.grant.tab === load.tab && arm.grant.document === document && arm.grant.url === url &&
+        arm.grant.hash === hash && arm.grant.length === length && load.docSeq === arm.docSeq) {
+        flight.acceptance = dialog.accept().then(() => true, () => false);
+        return;
+      }
+    }
+    if (confirm) {
+      flight.seen.cancelled.push({
+        tab: load.tab, document, url, hash, length, actionId: flight.actionId,
+        preview: Array.from(message).slice(0, 200).join(""), risk: nativeMessageRisk(message),
+      });
+    }
+    void dialog.dismiss().catch(() => {});
+  }
+
+  /** 이 조작 중에 취소했거나 받아 준 confirm() 창. 한 번만 가져갈 수 있다. */
+  takeNative(actionId: string): NativeSeen | undefined {
+    const seen = this.#nativeSeen.get(actionId);
+    this.#nativeSeen.delete(actionId);
+    return seen;
+  }
+
+  /** 이 조작이 confirm() 창을 겪었는지 가져가지 않고 본다(시간이 넘은 조작을 다시 하기 전에, 이미 물었던 조작이면 다시 하지 않으려고). */
+  peekNative(actionId: string): NativeSeen | undefined {
+    return this.#nativeSeen.get(actionId);
+  }
+
+  /** 대신 답할 수 있는 기록을 모두 버린다(멈춤·거절·세션 정리). 지금 실행 중인 조작에 걸린 허가도 그 자리에서 버린다. */
+  dropNative(): void {
+    this.#nativePending.clear();
+    this.#nativeSeen.clear();
+    for (const flight of this.#flights.values()) {
+      flight.revoked = true;
+      if (flight.arm !== undefined) flight.arm.used = true;
+    }
+  }
+
+  /**
+   * 허가를 어댑터가 가진 기록과 맞춰 보고 이번 조작 한 번에만 건다. 기록은 맞든 틀리든 지금 지운다(한 번만).
+   * 기록이 없거나 낡았거나, 처음 눌렀던 조작·탭·문서·주소·글이 하나라도 다르거나, 소리로 다 읽어 줄 수 없는 질문이면 거절한다.
+   */
+  #arm(action: Action, grants: ExecuteGrants, inspection: InspectionBinding | undefined, page: Page): NativeArm {
+    const grant = grants.native;
+    const pending = this.#nativePending.get(action.id);
+    this.#nativePending.delete(action.id);
+    const load = this.#loads.get(page);
+    if (grant === undefined || pending === undefined || load === undefined || inspection !== undefined || grants.notice !== undefined ||
+      action.type !== "click" || action.target?.ref === undefined || !isDeepStrictEqual(pending.target, action.target) ||
+      performance.now() > pending.until || pending.record.risk !== "routine" || pending.record.tab !== load.tab ||
+      pending.record.document !== String(load.docSeq) || pending.record.url !== page.url() || !sameNative(pending.record, grant)) {
+      throw new AdapterError("VERIFY_FAILED", "사이트가 물은 질문이 바뀌었거나 확인할 수 없어서 대신 답하지 않았어요.");
+    }
+    return {
+      grant: { tab: grant.tab, document: grant.document, url: grant.url, hash: grant.hash, length: grant.length },
+      used: false, until: pending.until, docSeq: load.docSeq,
+    };
+  }
+
+  /**
+   * 허가를 쓰는 누르기 직전(기다림과 커서 움직임이 끝난 뒤)에 다시 확인한다. 그 사이 문서가 바뀌었거나 기록이 낡았거나 멈춤·거절로 허가가 버려졌으면 누르지 않는다.
+   * 누른 뒤에 어긋나는 것은 #onDialog가 창마다 다시 맞춰 보고 받지 않는다.
+   */
+  #armHolds(page: Page, flight: Flight | undefined): void {
+    const arm = flight?.arm;
+    if (arm === undefined) throw new AdapterError("VERIFY_FAILED");
+    const load = this.#loads.get(page);
+    if (arm.used || flight?.signal.aborted === true || this.page !== page || load === undefined || load.docSeq !== arm.docSeq || load.tab !== arm.grant.tab ||
+      page.url() !== arm.grant.url || performance.now() > arm.until) {
+      throw new AdapterError("VERIFY_FAILED", "사이트가 물은 질문이 바뀌었거나 확인할 수 없어서 대신 답하지 않았어요.");
+    }
+  }
+
+  /** 실제로 누르거나 입력하는 동안만 confirm() 창을 이 조작이 띄운 것으로 본다. */
+  async #acting<T>(page: Page, work: () => Promise<T>): Promise<T> {
+    const flight = this.#flights.get(page);
+    if (flight === undefined) return work();
+    flight.open = true;
+    try { return await work(); }
+    finally { flight.open = false; }
+  }
+
+  /** 조작이 끝난 뒤 그동안 겪은 confirm() 창을 남긴다. 처음 누른 것이고 소리로 다 읽어 줄 수 있는 질문 하나뿐이면 다시 확인받을 때 쓸 기록도 만든다. */
+  #noteNative(flight: Flight, action: Action, inspection: InspectionBinding | undefined, grants: ExecuteGrants | undefined): void {
+    const seen = flight.seen;
+    if (flight.revoked === true || flight.signal.aborted || (seen.cancelled.length === 0 && !seen.accepted)) return;
+    this.#nativeSeen.set(action.id, seen);
+    trimmed(this.#nativeSeen);
+    const [only] = seen.cancelled;
+    if (grants === undefined && inspection === undefined && action.type === "click" && action.target?.ref !== undefined &&
+      seen.cancelled.length === 1 && only !== undefined && only.risk === "routine") {
+      this.#nativePending.set(action.id, { record: only, target: structuredClone(action.target), until: performance.now() + NATIVE_PENDING_MS });
+      trimmed(this.#nativePending);
+    }
   }
 
   async #saveDownload(download: Download): Promise<void> {
@@ -405,24 +590,32 @@ export class PlaywrightExecutionAdapter {
     });
   }
 
-  async execute(action: Action, signal = new AbortController().signal, inspection?: InspectionBinding): Promise<ActionResult> {
+  /**
+   * grants: 이 한 번의 조작에만 붙는 허가(안내 팝업 증명·confirm() 답). 정책 검사를 통과한 뒤에도 어댑터가 새 관찰과 자기 기록으로 다시 확인하고,
+   * 맞지 않으면 누르지 않는다(VERIFY_FAILED). 허가가 있는 조작은 어느 경로로도 다시 하지 않는다.
+   */
+  async execute(action: Action, signal = new AbortController().signal, inspection?: InspectionBinding, grants?: ExecuteGrants): Promise<ActionResult> {
     const started = performance.now();
     const done = (result: Omit<ActionResult, "actionId" | "latencyMs">) => ({
       actionId: action.id, latencyMs: Math.trunc(performance.now() - started), ...result,
     });
     if (signal.aborted) return done({ ok: false, verified: false, errorCode: "ABORTED" });
     let page: Page | undefined;
+    let flight: Flight | undefined;
     try {
       await raceAbort(() => this.start(), signal);
       page = this.#requirePage();
       const current = page;
+      flight = { actionId: action.id, signal, open: false, seen: { cancelled: [], accepted: false } };
+      if (grants?.native !== undefined) flight.arm = this.#arm(action, grants, inspection, current);
+      this.#flights.set(current, flight);
       const result = await raceAbort(async active => {
         const result = inspection === undefined
-          ? await this.#perform(current, action, active)
+          ? await this.#perform(current, action, active, undefined, grants)
           : await this.withInspection(async () => {
             const state = this.#inspectionRequests;
             const before = state?.blocked;
-            const completed = await this.#perform(current, action, active, inspection);
+            const completed = await this.#perform(current, action, active, inspection, grants);
             if (inspection.kind === "control" && inspection.control.kind === "ambiguous" && state?.blocked !== before) {
               throw new AdapterError("NOT_SUPPORTED", "화면을 확인하는 범위를 벗어난 사이트 동작을 막았어요.");
             }
@@ -432,6 +625,10 @@ export class PlaywrightExecutionAdapter {
         if (this.#options.visualCursor === true && result.ok && action.type !== "read") await this.#restCursor(active);
         return result;
       }, signal);
+      if (flight.arm !== undefined) {
+        flight.seen.accepted = await flight.acceptance === true;
+        if (!flight.seen.accepted) throw new AdapterError("VERIFY_FAILED", "앞서 확인한 사이트 질문에 답했는지 확인하지 못했어요. 화면에서 직접 확인해 주세요.");
+      }
       return done(result);
     } catch (error) {
       if (signal.aborted) {
@@ -441,6 +638,11 @@ export class PlaywrightExecutionAdapter {
       if (error instanceof AdapterError) return done({ ok: false, verified: false, errorCode: error.code, message: error.message });
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.message.includes("Timeout"));
       return done({ ok: false, verified: false, errorCode: timedOut ? "TIMEOUT" : action.type === "navigate" ? "NAVIGATION_FAILED" : "UNKNOWN" });
+    } finally {
+      if (flight !== undefined) {
+        if (page !== undefined && this.#flights.get(page) === flight) this.#flights.delete(page);
+        this.#noteNative(flight, action, inspection, grants);
+      }
     }
   }
 
@@ -518,13 +720,16 @@ export class PlaywrightExecutionAdapter {
     });
   }
 
-  async #perform(page: Page, action: Action, signal: AbortSignal, inspection?: InspectionBinding): Promise<Completed> {
+  async #perform(page: Page, action: Action, signal: AbortSignal, inspection?: InspectionBinding, grants?: ExecuteGrants): Promise<Completed> {
     signal.throwIfAborted();
     const { type, target } = action;
     const opts = { timeout: this.#actionTimeout, signal };
     if (inspection !== undefined && inspection.kind !== "start" && page.url() !== inspection.url) {
       throw new AdapterError("VERIFY_FAILED");
     }
+    // 허가는 ref로 가리킨 요소를 누르는 조작에만, 하나씩만 붙는다. 화면 확인 범위와는 함께 쓰지 않는다.
+    if (grants !== undefined && (type !== "click" || target?.ref === undefined || inspection !== undefined ||
+      (grants.notice !== undefined && grants.native !== undefined))) throw new AdapterError("VERIFY_FAILED");
     if (inspection?.kind === "search") {
       const fresh = await call(signal, () => this.inspectionSearch(inspection.fieldId));
       if (this.page !== page || fresh?.signature !== inspection.signature || fresh.url !== inspection.url ||
@@ -611,15 +816,20 @@ export class PlaywrightExecutionAdapter {
         return ok;
       }
     }
+    // 안내 팝업을 묻지 않고 닫는 누르기: 기다림과 커서 움직임이 모두 끝난 지금, 누르기 직전에 팝업을 새로 읽어 증명과 같을 때만 누른다.
+    // confirm() 질문에 답하는 누르기도 같은 자리에서 허가가 아직 살아 있는지 다시 확인한다.
+    if (grants?.notice !== undefined) await this.#verifyNotice(page, grants.notice, target, signal);
+    if (grants?.native !== undefined) this.#armHolds(page, this.#flights.get(page));
     switch (type) {
       case "click":
-        await call(signal, () => loc.click(opts));
+        // 아래 #acting 안(실제로 누르는 동안)에 뜬 confirm() 창만 이 조작의 것으로 본다.
+        await this.#acting(page, () => call(signal, () => loc.click(opts)));
         return ok;
       case "focus":
         await call(signal, () => loc.focus(opts));
         return ok;
       case "press":
-        await call(signal, () => loc.press(action.value === undefined || action.value === "" ? "Enter" : action.value, opts));
+        await this.#acting(page, () => call(signal, () => loc.press(action.value === undefined || action.value === "" ? "Enter" : action.value, opts)));
         await optional(signal, () => page.waitForLoadState("domcontentloaded", opts));
         return ok;
       case "fill": {
@@ -627,18 +837,18 @@ export class PlaywrightExecutionAdapter {
           throw new AdapterError("NOT_SUPPORTED", "비밀번호 입력란은 조작하지 않습니다.");
         }
         const value = action.value ?? "";
-        await call(signal, () => loc.fill(value, opts));
+        await this.#acting(page, () => call(signal, () => loc.fill(value, opts)));
         const readValue = await call(signal, () => loc.inputValue(opts));
         return { ok: true, verified: readValue === value, readValue };
       }
       case "select": {
-        await call(signal, () => loc.selectOption({ label: action.value ?? "" }, opts));
+        await this.#acting(page, () => call(signal, () => loc.selectOption({ label: action.value ?? "" }, opts)));
         const readValue = strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "");
         return { ok: true, verified: readValue === action.value, readValue };
       }
       case "check": {
         const want = action.checked ?? false;
-        await call(signal, () => loc.setChecked(want, opts));
+        await this.#acting(page, () => call(signal, () => loc.setChecked(want, opts)));
         const checked = await call(signal, () => loc.isChecked(opts));
         return { ok: true, verified: checked === want, readValue: checked ? "예" : "아니오" };
       }
@@ -674,10 +884,10 @@ export class PlaywrightExecutionAdapter {
         await this.#showCursor(page, loc, "click", signal);
         loc = await this.#resolveRef(page, link, signal);
       }
-      await call(signal, () => loc.click({ signal, timeout: this.#actionTimeout }));
+      await this.#acting(page, () => call(signal, () => loc.click({ signal, timeout: this.#actionTimeout })));
       return true;
     }
-    const hidden = z.array(z.string()).parse(await call(signal, () => page.locator("a[href]").evaluateAll((anchors, wanted) => {
+    const hidden =z.array(z.string()).parse(await call(signal, () => page.locator("a[href]").evaluateAll((anchors, wanted) => {
       const compact = (text: string | null) => (text ?? "").replace(/\s+/g, "");
       return [...new Set(anchors.filter(a => compact(a.textContent) === compact(wanted) &&
         (a.getClientRects().length === 0 || getComputedStyle(a).visibility === "hidden"))
@@ -749,6 +959,23 @@ export class PlaywrightExecutionAdapter {
     }
   }
 
+  /**
+   * 안내 팝업 증명을 누르기 직전의 새 관찰과 맞춘다. 같은 탭·주소의 같은 요소(ref·역할·이름)가, 같은 팝업(제목·글 전체·단추·다른 조작 요소·입력 칸 수까지 증명에 담은 사실 그대로)에
+   * 들어 있고, 지금 다시 같은 판정(isNotice)을 해도 안내일 때만 누른다. 팝업이 바뀌었거나 다시 읽지 못하면 누르지 않는다.
+   */
+  async #verifyNotice(page: Page, proof: NoticeProof, target: ActionTarget | undefined, signal: AbortSignal): Promise<void> {
+    if (this.page !== page || page.url() !== proof.url || target?.ref !== proof.ref || target.role !== proof.role || target.name !== proof.name) {
+      throw new AdapterError("VERIFY_FAILED", "안내 팝업이 바뀌어서 누르지 않았어요.");
+    }
+    const fresh = await call(signal, () => this.controlWindow("", 0, { ref: proof.ref, notice: true }));
+    const [item] = fresh.items;
+    if (fresh.url !== proof.url || fresh.items.length !== 1 || item === undefined || item.ref !== proof.ref || item.disabled ||
+      item.role !== proof.role || item.name !== proof.name || item.notice === undefined || !isDeepStrictEqual(item.notice, proof.facts) ||
+      !isNotice(item.notice, item)) {
+      throw new AdapterError("VERIFY_FAILED", "안내 팝업이 바뀌어서 누르지 않았어요.");
+    }
+  }
+
   async inspectionSearch(fieldId: string): Promise<z.infer<typeof InspectionSearchSchema> | undefined> {
     const page = this.#requirePage();
     return InspectionSearchSchema.safeParse(JSON.parse(z.string().parse(
@@ -757,13 +984,47 @@ export class PlaywrightExecutionAdapter {
   }
 
   /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
-  async controlWindow(text = "", offset = 0, { ref, exact = false, inspection, destination }: {
-    ref?: string; exact?: boolean; inspection?: boolean; destination?: string;
+  async controlWindow(text = "", offset = 0, { ref, exact = false, inspection, destination, notice }: {
+    ref?: string; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   } = {}): Promise<ControlWindow> {
     const page = this.#requirePage();
+    const load = this.#loads.get(page);
+    const document = load?.docSeq;
+    // notice: ref로 찾은 단추가 팝업 안에 있으면 그 팝업의 사실을 새로 읽어 함께 돌려준다(ref가 있을 때만).
     const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? 24 : 1,
-      ref: ref ?? null, exact, inspection, destination };
-    return ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
+      ref: ref ?? null, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
+    const window = ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
+    // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
+    for (const item of window.items) {
+      if (item.notice !== undefined) {
+        const shadows = await this.#shadowRoots(page, item.notice.root);
+        const current = this.page === page && load !== undefined && load.docSeq === document && page.url() === window.url;
+        item.notice.shadows = current ? shadows : -1;
+        if (current) item.notice.signature = JSON.stringify([load.tab, document, item.notice.signature]);
+      }
+    }
+    return window;
+  }
+
+  /**
+   * 팝업 몸통 안(iframe 문서와 열린·닫힌 shadow root까지)에 있는 shadow root의 수. 브라우저가 가진 DOM 정보(CDP)를 읽으므로 닫힌 root도 보인다.
+   * 페이지의 스크립트는 거치지 않고, 읽은 노드의 값·속성은 쓰지 않으며(비밀번호 칸의 값도) 개수만 센다. 입력 상자가 쓰는 브라우저 내부 root(user-agent)는 세지 않는다.
+   * 팝업을 찾지 못했거나 너무 크거나 CDP를 쓸 수 없는 브라우저면 -1을 돌려준다(속을 알 수 없으니 안내로 보지 않는다).
+   */
+  async #shadowRoots(page: Page, root: string): Promise<number> {
+    if (!/^[\w-]{1,80}$/u.test(root)) return -1;
+    let cdp: CDPSession | undefined;
+    try {
+      cdp = await page.context().newCDPSession(page);
+      await cdp.send("DOM.enable");
+      const { root: top } = await cdp.send("DOM.getDocument", { depth: 0 });
+      const { nodeIds } = await cdp.send("DOM.querySelectorAll", { nodeId: top.nodeId, selector: `[data-cheongeum-ref="${root}"]` });
+      const [nodeId] = nodeIds;
+      if (nodeIds.length !== 1 || nodeId === undefined || nodeId === 0) return -1;
+      const { node } = await cdp.send("DOM.describeNode", { nodeId, depth: -1, pierce: true });
+      return shadowRootCount(node);
+    } catch { return -1; }
+    finally { await cdp?.detach().catch(() => {}); }
   }
 
   /** 커서가 없는 화면(방금 연 페이지)이면 큰 제목이나 본문 위에 놓아 둔다. 있으면 그대로(마지막 조작 위치) 둔다. */
