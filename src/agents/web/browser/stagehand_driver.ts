@@ -5,10 +5,13 @@ import type { ActionTarget, ExecuteGrants } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
 import { stampDocument, type DocumentStamp } from "./document_stamp.ts";
 import type { InspectionBinding } from "../../../safety/guard.ts";
-import { AdapterError, call, cssEscape, observeWith, playwrightElement, type PageDriver } from "./driver.ts";
+import { AdapterError, call, cssEscape, observeWith, playwrightElement, playwrightTarget, type PageDriver } from "./driver.ts";
 import { observePage, type ControlQuery } from "./observe.ts";
-import { stagehandTab } from "./stagehand_browser.ts";
+import { observedSelectors, stagehandTab } from "./stagehand_browser.ts";
 import { optionBindings, type ObservedOptions } from "./option_binding.ts";
+import { framesOf } from "./frame_controls.ts";
+import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
+import type { SemanticObservation } from "./semantic_observation.ts";
 
 export interface ClickEvidence { grants?: ExecuteGrants; inspection?: InspectionBinding }
 
@@ -113,7 +116,7 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
   const selected = () => stagehandTab(page);
   const bindOption = optionBindings(page);
   const run = async <T>(script: string) => (await selected()).tab.evaluate<T>(script);
-  const observations = observeWith(run);
+  const observations = observeWith(run, page);
   const documents = new WeakMap<ActionTarget, DocumentStamp>();
   async function bind(target: ActionTarget, signal: AbortSignal) {
     const tab = (await call(signal, selected)).tab;
@@ -151,6 +154,22 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       if (optionLabel !== undefined) await bindOption(target, expected, optionLabel, signal);
       return expected;
     },
+    async findByMeaning(term, linksOnly, url, picker, signal) {
+      try {
+        const before = await call(signal, () => observations.controlWindow({limit:600, semanticOnly:true, linksOnly}));
+        if (before.more || before.url !== url || page.url() !== url) return undefined;
+        const semantic: SemanticObservation = {term, picker, controls:before.items.filter(i => !linksOnly || i.role === "link")};
+        if (semantic.controls.length === 0) return undefined;
+        const paths = await observedSelectors(page, term, picker.model, signal, semantic);
+        const original = semantic.selected;
+        if (original === undefined || paths.length !== 1 || page.url() !== url ||
+            await framesOf(page).path(original.ref) !== paths[0]) return undefined;
+        const fresh = await call(signal, () => observations.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true, linksOnly}));
+        const [item] = fresh.items;
+        return fresh.url === url && !fresh.more && fresh.items.length === 1 && item?.ref === original.ref && item.role === original.role &&
+          item.name === original.name && item.context === original.context && !item.disabled && item.pictureMasked !== true ? item : undefined;
+      } catch { signal.throwIfAborted(); return undefined; }
+    },
     scroll: signal => call(signal, async () => {
       const { tab } = await selected();
       signal.throwIfAborted();
@@ -170,6 +189,12 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
     async resolve(target, signal) {
       const { tab } = await call(signal, selected);
       const { query, expected, ref, stamp } = await bind(target, signal);
+      if (isEmbeddedRef(ref)) {
+        const path = await framesOf(page).path(ref);
+        if (path === undefined || await call(signal, () => tab.locator(path).count({timeout})) !== 1) throw new AdapterError("VERIFY_FAILED");
+        const host = playwrightElement(await playwrightTarget(page, expected, signal), signal, timeout);
+        return embeddedElement(page, expected, signal, timeout, host, stamp);
+      }
       const readBound = "(" + boundItem.toString() + ").bind(null," + observePage.toString() + "," + JSON.stringify(query) + "," + JSON.stringify(expected) + "," + JSON.stringify(stamp) + ")";
       const selector = '[data-cheongeum-ref="' + cssEscape(ref) + '"]';
       const hostLocator = page.locator(selector).filter({ visible: true });

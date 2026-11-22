@@ -1,0 +1,81 @@
+시각_UTC,누리집,발화,기대한_링크,구동기,회차,말한_방식,선택한_이름,정확,되물음,수정_필요,승인_요청,정책,첫_판정_ms,정확한_대상_ms,선택_모델_호출
+2026-11-22T04:27:16.333Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,playwright,1,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,79,79,
+2026-11-22T04:27:16.417Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,stagehand,1,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,124,124,
+2026-11-22T04:27:16.542Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,stagehand,1,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,2406,2406,stagehand_pick
+2026-11-22T04:27:18.949Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,playwright,1,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,2032,2032,control_pick
+2026-11-22T04:27:20.982Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,playwright,1,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,18,18,
+2026-11-22T04:27:21.001Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,stagehand,1,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,82,82,
+2026-11-22T04:27:21.084Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,stagehand,1,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,2096,2096,stagehand_pick
+2026-11-22T04:27:23.181Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,playwright,1,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1842,1842,control_pick
+2026-11-22T04:27:25.024Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,playwright,1,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,28,28,
+2026-11-22T04:27:25.053Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,stagehand,1,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,90,90,
+2026-11-22T04:27:25.144Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,stagehand,1,paraphrase,오시는길,1,0,0,0,ALLOWED_READ_ONLY,1663,1663,stagehand_pick
+2026-11-22T04:27:26.808Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,playwright,1,paraphrase,,0,1,0,0,,1617,,control_pick
+2026-11-22T04:27:28.426Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,playwright,1,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,19,19,
+2026-11-22T04:27:28.446Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,stagehand,1,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,71,71,
+2026-11-22T04:27:28.518Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,stagehand,1,paraphrase,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,1629,1629,stagehand_pick
+2026-11-22T04:27:30.148Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,playwright,1,paraphrase,누리집 안내 지도,0,0,1,0,ALLOWED_READ_ONLY,1391,,control_pick
+2026-11-22T04:27:31.541Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,stagehand,2,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,98,98,
+2026-11-22T04:27:31.640Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,playwright,2,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,36,36,
+2026-11-22T04:27:31.678Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,playwright,2,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1333,1333,control_pick
+2026-11-22T04:27:33.013Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,stagehand,2,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1459,1459,stagehand_pick
+2026-11-22T04:27:34.473Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,stagehand,2,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,64,64,
+2026-11-22T04:27:34.539Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,playwright,2,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,17,17,
+2026-11-22T04:27:34.557Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,playwright,2,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1219,1219,control_pick
+2026-11-22T04:27:35.778Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,stagehand,2,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1416,1416,stagehand_pick
+2026-11-22T04:27:37.196Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,stagehand,2,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,102,102,
+2026-11-22T04:27:37.299Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,playwright,2,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,34,34,
+2026-11-22T04:27:37.334Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,playwright,2,paraphrase,부서안내,0,0,1,0,ALLOWED_READ_ONLY,1205,,control_pick
+2026-11-22T04:27:38.540Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,stagehand,2,paraphrase,오시는길,1,0,0,0,ALLOWED_READ_ONLY,1205,1205,stagehand_pick
+2026-11-22T04:27:39.746Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,stagehand,2,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,62,62,
+2026-11-22T04:27:39.809Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,playwright,2,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,16,16,
+2026-11-22T04:27:39.826Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,playwright,2,paraphrase,누리집 안내 지도,0,0,1,0,ALLOWED_READ_ONLY,904,,control_pick
+2026-11-22T04:27:40.732Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,stagehand,2,paraphrase,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,1901,1901,stagehand_pick
+2026-11-22T04:27:42.634Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,playwright,3,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,28,28,
+2026-11-22T04:27:42.665Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,stagehand,3,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,106,106,
+2026-11-22T04:27:42.772Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,stagehand,3,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1392,1392,stagehand_pick
+2026-11-22T04:27:44.166Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,playwright,3,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1266,1266,control_pick
+2026-11-22T04:27:45.433Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,playwright,3,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,17,17,
+2026-11-22T04:27:45.451Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,stagehand,3,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,68,68,
+2026-11-22T04:27:45.520Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,stagehand,3,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1193,1193,stagehand_pick
+2026-11-22T04:27:46.714Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,playwright,3,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1231,1231,control_pick
+2026-11-22T04:27:47.946Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,playwright,3,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,22,22,
+2026-11-22T04:27:47.969Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,stagehand,3,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,80,80,
+2026-11-22T04:27:48.049Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,stagehand,3,paraphrase,오시는길,1,0,0,0,ALLOWED_READ_ONLY,1247,1247,stagehand_pick
+2026-11-22T04:27:49.297Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,playwright,3,paraphrase,,0,1,0,0,,1365,,control_pick
+2026-11-22T04:27:50.663Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,playwright,3,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,18,18,
+2026-11-22T04:27:50.683Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,stagehand,3,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,48,48,
+2026-11-22T04:27:50.731Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,stagehand,3,paraphrase,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,1380,1380,stagehand_pick
+2026-11-22T04:27:52.112Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,playwright,3,paraphrase,누리집 안내 지도,0,0,1,0,ALLOWED_READ_ONLY,994,,control_pick
+2026-11-22T04:27:53.108Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,stagehand,4,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,70,70,
+2026-11-22T04:27:53.178Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,playwright,4,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,22,22,
+2026-11-22T04:27:53.202Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,playwright,4,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1045,1045,control_pick
+2026-11-22T04:27:54.247Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,stagehand,4,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1473,1473,stagehand_pick
+2026-11-22T04:27:55.721Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,stagehand,4,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,49,49,
+2026-11-22T04:27:55.771Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,playwright,4,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,14,14,
+2026-11-22T04:27:55.786Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,playwright,4,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,990,990,control_pick
+2026-11-22T04:27:56.777Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,stagehand,4,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1163,1163,stagehand_pick
+2026-11-22T04:27:57.941Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,stagehand,4,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,56,56,
+2026-11-22T04:27:57.998Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,playwright,4,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,18,18,
+2026-11-22T04:27:58.016Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,playwright,4,paraphrase,,0,1,0,0,,1403,,control_pick
+2026-11-22T04:27:59.420Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,stagehand,4,paraphrase,오시는길,1,0,0,0,ALLOWED_READ_ONLY,1237,1237,stagehand_pick
+2026-11-22T04:28:00.658Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,stagehand,4,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,58,58,
+2026-11-22T04:28:00.717Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,playwright,4,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,14,14,
+2026-11-22T04:28:00.731Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,playwright,4,paraphrase,누리집 안내 지도,0,0,1,0,ALLOWED_READ_ONLY,887,,control_pick
+2026-11-22T04:28:01.619Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,stagehand,4,paraphrase,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,1530,1530,stagehand_pick
+2026-11-22T04:28:03.150Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,playwright,5,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,22,22,
+2026-11-22T04:28:03.173Z,https://www.mohw.go.kr/,보건복지 상담센터 129 눌러 줘,보건복지 상담센터 129,stagehand,5,exact,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,58,58,
+2026-11-22T04:28:03.232Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,stagehand,5,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1369,1369,stagehand_pick
+2026-11-22T04:28:04.602Z,https://www.mohw.go.kr/,복지 문제로 전화해서 상담받을 곳 눌러 줘,보건복지 상담센터 129,playwright,5,paraphrase,보건복지 상담센터 129,1,0,0,0,ALLOWED_READ_ONLY,1247,1247,control_pick
+2026-11-22T04:28:05.850Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,playwright,5,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,19,19,
+2026-11-22T04:28:05.871Z,https://www.korean.go.kr/,외래어 표기법 눌러 줘,외래어 표기법,stagehand,5,exact,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,65,65,
+2026-11-22T04:28:05.944Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,stagehand,5,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1073,1073,stagehand_pick
+2026-11-22T04:28:07.018Z,https://www.korean.go.kr/,외국에서 들어온 단어를 한글로 어떻게 적는지 나오는 데 눌러 줘,외래어 표기법,playwright,5,paraphrase,외래어 표기법,1,0,0,0,ALLOWED_READ_ONLY,1401,1401,control_pick
+2026-11-22T04:28:08.420Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,playwright,5,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,26,26,
+2026-11-22T04:28:08.446Z,https://www.mohw.go.kr/,오시는길 눌러 줘,오시는길,stagehand,5,exact,오시는길,1,0,0,0,ALLOWED_READ_ONLY,82,82,
+2026-11-22T04:28:08.531Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,stagehand,5,paraphrase,오시는길,1,0,0,0,ALLOWED_READ_ONLY,1533,1533,stagehand_pick
+2026-11-22T04:28:10.064Z,https://www.mohw.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는길,playwright,5,paraphrase,,0,1,0,0,,1043,,control_pick
+2026-11-22T04:28:11.108Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,playwright,5,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,15,15,
+2026-11-22T04:28:11.124Z,https://www.korean.go.kr/,오시는 길 눌러 줘,오시는 길,stagehand,5,exact,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,49,49,
+2026-11-22T04:28:11.173Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,stagehand,5,paraphrase,오시는 길,1,0,0,0,ALLOWED_READ_ONLY,1314,1314,stagehand_pick
+2026-11-22T04:28:12.489Z,https://www.korean.go.kr/,제가 직접 방문하려는데 어떻게 가는지 알려 주는 데 눌러 줘,오시는 길,playwright,5,paraphrase,누리집 안내 지도,0,0,1,0,ALLOWED_READ_ONLY,1016,,control_pick

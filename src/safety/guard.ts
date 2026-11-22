@@ -20,6 +20,7 @@ export interface PolicyConfig {
 }
 export interface PolicyContext {
   currentUrl?: string;
+  frameOrigins?: readonly string[];
   stopped?: boolean;
   approvals?: ReadonlySet<string>;
   actionsThisTurn?: number;
@@ -209,7 +210,14 @@ export class PolicyGuard {
     if (!this.config.allowedActionTypes.includes(action.type)) return deny("DENIED_ACTION_TYPE", `허용되지 않은 액션 유형(${action.type})입니다.`);
 
     // 이동은 목적지, 그 외는 현재 화면의 출처로 접근 등급을 정한다.
-    const tier = this.tierOf(action.type === "navigate" ? action.url : ctx.currentUrl);
+    let tier = this.tierOf(action.type === "navigate" ? action.url : ctx.currentUrl);
+    // 안쪽 문서를 누를 때에는 그 출처와 바깥 출처 가운데 더 좁은 권한으로만 조작한다.
+    if (action.type !== "navigate" && ctx.frameOrigins !== undefined) {
+      for (const url of ctx.frameOrigins) {
+        const inner = this.tierOf(url);
+        if (inner === "none" || tier === "full") tier = inner;
+      }
+    }
     if (action.type === "navigate" && !hasText(action.url)) return deny("DENIED_ORIGIN", "이동할 주소가 없습니다.");
     if (tier === "none") return deny("DENIED_ORIGIN", "허용되지 않은 주소라서 열거나 조작하지 않습니다.");
     // 사이트의 confirm() 창에 답하는 허가는 읽기 전용 사이트에서 같은 화면의 누르기를 되풀이할 때만 쓴다.
@@ -228,6 +236,15 @@ export class PolicyGuard {
       // 이름이 '바로 누를 수 있는' 항목이어도 같다. 어댑터가 따로 가진 기록과 맞는지는 누르기 직전에 어댑터가 다시 확인한다.
       if (ctx.approvals?.has(action.id) !== true) {
         return deny("DENIED_NATIVE_BINDING", "사이트가 물은 질문에 대신 답하려면 사용자 확인이 필요해요.");
+      }
+    }
+    if (ctx.frameOrigins !== undefined && action.type === "click") {
+      const name = strip(action.target?.name ?? "");
+      const hard = guardPatterns.hardAction.test(name) && isActionName(name);
+      if (hard && tier === "read-only") return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
+      if (hard || guardPatterns.loginName.test(name) || /^(?:확인|ok|confirm)$/iu.test(name)) {
+        if (this.publicLookup(ctx) || this.inspectionEnabled(ctx)) return readOnly("정보 확인 중에는 이 항목을 대신 누르지 않습니다.");
+        return approveOrAsk(action, ctx, "사용자가 이 항목을 확인했습니다.", "이 항목을 누르기 전에 사용자 확인이 필요합니다.");
       }
     }
     if (this.publicLookup(ctx)) {
