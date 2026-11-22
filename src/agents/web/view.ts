@@ -16,7 +16,7 @@ const outline = ScreenOutlineSchema.in.partial().extend({
 export const WebObservationSchema = ObservationSchema.in.partial().extend({
   pageId: optional(z.string()), mainText: optional(z.string()),
   step: optional(StepInfoSchema.partial().loose()),
-  fields: optional(z.array(field)), dialogs: optional(z.array(DialogInfoSchema.partial().loose())),
+  fields: optional(z.array(field)), dialogs: optional(z.array(DialogInfoSchema.in.partial().loose())),
   outline: optional(outline),
 }).loose();
 
