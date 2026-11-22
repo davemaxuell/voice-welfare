@@ -298,7 +298,7 @@ export class BrowseSkill {
       const url = tryUrl(current.url);
       if (url) return this.openSite(url.origin, ctx);
     }
-    const model = this.deps.webLlm ?? this.deps.llm;
+    const model = this.deps.webLlm;
     const out = await this.web.followLink(name, ctx, false, expected || !model ? {expected} : {picker: {model, scanner: this.deps.scanner}});
     const now = this.web.currentView;
     if (out.status === "needs-approval" && out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view ?? now, "", out.actions);
