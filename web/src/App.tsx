@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { LangSchema } from "../../src/core/turn.ts";
 import {
   answerConsent, answerRecovery, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
@@ -12,6 +12,7 @@ import { RecordingReview } from "./recording-review.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
 import { EXAMPLES, UNSUPPORTED, viewOf, type Env, type LogEntry, type WorkspaceView } from "./view.ts";
 import { WorkflowPanel } from "./workflows.tsx";
+import { workflowText } from "./workflows-text.ts";
 import { LANGUAGE_NAMES, sourceLanguage, workspaceText } from "./workspace-language.ts";
 
 const env: Env = { background: new URLSearchParams(location.search).get("background") === "1", mac: /Mac/.test(navigator.platform) };
@@ -207,7 +208,7 @@ function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s
   </form>;
 }
 
-export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) => string }) {
+export function StatusPanel({ view, t, researchStatus = "" }: { view: WorkspaceView; t: (s: string) => string; researchStatus?: string }) {
   const s = view.status;
   const progress = useRef<HTMLProgressElement>(null);
   useEffect(() => { if (s.progress !== undefined) progress.current?.style.setProperty("--p", String(s.progress.ratio)); }, [s.progress?.ratio]);
@@ -216,6 +217,7 @@ export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) =
     <progress id="step-progress" aria-label={t("신청 진행률")} hidden={s.progress === undefined} max={s.progress?.max} value={s.progress?.value} ref={progress}></progress>
     <dl className="status work-status">
       <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)} aria-live="polite">{s.activity}</dd></div>
+      <div className="st-research-row" hidden={researchStatus.length === 0}><dt>{workflowText("statusLabel", view.lang)}</dt><dd id="st-research" aria-live="polite">{researchStatus}</dd></div>
       <div className="st-state-row"><dt>{t("진행 상태")}</dt><dd><span id="st-state" data-state={s.state}>{s.stateLabel}</span></dd></div>
       <div className="st-step-row" hidden={s.step === undefined}><dt>{t("신청 단계")}</dt><dd id="st-step" lang={sourceLanguage(s.step)}>{s.step ?? t("없음")}</dd></div>
       <div className="st-title-row" hidden={s.title === undefined}><dt>{t("현재 화면")}</dt><dd id="st-title" lang={sourceLanguage(s.title)}>{s.title ?? t("아직 열지 않음")}</dd></div>
@@ -280,6 +282,7 @@ export function App() {
   const view = viewOf(ui, env);
   const lang = view.lang;
   const t = (s: string) => workspaceText(s, lang);
+  const [researchStatus, setResearchStatus] = useState("");
   const thread = useFollowThread();
   const layout = useRef<HTMLDivElement>(null);
   const layoutTop = useRef<number | undefined>(undefined);
@@ -365,7 +368,7 @@ export function App() {
         </div>
 
         <aside className="side" aria-label={t("작업 정보와 설정")}>
-          <StatusPanel view={view} t={t}/>
+          <StatusPanel view={view} t={t} researchStatus={researchStatus}/>
           <section aria-labelledby="src-title" className="panel" id="sources-panel" hidden={view.sources.length === 0}>
             <h2 id="src-title">{t("근거 자료")}</h2><ul id="sources">{view.sources.map((s, i) => <li key={`${s.url}-${i}`}>
               <a lang={sourceLanguage(s.title)} href={s.url} target="_blank" rel="noreferrer">{s.title}</a> ({t("확인일")} {s.lastCheckedAt}{s.note !== undefined && s.note.length > 0 && <span lang={sourceLanguage(s.note)}>, {s.note}</span>})
@@ -377,7 +380,7 @@ export function App() {
             </li>)}</ol>
           </section>
           <SoundPanel view={view} ui={ui} t={t}/>
-          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch}/>
+          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch} onStatus={setResearchStatus}/>
           <details className="support-details">
             <summary id="unsupported-title">{t("지원하지 않는 기능")}</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{t(u)}</li>)}</ul>
           </details>
