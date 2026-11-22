@@ -45,6 +45,53 @@ async function noHorizontalOverflow() {
   }));
 }
 
+it.each([{ width: 360, height: 740 }, { width: 1280, height: 800 }])("keeps the composer in view from the welcome choices to the first reply at $width px", async viewport => {
+  await page.setViewportSize(viewport);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await consent();
+  await screen(page.locator("#welcome-panel")).toBeVisible();
+  const command = page.locator("#command");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screen(command).toBeInViewport({ ratio: 1 });
+  const readyTop = await command.evaluate(el => el.getBoundingClientRect().top);
+  const starter = page.locator("#starter-actions button:visible").first();
+  const request = await starter.getAttribute("data-request");
+  await starter.focus();
+  await page.keyboard.press("Enter");
+  await screen(command).toBeFocused();
+  await screen(command).toHaveValue(request!);
+  await sendText("장애인연금 지원 대상이 누구야?");
+  await screen(page.locator("#answer-panel")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screen(command).toBeInViewport({ ratio: 1 });
+  if (viewport.width === 1280) {
+    const answerTop = await command.evaluate(el => el.getBoundingClientRect().top);
+    expect(Math.abs(answerTop - readyTop)).toBeLessThan(2);
+  }
+});
+
+it("closes the examples from their visible height and keeps keyboard focus on the summary", async () => {
+  await page.setViewportSize({ width: 960, height: 860 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await consent();
+  const examples = page.locator(".conversation > .examples-disclosure");
+  const summary = examples.locator("summary");
+  await summary.press("Enter");
+  const heights = await examples.evaluate(async node => {
+    const el = node as HTMLDetailsElement;
+    el.getBoundingClientRect();
+    await Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished));
+    const open = el.getBoundingClientRect().height;
+    el.open = false;
+    const starting = el.getBoundingClientRect().height;
+    await Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished));
+    return { open, starting, closed: el.getBoundingClientRect().height };
+  });
+  expect(Math.abs(heights.open - heights.starting)).toBeLessThan(2);
+  expect(heights.closed).toBeLessThan(heights.open);
+  await screen(summary).toBeFocused();
+});
+
 it("맨 아래에서는 새 메시지를 따라가고, 위로 올려 두면 자리를 지키며 새 메시지 보기 버튼으로 이동한다", async () => {
   let seq = 0;
   await page.route("**/api/turn", async route => {

@@ -59,12 +59,14 @@ export function RecordingReview({ owner, lang }: { owner: string | undefined; la
 
   return <details id="recording-review" className="examples-disclosure" hidden={owner === undefined}>
     <summary id="recording-title">{words[0]}</summary>
-    <label htmlFor="recording-file" id="recording-label">{words[1]}</label>
-    <input type="file" id="recording-file" accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,.flac" ref={file}
-      onChange={e => { clear(); setHasFile((e.currentTarget.files?.length ?? 0) > 0); }}/>
-    <button id="recording-send" type="button" disabled={owner === undefined || !hasFile || sending} onClick={() => void transcribe()}>{words[2]}</button>
-    <p id="recording-status" role="status">{status === undefined ? "" : words[status] ?? ""}</p>
-    <label id="recording-result-label" htmlFor="recording-result" hidden={result === undefined}>{words[3]}</label>
-    <textarea id="recording-result" rows={4} readOnly hidden={result === undefined} value={result ?? ""}></textarea>
+    <div className="recording-fields">
+      <label htmlFor="recording-file" id="recording-label">{words[1]}</label>
+      <input type="file" id="recording-file" accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,.flac" ref={file}
+        onChange={e => { clear(); setHasFile((e.currentTarget.files?.length ?? 0) > 0); }}/>
+      <button id="recording-send" type="button" disabled={owner === undefined || !hasFile || sending} onClick={() => void transcribe()}>{words[2]}</button>
+      <p id="recording-status" role="status">{status === undefined ? "" : words[status] ?? ""}</p>
+      <label id="recording-result-label" htmlFor="recording-result" hidden={result === undefined}>{words[3]}</label>
+      <textarea id="recording-result" rows={4} readOnly hidden={result === undefined} value={result ?? ""}></textarea>
+    </div>
   </details>;
 }
