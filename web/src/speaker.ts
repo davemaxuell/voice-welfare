@@ -1,6 +1,8 @@
+import { workspaceText } from "./workspace-language.ts";
+import { timing, type TimingPoint } from "./perf.ts";
 // ⑥ 말하기: 서버 TTS를 문장 단위로 받아 이어 재생, 신호음.
 import type { SessionState } from "../../src/core/turn.ts";
-import { audioContext } from "./audio.ts";
+import { getSpeechLang, audioContext } from "./audio.ts";
 
 /** 말하기 설정(세션 TurnResult·snapshot의 speechPrefs). 기본은 예전 고정값과 같다. */
 export const speechPrefs: { rate: number; voice: string | null } = { rate: 1.25, voice: null };
@@ -45,7 +47,7 @@ export function splitForSpeech(text: string, max = 140) {
   return chunks;
 }
 export type PlayResult = "played" | "cancelled" | "blocked";
-async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number): Promise<PlayResult> {
+async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number, request?: TimingPoint): Promise<PlayResult> {
   if (token !== playToken) return "cancelled";
   if (c.state === "suspended") await c.resume().catch(() => undefined);
   if (c.state !== "running") return "blocked";
@@ -60,6 +62,7 @@ async function playBuffer(c: AudioContext, data: ArrayBuffer, token: number): Pr
   await new Promise<void>((resolve) => {
     node.onended = () => resolve();
     node.start();
+    timing?.measure(request, "first-audio");
     notifySpeaking();
   });
   if (source === node) source = undefined;
@@ -84,6 +87,7 @@ export const serverTts = {
     this.cancel();
     interrupted = null;
     const token = playToken;
+    const request = timing?.mark("speech-requested");
     const chunks = splitForSpeech(text);
     try {
       const c = audioContext();
@@ -100,7 +104,7 @@ export const serverTts = {
       for (let i = fromChunk; i < chunks.length && next !== undefined; i++) {
         const data = await next;
         next = load(i + 1); // 재생하는 동안 다음 문장 합성
-        const r = await playBuffer(c, data, token);
+        const r = await playBuffer(c, data, token, i === fromChunk ? request : undefined);
         if (r !== "played") {
           next?.catch(() => undefined);
           // 끼어들기로 멈춘 자리(이 조각부터 다시)
@@ -136,6 +140,7 @@ export const serverTts = {
 export type DeviceSpeech = "played" | "cancelled" | "unavailable";
 export async function speakOnDevice(text: string, lang: string, rate = speechPrefs.rate): Promise<DeviceSpeech> {
   serverTts.cancel();
+  const request = timing?.mark("speech-requested");
   interrupted = null;
   const token = playToken;
   const synth = "speechSynthesis" in window ? window.speechSynthesis : undefined;
@@ -176,6 +181,7 @@ export async function speakOnDevice(text: string, lang: string, rate = speechPre
       }
     };
     cancelDeviceSpeech = cancel;
+    if (request !== undefined) line.onstart = () => { timing?.measure(request, "first-audio"); };
     line.onend = () => finish("played");
     line.onerror = () => finish("unavailable");
     // Mute the microphone before the operating system starts speaking.
@@ -199,27 +205,6 @@ export function takeInterruptedSpeech() {
 export function isSpeaking() {
   return source !== undefined || utterance !== null;
 }
-const PROGRESS_GAP_MS = 15000;
-export interface ProgressReport { running: boolean; seq: number; spoken: boolean; latest?: string | null }
-/**
- * 진행 안내: 서버가 알려 준 목표 수행 단계 가운데 가장 최근 것을 15초에 한 번까지만 말한다.
- * 사용자가 말하는 중이거나 이미 안내 중이면 이번에는 건너뛴다. 일을 시작하고 15초 안에는 말하지 않는다(금방 끝나는 일은 답만 듣게).
- */
-export const progressVoice = {
-  seen: 0,
-  at: 0,
-  start() {
-    this.at = Date.now();
-  },
-  /** p = GET /api/session/{id}/progress. 지금 말할 문장(없으면 undefined). quiet = 사용자가 말하는 중이거나 다른 안내 중 */
-  pick(p: ProgressReport, quiet: boolean) {
-    if (!p.running || !p.spoken || p.latest == null || p.latest.length === 0 || p.seq <= this.seen) return undefined;
-    if (quiet || isSpeaking() || Date.now() - this.at < PROGRESS_GAP_MS) return undefined;
-    this.seen = p.seq;
-    this.at = Date.now();
-    return p.latest;
-  },
-};
 /** 신호음 종류: start 대화시작 · listen 이제말하세요 · done 다들었어요 · thinking 생각중 · working 일하는중 · approve 승인필요 · handoff 직접해주세요 · success 모의접수완료 · problem 문제 · stopped 멈춤 · end 대화끝 · reminder 기한알림 */
 export const CUE_KINDS = [
   "start",
@@ -258,7 +243,7 @@ export function preloadCues() {
     await Promise.all(urls.map(async (url) => {
       if (cueBuffers.has(url)) return;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`신호음 파일을 못 읽었습니다: ${url}`);
+      if (!res.ok) throw new Error(workspaceText("신호음 파일을 못 읽었습니다: {name}", getSpeechLang(), { name: url }));
       const buf = await c.decodeAudioData(await res.arrayBuffer());
       cueBuffers.set(url, buf);
     }));

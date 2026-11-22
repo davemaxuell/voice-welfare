@@ -51,5 +51,12 @@ jobs:
           key: desktop-models-${{ runner.os }}-${{ hashFiles('scripts/setup-models.ts') }}
       - run: npm run setup-models
       - run: npm run test:desktop
-      - run: npm run build:desktop
+      - run: npm run dist:win
       - run: npm run test:desktop-packaged
+      - run: npm run test:desktop-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          compression-level: 0
+          if-no-files-found: error
+          path: apps/desktop/dist/Cheongeum-Setup-*.exe

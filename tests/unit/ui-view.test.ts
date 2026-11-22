@@ -67,6 +67,13 @@ it("승인 대기면 동작 종류에 맞는 승인 단추와 카드 번호를 �
   expect(viewOf(ui({ last: turn({ pendingConfirmation }) }), env).confirm).toBeUndefined();
 });
 
+it("본문 읽기는 제안된 카드 번호와 단추 문구를 그대로 사용한다", () => {
+  const card = { id: "shown", key: "offer:t", lang: "ko", kind: "offer" as const,
+    ref: { turnId: "t" }, prompt: "", choices: [{ key: "read-main", label: "이 페이지의 본문 읽기" }] };
+  expect(viewOf(ui({ card }), env).readMain).toEqual({ id: "shown", label: "이 페이지의 본문 읽기" });
+  expect(viewOf(ui(), env).readMain).toBeUndefined();
+});
+
 it("본인인증 인계 중에는 마이크·대화 시작·마이크 확인을 막고 인증 단추를 보인다", () => {
   const authHandoff = { id: "h1", taskId: "k", kind: "login", status: "waiting", site: "정부24" };
   const v = viewOf(ui({ state: "AUTH_HANDOFF", last: turn({ state: "AUTH_HANDOFF", authHandoff }) }), env);
