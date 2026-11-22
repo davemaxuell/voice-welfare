@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   DialogInfoSchema, InteractiveItemSchema, ObservationSchema, ObservedFieldSchema, ScreenOutlineSchema, StepInfoSchema,
@@ -23,3 +24,17 @@ export const WebObservationSchema = ObservationSchema.in.partial().extend({
 export type WebObservation = z.infer<typeof WebObservationSchema>;
 export type WebField = z.infer<typeof field>;
 export type WebItem = z.infer<typeof item>;
+
+/** 같은 주소에서도 제목과 메뉴 상태로 화면을 구별한다. 저절로 바뀌는 본문은 비교에서 뺀다. */
+export function screenKey(view: WebObservation): string {
+  const outline = view.outline;
+  return createHash("sha256").update(JSON.stringify([view.url, view.title, outline?.headings,
+    outline?.items?.map(item => [item.name, item.role, item.expanded, item.selected, item.disabled])])).digest("hex");
+}
+
+/** 같은 화면 상태에서 승인받아 누른 항목만 중복 실행을 막고, 다음 단계로 바뀐 재사용 단추는 새 승인을 허용한다. */
+export function approvedClickKey(view: WebObservation, ref: string): string {
+  return createHash("sha256")
+    .update(JSON.stringify([screenKey(view), view.step?.current, view.step?.label, view.outline?.steps, ref]))
+    .digest("hex");
+}

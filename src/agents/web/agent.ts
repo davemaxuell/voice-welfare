@@ -23,6 +23,7 @@ import {
 } from "./effect.ts";
 import { REFUSAL_SPEECH, ShotRefusal, planShot, type ShotPlan } from "./shot.ts";
 import { nativeSpeech, noticeKey, noticeSaid, popupQuestion, revealedExcept, type NativeQuestion, type NoticeSaid, type PopupQuestion } from "./notice.ts";
+import { approvedClickKey } from "./view.ts";
 
 interface ContextOptions {
   signal: AbortSignal;
@@ -319,8 +320,9 @@ export class WebExecutionAgent {
     plan?: {action: Action; proof: NonNullable<ExecuteGrants["plan"]>};
   } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
+    const tab = this.adapter.page;
     const view = await this.observe(ctx);
-    if (visual && planShot(view) instanceof ShotRefusal) {
+    if (visual && (this.adapter.page !== tab || planShot(view) instanceof ShotRefusal)) {
       return {status: "failed", actions: log, view, message: "화면이 바뀌어 사진에서 확인한 메뉴를 누르지 않았어요."};
     }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
@@ -369,13 +371,16 @@ export class WebExecutionAgent {
         return this.notLocated(view, name, located.hits);
       }
     }
+    if (visual && this.adapter.page !== tab) {
+      return {status: "failed", actions: log, view, message: "탭이 바뀌어 사진에서 확인한 메뉴를 누르지 않았어요."};
+    }
     if (plan) {
       const target = plan.action.target;
       if (!expected || !target || target.ref !== item.ref || target.role !== item.role || target.name !== item.name)
         return {status: "needs-clarification", actions: log, view};
       return this.clickApproved(plan.action, ctx, {plan: plan.proof});
     }
-    if (ctx.approvedGoalRefs?.has(item.ref) === true) {
+    if (ctx.approvedGoalRefs?.has(approvedClickKey(view, item.ref)) === true || ctx.approvedGoalRefs?.has(item.ref) === true) {
       return {status: "failed", actions: log, view, message: "이미 승인받아 누른 항목이에요. 지금 화면에서 다음 단계를 찾아 주세요."};
     }
     const target = { ref: item.ref, role: item.role, name: item.name };

@@ -199,6 +199,7 @@ export async function createCharacter(canvas: HTMLCanvasElement, onPose: (pose: 
   return {
     refreshResolution: fitCanvas,
     get surfaceAvailable() { return surfaceAvailable; },
+    get hasDrawnFrame() { return renderer.info.render.frame > 0; },
     /** 현재 상태에 해당하는 짧은 동작만 끝까지 재생한다. */
     pose(name: string, { interrupt = false }: { interrupt?: boolean } = {}) {
       if (then === name && !interrupt) return;

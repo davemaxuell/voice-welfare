@@ -31,7 +31,7 @@ it("화면 사진을 쓰기 전에 이 목표 동안의 동의를 먼저 받고 
 
 it("모델이 화면을 볼 수 없다고 하면 실제 조작 목록을 읽은 뒤 사진 사용을 제안한다", async () => {
   const orient = vi.fn();
-  const refused = { action: "fail", answer: "제가 화면을 볼 수 없어요." };
+  const refused = { action: "no_route", answer: "제가 화면을 볼 수 없어요." };
   const run = pilot({ [URL_]: SPARSE }, [refused, refused], { offerVisual: true, orient }, URL_);
   const lookup = vi.fn(async () => ({ url: URL_, items: [], more: false }));
   run.auto.web.adapter.controlWindow = lookup;
@@ -40,6 +40,40 @@ it("모델이 화면을 볼 수 없다고 하면 실제 조작 목록을 읽은 
   expect(lookup).toHaveBeenCalledTimes(1);
   expect(run.requests[1]?.user).toContain("linkMatches");
   expect(orient).not.toHaveBeenCalled();
+});
+
+it("정책상 할 수 없는 조작을 거절하면 메뉴를 찾거나 사진을 요청하지 않는다", async () => {
+  const orient = vi.fn();
+  const answer = "신청서 제출은 직접 하셔야 해요.";
+  const run = pilot({ [URL_]: SPARSE }, [{ action: "fail", answer }], { offerVisual: true, orient }, URL_);
+  const controls = vi.fn(async () => ({ url: URL_, items: [], more: false }));
+  run.auto.web.adapter.controlWindow = controls;
+  expect(await run.auto.run("신청서 제출해 줘", context())).toMatchObject({status: "failed", speech: answer, steps: []});
+  expect(controls).not.toHaveBeenCalled();
+  expect(orient).not.toHaveBeenCalled();
+});
+
+it("계획 모델이 응답을 주지 않으면 사진 메뉴를 추측해서 누르지 않는다", async () => {
+  const found = {...FOUND, imageOnly: []};
+  const {checkpoint} = await consented();
+  const orient = vi.fn(async () => [found, ""] as [Orientation, string]);
+  const run = pilot({[URL_]: SPARSE}, [undefined, undefined], {offerVisual: true, orient}, URL_);
+  expect(await run.auto.run("자료를 열어 줘", context(), undefined, {checkpoint}))
+    .toMatchObject({status: "failed", steps: [{action: "inspect_screen", ok: true}]});
+  expect(run.executed).toEqual([]);
+  expect(run.requests).toHaveLength(2);
+});
+
+it("같은 주소에서 조작 목록을 못 읽고 제목이 계속 바뀌어도 자동 재시도를 제한한다", async () => {
+  const run = pilot({[URL_]: SPARSE}, Array.from({length: 8}, () => ({action: "no_route"})), {maxSteps: 8}, URL_);
+  let count = 0;
+  vi.spyOn(run.auto.web, "observe").mockImplementation(async () => ({...SPARSE, pageId: "external", title: `공지 ${++count}`}));
+  const controls = vi.fn(async () => { throw new Error("목록을 읽을 수 없음"); });
+  run.auto.web.adapter.controlWindow = controls;
+  const result = await run.auto.run("자료를 열어 줘", context());
+  expect(result.status).toBe("failed");
+  expect(controls).toHaveBeenCalledTimes(2);
+  expect(result.iterations).toBe(3);
 });
 
 it("사용자만 정할 수 있는 선택은 바로 묻고 사진을 요청하지 않는다", async () => {
@@ -71,6 +105,38 @@ it("동의하면 첫 단계에서 사진으로 알아본 것을 다음 결정에
   expect(sent(resumed.requests[0]!).screenOrientation).toEqual({ place: FOUND.place, clickable: FOUND.clickable, imageOnly: FOUND.imageOnly });
   expect(resumed.requests[0]?.system).toContain("imageOnly");
   expect(result.status).toBe("asked");
+});
+
+it("사진을 이미 확인해도 근거 검증에 실패하면 본문 읽기를 제안한다", async () => {
+  const { orient, checkpoint } = await consented();
+  const unsupported = {action: "answer", answer: "수수료는 5만원이에요.", evidence: ["가짜 본문"]};
+  const run = pilot({[URL_]: SPARSE}, [unsupported, unsupported, unsupported], {offerVisual: true, orient}, URL_);
+  const result = await run.auto.run("수수료가 얼마인지 알려줘", context(), undefined, {checkpoint});
+  expect(result.status).toBe("failed");
+  expect(result.speech).toContain("지금 화면의 본문을 읽어 드릴까요?");
+  expect(run.executed).toEqual([]);
+});
+
+it("직접 누를 사진 메뉴를 안내하기 전에 탭이 닫히면 화면을 다시 열어 달라고 한다", async () => {
+  const {checkpoint} = await consented();
+  const orient = vi.fn(async () => [{...FOUND, clickable: []}, ""] as [Orientation, string]);
+  const run = pilot({[URL_]: SPARSE}, [{action: "click", target: "배너 메뉴"}], {offerVisual: true, orient}, URL_);
+  const observe = vi.spyOn(run.auto.web, "observe");
+  observe.mockImplementationOnce(async () => ({...SPARSE, pageId: "external"})).mockRejectedValue(new Error("Target page has been closed"));
+  expect(await run.auto.run("배너 메뉴 열어 줘", context(), undefined, {checkpoint}))
+    .toMatchObject({status: "failed", speech: "읽던 탭을 확인하지 못했어요. 탭을 다시 열고 말씀해 주세요."});
+  expect(run.executed).toEqual([]);
+});
+
+it("사용자가 누른 뒤 이어 간 실행에서도 모호한 링크를 사진으로 확인할 수 있다", async () => {
+  const item = {name: "안내 자료", role: "link", ref: "guide", disabled: false, region: "main"} as const;
+  const view = {...SPARSE, pageId: "external" as const, outline: {...SPARSE.outline!, items: [item]}};
+  const {checkpoint} = await consented({kind: "manual"});
+  const run = pilot({[URL_]: view}, [{action: "click", target: "자료"}], {offerVisual: true}, URL_);
+  vi.spyOn(run.auto.web, "followLink").mockResolvedValue({status: "needs-clarification", actions: [], view, candidates: [item.name]});
+  const result = await run.auto.run("다음 자료를 열어 줘", context(), undefined, {checkpoint});
+  expect(result.status).toBe("visual-consent");
+  expect(result.checkpoint?.choice.controls.has(item.name)).toBe(true);
 });
 
 it("같은 누리집에서는 다시 묻지 않고 세 장까지만 보낸다", async () => {

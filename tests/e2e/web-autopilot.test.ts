@@ -6,7 +6,32 @@ import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
 import { Autopilot, type AutopilotActionType } from "../../src/agents/web/autopilot.ts";
 import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { ACTION_TYPES } from "../../src/core/actions.ts";
+import { ModelConnections, OpenAIStructuredLlm } from "../../src/core/llm.ts";
+import { FakeLlm } from "../helpers.ts";
+import { browserCases, flat } from "./browser-cases.ts";
 import { PolicyGuard } from "../../src/safety/guard.ts";
+
+const openSession = browserCases();
+
+it("탐색 모델의 HTTP 오류를 화면 이해 실패로 안내하지 않는다", async () => {
+  const {session, page} = await openSession({practiceMode: false});
+  await page.goto(portal);
+  let calls = 0;
+  session.deps.llm = new FakeLlm(({schemaName}) => schemaName === "intent_plan"
+    ? {steps: [flat("GOAL", {topic: "공개 자료 찾아줘"})]} : undefined);
+  session.deps.goalLlm = new OpenAIStructuredLlm({
+    baseUrl: "http://localhost:3100/v1", model: "test",
+    pool: new ModelConnections(async () => {
+      calls++;
+      return Response.json({error: "test provider refused the request"}, {status: 429});
+    }),
+  });
+  const result = await session.handleTurn("공개 자료를 찾아서 살펴봐 줄래요?");
+  expect(calls).toBe(1);
+  expect(result.speech).toContain("AI 서비스에 연결하지 못했어요");
+  expect(result.trace.some(entry => entry.note?.includes("HTTP 429") === true)).toBe(true);
+  expect(result.actions).toEqual([]);
+});
 
 const portal = "http://127.0.0.1:5174/external.html";
 const profile = createMockWelfareProfile("http://localhost:5174");
