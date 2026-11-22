@@ -196,6 +196,31 @@ it("실제 누르기가 가려진 단추를 기다리는 동안 멈추면 앞뒤
   expect(await page.title()).toBe("");
 });
 
+it("입력 검사 설치 도중 멈춰도 뒤늦게 도착한 리스너를 정리해 다른 단추 클릭을 막지 않는다", async () => {
+  const { page, adapter } = await fixture('<button onclick="document.title=\'첫 단추\'">첫 단추</button><button onclick="document.title=\'다른 단추\'">다른 단추</button>');
+  const item = (await adapter.observe()).outline!.items!.find(control => control.name === "첫 단추")!;
+  const orig = page.evaluateHandle.bind(page);
+  const installed = gate(), release = gate();
+  vi.spyOn(page, "evaluateHandle").mockImplementation((async (fn: unknown, ...args: unknown[]) => {
+    const handle = await (orig as (...a: unknown[]) => Promise<unknown>)(fn, ...args);
+    if (typeof fn === "string" && fn.includes("addEventListener")) {
+      installed.resolve();
+      await release.promise;
+    }
+    return handle;
+  }) as typeof page.evaluateHandle);
+  const stop = new AbortController();
+  const clicking = adapter.execute(action("click", item), stop.signal);
+  try {
+    await installed.promise;
+    stop.abort();
+    expect((await clicking).errorCode).toBe("ABORTED");
+  } finally { release.resolve(); }
+  await delay(100);
+  await page.getByRole("button", { name: "다른 단추" }).click();
+  expect(await page.title()).toBe("다른 단추");
+});
+
 it("입력 전에 초점이 비밀번호로 옮겨지거나 원래 칸이 비밀번호로 바뀌면 쓰지 않는다", async () => {
   for (const focus of ["document.getElementById('secret').focus()", "this.type='password'"]) {
     const { adapter, page } = await fixture('<input id="field" onfocus="' + focus + '"><input id="secret" type="password">');
