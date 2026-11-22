@@ -28,7 +28,7 @@ function isDisabled(el: Element) {
 let springTiming: { duration: number; easing: string } | null | undefined;
 function glide(el: HTMLElement, from: number | undefined) {
   if (from === undefined || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const dy = from - el.getBoundingClientRect().top;
+  const dy = Math.max(-16, Math.min(16, from - el.getBoundingClientRect().top));
   if (Math.abs(dy) < 2) return;
   springTiming ??= (() => {
     const match = /^([\d.]+)ms\s+(.+)$/s.exec(getComputedStyle(document.documentElement).getPropertyValue("--spring").trim());
@@ -87,17 +87,16 @@ function ConsentPanel({ view, detailsOpen }: { view: WorkspaceView; detailsOpen:
 }
 
 function WelcomePanel({ view, t, onStarter }: { view: WorkspaceView; t: (s: string) => string; onStarter: (request: string) => void }) {
-  return <section className="hero" id="welcome-panel" aria-labelledby="welcome-title" hidden={view.stage !== "ready"}>
-    <div className="hero-content">
-      <h2 id="welcome-title">{t("무엇을 도와드릴까요?")}</h2>
-      <p className="hero-lead">{t("필요한 공공서비스나 읽고 싶은 화면을 알려주세요.")}</p>
+  return <section id="welcome-panel" aria-labelledby="welcome-title" aria-hidden={view.stage !== "ready"} inert={view.stage !== "ready"}>
+    <div className="welcome-content">
+      <h3 id="welcome-title">{t("무엇을 도와드릴까요?")}</h3>
+      <p>{t("필요한 공공서비스나 읽고 싶은 화면을 알려주세요.")}</p>
       <div id="starter-actions" className="starter-actions" role="group" aria-label={t("요청 예시 선택")}>
         {view.starters.map(s => <button type="button" key={s.request} data-request={t(s.request)} data-consent={s.consent} hidden={s.hidden} disabled={s.disabled} onClick={() => onStarter(t(s.request))}>
           <span className={`choice-art ${s.art}`} aria-hidden="true"></span>{t(s.label)}
         </button>)}
       </div>
     </div>
-    <div className="hero-art" aria-hidden="true"><div className="ripples"><i></i><i></i><i></i></div><img src="/avatar/still.png" alt="" width={240} height={240}/></div>
   </section>;
 }
 
@@ -284,11 +283,12 @@ function SoundPanel({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s:
 }
 
 /** 대화 영역을 맨 아래에서 보고 있으면 새 메시지·카드가 붙어도 계속 맨 아래를 보여 주고, 위로 올려 둔 경우에는 자리를 지킨다. */
-function useFollowThread(messageCount: number) {
+function useFollowThread(messageCount: number, showWelcome: boolean) {
   const thread = useRef<HTMLDivElement>(null);
   const log = useRef<HTMLOListElement>(null);
   const pinned = useRef(true);
   const prevCount = useRef(messageCount);
+  const wasWelcoming = useRef(showWelcome);
   const [unread, setUnread] = useState(0);
 
   const isPinned = useCallback(() => {
@@ -297,9 +297,10 @@ function useFollowThread(messageCount: number) {
   }, []);
 
   const scrollToBottom = useCallback(() => {
+    if (showWelcome) return;
     if (log.current !== null && isScrollable(log.current)) log.current.scrollTop = log.current.scrollHeight;
     if (thread.current !== null && isScrollable(thread.current)) thread.current.scrollTop = thread.current.scrollHeight;
-  }, []);
+  }, [showWelcome]);
 
   useEffect(() => {
     const t = thread.current, l = log.current;
@@ -323,12 +324,13 @@ function useFollowThread(messageCount: number) {
 
   // 새 메시지를 그리기 전에 지금 맨 아래를 보고 있었는지 확인한다.
   if (messageCount !== prevCount.current && messageCount > prevCount.current) {
-    pinned.current = isPinned();
+    pinned.current = wasWelcoming.current || isPinned();
   }
 
   useLayoutEffect(() => {
     const previous = prevCount.current;
     prevCount.current = messageCount;
+    wasWelcoming.current = showWelcome;
     if (messageCount === 0 || messageCount < previous) {
       pinned.current = true;
       setUnread(0);
@@ -338,7 +340,7 @@ function useFollowThread(messageCount: number) {
       if (pinned.current) scrollToBottom();
       else setUnread(count => count + (messageCount - previous));
     }
-  }, [messageCount, scrollToBottom]);
+  }, [messageCount, scrollToBottom, showWelcome]);
 
   const jumpToLatest = useCallback(() => {
     pinned.current = true;
@@ -358,7 +360,7 @@ export function App() {
   useEffect(() => {
     if (view.workspaceOwner !== undefined) return watchResearch(view.workspaceOwner, deliverResearch);
   }, [view.workspaceOwner]);
-  const { thread, log, unread, jumpToLatest } = useFollowThread(ui.messages.length);
+  const { thread, log, unread, jumpToLatest } = useFollowThread(ui.messages.length, view.stage === "ready");
   const layout = useRef<HTMLDivElement>(null);
   const layoutTop = useRef<number | undefined>(undefined);
   const stage = useRef<string | undefined>(undefined);
@@ -410,7 +412,6 @@ export function App() {
     </section>
     <main id="main" className="workspace">
       <ConsentPanel view={view} detailsOpen={ui.consentDetailsOpen}/>
-      <WelcomePanel view={view} t={t} onStarter={onStarter}/>
       <section className="panel recovery" id="recovery-panel" aria-labelledby="recovery-title" hidden={view.recovery === undefined}>
         <h2 id="recovery-title" tabIndex={-1}>{view.recovery?.title}</h2>
         <p id="recovery-message">{view.recovery?.message}</p>
@@ -426,10 +427,14 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
-              <p className={`phase phase-${view.conversation.phase}`} id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
+              <p className={`phase phase-${view.conversation.phase}`} id="phase">
+                <span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></span>
+              </p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
             <div className="thread" id="thread" ref={thread}>
+              <WelcomePanel view={view} t={t} onStarter={onStarter}/>
               <Log messages={ui.messages} t={t} logRef={log}/>
               <AnswerPanel view={view} t={t}/>
               <Decisions view={view} ui={ui} t={t}/>
@@ -438,13 +443,12 @@ export function App() {
               </button>
             </div>
             <section id="backend-status" aria-label={t("진행 상태")} aria-live="off" hidden={view.conversation.backendStatus.length === 0}>
-              <span lang={sourceLanguage(view.conversation.backendStatus)}>{view.conversation.backendStatus}</span>
+              <span key={view.conversation.backendStatus} lang={sourceLanguage(view.conversation.backendStatus)}>{view.conversation.backendStatus}</span>
             </section>
             <CommandForm view={view} ui={ui} t={t}/>
             <details className="examples-disclosure"><summary>{t("예시 명령 보기")}</summary><ul className="examples" id="examples">
               {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={e => void send(t(ex), { keyboard: e.detail === 0 })}>{t(ex)}</button></li>)}
             </ul></details>
-            <RecordingReview owner={view.recordingOwner} lang={lang}/>
           </section>
         </div>
 
@@ -461,10 +465,13 @@ export function App() {
             </li>)}</ol>
           </section>
           <SoundPanel view={view} ui={ui} t={t}/>
-          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} directActions={ui.directActions === true} onRead={speakResearch} onStatus={setResearchStatus}/>
-          <details className="support-details">
-            <summary id="unsupported-title">{t("지원하지 않는 기능")}</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{t(u)}</li>)}</ul>
-          </details>
+          <div className="side-tools">
+            <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} directActions={ui.directActions === true} onRead={speakResearch} onStatus={setResearchStatus}/>
+            <RecordingReview owner={view.recordingOwner} lang={lang}/>
+            <details className="support-details">
+              <summary id="unsupported-title">{t("지원하지 않는 기능")}</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{t(u)}</li>)}</ul>
+            </details>
+          </div>
         </aside>
       </div>
     </main>

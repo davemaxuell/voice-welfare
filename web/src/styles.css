@@ -8,7 +8,7 @@
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   --header-h: 4.25rem;
-  --gap: 1.25rem;
+  --gap: 1rem;
   /* 판 안쪽 여백 하나: 머리글·대화·입력·카드의 왼쪽 끝이 한 줄에 선다 */
   --pad: clamp(1.1rem, 1.8vw, 1.4rem);
   /* 대화 창 전환에만 쓰는 스프링 곡선과 마스크 그림 */
@@ -269,28 +269,18 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .consent-details summary { width: fit-content; padding-right: .5rem; }
 .consent-details p { padding: .9rem 1.1rem; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg); line-height: 1.8; margin-bottom: .6rem; }
 .consent-details button { margin-bottom: .9rem; border-radius: var(--radius-pill); }
-/* 처음 화면: 마스코트가 제목 옆에서 인사하고, 같은 크기의 그림 타일이 한 줄로 선다 */
-#welcome-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: clamp(1rem, 2.4vw, 1.75rem); padding-block: clamp(1.4rem, 3vw, 2.4rem); }
-#welcome-panel .hero-content { display: contents; }
-#welcome-panel .hero-art { position: relative; grid-row: 1 / span 2; grid-column: 1; top: auto; right: auto; width: clamp(76px, 9vw, 112px); height: auto; aspect-ratio: 1; transform: none; }
-#welcome-panel .hero-art img { width: 100%; transform: none; }
-#welcome-panel .ripples { display: none; }
-#welcome-panel h2 { grid-area: 1 / 2; align-self: end; }
-#welcome-panel .hero-lead { grid-area: 2 / 2; align-self: start; margin-top: .45rem; }
-#welcome-panel .starter-actions { grid-area: 3 / 1 / auto / -1; }
-
-.starter-actions { --cols: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin-top: clamp(1.25rem, 2.6vw, 2rem); }
+#welcome-panel { flex: none; min-width: 0; min-height: 0; overflow: clip; }
+#welcome-panel[aria-hidden="true"] { height: 0; visibility: hidden; opacity: 0; }
+.welcome-content { padding: clamp(1rem, 2.2vw, 1.65rem) var(--pad); border-bottom: 1px solid var(--line); }
+#welcome-title { margin: 0; font-size: clamp(1.35rem, 2.2vw, 1.85rem); line-height: 1.25; letter-spacing: -.035em; }
+.welcome-content > p { margin-top: .35rem; color: var(--muted); }
+.starter-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .9rem; }
 .starter-actions button {
-  flex: 0 1 calc((100% - (var(--cols) - 1) * .75rem) / var(--cols)); min-width: 0;
-  flex-direction: column; justify-content: flex-start; gap: .55rem; min-height: 9.25rem; padding: 1rem .7rem .95rem;
-  text-align: center; font-size: .95rem; line-height: 1.35; word-break: keep-all;
-  color: var(--ink); border-color: color-mix(in srgb, var(--accent) 10%, var(--line)); border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--paper) 88%, transparent); box-shadow: var(--shadow-1);
+  justify-content: flex-start; gap: .4rem; min-width: 0; max-width: 100%; min-height: 44px; padding: .35rem .75rem .35rem .4rem;
+  white-space: normal; text-align: start; line-height: 1.35; font-size: .9rem;
+  color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md);
 }
-.choice-art {
-  display: block; flex: none; width: 4.5rem; height: 4.5rem; border-radius: 50%;
-  background: radial-gradient(closest-side, var(--soft) 72%, transparent) center / 100% no-repeat;
-}
+.choice-art { display: block; flex: none; width: 1.75rem; height: 1.75rem; border-radius: .45rem; }
 .pension-art { background: url("/art/pension.webp") center / 84% no-repeat, radial-gradient(closest-side, var(--soft) 72%, transparent); }
 .site-art { background: url("/art/site.webp") center / 84% no-repeat, radial-gradient(closest-side, var(--soft) 72%, transparent); }
 .gov-art { background: url("/art/gov.svg") center / 84% no-repeat, radial-gradient(closest-side, var(--soft) 72%, transparent); }
@@ -326,12 +316,12 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 /* ------------------------------------------------------------------ 대화 */
 .conversation { padding: 0; display: flex; flex-direction: column; }
 .conversation-header {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem;
-  padding: .85rem var(--pad); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .45rem .65rem;
+  padding: .65rem var(--pad); border-bottom: 1px solid var(--line);
 }
 .conversation-header h2 { gap: var(--space-3); }
 .portrait {
-  position: relative; flex: 0 0 44px; height: 44px; border-radius: 14px;
+  position: relative; flex: 0 0 38px; height: 38px; border-radius: 12px;
   background: var(--soft) url("/avatar/still.png") center / 118% no-repeat;
   transform: scaleX(-1);
 }
@@ -509,10 +499,9 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .examples-disclosure > summary, .secondary-details > summary, .support-details > summary { font-size: .88rem; color: var(--muted); }
 .examples { display: flex; gap: .45rem; flex-wrap: wrap; list-style: none; padding: 0; margin: .35rem 0 1rem; }
 .examples button { min-height: 44px; padding: .35rem .85rem; border-radius: var(--radius-pill); font-size: var(--type-small); font-weight: 560; background: var(--surface); border-color: transparent; }
-#recording-review { display: block; }
-#recording-review[open] { display: grid; gap: .55rem; padding-bottom: 1rem; }
+.recording-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; padding-block: .25rem .7rem; }
 #recording-review label { font-size: .9rem; font-weight: 600; }
-#recording-review input[type="file"] { font-size: .88rem; color: var(--muted); }
+#recording-review input[type="file"] { max-width: 100%; font-size: .88rem; color: var(--muted); }
 #recording-review textarea { width: 100%; padding: .6rem .8rem; resize: vertical; }
 #recording-review button { justify-self: start; border-radius: var(--radius-pill); }
 
@@ -595,11 +584,11 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 #unsupported { margin: .6rem 0 0; padding-left: 1.25rem; line-height: 1.65; }
 #unsupported li + li { margin-top: .35rem; }
 
-.setting-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .9rem; font-size: .9rem; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .6rem; font-size: .9rem; }
 .setting-row select { min-width: 0; max-width: 68%; min-height: 44px; font-size: .9rem; padding: .4rem 2rem .4rem .75rem; border-radius: var(--radius-md); background-position: right .45rem center; }
 .voice-switch {
   width: 100%; display: flex; align-items: center; justify-content: space-between; position: relative;
-  border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: .85rem 0; margin-top: .9rem;
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: .5rem 0; margin-top: .6rem;
   font-size: .9rem; font-weight: 600; background: transparent;
 }
 .voice-switch:disabled { background: transparent; }
@@ -610,7 +599,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 /* 소리 도구: 같은 크기 세 칸, 아이콘 위·이름 아래 */
 .audio-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin-top: .25rem; }
 .audio-tools button {
-  flex-direction: column; gap: .35rem; min-height: 4.4rem; padding: .6rem .3rem; font-size: var(--type-small); line-height: 1.3; word-break: keep-all;
+  flex-direction: column; gap: .35rem; min-height: 3.45rem; padding: .4rem .3rem; font-size: var(--type-small); line-height: 1.3; word-break: keep-all;
   border-color: transparent; border-radius: var(--radius-lg); background: var(--surface);
 }
 .audio-tools button:disabled { background: var(--surface); opacity: .6; }
@@ -618,14 +607,15 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 #mic-check { --icon: var(--i-mic); }
 #sound-check { --icon: var(--i-speaker); }
 #stop-speaking { --icon: var(--i-close); }
-.secondary-details { margin-top: .75rem; border-top: 1px solid var(--line); }
+.secondary-details { margin-top: .45rem; border-top: 1px solid var(--line); }
 .secondary-details > p, .support-details ul { color: var(--muted); font-size: var(--type-small); }
 .secondary-details > p { padding-bottom: .5rem; }
 .settings { padding-bottom: .7rem; }
-.support-details {
-  padding: 0 var(--pad); background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-xl); box-shadow: var(--shadow-1);
-}
-.support-details[open] { padding-bottom: .9rem; }
+.side-tools { min-width: 0; padding-inline: var(--pad); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--paper); }
+.side-tools > details { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.side-tools > details:not([hidden]) ~ details:not([hidden]) { border-top: 1px solid var(--line); }
+.side-tools > details > summary { min-height: 46px; }
+.side-tools > details > :last-child:not(summary, .recording-fields) { margin-bottom: .7rem; }
 .support-details ul { margin-top: 0; }
 
 #workflow-panel summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
@@ -675,27 +665,27 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 }
 @media (min-width: 801px) and (min-height: 640px) {
   /* 첫 질문 뒤에는 두 단이 화면 높이에 맞춰 서고, 각자 안에서 스크롤한다 */
-  .app[data-stage="active"] .workspace { padding-block: 1rem; }
-  .app[data-stage="active"] .conversation {
+  .app:is([data-stage="ready"], [data-stage="active"]) .workspace { padding-block: 1rem; }
+  .app:is([data-stage="ready"], [data-stage="active"]) .conversation {
     position: sticky; top: calc(var(--header-h) + 1rem);
     height: calc(100dvh - var(--header-h) - 2rem);
     min-height: 26rem;
   }
-  .app[data-stage="active"] .side {
+  .app:is([data-stage="ready"], [data-stage="active"]) .side {
     position: sticky; top: calc(var(--header-h) + 1rem); align-self: start;
     max-height: calc(100dvh - var(--header-h) - 2rem); overflow-y: auto; overscroll-behavior: contain;
     /* 그림자·초점 테두리가 잘리지 않을 만큼만 옆·아래로 넓힌다(위로 넓히면 sticky가 단을 아래로 민다) */
     margin: 0 -6px -6px; padding: 0 6px 6px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
   }
-  .app[data-stage="active"] .thread { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
+  .app:is([data-stage="ready"], [data-stage="active"]) .thread { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
   .app[data-stage="active"] .thread::before {
     content: ""; position: sticky; top: 0; z-index: 1; flex: none; height: 1.25rem; margin-bottom: -1.25rem;
     background: linear-gradient(var(--paper), transparent); pointer-events: none;
   }
   .app[data-stage="active"] .log { max-height: none; overflow: visible; }
-  .app[data-stage="active"] .command-form { border-top: 1px solid var(--line); }
-  .app[data-stage="active"] .conversation > :not(.thread) { flex-shrink: 0; }
-  .app[data-stage="active"] :is(.examples-disclosure, #recording-review)[open] { max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
+  .app:is([data-stage="ready"], [data-stage="active"]) .command-form { border-top: 1px solid var(--line); }
+  .app:is([data-stage="ready"], [data-stage="active"]) .conversation > :not(.thread) { flex-shrink: 0; }
+  .conversation > .examples-disclosure { max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
 }
 
 /* ------------------------------------------------------------------ 움직임(줄이기 설정이면 모두 끔) */
@@ -714,10 +704,9 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   #step-progress { transition: --p var(--spring); }
 
   /* 화면에 들어올 때: 투명도는 짧게, 위치·크기는 스프링으로 */
-  .msg { animation: msg-rise var(--spring) backwards; }
+  .msg { animation: msg-rise var(--dur-2) var(--ease-out) backwards; }
   .msg.assistant { transform-origin: 0 100%; }
   .msg.user { transform-origin: 100% 100%; }
-  .msg.user + .msg.assistant { animation-delay: 90ms; }
   .msg.assistant::before { animation: fade-in 260ms var(--ease-out) backwards, pop-in var(--spring-pop) backwards; animation-delay: inherit; }
   .msg details[open] > :not(summary) { animation: drop-in var(--spring-fast) backwards; }
 
@@ -732,17 +721,20 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .hero:not([hidden]) .hero-content > :nth-child(3) { animation-delay: 100ms; }
   .hero:not([hidden]) .hero-content > :nth-child(4) { animation-delay: 150ms; }
   .hero:not([hidden]) .hero-art img { animation: fade-in 400ms var(--ease-out) 80ms backwards, art-in var(--spring) 80ms backwards; }
-  #welcome-panel:not([hidden]) .hero-art img { animation: fade-in 300ms var(--ease-out) backwards, pop-in var(--spring-pop) backwards; }
   .hero-buttons button:not([hidden]) { animation: fade-in 220ms var(--ease-out) backwards, pop-in var(--spring-pop) backwards; }
   .hero-buttons button + button:not([hidden]) { animation-delay: 60ms; }
-  .starter-actions button:not([hidden]) { animation: fade-in 300ms var(--ease-out) backwards, rise-in var(--spring) backwards; }
-  .starter-actions button:nth-child(2) { animation-delay: 140ms; }
-  .starter-actions button:nth-child(3) { animation-delay: 180ms; }
-  .starter-actions button:nth-child(4) { animation-delay: 220ms; }
-  .starter-actions button:nth-child(5) { animation-delay: 260ms; }
-  .starter-actions button:nth-child(6) { animation-delay: 140ms; }
-  .starter-actions button:nth-child(7) { animation-delay: 180ms; }
-  .starter-actions button:first-child { animation-delay: 100ms; }
+  #backend-status > span { display: block; animation: status-in 160ms var(--ease-out); }
+  @supports (interpolate-size: allow-keywords) {
+    #welcome-panel {
+      interpolate-size: allow-keywords; height: auto;
+      transition: height var(--dur-2) var(--ease-out), opacity var(--dur-2) var(--ease-out), visibility var(--dur-2);
+    }
+    :is(.side-tools > details, .examples-disclosure, .secondary-details, .answer-details, .consent-details)::details-content {
+      interpolate-size: allow-keywords; block-size: 0; overflow: clip; overflow-clip-margin: 4px; opacity: 0;
+      transition: block-size var(--dur-2) var(--ease-out), opacity var(--dur-2) var(--ease-out), content-visibility var(--dur-2) allow-discrete;
+    }
+    :is(.side-tools > details, .examples-disclosure, .secondary-details, .answer-details, .consent-details)[open]::details-content { block-size: auto; opacity: 1; }
+  }
   .consent-details[open] > p { animation: fade-in 200ms var(--ease-out) backwards, drop-in var(--spring-fast) backwards; }
   .first-run-step { animation: fade-in 240ms var(--ease-out) backwards, step-in var(--spring) backwards; }
   .first-run-choice { animation: fade-in 260ms var(--ease-out) backwards, rise-in var(--spring) backwards; }
@@ -786,8 +778,9 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .first-run-choice:not(:disabled):hover { transform: translateX(2px); }
   .first-run-choice:not(:disabled):active { transform: scale(.99); }
 }
+@keyframes status-in { from { opacity: .65; transform: translateY(2px); } }
 @keyframes fade-in { from { opacity: 0; } }
-@keyframes msg-rise { from { transform: translateY(12px) scale(.96); } }
+@keyframes msg-rise { from { transform: translateY(5px); } }
 @keyframes card-rise { from { transform: translateY(14px) scale(.98); } }
 @keyframes rise-in { from { transform: translateY(12px); } }
 @keyframes drop-in { from { transform: translateY(-6px); } }
@@ -813,7 +806,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   #conv-end:not(:disabled):hover { background-color: color-mix(in srgb, var(--danger) 16%, var(--danger-soft)); }
   .voice-switch:not(:disabled):hover { background-color: transparent; color: var(--accent); }
   summary:hover { color: var(--accent); }
-  .starter-actions button:not(:disabled):hover { background-color: var(--paper); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); box-shadow: var(--shadow-3); }
+  .starter-actions button:not(:disabled):hover { background-color: var(--soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
   .first-run-choice:not(:disabled):hover { background-color: var(--paper); border-color: var(--accent); box-shadow: var(--shadow-2); }
   .examples button:not(:disabled):hover { background-color: var(--soft); color: var(--accent); }
   select:not(:disabled):hover { border-color: var(--line-strong); }
@@ -823,10 +816,11 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 @media (max-width: 800px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
   .side { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .side > :is(.support-details, #workflow-panel, #sources-panel, #actions-panel) { grid-column: 1 / -1; }
+  .side > :is(.side-tools, #sources-panel, #actions-panel) { grid-column: 1 / -1; }
 }
-@media (max-width: 640px) {
-  .starter-actions { --cols: 3; }
+@media (max-width: 800px) and (min-height: 560px) {
+  .app[data-stage="active"] .thread { max-height: clamp(12rem, 38dvh, 25rem); overflow-y: auto; }
+  .app[data-stage="active"] .log { max-height: none; overflow: visible; }
 }
 @media (max-width: 600px) {
   :root { --header-h: 3.5rem; --gap: 1rem; }
@@ -852,18 +846,12 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   #consent-panel .hero-content { max-width: none; }
   #consent-panel :is(h2, .hero-lead) { max-width: 69%; }
   .hero-art { width: 29%; right: 0; height: 125px; top: 3.9rem; }
-  #welcome-panel { padding: 1.25rem 1rem 1rem; }
-  #welcome-panel .hero-art { width: 64px; height: auto; top: auto; right: auto; }
   .hero-buttons { margin-top: 1rem; gap: .4rem; }
   .hero-buttons button { min-height: 46px; padding-inline: .95rem; font-size: .9rem; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .consent-details { margin-bottom: -.35rem; }
-  .starter-actions { gap: .45rem; margin-top: 1.1rem; }
-  .starter-actions button {
-    flex-basis: calc((100% - 2 * .45rem) / 3); min-width: 0; max-width: 100%;
-    gap: .35rem; min-height: 6.6rem; padding: .65rem .35rem .6rem; font-size: var(--type-small);
-    border-radius: var(--radius-lg); white-space: normal; overflow-wrap: anywhere; word-break: normal;
-  }
-  .choice-art { width: 3.2rem; height: 3.2rem; }
+  .starter-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .starter-actions button { padding: .35rem .45rem; }
+  .choice-art { width: 1.5rem; height: 1.5rem; }
   .side { grid-template-columns: minmax(0, 1fr); }
   .conversation-header { padding: .8rem 1rem; }
   .conversation-header h2 { font-size: 1.03rem; min-width: 0; }
@@ -882,7 +870,6 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .app:not(.high-contrast) .st-state-row { position: static; height: auto; }
   .setting-row { flex-wrap: wrap; }
   .setting-row select { max-width: 100%; width: 100%; }
-  .audio-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 380px) {
   :root { --pad: .85rem; }
@@ -890,8 +877,6 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .hero { padding: 1rem .9rem; }
   #consent-panel :is(h2, .hero-lead) { max-width: 100%; }
   #consent-panel .hero-art { display: none; }
-  .starter-actions { --cols: 2; }
-  .starter-actions button { flex-basis: calc((100% - .45rem) / 2); }
   .conversation-header { padding-inline: .8rem; gap: .35rem; }
   .conversation-header .portrait { flex-basis: 32px; height: 32px; }
   .conversation-header h2 { font-size: .97rem; gap: .5rem; }
@@ -915,7 +900,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .high-contrast .header-inner { flex-wrap: wrap; }
 .high-contrast .mode-note { order: 3; flex: 1 0 100%; border-radius: var(--radius-md); }
 .high-contrast .work-status dd { text-align: left; }
-.high-contrast .audio-tools button, .high-contrast .support-details { border: 1px solid var(--line); }
+.high-contrast .audio-tools button { border: 1px solid var(--line); }
 .high-contrast .app-header { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .high-contrast dialog::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .high-contrast .choice-art { background-color: transparent; border: 1px solid var(--line); }
