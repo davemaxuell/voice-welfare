@@ -156,7 +156,8 @@ const closingTabs = new WeakMap<BrowserContext, Promise<void>>();
 interface PageLoad {
   method: string;
   // 결과를 채우는 것으로 확인된 요청(undefined)은 끝날 때까지 센다.
-  fetching: Map<Request, number | undefined>;
+  fetching: Map<Request | string, number | undefined>;
+  network?: Promise<CDPSession>;
   /** 이 탭의 번호(어댑터가 붙인다). confirm() 창에 대신 답하는 허가를 한 탭에 묶는다. */
   tab: string;
   /** 주 프레임이 새 문서로(같은 문서 안의 주소 이동 포함) 바뀔 때마다 늘어난다. 페이지가 바꿀 수 없다. */
@@ -187,6 +188,30 @@ function trimmed(map: Map<string, unknown>): void {
 }
 
 const hostOf = (url: string) => tryUrl(url)?.hostname ?? "";
+
+// 기록 이동에서 라우팅을 해제하는 순간 이미 시작된 fetch는 Playwright의 request 이벤트에서 빠질 수 있다.
+// 같은 탭의 네트워크 이벤트에서도 본문을 채우는 요청의 번호와 시각만 센다. 차단과 허가는 기존 라우팅이 맡는다.
+async function watchPageLoad(page: Page, load: PageLoad): Promise<CDPSession> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { frameTree: { frame: { id: mainFrame } } } = await cdp.send("Page.getFrameTree");
+    const ended = ({ requestId }: { requestId: string }) => { load.fetching.delete(requestId); };
+    cdp.on("Network.requestWillBeSent", ({ requestId, frameId, documentURL, request, type }) => {
+      load.fetching.delete(requestId);
+      if (frameId === mainFrame && type !== undefined && type !== "Document" && BUILDING_TYPES.has(type.toLowerCase()) &&
+          hostOf(request.url) === hostOf(documentURL)) {
+        load.fetching.set(requestId, loadsBokjiroSearchResults(request.url) ? undefined : performance.now());
+      }
+    });
+    cdp.on("Network.loadingFinished", ended);
+    cdp.on("Network.loadingFailed", ended);
+    await cdp.send("Network.enable", { maxPostDataSize: 0 });
+    return cdp;
+  } catch (error) {
+    await cdp.detach().catch(() => {});
+    throw error;
+  }
+}
 const closedError = () => new AdapterError("NOT_SUPPORTED", "브라우저 세션이 종료됐어요.");
 
 // CDP DOM.describeNode가 돌려주는 노드 가운데 shadow root를 세는 데 쓰는 부분만(값·속성은 보지 않는다).
@@ -687,6 +712,11 @@ export class PlaywrightExecutionAdapter {
 
   async #back(page: Page, signal: AbortSignal): Promise<Completed> {
     const here = page.url();
+    const load = this.#loads.get(page);
+    if (load !== undefined && (this.#options.driver ?? browserDriver()) === "stagehand") {
+      const network = load.network ??= watchPageLoad(page, load).catch((error: unknown) => { load.network = undefined; throw error; });
+      await call(signal, () => network);
+    }
     return guardedHistory(page, async blocked => {
       let response = null;
       // 응답이 들어오면(commit) 돌아간 것이다. 다 그려지기를 기다리다 시간이 넘으면 '못 갔다'로 알려져 한 번 더 뒤로 간다.
@@ -1131,6 +1161,7 @@ export class PlaywrightExecutionAdapter {
         });
       }
     } catch { /* 사용자가 크롬 창을 먼저 닫을 수 있다. */ }
+    await Promise.allSettled([...this.#loads.values()].map(async load => (await load.network)?.detach()));
     this.#loads.clear();
     this.page = undefined;
   }
