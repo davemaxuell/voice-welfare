@@ -8,6 +8,7 @@ import {
 import { getSpeechLang, setSpeechLang, unlockAudio } from "./audio.ts";
 import { currentDecision, desktopView, turnNotice, type Consent, type Decision } from "./companion.ts";
 import { createFirstRun } from "./first-run.ts";
+import type { Capture } from "./presentation.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
 import { watchProgress } from "./progress-watch.ts";
 import {
@@ -183,6 +184,25 @@ let conversationOn = false;
 let loop: VoiceLoop | undefined;
 let recording: (Recording & { asked: string }) | undefined;
 let openingMic = false;
+let manualStream: MediaStream | undefined;
+let manualRequestGeneration = -1;
+let probeStream: MediaStream | undefined;
+let microphoneTrouble = false;
+
+function captureState(): Capture {
+  const tracks = [manualStream, probeStream, edge?.stream, loop?.stream, startingLoop?.stream]
+    .flatMap(stream => stream?.getAudioTracks() ?? []).filter(track => track.readyState === "live");
+  if (tracks.some(track => track.enabled && !track.muted) && !microphoneTrouble) return "on";
+  if (microphoneTrouble || tracks.some(track => track.muted)) return "error";
+  if (tracks.length > 0) return "paused";
+  const requesting = (openingMic && manualRequestGeneration === stoppedGeneration) || ui.phase === "starting" || ui.checkingMic;
+  return requesting && ui.stopping !== true ? "requesting" : "off";
+}
+
+function captureChanged() {
+  const capture = captureState();
+  if (ui.capture !== capture) set({ capture });
+}
 let reminderTimer: ReturnType<typeof setInterval> | undefined;
 let reminderSeen: string | undefined;
 let reminderNight = false;
@@ -259,7 +279,9 @@ export function snapshot() { return ui; }
 function render() {
   syncCard();
   const card = desk.card;
-  ui = { ...ui, card, cardTaken: card !== undefined && desk.consumed.has(card.id), speaking: desk.speaking, edge: edge !== undefined };
+  const remoteSpeech = edge !== undefined && ui.phase === "speaking" && !edge.audio.paused && !edge.audio.muted;
+  ui = { ...ui, card, cardTaken: card !== undefined && desk.consumed.has(card.id), speaking: desk.speaking || remoteSpeech,
+    sleeping: desk.sleeping, capture: captureState(), edge: edge !== undefined };
   for (const listener of listeners) listener();
   publishDesktop();
 }
@@ -315,7 +337,7 @@ function syncCard() {
 function publishDesktop() {
   if (desktop?.publish === undefined) return;
   const view = desktopView(ui, {
-    capture: conversationOn || recording !== undefined || ui.listening || ui.phase === "starting" ? "on" : "off",
+    capture: ui.capture ?? "off",
     speaking: desk.speaking,
     recording: recording !== undefined,
     message: desk.message,
@@ -418,6 +440,7 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     confirmationRestart = conversationStarts;
   }
   if (r.authHandoff?.status === "waiting") {
+    microphoneTrouble = false;
     endConversation(false);
     recording?.cancel();
     recording = undefined;
@@ -432,7 +455,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
   desk.message = desktopNotice(turnNotice(r));
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
-  set({ last: r, state: r.state, lang: language, hasTurn, activity: r.intentType === "PROGRESS" ? ui.activity : null });
+  set({ last: r, state: r.state, lang: language, hasTurn, error: undefined,
+    activity: r.intentType === "PROGRESS" ? ui.activity : null });
   if (isConsent) {
     recordConsent(ui.consent === "granted" ? r.speech : undefined, r.lang);
     if (ui.consent !== "granted") push({ role: "assistant", text: r.speech, lang: r.lang });
@@ -597,6 +621,7 @@ export async function startConversation() {
   }
   void preloadCues().catch(() => undefined);
   set({ error: undefined });
+  microphoneTrouble = false;
   setPhase("starting");
   const sessionId = ui.sessionId;
   if (ui.voiceMode.edge !== undefined && ui.voiceMode.edge.length > 0 && ui.conversationMode === "native") {
@@ -604,6 +629,7 @@ export async function startConversation() {
     const approvalId = ui.last?.pendingConfirmation?.actionId ?? "";
     const current: LiveConversation = new LiveConversation(sessionId, {
       offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: setError,
+      captureChanged,
       activity(text) {
         if (ticket !== conversationStarts) return;
         set({ activity: text });
@@ -666,6 +692,7 @@ export async function startConversation() {
   }
   const current = new VoiceLoop(() => api.liveAudio(sessionId));
   current.ignore = () => desk.speaking;
+  current.captureChanged = captureChanged;
   startingLoop = current;
   const micTrouble =
     t("마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.");
@@ -686,6 +713,7 @@ export async function startConversation() {
     current.stop();
     if (ticket !== conversationStarts) return;
     startingLoop = undefined;
+    microphoneTrouble = true;
     setPhase("off");
     setError(micTrouble);
     announce(micTrouble);
@@ -698,6 +726,13 @@ export async function startConversation() {
   }
   startingLoop = undefined;
   current.onTrouble = (reason) => {
+    if (ticket !== conversationStarts) return;
+    microphoneTrouble = reason !== "unmuted";
+    if (reason === "unmuted") {
+      if (ui.error === micTrouble) set({ error: undefined });
+      else captureChanged();
+      return;
+    }
     setError(micTrouble);
     announce(micTrouble);
     // 잠깐 끊김(mute)은 다시 연결될 수 있으니 대화를 끝내지 않는다. 장치가 아예 사라졌을 때만 끝낸다.
@@ -1144,11 +1179,16 @@ export function stopAll() {
   const operation = stopSession();
   desk.stopping = operation;
   return operation.finally(() => {
-    if (desk.stopping === operation) desk.stopping = null;
+    if (desk.stopping === operation) {
+      desk.stopping = null;
+      if (ui.stopping === true) set({ stopping: false });
+    }
   });
 }
 
 async function stopSession() {
+  ui = { ...ui, stopping: true };
+  microphoneTrouble = false;
   const requested = timing?.stop();
   const stop = ++stoppedGeneration;
   if (ui.listening || ui.phase !== "off" || ui.speaking) {
@@ -1167,12 +1207,15 @@ async function stopSession() {
   stopSpeaking();
   recording?.cancel();
   recording = undefined;
+  manualStream?.getTracks().forEach(track => track.stop());
+  manualStream = undefined;
   set({ listening: false, error: undefined, activity: null });
   if (ui.sessionId === undefined) return;
   try {
     const result = await api.cancel(ui.sessionId);
     timing?.measure(requested, "cancel-acknowledged");
     if (stop !== stoppedGeneration) return;
+    ui = { ...ui, stopping: false };
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
@@ -1256,7 +1299,11 @@ export async function choose(choiceSetId: string, key: string) {
   }
   const offered = card.choices.some((c) => c.key === key && c.open === undefined);
   const run = offered ? cardAction(card, key) : undefined;
-  if (run === undefined || ui.busy) return;
+  if (run === undefined) return;
+  if (ui.busy) {
+    notice(t("지금 다른 요청을 처리하고 있어요. 잠시 후 다시 선택해 주세요."));
+    return;
+  }
   const origin = document.activeElement;
   const fromDecision = insideDecision(origin);
   const held = holdCard();
@@ -1344,11 +1391,24 @@ export async function toggleMic() {
   stopSpeaking();
   set({ error: undefined });
   openingMic = true;
+  manualRequestGeneration = stoppedGeneration;
+  microphoneTrouble = false;
+  captureChanged();
   const sessionId = ui.sessionId, generation = stoppedGeneration;
+  let cancelled = false;
   try {
     await cue("listen");
     const asked = ui.last?.pendingConfirmation?.actionId ?? "";
-    const rec = await startRecording(() => api.liveAudio(sessionId), ui.micId, () => void toggleMic());
+    const rec = await startRecording(() => api.liveAudio(sessionId), ui.micId, () => void toggleMic(), stream => {
+      if (sessionId !== ui.sessionId || generation !== stoppedGeneration || authWaiting() ||
+          ui.consent !== "granted" || dialogNow() !== undefined) {
+        cancelled = true;
+        return false;
+      }
+      manualStream = stream;
+      captureChanged();
+      return true;
+    }, captureChanged);
     if (sessionId !== ui.sessionId || generation !== stoppedGeneration || ui.consent !== "granted"
         || dialogNow() !== undefined || authWaiting()) {
       rec.cancel();
@@ -1358,9 +1418,14 @@ export async function toggleMic() {
     set({ listening: true });
     announce(t("듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요."));
   } catch {
+    if (cancelled || sessionId !== ui.sessionId || generation !== stoppedGeneration || authWaiting()
+        || ui.consent !== "granted" || dialogNow() !== undefined) return;
+    microphoneTrouble = true;
     setError(t("마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요."));
   } finally {
     openingMic = false;
+    if (recording === undefined) manualStream = undefined;
+    captureChanged();
   }
 }
 
@@ -1380,10 +1445,12 @@ export async function checkMic() {
   set({ checkingMic: true, micCheckResult: workspaceText("마이크를 확인하고 있어요.", ui.lang) });
   let probe: MediaStream | undefined;
   try {
-    let track = (edge?.stream ?? loop?.stream)?.getAudioTracks().find((t) => t.readyState === "live");
+    let track = (edge?.stream ?? loop?.stream ?? manualStream)?.getAudioTracks().find((t) => t.readyState === "live");
     if (track === undefined) {
       probe = await navigator.mediaDevices.getUserMedia({ audio: ui.micId !== undefined && ui.micId.length > 0 ? { deviceId: { exact: ui.micId } } : true });
+      probeStream = probe;
       track = probe.getAudioTracks()[0];
+      captureChanged();
     }
     set({ micCheckResult: workspaceText(track?.readyState === "live" ? "마이크를 사용할 수 있어요." : "연결된 마이크를 확인해 주세요.", ui.lang) });
   } catch (error) {
@@ -1392,6 +1459,7 @@ export async function checkMic() {
       : "마이크를 열 수 없어요. 연결과 입력 장치 선택을 확인해 주세요.", ui.lang) });
   } finally {
     probe?.getTracks().forEach((track) => track.stop());
+    probeStream = undefined;
     set({ checkingMic: false });
   }
 }

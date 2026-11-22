@@ -50,6 +50,7 @@ export interface LiveCallbacks {
   result(result: unknown, exact: boolean | undefined): Promise<void>;
   failure(message: string): void;
   activity?(text: string): void;
+  captureChanged?(): void;
 }
 
 const LIVE_LANGS = ["ko", "en", "ja", "zh"];
@@ -94,6 +95,7 @@ export class LiveConversation {
     for (const track of stream.getAudioTracks()) {
       peer.addTrack(track, stream);
       track.onended = () => this.fail(workspaceText("마이크 연결이 끊겼어요.", getSpeechLang()));
+      track.onmute = track.onunmute = () => this.callbacks.captureChanged?.();
     }
     this.updateAudio();
     this.watchBargeIn(stream);
@@ -201,6 +203,7 @@ export class LiveConversation {
   updateAudio() {
     this.audio.muted = !this.enabled || this.paused || this.interrupted || this.localSpeech;
     for (const track of this.stream?.getAudioTracks() ?? []) track.enabled = !this.paused && !this.localSpeech;
+    this.callbacks.captureChanged?.();
   }
 
   setLanguage(lang: string) {
