@@ -1,3 +1,4 @@
+import { koreanConsentGuide } from "./onboarding-text.ts";
 // 화면 상태 → 화면에 보일 것. Python app.js의 render()가 하던 판단을 DOM 없이 계산한다(App.tsx는 이 결과만 그린다).
 import { STATE_LABELS_KO, type Lang, type SessionState } from "../../src/core/turn.ts";
 import type { AnswerCard, IntroPose, ObservedField, Source } from "./api.ts";
@@ -6,15 +7,8 @@ import type { Microphone } from "./mic.ts";
 import { fullGuide } from "./onboarding.ts";
 import { workspaceText } from "./workspace-language.ts";
 
-export const PHASE_LABELS = {
-  off: "꺼짐",
-  starting: "준비 중",
-  listening: "듣고 있어요 — 말씀하세요",
-  hearing: "말씀을 듣는 중…",
-  thinking: "처리 중…",
-  speaking: "안내하는 중…",
-} as const;
-export type Phase = keyof typeof PHASE_LABELS;
+import { presentationOf, issues, issueActions, type Capture, type Phase, type IssueKey } from "./presentation.ts";
+export type { Phase } from "./presentation.ts";
 
 export const EXAMPLES = [
   "장애인연금 신청 도와줘",
@@ -56,6 +50,7 @@ export const GREETINGS: Readonly<Record<Lang, string>> = {
 };
 
 export interface VoiceMode {
+  sttProvider?: string | undefined; ttsProvider?: string | undefined;
   known: boolean; stt: boolean; tts: boolean; edge?: string | undefined; label: string;
   llmRoles: Readonly<Record<string, string | null>>;
 }
@@ -66,10 +61,11 @@ export interface LogEntry {
   id: string;
   role: "user" | "assistant" | "system";
   who: string;
+  lang?: string | undefined;
   text: string;
   summary?: string;
   /** 시작 안내와 동의 기록(하나만): 다시 듣기 단추 이름(음성 안내가 있을 때)과 덧붙인 결과 */
-  consentRecord?: { replay?: string; outcomes: string[] };
+  consentRecord?: { replay?: string; outcomes: { text: string; lang: Lang }[] };
 }
 export type CardView = Decision & { id: string; lang: string };
 export interface Recovery { choice: "resume" | "retry" | "new"; title: string; message: string; yes: string; no: string; busy: boolean }
@@ -89,7 +85,9 @@ export interface UiState {
   voiceMode: VoiceMode;
   tts: boolean;
   contrast: boolean;
-  error?: string | undefined;
+  error?: IssueKey | undefined;
+  offline?: boolean;
+  cancelUnconfirmed?: boolean;
   phase: Phase;
   baseSpeed: number;
   consent: Consent | undefined;
@@ -97,6 +95,9 @@ export interface UiState {
   micId?: string | undefined;
   /** 대화 창 밖 상태(Python의 desk·모듈 변수 중 화면에 나오는 것) */
   speaking: boolean;
+  capture?: Capture;
+  stopping?: boolean;
+  sleeping?: boolean;
   card?: CardView | undefined;
   cardTaken: boolean;
   recovery?: Recovery | undefined;
@@ -130,41 +131,30 @@ export function dictationHelp(lang: string) {
 }
 
 export function voiceRouteText(ui: Pick<UiState, "voiceMode" | "lang">) {
-  if (!ui.voiceMode.known) return "음성 설정을 확인하고 있어요.";
+  const t = (text: string) => workspaceText(text, ui.lang);
+  if (!ui.voiceMode.known) return t("음성 설정을 확인하고 있어요.");
   if (!ui.voiceMode.stt && !ui.voiceMode.tts) return dictationHelp(ui.lang);
-  return "음성 입력과 안내 문장은 음성 API로 전송됩니다. 청음은 녹음을 저장하지 않습니다." +
-    (ui.voiceMode.edge !== undefined && ui.voiceMode.edge.length > 0 ? " 실시간 음성 대화를 시작할 때는 감지된 개인정보를 가린 최근 대화 일부도 OpenAI로 보냅니다." : "");
+  return t("음성 입력과 안내 문장은 음성 API로 전송됩니다. 청음은 녹음을 저장하지 않습니다.") +
+    (ui.voiceMode.edge !== undefined && ui.voiceMode.edge.length > 0 ? " " + t("실시간 음성 대화를 시작할 때는 감지된 개인정보를 가린 최근 대화 일부도 OpenAI로 보냅니다.") : "");
 }
 
 const ROLE_LABELS: Readonly<Record<string, string>> = { understand: "말씀 이해", goal: "목표 수행", web: "화면·검색 요약" };
 /** 역할별 LLM이 어디로 가는지(/api/health.llmRoles). rules·mock은 밖으로 안 나감. */
-export function llmRouteText(ui: Pick<UiState, "voiceMode">) {
-  if (!ui.voiceMode.known) return "질문과 화면에서 읽은 글은 이해와 요약을 위해 외부 인공지능 서비스로 전송될 수 있습니다.";
+export function llmRouteText(ui: Pick<UiState, "voiceMode"> & { lang?: Lang }) {
+  const t = (text: string) => workspaceText(text, ui.lang);
+  if (!ui.voiceMode.known) return t("질문과 화면에서 읽은 글은 이해와 요약을 위해 외부 인공지능 서비스로 전송될 수 있습니다.");
   const external = Object.entries(ui.voiceMode.llmRoles)
     .filter((entry): entry is [string, string] => Object.hasOwn(ROLE_LABELS, entry[0]) && entry[1] !== null && entry[1].length > 0 && !/^(rules|mock)/i.test(entry[1]))
-    .map(([k, v]) => `${ROLE_LABELS[k] ?? k}은 ${v}`);
-  if (external.length === 0) return "글 이해는 이 컴퓨터의 규칙으로만 처리합니다.";
-  return `글 이해에 쓰는 인공지능은 역할마다 다를 수 있어요. ${external.join(", ")}.`;
+    .map(([k, v]) => workspaceText("{role}은 {provider}", ui.lang, { role: t(ROLE_LABELS[k] ?? k), provider: v }));
+  if (external.length === 0) return t("글 이해는 이 컴퓨터의 규칙으로만 처리합니다.");
+  return workspaceText("글 이해에 쓰는 인공지능은 역할마다 다를 수 있어요. {roles}.", ui.lang, { roles: external.join(", ") });
 }
 
 /** 시작 동의 안내: 무엇을 하는지, 무엇이 외부로 나가는지, 무엇을 하지 않는지, 어떻게 멈추는지 */
 export function consentText(ui: Pick<UiState, "voiceMode" | "lang">, env: Env, lang: string = ui.lang) {
   const translated = fullGuide(lang, ui.voiceMode, env.background, env.mac ? "Command" : "Control");
   if (translated.length > 0) return translated;
-  return (
-    "공공서비스 음성 도우미 청음입니다. " +
-    "동의하시면 청음은 별도의 브라우저 창에서 웹사이트를 열고 화면을 읽어 드립니다. 연습용 신청서 작성도 도와드려요. " +
-    "승인이 필요한 입력이나 클릭은 실행 전에 대상과 내용을 알려 드립니다. 실제 접수와 본인 인증은 직접 하셔야 합니다. " +
-    (ui.voiceMode.llmRoles.vision === "disabled"
-      ? "이 설정에서는 웹페이지를 글로 읽어 드립니다. "
-      : "화면 설명은 먼저 페이지 글을 확인합니다. 그림을 봐야 답할 수 있으면 현재 탭의 전체 페이지 사진도 본문, 최근 요청 일부와 함께 OpenAI에 보냅니다. 입력란과 내장 문서, 감지된 개인정보는 가립니다. 그림 속 개인정보는 남을 수 있습니다. 글로만 들으려면 “사진 없이 화면 설명해 줘”라고 하세요. ") +
-    "받은 파일에 대해 질문하거나 요약을 요청하면 파일 전체나 본문을 OpenAI 파일 분석 서버에 보낼 수 있습니다. 파일마다 보낼 곳을 알려 드리고 동의를 받습니다. " +
-    `${voiceRouteText(ui)} ${llmRouteText(ui)} 비밀번호나 주민등록번호는 말하지 마세요. ` +
-    "언제든 '멈춰'라고 말하면 멈춥니다. " +
-    (env.background
-      ? `동의하시면 ${env.mac ? "커맨드" : "컨트롤"}, 시프트, 스페이스 키를 함께 눌러 주세요. 동의하지 않으시면 메뉴 막대의 청음에서 종료를 고르세요.`
-      : "동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.")
-  );
+  return koreanConsentGuide(ui.voiceMode.llmRoles.vision === "disabled", voiceRouteText(ui), llmRouteText(ui), env.background, env.mac);
 }
 
 const MODE_LABELS: Readonly<Partial<Record<string, readonly [string, string, string]>>> = {
@@ -179,14 +169,14 @@ const ORIGIN_LABELS: Readonly<Record<AnswerCard["dataKind"], string>> = { live: 
 export interface FieldRow { key: string; name: string; between: string; value: string; after: string; state: "invalid" | "private" | "filled" | "empty" }
 export interface ActionRow { key: string; reason: string; result: string; resultIsWords: boolean; state: "blocked" | "ok" | "failed" }
 
-function fieldRow(f: ObservedField, i: number): FieldRow {
+function fieldRow(f: ObservedField, i: number, t: (text: string) => string): FieldRow {
   // 화면에는 이름과 값만 보이고(상태는 아이콘), 화면 낭독기는 예전 문장 그대로 듣는다
   return {
     key: `${f.label}-${i}`,
     name: f.label,
-    between: ` ${f.required ? "(필수)" : ""} — ${!f.sensitive && f.filled ? "입력됨: " : ""}`,
-    value: f.sensitive ? "직접 입력 항목" : f.filled ? f.value ?? "" : "비어 있음",
-    after: f.invalid ? " · 오류" : "",
+    between: ` ${f.required ? t("(필수)") : ""} — ${!f.sensitive && f.filled ? t("입력됨:") + " " : ""}`,
+    value: f.sensitive ? t("직접 입력 항목") : f.filled ? f.value ?? "" : t("비어 있음"),
+    after: f.invalid ? " " + t("· 오류") : "",
     state: f.invalid ? "invalid" : f.sensitive ? "private" : f.filled ? "filled" : "empty",
   };
 }
@@ -197,7 +187,8 @@ export function stageOf(ui: UiState) {
 }
 
 export function viewOf(ui: UiState, env: Env) {
-  const { sessionId, state, last, busy, listening, voiceMode, tts, contrast, error, phase, consent, mics, lang, card: decision } = ui;
+  const { sessionId, state, last, listening, voiceMode, tts, contrast, error, phase, consent, mics, lang, card: decision } = ui;
+  const busy = ui.busy && ui.offline !== true && ui.cancelUnconfirmed !== true;
   const t = (text: string) => workspaceText(text, lang);
   const hasSession = sessionId !== undefined;
   const recovering = ui.recovery !== undefined;
@@ -206,21 +197,24 @@ export function viewOf(ui: UiState, env: Env) {
   const consentShown = consent === "intro" || consent === "ask";
   const { sessionReady, stage } = stageOf(ui);
 
-  let shownPhase: Phase = phase;
-  let phaseLabel = t("음성 대화") + ": " + t(PHASE_LABELS[phase]);
-  if (phase === "off") {
-    if (listening) { shownPhase = "listening"; phaseLabel = t("음성 입력: 듣고 있어요"); }
-    else if (ui.speaking) { shownPhase = "speaking"; phaseLabel = t("음성 안내 중"); }
-    else if (busy) { shownPhase = "thinking"; phaseLabel = t("요청을 처리하고 있어요"); }
-  }
+  const display = presentationOf(ui);
+  const actions = error === undefined ? [] : [...issues[error][1]];
+  if (ui.offline === true && !actions.includes("reconnect")) actions.push("reconnect");
+  const phaseLabel = display.phase === phase ? t("음성 대화") + ": " + t(display.phaseKey) : t(display.phaseKey);
 
   const obs = last?.observation;
   const step = obs?.step;
   const hasStep = step !== undefined && Number.isFinite(step.index) && Number.isFinite(step.total) && step.total > 0;
   const pending = state === "WAITING_FOR_USER_CONFIRMATION" ? last?.pendingConfirmation : undefined;
   const authCard = decision?.kind === "offer" && decision.ref.handoffId !== undefined && decision.ref.handoffId.length > 0 ? decision : undefined;
+  const readMain = decision?.kind === "offer" ? decision.choices.find(choice => choice.key === "read-main") : undefined;
   const receipt = state === "MOCK_SUBMITTED" ? last?.verification?.receipt : undefined;
   const answer = last?.answerCard;
+  const providers = [
+    voiceMode.edge !== undefined && voiceMode.edge.length > 0 && t("실시간 대화") + " " + voiceMode.edge,
+    voiceMode.sttProvider !== undefined && voiceMode.sttProvider.length > 0 && t("받아쓰기") + " " + voiceMode.sttProvider,
+    voiceMode.ttsProvider !== undefined && voiceMode.ttsProvider.length > 0 && t("음성 안내") + " " + voiceMode.ttsProvider,
+  ].filter(Boolean).join(" · ");
   const modeLabels = MODE_LABELS[lang] ?? ["Voice mode", "Live conversation", "Dictate and hear a reply"];
 
   return {
@@ -229,10 +223,10 @@ export function viewOf(ui: UiState, env: Env) {
     lang,
     practiceBanner: ui.practiceMode,
     openSettings: ui.settingsAvailable,
-    tts: { pressed: tts, label: t(`음성 안내 ${tts ? "켜짐" : "꺼짐"}`), disabled: !voiceMode.tts },
+    tts: { pressed: tts, label: t(tts ? "음성 안내 켜짐" : "음성 안내 꺼짐"), disabled: !voiceMode.tts },
     soundCheckDisabled: !voiceMode.tts,
     consentFullDisabled: !voiceMode.tts,
-    contrast: { pressed: contrast, label: t(`고대비 ${contrast ? "켜짐" : "꺼짐"}`) },
+    contrast: { pressed: contrast, label: t(contrast ? "고대비 켜짐" : "고대비 꺼짐") },
     sessionEndDisabled: !hasSession,
     micCheckDisabled: ui.checkingMic || !hasSession || consent !== "granted" || signingIn || state === "STOPPED",
     micCheckResult: ui.micCheckResult,
@@ -250,8 +244,12 @@ export function viewOf(ui: UiState, env: Env) {
       startShown: phase === "off",
       startDisabled: !hasSession || consent !== "granted" || signingIn || !voiceMode.stt,
       endShown: phase !== "off",
-      phase: shownPhase,
+      phase: display.phase,
       phaseLabel,
+      showPhase: display.task === "idle" || display.task === "working" || display.playback === "speaking" ||
+        (display.capture === "on" && (phase === "listening" || phase === "hearing")),
+      captureLabel: t(display.captureKey),
+      taskLabel: t(display.taskKey),
       hint: phase !== "off" ? t(ui.edge ? "자연스럽게 말씀하세요. 답변 중에도 끼어들 수 있어요." : "띵 소리 뒤에 말씀하세요. 스페이스 키나 박수 두 번으로 안내를 끊거나, 하던 말을 바로 보낼 수 있어요.") : undefined,
       caption: ui.liveCaption,
     },
@@ -262,10 +260,12 @@ export function viewOf(ui: UiState, env: Env) {
       native: modeLabels[1] + " · " + voiceMode.edge,
       dictate: modeLabels[2] + " · gpt-live-transcribe",
     } : undefined,
-    error: error !== undefined && error.length > 0 ? error : undefined,
+    error: error === undefined ? undefined : {
+      text: t(issues[error][0]), actions: actions.map(key => ({ key, label: t(issueActions[key]) })),
+    },
     command: {
       disabled: !hasSession || recovering,
-      sendDisabled: !hasSession || busy || recovering,
+      sendDisabled: !hasSession || busy || recovering || ui.offline === true || ui.cancelUnconfirmed === true,
       busy,
       sendLabel: t(busy ? "처리 중…" : "보내기"),
       typing: busy && hasSession,
@@ -280,7 +280,7 @@ export function viewOf(ui: UiState, env: Env) {
       help: t("비밀번호, 주민등록번호, 계좌번호는 입력하거나 말하지 마세요."),
       examplesDisabled: !hasSession || recovering || busy,
     },
-    voiceDetails: [voiceRouteText(ui), voiceMode.label, llmRouteText(ui)].filter(part => part.length > 0).join(" "),
+    voiceDetails: [voiceRouteText(ui), providers.length > 0 ? providers : voiceMode.label, llmRouteText(ui)].filter(Boolean).join(" "),
     status: {
       progress: hasStep ? { max: step.total, value: step.index, ratio: step.index / step.total } : undefined,
       state,
@@ -288,8 +288,8 @@ export function viewOf(ui: UiState, env: Env) {
       step: hasStep ? `${step.index}/${step.total} — ${step.name}` : undefined,
       title: obs?.title !== undefined && obs.title.length > 0 ? obs.title : undefined,
       accessMode: last?.accessMode ?? "none",
-      access: last?.accessMode === "full" ? "지원 사이트(연습 신청 가능)" : last?.accessMode === "read-only" ? "읽기 전용(읽기·이동·검색만)" : undefined,
-      fields: (obs?.fields.filter((f) => f.visible && f.type !== "checkbox") ?? []).map(fieldRow),
+      access: last?.accessMode === "full" ? t("지원 사이트(연습 신청 가능)") : last?.accessMode === "read-only" ? t("읽기 전용(읽기·이동·검색만)") : undefined,
+      fields: (obs?.fields.filter((f) => f.visible && f.type !== "checkbox") ?? []).map((f, i) => fieldRow(f, i, t)),
       activity: ui.activity ?? null,
     },
     confirm: pending !== undefined ? {
@@ -300,20 +300,22 @@ export function viewOf(ui: UiState, env: Env) {
       site: pending.site,
       values: pending.values,
     } : undefined,
+    readMain: decision !== undefined && readMain !== undefined ? { id: decision.id, label: readMain.label } : undefined,
     confirmCard: decision?.kind === "approval" ? decision.id : "",
-    decisionDisabled: busy || decisionTaken,
+    decisionDisabled: busy || decisionTaken || ui.offline === true || ui.cancelUnconfirmed === true ||
+      (pending !== undefined && decision?.kind !== "approval"),
     auth: signingIn ? {
       cardId: authCard?.id ?? last.turnId ?? "",
       viaCard: authCard !== undefined,
-      doneLabel: authCard?.choices.find((c) => c.key === "auth-done")?.label ?? "직접 확인을 마쳤어요",
+      doneLabel: authCard?.choices.find((c) => c.key === "auth-done")?.label ?? t("직접 확인을 마쳤어요"),
     } : undefined,
     receipt: receipt !== undefined && receipt.length > 0 ? receipt : undefined,
     answer: answer !== undefined ? {
       text: answer.answer,
       lang: last?.lang ?? lang,
       source: answer.source,
-      origin: answer.dataOrigin === "fixture" ? "연습용 예시 · 저장된 자료" : ORIGIN_LABELS[answer.dataKind],
-      date: answer.dataDate ?? "자료에 기준일 없음",
+      origin: answer.dataOrigin === "fixture" ? t("연습용 예시 · 저장된 자료") : t(ORIGIN_LABELS[answer.dataKind]),
+      date: answer.dataDate ?? t("자료에 기준일 없음"),
       checked: answer.source.lastCheckedAt,
       next: answer.nextAction,
     } : undefined,
@@ -323,7 +325,7 @@ export function viewOf(ui: UiState, env: Env) {
       return {
         key: `${a.action.id}-${i}`,
         reason: a.action.reason,
-        result: a.policy.allowed ? (okay ? "성공" : `실패(${a.result?.errorCode ?? "미실행"})`) : `차단: ${a.policy.reason}`,
+        result: a.policy.allowed ? (okay ? t("성공") : workspaceText("실패({reason})", lang, { reason: a.result?.errorCode ?? t("미실행") })) : workspaceText("차단: {reason}", lang, { reason: a.policy.reason }),
         resultIsWords: okay,
         state: !a.policy.allowed ? "blocked" : okay ? "ok" : "failed",
       };

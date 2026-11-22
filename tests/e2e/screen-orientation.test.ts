@@ -96,8 +96,8 @@ async function requestCatalogue(withLinks: boolean, heading = catalogue) {
     if (view?.title === "상담 안내") return step("answer", null, fact, [fact]);
     if (view?.title !== "도서관") return openPortal;
     expect(view.mainText).not.toContain(poster);
-    if (screenOrientation?.clickable.includes(article) === true) return step("ask_user", null, "보이는 메뉴를 직접 열어 주시겠어요?");
-    return step("fail", null, "글만으로는 안내 자료를 찾을 수 없어요.");
+    if (screenOrientation?.clickable.includes(article) === true) return step("no_route", null, "보이는 메뉴를 직접 열어 주시겠어요?");
+    return step("no_route", null, "글만으로는 안내 자료를 찾을 수 없어요.");
   });
   const see = vi.fn<VisionModel["see"]>(async request => {
     expect(request.schemaName).toBe("screen_orientation");
@@ -123,6 +123,55 @@ it("글만 보고 포기한 자료 목록에서 사진으로 구별한 링크를
   expect(page.url()).toBe(detail);
   expect(result.actions.map(a => a.action.type)).toEqual(["capture", "click"]);
   expect(result.speech).toContain(fact);
+});
+
+it.each(["notice", "heading"] as const)("사진을 확인하는 동안 같은 주소의 화면이 바뀐다 (%s)", async change => {
+  const { approve, see, page, detail, directory } = await requestCatalogue(true);
+  const notice = "오늘의 운영 소식";
+  await page.locator("main").evaluate((main, text) => {
+    const paragraph = document.createElement("p");
+    paragraph.id = "notice";
+    paragraph.textContent = text;
+    main.append(paragraph);
+  }, notice);
+  const report = see.getMockImplementation()!;
+  see.mockImplementationOnce(async request => {
+    const current = page.locator(change === "notice" ? "#notice" : "main h1");
+    expect(await current.textContent()).toBe(change === "notice" ? notice : catalogue);
+    await current.evaluate((element, kind) => {
+      element.textContent = kind === "notice" ? "다음 주 운영 소식" : "보관 자료";
+    }, change);
+    return report(request);
+  });
+
+  const result = await approve();
+
+  expect(see).toHaveBeenCalledTimes(1);
+  const isNotice = change === "notice";
+  expect(page.url(), result.speech).toBe(isNotice ? detail : directory);
+  const actions = result.actions.map(a => a.action.type);
+  expect(actions).toEqual(isNotice ? ["capture", "click"] : ["capture"]);
+  if (isNotice) expect(result.speech).toContain(fact);
+});
+
+it("사진 판독 중 같은 주소를 새 탭에서 열면 사진 메뉴 안내를 이어 가지 않는다", async () => {
+  const {approve, see, page, adapter, directory} = await requestCatalogue(false);
+  const original = see.getMockImplementation()!;
+  see.mockImplementationOnce(async request => {
+    const popup = page.waitForEvent("popup");
+    await page.evaluate(() => { window.open("about:blank", "_blank"); });
+    const tab = await popup;
+    await tab.route(directory, route => route.fulfill({contentType: "text/html; charset=utf-8",
+      body: `<title>도서관</title><main><h1>${catalogue}</h1><canvas width="350" height="80"></canvas></main>`}));
+    await tab.goto(directory);
+    await expect.poll(() => adapter.page === tab).toBe(true);
+    return original(request);
+  });
+  const result = await approve();
+  expect(see).toHaveBeenCalledTimes(1);
+  expect(result.actions.map(a => a.action.type)).toEqual(["capture"]);
+  expect(result.offeredChoices?.some(choice => choice.key === "resume-navigation") ?? false).toBe(false);
+  expect(result.speech).not.toContain(poster);
 });
 
 it("사진을 허용하는 사이 비밀번호 칸이 나타나면 촬영하지 않는다", async () => {

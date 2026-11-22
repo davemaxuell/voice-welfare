@@ -244,7 +244,7 @@ export class AgentRuntime {
       : new TavilySearch(this.config.tavilyApiKey, webLlm, this.connections, { scan: texts => this.scanner.scan(texts) });
     return { intentProvider, llm: this.understandLlm ?? webLlm, goalLlm: this.goalLlm ?? webLlm,
       webLlm, fileLlm, visionLlm, recoveryLlm, quietSearch: search === undefined ? undefined :
-        (async (task, lang, signal) => (await search.search(task, lang, signal)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
+        (async (task, lang, signal, requestedSteps) => (await search.search(task, lang, signal, requestedSteps)) ?? {}) satisfies NonNullable<OrchestratorDeps["quietSearch"]>,
       browsePublicSources: this.config.readOnlyWeb && (this.goalLlm ?? webLlm) !== undefined ? this.browsePublicSources : undefined,
       findPortal: search === undefined ? undefined :
         ((query, signal) => search.portals(query, signal)) satisfies NonNullable<OrchestratorDeps["findPortal"]> };
@@ -252,7 +252,8 @@ export class AgentRuntime {
   private readonly browsePublicSources: NonNullable<OrchestratorDeps["browsePublicSources"]> = async (task, ctx, maxSteps, requestedSteps) => {
     const [spans] = await this.scanner.scan([task.goal]);
     if (safeInput(task.goal, 1600, spans) === undefined || ctx.signal.aborted || ctx.isStopped()) return undefined;
-    const worker = await this.createSession({ background: true });
+    const worker = await this.createSession({ background: true }).catch(() => undefined);
+    if (worker === undefined) return undefined;
     try {
       if (ctx.signal.aborted || ctx.isStopped()) return undefined;
       return await worker.browse.runGoal(task.goal, withContext(ctx, { publicLookup: true }), {
