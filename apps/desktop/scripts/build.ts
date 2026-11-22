@@ -20,7 +20,7 @@ const APP_OUT = join(DESKTOP, "out", "app");
 const RUNTIME_OUT = join(DESKTOP, "out", "runtime");
 const ICON = "../../graphics/mascot-original-refined.png";
 // Loaded from the runtime folder at run time: native bindings, and Playwright, which reads its own package files.
-const EXTERNAL = ["playwright", "playwright-core", "@napi-rs/keyring", "onnxruntime-node"];
+const EXTERNAL = ["@browserbasehq/stagehand", "playwright", "playwright-core", "@napi-rs/keyring", "onnxruntime-node"];
 const OPTIONAL = new Set(["onnxruntime-node"]);
 const PII_MODEL = { dir: "koelectra-ko-pii-ner", files: ["model_int8.onnx", "config.json", "tokenizer.json", "README.md"] };
 const GPU_ONLY = new Set(["DirectML.dll", "dxcompiler.dll"]);

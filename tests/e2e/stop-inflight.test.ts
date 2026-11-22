@@ -12,8 +12,9 @@ afterAll(runtime.close);
 
 const FIRST = '<title>첫 화면</title><body><main><h1>첫 화면</h1><p>먼저 열린 화면입니다.</p><a href="/held">늦는 안내</a></main></body>';
 const LATE = "<title>늦은 화면</title><body><main><h1>늦은 화면</h1><p>뒤늦게 온 화면입니다.</p></main></body>";
+const DOCUMENT_START = '<!doctype html><link rel="icon" href="data:,">';
 // 머리와 첫 글은 바로 보내고(화면이 바뀜) 나머지는 붙잡아 둔다
-const PARTIAL_HEAD = "<!doctype html><title>반쯤 열린 화면</title><body><main><h1>반쯤 열린 화면</h1><p>먼저 온 글입니다.</p>" + " ".repeat(2048);
+const PARTIAL_HEAD = DOCUMENT_START + "<title>반쯤 열린 화면</title><body><main><h1>반쯤 열린 화면</h1><p>먼저 온 글입니다.</p>" + " ".repeat(2048);
 const NO_PENDING = "대기 중인 브라우저 작업은 없습니다";
 
 function latch() {
@@ -49,7 +50,7 @@ async function heldSite() {
         arrived.open();
         await Promise.race([release.done, new Promise(resolve => setTimeout(resolve, 30_000))]);
       }
-      const body = Buffer.from(`<!doctype html>${path === "/held" ? LATE : FIRST}`);
+      const body = Buffer.from(DOCUMENT_START + (path === "/held" ? LATE : FIRST));
       head(res, body.length);
       res.end(body);
     })().catch(() => { res.destroy(); });

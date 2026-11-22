@@ -25,6 +25,7 @@ interface SessionWithLlm {
 export function testRuntimeEnv(overrides: Record<string, string> = {}) {
   const headed = process.env.HEADED === "1";
   return {
+    BROWSER_DRIVER: process.env.BROWSER_DRIVER ?? "playwright",
     MOCK_SITE_URL: "http://localhost:5174",
     HEADLESS: headed ? "false" : "true",
     BROWSER_SLOWMO_MS: headed ? "200" : "0",
