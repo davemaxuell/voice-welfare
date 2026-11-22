@@ -1,3 +1,4 @@
+import { LANGUAGE_NAMES, workspaceText } from "./workspace-language.ts";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { LangSchema, type Lang } from "../../src/core/turn.ts";
 import type { SettingsInput } from "./api.ts";
@@ -7,7 +8,6 @@ import { keyHint, onboardingText, saveLabel } from "./onboarding.ts";
 const SPEEDS = [["0.85", "slow", "천천히 · 0.85배"], ["1", "normal", "보통 · 1배"], ["1.35", "fast", "빠르게 · 1.35배"], ["1.6", "faster", "더 빠르게 · 1.6배"]] as const;
 const DEVICES = [["unidentified", "none", "선택 안 함"], ["personal", "personal", "나만 쓰는 개인 PC"], ["shared", "shared", "함께 쓰는 공용 PC"]] as const;
 const BROWSERS = [["separate", "separate", "따로 쓰는 브라우저"], ["chrome", "chrome", "평소 쓰는 크롬 (로그인 유지)"]] as const;
-const LANG_OPTIONS = [["ko", "한국어"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"]] as const;
 
 interface Form {
   apiKey: string; language: Lang; region: string; regions: string[]; speed: string; extraSpeed?: string;
@@ -62,7 +62,7 @@ export function SettingsDialog({ dialog, continuing }: { dialog: Dialog | undefi
     }, autostart !== undefined ? form.autostart : undefined);
   };
 
-  return <dialog id="settings-dialog" aria-labelledby="settings-title" ref={ref}
+  return <dialog lang={lang} id="settings-dialog" aria-labelledby="settings-title" ref={ref}
     onCancel={e => { if (busy) e.preventDefault(); }}
     onClose={() => { setForm(f => ({ ...f, apiKey: "" })); closeSettings(); }}>
     <form id="settings-form" onSubmit={submit}>
@@ -72,7 +72,7 @@ export function SettingsDialog({ dialog, continuing }: { dialog: Dialog | undefi
       <select id="setup-language" value={form.language} onChange={e => {
         const language = LangSchema.safeParse(e.currentTarget.value);
         if (language.success) setForm(f => ({ ...f, language: language.data }));
-      }}>{LANG_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      }}>{LANGUAGE_NAMES.map(([value, label]) => <option key={value} lang={value} value={value}>{label}</option>)}</select>
       <label htmlFor="setup-key" data-onboarding="key">{o("key", "OpenAI API 키")}</label>
       <input id="setup-key" type="password" maxLength={512} autoComplete="off" spellCheck={false} aria-describedby="setup-key-hint"
         value={form.apiKey} onChange={e => { const apiKey = e.currentTarget.value; setForm(f => ({ ...f, apiKey })); }}/>
@@ -80,12 +80,12 @@ export function SettingsDialog({ dialog, continuing }: { dialog: Dialog | undefi
       <label htmlFor="setup-region" data-onboarding="region">{o("region", "지역 안내에 사용할 시·도 (선택)")}</label>
       <select id="setup-region" value={form.region} onChange={e => { const region = e.currentTarget.value; setForm(f => ({ ...f, region })); }}>
         <option value="" data-onboarding="none">{o("none", "선택 안 함")}</option>
-        {form.regions.map(region => <option key={region} value={region}>{region}</option>)}
+        {form.regions.map(region => <option key={region} lang="ko" value={region}>{region}</option>)}
       </select>
       <label htmlFor="setup-speed" data-onboarding="speed">{o("speed", "안내 속도")}</label>
       <select id="setup-speed" value={form.speed} onChange={e => { const speed = e.currentTarget.value; setForm(f => ({ ...f, speed })); }}>
         {SPEEDS.map(([value, key, label]) => <option key={value} value={value} data-onboarding={key}>{o(key, label)}</option>)}
-        {form.extraSpeed !== undefined && <option value={form.extraSpeed}>{form.extraSpeed}배</option>}
+        {form.extraSpeed !== undefined && <option value={form.extraSpeed}>{workspaceText("{speed}배", lang, { speed: form.extraSpeed })}</option>}
       </select>
       <label htmlFor="setup-device" data-onboarding="device">{o("device", "이 PC를 누가 사용하나요?")}</label>
       <select id="setup-device" value={form.deviceUse} disabled={form.deviceLocked} onChange={e => {

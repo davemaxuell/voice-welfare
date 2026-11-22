@@ -1,0 +1,37 @@
+[
+  {
+    "file": "web/src/avatar/overlay.ts",
+    "text": "아바타 창 연결이 없습니다.",
+    "reason": "오버레이의 초기화 실패를 개발자에게 알리는 단언입니다."
+  },
+  {
+    "file": "web/src/avatar/overlay.ts",
+    "text": "아바타 창에 #${…}가 없습니다.",
+    "reason": "오버레이의 초기화 실패를 개발자에게 알리는 단언입니다."
+  },
+  {
+    "file": "web/src/avatar/overlay.ts",
+    "text": "아바타 창에 말풍선이 없습니다.",
+    "reason": "오버레이의 초기화 실패를 개발자에게 알리는 단언입니다."
+  },
+  {
+    "file": "apps/desktop/src/service.ts",
+    "text": "--host는 루프백 주소여야 합니다.",
+    "reason": "백그라운드 서비스의 진단 출력으로만 사용합니다."
+  },
+  {
+    "file": "apps/desktop/src/service.ts",
+    "text": "[desktop] ${…} (LLM: ${…}, 복지데이터: ${…})",
+    "reason": "백그라운드 서비스의 진단 출력으로만 사용합니다."
+  },
+  {
+    "file": "apps/desktop/src/service.ts",
+    "text": "[desktop] 허용 출처: ${…} · 브라우저: ${…}",
+    "reason": "백그라운드 서비스의 진단 출력으로만 사용합니다."
+  },
+  {
+    "file": "apps/desktop/src/service.ts",
+    "text": "[desktop] 서비스를 시작할 수 없습니다: ${…}",
+    "reason": "백그라운드 서비스의 진단 출력으로만 사용합니다."
+  }
+]

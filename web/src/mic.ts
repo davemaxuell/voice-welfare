@@ -1,6 +1,7 @@
+import { workspaceText } from "./workspace-language.ts";
 import { timing } from "./perf.ts";
 // ① 마이크 녹음과 핸즈프리 VAD. 받아쓰기는 서버의 음성 API가 맡는다.
-import { audioContext } from "./audio.ts";
+import { getSpeechLang, audioContext } from "./audio.ts";
 import clapWorkletUrl from "./clap-worklet.ts?worker&url";
 import pcmWorkletUrl from "./pcm-worklet.ts?worker&url";
 import { isSpeakingOnDevice, onSpeaking } from "./speaker.ts";
@@ -328,7 +329,7 @@ export async function listMicrophones() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   return devices
     .filter((d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications")
-    .map((d) => ({ id: d.deviceId, label: d.label.length > 0 ? d.label : "이름 없는 마이크" }));
+    .map((d) => ({ id: d.deviceId, label: d.label.length > 0 ? d.label : workspaceText("이름 없는 마이크", getSpeechLang()) }));
 }
 export interface Microphone { id: string; label: string }
 export function preferredMicrophone(mics: Microphone[]) {
