@@ -11,7 +11,7 @@ type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 type RefElement = HTMLElement | SVGElement;
 // shadows는 페이지 안에서 알 수 없다(닫힌 shadow root는 스크립트에 보이지 않는다). 어댑터가 브라우저의 DOM 정보로 채운다.
 type PageNotice = Omit<NoticeFacts, "shadows">;
-type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice };
+type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice; planSignature?: string };
 type RawObservation = Omit<Observation, "platform" | "capturedAt" | "outline"> &
   { outline?: Omit<ScreenOutline, "screenTarget"> & { screenTarget: ScreenTarget | null } };
 declare global {
@@ -158,9 +158,10 @@ export function observePage(query: ControlQuery | null = null) {
   // 애매하면 팝업으로 세지 않고, 팝업이어도 입력이 있는 쪽으로 기울인다. 확실하지 않을 때는 지금처럼 사용자에게 묻게 하려는 것이다.
   const BUTTONISH = 'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], input[type="image"]';
   // 입력 칸·양식. 안을 볼 수 없는 iframe·embed·object도 입력이 있는 것으로 센다.
+  const ARIA_FIELDS = '[role="textbox"], [role="combobox"], [role="searchbox"], [role="listbox"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="spinbutton"]';
   const FIELDISH = 'form, [role="form"], select, textarea, iframe, embed, object, [contenteditable]:not([contenteditable="false"]), '
     + 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]), '
-    + '[role="textbox"], [role="combobox"], [role="searchbox"], [role="listbox"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="spinbutton"]';
+    + ARIA_FIELDS;
   // 레이어 팝업의 단서는 닫기 계열 이름뿐이다. '확인'은 하단 고정 줄의 제출 단추와 구분되지 않아 단서로 쓰지 않는다.
   const CLOSE_NAME = /^(?:x|×|✕|✖|╳|닫기|닫음|close)$|(?:닫기|닫음)$|(?:열지|보지|보이지)(?:않|말)/i;
   // 조회 질의는 팝업을 만들지 않지만, notice 질의(누르기 직전 안내 팝업 확인)는 같은 규칙으로 팝업을 새로 읽는다.
@@ -364,7 +365,9 @@ export function observePage(query: ControlQuery | null = null) {
     const declaredWrite = actions.some(([key, value]) => key.endsWith('method') ? !/^get$/i.test(value) : writeAction.test(value)) ||
       (rawHref !== null && href === undefined && writeAction.test(rawHref));
     const formSubmit = type === 'submit' || type === 'image' || type === 'reset';
-    const privateForm = form?.querySelector('input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"]');
+    const secretField = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"]';
+    const privateForm = form !== null && (form.querySelector(secretField) !== null ||
+      Array.from(form.elements).some(field => field.matches(secretField)));
     const changesSelection = htmlRole === 'menuitemcheckbox' || htmlRole === 'menuitemradio';
     const externalTarget = href === undefined && (el.getAttribute('target')?.toLowerCase() ?? '_self') !== '_self';
     if (unsupportedScheme || download || declaredWrite || (form !== null && formSubmit) || privateForm || changesSelection || externalTarget) {
@@ -461,8 +464,16 @@ export function observePage(query: ControlQuery | null = null) {
     if (!standard) generics++;
     const item: Item = { ref: refOf(el, query ? context : undefined), role, name, region: regionOf(el), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' };
     if (context.length > 0 && context !== name) item.context = context;
-    if (query?.inspection === true) item.inspection = inspect(el, context);
     if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
+    if (query?.inspection === true) {
+      item.inspection = inspect(el, context);
+      // 입력·양식 제출·선택값을 바꾸는 요소는 여러 단계를 묶는 승인에서 제외한다.
+      const input = 'label, ' + ARIA_FIELDS;
+      if (item.pictureMasked !== true && !el.matches(':disabled') && !el.closest('[inert], [aria-disabled="true" i]') &&
+          !el.closest(input) && !el.querySelector(input) && item.inspection.kind !== "blocked") {
+        item.planSignature = item.inspection.signature;
+      }
+    }
     if (role === 'link' && isSearchResult(el)) item.searchResult = true;
     const popup = popups.length > 0 ? dialogOf(el) : -1;
     if (popup >= 0) item.dialog = popup;

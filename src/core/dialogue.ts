@@ -4,6 +4,8 @@ import type { Action, ActionTarget, NativeGrant } from "./actions.ts";
 import type { PlaceAsk } from "./places.ts";
 import type { HumanAuthHandoff, PendingConfirmation, SessionState } from "./turn.ts";
 
+export const APPROVAL_TTL_S = 120;
+
 export interface ApprovalFingerprint {
   page: string;
   speech: string;
@@ -31,6 +33,7 @@ export type Approval =
   | (Acting & { kind?: "submit"; url?: string })
   | (Acting & { kind: "assist"; url?: string; actions: [Action, ...Action[]]; guided?: boolean })
   | (Acting & { kind: "click"; url: string; then?: "login-open" | "login-submit"; native?: NativeGrant })
+  | (Confirmed & { kind: "plan"; grant: import("./plan.ts").PlanGrant })
   | (Confirmed & { kind: "file"; record: unknown; digest: string; question: string })
   | (Confirmed & { kind: "visual"; goal: string; publicTask?: unknown; checkpoint: unknown })
   | (Confirmed & { kind: "research"; goal: string });

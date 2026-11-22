@@ -80,7 +80,7 @@ export const ExecutedActionSchema = z.object({
 }).transform(omitAbsent);
 export type ExecutedAction = z.infer<typeof ExecutedActionSchema>;
 export const PENDING_CONFIRMATION_KINDS = [
-  "field-entry", "click", "file-transfer", "visual-navigation", "practice-submission", "public-research", "vault-save", "vault-clear",
+  "field-entry", "click", "plan", "file-transfer", "visual-navigation", "practice-submission", "public-research", "vault-save", "vault-clear",
 ] as const;
 export const PendingConfirmationSchema = z.object({
   actionId: text, kind: optional(z.enum(PENDING_CONFIRMATION_KINDS)), purpose: text, site: text, description: optional(text),
