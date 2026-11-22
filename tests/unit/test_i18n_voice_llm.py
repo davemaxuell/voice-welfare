@@ -193,6 +193,20 @@ async def test_tts_body_and_mp3(http_mock):
     assert json.loads(calls[0].content) == {"model": "tts-model", "voice": "coral", "input": "안녕하세요", "response_format": "mp3", "instructions": "천천히"}
 
 
+@pytest.mark.parametrize("language", ["ko", "en", "ja", "zh"])
+async def test_configured_voice_and_style_are_used_in_every_language(http_mock, language):
+    from cheongeum.server.runtime import load_config
+
+    calls = http_mock(lambda req: httpx.Response(200, content=b"audio"))
+    config = load_config({"VOICE_API_KEY": "dummy"}).voice
+    _, tts = create_voice_providers(config)
+    await tts.synthesize("public message", language=language)
+    body = json.loads(calls[0].content)
+    assert body["voice"] == config.ttsVoice == "coral"
+    assert config.ttsInstructions and body["instructions"] == config.ttsInstructions
+    assert body["speed"] == config.ttsSpeed
+
+
 async def test_provider_error_status_only(http_mock):
     http_mock(lambda req: httpx.Response(401, text='{"error":"bad"}'))
     with pytest.raises(VoiceProviderError):

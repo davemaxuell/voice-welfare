@@ -73,6 +73,88 @@ async function openWorkspace(jobs: unknown[], notes: unknown[] = []) {
   await screen(page.locator("#workflow-title")).toBeVisible({ timeout: 15_000 });
 }
 
+async function recordResearchSpeech(speech: string[]) {
+  await page.exposeFunction("testHeard", (line: string) => { speech.push(line); });
+  await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
+    route.fulfill({contentType: "text/javascript", body: `
+      export * from '/src/speaker.ts?original';
+      export const serverTts = { cancel() {}, async speak(text) { await window.testHeard(text); return 'played'; } };
+    `}));
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), workspaceAvailable: true, tts: {supported: true, provider: "test-tts"}}});
+  });
+}
+
+it("닫힌 조사 목록에서도 대화로 접수한 작업의 결과를 읽고 인수증이 늦어도 다시 말하지 않는다", async () => {
+  const speech: string[] = [];
+  const answer = "도서관 회원 가입에는 본인 확인이 필요합니다.";
+  await recordResearchSpeech(speech);
+  let queued = false, acknowledged = 0;
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: queued && acknowledged < 2 ?
+    [{id: "research", token: "voice-receipt", state: "completed", language: "ko", result: {text: answer}}] : []}}));
+  await page.route("**/api/session/*/workspace/research/research/delivery/voice-receipt", route => {
+    acknowledged++;
+    return route.fulfill({status: acknowledged === 1 ? 503 : 200, json: {heard: true}});
+  });
+  await page.route("**/api/turn", async route => {
+    const response = await route.fetch();
+    queued = true;
+    await route.fulfill({json: {...await response.json(), researchDelivery: "queued"}});
+  });
+  await openWorkspace([]);
+  await screen(page.locator("#workflow-panel")).toHaveJSProperty("open", false);
+  await page.locator("#command").fill("지금 어디까지 했어?");
+  await page.locator("#command").press("Enter");
+  await expect.poll(() => speech.filter(line => line === answer).length, {timeout: 18_000}).toBe(1);
+  await expect.poll(() => acknowledged, {timeout: 18_000}).toBe(2);
+  expect(speech.filter(line => line === answer)).toEqual([answer]);
+  await screen(page.locator("#log li").filter({hasText: answer})).toHaveCount(1);
+});
+
+it("조사 응답을 받던 연결이 끊기면 명령을 다시 실행하지 않고 끝난 결과를 한 번 읽는다", async () => {
+  const answer = "문화센터 이용 시간은 오전 아홉 시부터예요.";
+  const speech: string[] = [];
+  await recordResearchSpeech(speech);
+  let requests = 0, receipts = 0;
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: []}}));
+  await page.route("**/api/turn", async route => { requests++; await route.abort("connectionreset"); });
+  await page.route("**/api/session/*/research-outcomes", route => route.fulfill({json: {
+    working: false, outcomes: receipts === 0 ? [{turnId: "lost-answer", lang: "ko", speech: answer}] : [],
+  }}));
+  await page.route("**/api/session/*/research-outcomes/lost-answer", route => {
+    receipts++;
+    return route.fulfill({json: {ok: true}});
+  });
+  await openWorkspace([]);
+  await page.locator("#command").fill("문화센터 운영 시간을 찾아줘.");
+  await page.locator("#command").press("Enter");
+  await expect.poll(() => receipts, {timeout: 12_000}).toBe(1);
+  expect(requests).toBe(1);
+  expect(speech.filter(line => line === answer)).toEqual([answer]);
+  await screen(page.locator("#log li").filter({hasText: answer})).toHaveCount(1);
+});
+
+it("조사 접수 응답만 끊겨도 닫힌 패널의 새 작업을 찾아 읽는다", async () => {
+  const answer = "유실된 접수 번호로 시작한 조사를 마쳤어요.";
+  const speech: string[] = [];
+  await recordResearchSpeech(speech);
+  let enqueued = false, received = false;
+  await page.route("**/api/session/*/research-outcomes", route => route.fulfill({json: {working: false, outcomes: []}}));
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: enqueued && !received
+    ? [{id: "job", token: "recovered-job", state: "completed", language: "ko", result: {text: answer}}] : []}}));
+  await page.route("**/api/session/*/workspace/research/job/delivery/recovered-job", route => {
+    received = true;
+    return route.fulfill({json: {heard: true}});
+  });
+  await page.route("**/api/turn", async route => {enqueued = true; await route.abort("connectionreset");});
+  await openWorkspace([]);
+  await page.locator("#command").fill("내일 전시회 운영 시간을 조사해 줘.");
+  await page.locator("#command").press("Enter");
+  await expect.poll(() => received, {timeout: 16_000}).toBe(true);
+  expect(speech.filter(line => line === answer)).toEqual([answer]);
+});
+
 it("기본 조작 모드에서는 조사 시작과 메모 저장을 한 번씩만 요청한다", async () => {
   await page.route("**/api/health", async route => {
     const response = await route.fetch();

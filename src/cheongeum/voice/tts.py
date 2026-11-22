@@ -6,6 +6,7 @@ from __future__ import annotations
 import httpx
 
 from cheongeum.core.jsutil import AbortSignal, race_abort
+from cheongeum.core.voice_profile import VOICE_PROFILE
 from cheongeum.voice.errors import VoiceNotSupportedError, VoiceProviderError
 
 
@@ -39,17 +40,15 @@ class OpenAITtsProvider:
         self.base_url = base_url
         self.model = model
         self.voice = voice
-        self.instructions = instructions
+        self.instructions = instructions or VOICE_PROFILE.instructions
         self.speed = speed
         self.timeout = timeout_ms / 1000
         self.name = f"openai({model}, {voice})"
 
     async def synthesize(self, text: str, *, language: str, signal: AbortSignal | None = None, pace: float | None = None) -> dict:
         """pace: 사용자의 말 빠르기 설정(보통=1). 설정한 기본 속도(TTS_SPEED)에 곱한다."""
-        body: dict = {"model": self.model, "voice": self.voice, "input": text, "response_format": "mp3"}
-        # 말투 지시(TTS_INSTRUCTIONS)는 한국어용이라 다른 언어에서는 쓰지 않는다
-        if self.instructions and language == "ko":
-            body["instructions"] = self.instructions
+        body = {"model": self.model, "voice": self.voice, "input": text, "response_format": "mp3",
+                "instructions": self.instructions}
         speed = min(4.0, max(0.25, (self.speed or 1) * (pace or 1)))
         if abs(speed - 1) > 1e-9:
             body["speed"] = speed
@@ -62,7 +61,12 @@ class OpenAITtsProvider:
                     json=body,
                 )
                 if res.status_code < 200 or res.status_code >= 300:
-                    raise VoiceProviderError(res.status_code)
+                    try:
+                        error = res.json().get("error")
+                    except (ValueError, AttributeError):
+                        error = None
+                    code = error.get("code") if isinstance(error, dict) else None
+                    raise VoiceProviderError(res.status_code, retry_after=res.headers.get("Retry-After"), provider_code=code)
                 return {"audio": res.content, "mimeType": "audio/mpeg"}
 
         return await race_abort(go(), signal) if signal is not None else await go()

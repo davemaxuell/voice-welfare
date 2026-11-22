@@ -3,7 +3,8 @@ import { IncomingMessage } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { upgradeWebSocket } from "@hono/node-server";
 import { ChoiceKeySchema } from "../core/choices.ts";
-import { LiveAudio, TranscriptTooLong, turnTranscript } from "./live_audio.ts";
+import { LiveAudio, TranscriptTooLong, turnTranscript, refuseForeignOrigin } from "./live_audio.ts";
+import { Presentation } from "./presentation.ts";
 import { VoiceEdge } from "./voice_edge.ts";
 import { Sessions as RecoverySessions, RequestConflict } from "./recovery.ts";
 import { Workflows, registerWorkflows } from "./workflows.ts";
@@ -20,6 +21,10 @@ import type { SessionOrchestrator } from "../orchestrator/session.ts";
 import { redactText, detectSensitive } from "../safety/privacy.ts";
 import { isStopUtterance, isProgressQuestion } from "../understanding/rules.ts";
 import { VoiceNotSupportedError, VoiceProviderError } from "../voice/errors.ts";
+import { HandshakeRejected, SocketClosed } from "../voice/live.ts";
+import { speechPace, VOICE_PROFILE } from "../core/voice_profile.ts";
+import { VoiceFault, voiceFault } from "../voice/recovery.ts";
+export { speechPace } from "../core/voice_profile.ts";
 import type { SttProvider } from "../voice/stt.ts";
 import type { TtsProvider } from "../voice/tts.ts";
 import type { AgentRuntime } from "./runtime.ts";
@@ -61,6 +66,7 @@ export type HttpSession = Pick<
   | "setLanguage"
   | "snapshot"
   | "progress"
+  | "researchReceipts" | "acknowledgeResearch"
   | "cancel"
   | "close"
 >;
@@ -109,14 +115,33 @@ function voiceFailure(e: unknown): [number, string, string] {
   if (e instanceof TranscriptTooLong) return [422, "TRANSCRIPT_TOO_LONG", "말씀이 길어서 실행하지 않았어요. 요청을 나눠서 말씀해 주세요."];
   if (e instanceof RequestConflict) return [409, "REQUEST_CONFLICT", "이 녹음은 끝났거나 작업이 바뀌었어요. 다시 말씀해 주세요."];
   if (e instanceof VoiceNotSupportedError) return [501, "NOT_SUPPORTED", e.message];
+  if (e instanceof VoiceFault) return [e.retryable ? 503 : 422, e.code, "실시간 음성 대화가 종료됐어요."];
+  if (e instanceof HandshakeRejected) return voiceFailure(new VoiceProviderError(e.status));
+  if (e instanceof SocketClosed) return [503, "VOICE_CONNECTION", "실시간 음성 연결이 끊겼어요."];
+  if (e instanceof Error && e.name === "TimeoutError") return [504, "VOICE_TIMEOUT", "음성 서비스 응답 시간이 초과됐어요."];
   if (e instanceof VoiceProviderError) {
+    if (e.status === 408 || e.status === 504) return [504, "VOICE_TIMEOUT", "음성 서비스 응답 시간이 초과됐어요."];
+    if (e.providerCode === "session_expired") return [503, "VOICE_SESSION_EXPIRED", "실시간 음성 연결이 만료됐어요."];
+    if (e.providerCode === "insufficient_quota") return [429, "VOICE_QUOTA", "음성 API 잔액을 확인해 주세요."];
     if (e.status === 401 || e.status === 403) return [502, "VOICE_KEY", "음성 API 인증에 실패했어요. 이용 설정에서 키와 사용 권한을 확인해 주세요."];
     if (e.status === 429) return [429, "VOICE_LIMIT", "음성 API 사용 한도에 도달했어요. API 잔액이나 요청 한도를 확인해 주세요."];
     if (e.status === 404) return [502, "VOICE_MODEL", "설정한 음성 모델을 이용할 수 없어요. API 키의 모델 권한을 확인해 주세요."];
   }
   return [502, "VOICE_PROVIDER", "음성 서비스 호출에 실패했습니다. 잠시 후 다시 시도하거나 텍스트로 입력하세요."];
 }
-const voiceError = (e: unknown) => error(...voiceFailure(e));
+function voiceFailureBody(e: unknown) {
+  const [status, code, message] = voiceFailure(e);
+  const provider = e instanceof VoiceProviderError ? e : undefined;
+  if (!(e instanceof RequestConflict) && !(e instanceof TranscriptTooLong)) {
+    console.warn("[voice]", { code, upstreamStatus: provider?.status ?? (e instanceof HandshakeRejected ? e.status : undefined),
+      upstreamCode: provider?.providerCode, socketCode: e instanceof SocketClosed ? e.code : undefined, cause: voiceFault(e).code });
+  }
+  return { status, error: code, message, retryAfterMs: provider?.retryAfterMs };
+}
+const voiceError = (e: unknown) => {
+  const body = voiceFailureBody(e);
+  return Response.json(body, { status: body.status });
+};
 
 async function limitedBytes(request: Request, max: number): Promise<Uint8Array | undefined> {
   const reader = request.body?.getReader();
@@ -156,10 +181,6 @@ function validText(value: unknown, max: number) {
   return text.length > 0 && Array.from(text).length <= max ? text : undefined;
 }
 
-export function speechPace(rate: unknown) {
-  return typeof rate === "number" && rate >= 0.5 && rate <= 2 ? rate / 1.25 : undefined;
-}
-
 export function staticFiles(root: string) {
   return serveStatic({
     root,
@@ -175,6 +196,7 @@ export function makeApp<S extends HttpSession>(
   options: { stt?: SttProvider; tts?: TtsProvider; web?: boolean; csp?: boolean; port?: number; workflowDsn?: string; voiceEdge?: VoiceEdge } = {},
 ) {
   const app = new Hono();
+  const presentation = new Presentation();
   const sessions = new Sessions<S>();
   const audio = {
     get stt() { return options.stt ?? runtime.stt; },
@@ -438,6 +460,16 @@ export function makeApp<S extends HttpSession>(
     return await once(s, c, Buffer.from(JSON.stringify(["turn", text, supplied ?? null])), async () => Response.json(await s.handleTurn(text, { approvalId: action })));
   });
   app.get("/api/session/:sid/state", c => { const s = byId(c); return s instanceof Response ? s : Response.json(s.snapshot()); });
+  app.get("/api/session/:sid/research-outcomes", c => {
+    const s = byId(c);
+    return s instanceof Response ? s : c.json(s.researchReceipts());
+  });
+  app.delete("/api/session/:sid/research-outcomes/:turnId", c => {
+    const s = byId(c);
+    if (s instanceof Response) return s;
+    s.acknowledgeResearch(c.req.param("turnId"));
+    return c.json({ok: true});
+  });
   app.post("/api/session/:sid/wake", async c => {
     const generation = (await jsonBody(c.req.raw))?.stopGeneration;
     if (typeof generation !== "number" || !Number.isInteger(generation) || generation < 0) return error(400, "BAD_REQUEST", "멈춤 요청 번호를 확인해 주세요.");
@@ -568,10 +600,8 @@ export function makeApp<S extends HttpSession>(
   }
   app.post("/api/audio/transcribe", recording);
   app.post("/api/audio/recording", recording);
-  const socketDeps = { audio, sessions, accessWriter, port: options.port, voiceError: (e: unknown) => {
-    const [, code, message] = voiceFailure(e);
-    return { error: code, message };
-  } };
+  const socketDeps = { audio, sessions, accessWriter, port: options.port, voiceError: voiceFailureBody };
+  app.get("/api/presentation", refuseForeignOrigin(options.port, requestHeaders), upgradeWebSocket(() => presentation.connect()));
   live.register(app, upgradeWebSocket, socketDeps, requestHeaders);
   (options.voiceEdge ?? new VoiceEdge()).register(app, upgradeWebSocket, socketDeps, requestHeaders);
   registerWorkflows(app, workflows, access, c => jsonBody(c.req.raw));
@@ -581,7 +611,9 @@ export function makeApp<S extends HttpSession>(
     const lang = LangSchema.safeParse(body.lang ?? "ko").data;
     if (text === undefined || lang === undefined) return error(400, "BAD_REQUEST", "text(1~1000자)가 필요합니다.");
     try {
-      const out = await audio.tts.synthesize(text, { language: lang, pace: speechPace(body.rate), signal: c.req.raw.signal });
+      const pace = typeof body.absoluteSpeed === "number" && body.absoluteSpeed >= 0.5 && body.absoluteSpeed <= 2
+        ? body.absoluteSpeed / (audio.tts.speed ?? VOICE_PROFILE.speed) : speechPace(body.rate);
+      const out = await audio.tts.synthesize(text, { language: lang, pace, signal: c.req.raw.signal });
       return new Response(Uint8Array.from(out.audio), { headers: { "content-type": out.mimeType } });
     } catch (e) {
       return voiceError(e);
@@ -602,5 +634,5 @@ export function makeApp<S extends HttpSession>(
     });
   }
   app.notFound(fallback);
-  return Object.assign(app, { sessions, workflows });
+  return Object.assign(app, { sessions, workflows, presentation });
 }

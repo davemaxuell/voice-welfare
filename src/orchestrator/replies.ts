@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { siteSearchTerms } from "../agents/web/search_terms.ts";
 import { helpHumanDraft, isFormOpen } from "../agents/web/skills/common.ts";
 import { speakAnswerCard, type GroundedAnswer } from "../agents/welfare/agent.ts";
 import { nextProfileSlot, parseProfileAnswer, profileQuestion } from "../agents/welfare/discovery.ts";
@@ -34,15 +35,16 @@ export class SessionReplies {
   /** 맞춤 복지 찾기: 비어 있는 항목을 하나씩 묻고, 다 모이면 찾는다(답은 이번 대화에서만 사용). */
   async discoverStep(turn: Turn, first: boolean): Promise<Draft> {
     const s = this.session;
-    const next = nextProfileSlot(s.profile);
+    const profile = {...s.need.profile(), ...s.profile};
+    const next = nextProfileSlot(profile);
     if (next !== undefined) {
       s.dialogue.askProfile(next);
       const intro = first ? "맞춤 복지를 찾아볼게요. 몇 가지만 여쭤볼게요. 답은 이번 대화에서만 쓰고 저장하지 않아요. " : "";
-      return draft(s.state, "discover", intro + profileQuestion(next, s.profile));
+      return draft(s.state, "discover", intro + profileQuestion(next, profile));
     }
     s.dialogue.profileDone();
     turn.ctx.trace("PLANNING", AGENT_IDS.welfare, "맞춤 복지 찾기");
-    const answer = await raceAbort(signal => s.deps.welfare.discover(s.profile, signal), turn.ctx.signal);
+    const answer = await raceAbort(signal => s.deps.welfare.discover(profile, signal), turn.ctx.signal);
     return this.welfareDraft(answer, "discover");
   }
 
@@ -73,7 +75,7 @@ export class SessionReplies {
     if (model !== undefined) {
       const raw = await raceAbort(signal => model.generate({
         system: "정보취약계층 사용자가 방금 들은 안내를 이해하지 못했다. 같은 내용을 더 쉬운 말로, 짧은 문장 2~4개로 다시 말해라. 새 정보를 지어내지 말고, 숫자·금액·출처는 그대로 유지. 존댓말.",
-        user: last, schemaName: "simple", schema: SIMPLE_TEXT_SCHEMA, signal,
+        user: s.modelSpeech(last), schemaName: "simple", schema: SIMPLE_TEXT_SCHEMA, signal,
       }), turn.ctx.signal);
       const text = simpleReply.safeParse(raw).data?.text ?? "";
       const changed = unsupportedNumbers(text, [last]);
@@ -98,9 +100,10 @@ export class SessionReplies {
     const last = s.history.findLast(row => row.role === "assistant")?.text;
     const llm = s.deps.llm;
     const utterance = redactText(text);
-    const out = llm === undefined ? {} : await raceAbort(signal => chatRoute(llm, utterance, {
-      page: view?.title === undefined ? undefined : redactText(view.title),
-      lastAssistant: last,
+    const out = llm === undefined ? {} : await raceAbort(signal => chatRoute(llm, s.modelSpeech(utterance), {
+      page: view?.title === undefined ? undefined : s.modelSpeech(view.title),
+      lastAssistant: last === undefined ? undefined : s.modelSpeech(last),
+      need: s.dialogue.hasPendingInteraction ? undefined : s.need.context(),
       recent: s.recentDialogue(8), askedJustNow: s.lastSemantic === "clarify",
     }, signal), turn.ctx.signal);
     const resume = view !== undefined && isFormOpen(s.web.currentView) ? s.form.askNext(view) : "";
@@ -121,8 +124,10 @@ export class SessionReplies {
     }
     if (route === "welfare") return this.policyQuestion(utterance, turn);
     if (route === "web_task") return withResume(await s.review.goal(utterance, turn));
-    if (route === "web_search" && typeof out.searchQuery === "string" && out.searchQuery.length > 0) {
-      return withResume(await s.browse.webAnswer(utterance, redactText(out.searchQuery), turn.ctx));
+    if (route === "web_search") {
+      const terms = siteSearchTerms(out.keywords);
+      if (terms === undefined || !s.speakable(terms) || s.historySpeech(terms) !== String(terms)) return withResume(await s.review.goal(utterance, turn));
+      return withResume(await s.browse.webAnswer(utterance, terms, turn.ctx));
     }
     const reply = typeof out.reply === "string" ? strip(out.reply) : "";
     return withResume(draft(s.state, route === "clarify" ? "clarify" : "chat", reply.length > 0 ? reply : "다시 한 번 말씀해 주시겠어요?"));
@@ -230,12 +235,12 @@ export class SessionReplies {
     const previous: string[] = [];
     for (const row of s.history.slice(-12)) {
       if (row.role !== "user" || !SCREEN_CONTEXT_STATES.has(row.state) || !SCREEN_CONTEXT_INTENTS.has(row.intentType ?? "UNKNOWN")) continue;
-      const safe = strip(redactPictureText(s.historySpeech(row.text)));
+      const safe = strip(redactPictureText(s.modelSpeech(row.text)));
       if (safe.length > 0 && !safe.includes(REDACTED) && !safe.startsWith("[") && detectSensitive(safe).kinds.length === 0) {
         previous.push(Array.from(safe).slice(0, 300).join(""));
       }
     }
-    return s.browse.screen(redactPictureText(s.historySpeech(question)), turn.ctx, { previousInputs: previous.slice(-3), allowPicture: !textOnly, confirmPicture });
+    return s.browse.screen(redactPictureText(s.modelSpeech(question)), turn.ctx, { previousInputs: previous.slice(-3), allowPicture: !textOnly, confirmPicture });
   }
 
   /** 받아쓴 말을 알아듣지 못했을 때: 들은 말을 되읽고 어느 업무인지 묻는다. */

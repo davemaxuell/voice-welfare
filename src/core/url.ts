@@ -1,4 +1,5 @@
-import { strip } from "./text.ts";
+import { REDACTED, strip } from "./text.ts";
+import type { Redacted } from "./llm.ts";
 
 const defaultPorts = new Map([["http", 80], ["https", 443], ["ws", 80], ["wss", 443], ["ftp", 21]]);
 const relativeSchemes = new Set("ftp http gopher nntp imap wais file https shttp mms prospero rtsp rtsps rtspu sftp svn svn+ssh ws wss".split(" "));
@@ -108,4 +109,79 @@ export function parseUrl(url: string, base?: string) {
 export function tryUrl(url: string | undefined | null) {
   if (url === undefined || url === null || url.length === 0) return undefined;
   try { return parseUrl(url); } catch { return undefined; }
+}
+
+/** 발화에서 누리집을 찾을 때와 모델에 보낼 주소를 가릴 때 같은 문법을 쓴다. */
+export const spokenAddressPatterns = {
+  domain: /(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİ0-9-]+\.)+[a-zİ]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?)/iu,
+  domainWhole: /^(?:(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİ0-9-]+\.)+[a-zİ]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?))$/iu,
+  linkEnding: /[.,)]+(?=\n?$)/gu,
+  localAddress: /^(localhost|\p{Nd}{1,3}(\.\p{Nd}{1,3}){3})(:|\/|(?=\n?$))/iu,
+  protocol: /^https?:\/\//iu,
+  goalMarker: /에서|들어가서|가서|열어서|열고|접속해서/gu,
+  explicitUrl: /https?:\/\/[A-Za-z0-9İı\-._~:/?#[\]@!$&'()*+,;=%]+/iu,
+};
+
+export function addressSite(address: string) {
+  const raw = address.replace(spokenAddressPatterns.linkEnding, "");
+  // 로컬 주소(localhost, IP)는 http, 그 외 도메인은 https로 연다.
+  const scheme = spokenAddressPatterns.localAddress.test(raw) ? "http" : "https";
+  const url = spokenAddressPatterns.protocol.test(raw) ? raw : `${scheme}://${raw}`;
+  const parsed = tryUrl(url);
+  return parsed === undefined ? undefined : { url, label: parsed.host };
+}
+
+const addressReferences = new RegExp(String.raw`https?:\/\/[^\s<>"“”]+|${spokenAddressPatterns.domain.source}(?:[?#][^\s<>"“”]*)?`, "giu");
+
+/** 모델에는 출처만 보낸다. 브라우저는 이용자가 말한 정확한 주소를 기기 안에서 찾아 연다. */
+type DestinationText<T extends string> = { text: T; urls: Map<string, string[]> };
+export function destinationOrigins(text: Redacted, origins?: ReadonlySet<string>): DestinationText<Redacted>;
+export function destinationOrigins(text: string, origins?: ReadonlySet<string>): DestinationText<string>;
+export function destinationOrigins(text: string, origins?: ReadonlySet<string>): DestinationText<string> {
+  const urls = new Map<string, string[]>();
+  const masked = text.replace(addressReferences, (raw: string, _bare: string | undefined, at: number) => {
+    // 경로가 없는 도메인은 이미 공개 정보이고 일반 문장에 쓰인 이름일 수도 있다.
+    if (!spokenAddressPatterns.protocol.test(raw) && !/[/?#]/u.test(raw)) return raw;
+    const marker = [...raw.matchAll(spokenAddressPatterns.goalMarker)].find(m => m.index + m[0].length === raw.length);
+    // 문장이 더 이어질 때 탐색기가 쓰는 주소 문법으로 조사 앞의 주소를 확인한다.
+    const suffix = marker && strip(text.slice(at + raw.length)).length > 0 &&
+      spokenAddressPatterns.domainWhole.test(raw.slice(0, marker.index)) ? marker[0] : "";
+    const token = raw.slice(0, raw.length - suffix.length);
+    const address = spokenAddressPatterns.protocol.test(token) ? token : addressSite(token)?.url;
+    const url = address === undefined ? null : URL.parse(address);
+    if (address === undefined || !url || url.username.length > 0 || url.password.length > 0) return REDACTED;
+    if (origins !== undefined && !origins.has(url.origin)) return raw;
+    const matches = urls.get(url.origin) ?? [];
+    if (!matches.includes(address)) matches.push(address);
+    urls.set(url.origin, matches);
+    return url.origin + suffix;
+  });
+  return {text: masked, urls};
+}
+
+/** 이용자가 하나의 구체적인 페이지를 주었는지 확인한다. */
+export function suppliedPage(urls: ReadonlyMap<string, readonly string[]>): {origin: string; url: string} | undefined {
+  if (urls.size !== 1) return undefined;
+  const [entry] = urls;
+  const address = entry?.[1].length === 1 ? entry[1][0] : undefined;
+  const url = address === undefined ? null : URL.parse(address);
+  return address !== undefined && url && (url.pathname !== "/" || url.search.length > 0 || url.hash.length > 0) ? {origin: url.origin, url: address} : undefined;
+}
+
+export function referenceOrigin(token: string): string | undefined {
+  const address = spokenAddressPatterns.protocol.test(token) ? token : addressSite(token)?.url;
+  const url = address === undefined ? null : URL.parse(address);
+  if (!url || ![url.origin, url.origin + "/", url.host, url.host + "/"].includes(token)) return undefined;
+  return url.origin;
+}
+
+/** 번역기나 계획기가 돌려준 출처는 이용자가 이 출처의 주소를 하나만 말했을 때 복원한다. */
+export function bindDestinations(text: string, bindings: ReadonlyMap<string, readonly string[]>): string {
+  if (bindings.size === 0) return text;
+  return text.replace(addressReferences, raw => {
+    const token = spokenAddressPatterns.explicitUrl.exec(raw)?.[0] ?? raw;
+    const origin = referenceOrigin(token);
+    const matches = origin === undefined ? undefined : bindings.get(origin);
+    return matches?.length === 1 ? matches[0] + raw.slice(token.length) : raw;
+  });
 }

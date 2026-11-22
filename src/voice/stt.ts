@@ -107,7 +107,7 @@ export class OpenAISttProvider implements SttProvider {
     const res = await this.#fetch(this.baseUrl + "/audio/transcriptions", { method: "POST", body: form,
       headers: { Authorization: "Bearer " + this.apiKey },
       signal: input.signal === undefined ? timeout : AbortSignal.any([timeout,input.signal]) });
-    if (res.status < 200 || res.status >= 300) throw new VoiceProviderError(res.status);
+    if (!res.ok) throw await VoiceProviderError.fromResponse(res);
     const reply = z.object({ text: z.string().nullish() }).parse(await res.json());
     return strip(reply.text ?? "");
   }

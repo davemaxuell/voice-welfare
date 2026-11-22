@@ -123,10 +123,22 @@ switch ($Command) {
     if (-not $win) { '[]'; break }
     $all = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
     $rows = foreach ($e in $all) {
-      $c = $e.Current
-      [pscustomobject]@{ type = $c.ControlType.ProgrammaticName; localized = $c.LocalizedControlType; id = $c.AutomationId; name = $c.Name; focusable = $c.IsKeyboardFocusable; enabled = $c.IsEnabled; offscreen = $c.IsOffscreen; focused = $c.HasKeyboardFocus }
+      $elementInfo = $e.Current
+      [pscustomobject]@{ type = $elementInfo.ControlType.ProgrammaticName; localized = $elementInfo.LocalizedControlType; id = $elementInfo.AutomationId; name = $elementInfo.Name; focusable = $elementInfo.IsKeyboardFocusable; enabled = $elementInfo.IsEnabled; offscreen = $elementInfo.IsOffscreen; focused = $elementInfo.HasKeyboardFocus }
     }
     @($rows) | ConvertTo-Json -Compress
+  }
+  'uia-invoke' {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $elementType = [System.Windows.Automation.AutomationElement]
+    $testWindow = $elementType::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children,
+      (New-Object System.Windows.Automation.PropertyCondition($elementType::NativeWindowHandleProperty, [int]$A)))
+    if (-not $testWindow) { '{"invoked":false}'; break }
+    $all = $testWindow.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $button = $all | Where-Object { $_.Current.Name -eq $B -and $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Button' } | Select-Object -First 1
+    if (-not $button) { '{"invoked":false}'; break }
+    $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    '{"invoked":true}'
   }
   'focused' {
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes

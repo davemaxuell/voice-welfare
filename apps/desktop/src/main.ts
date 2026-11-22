@@ -35,6 +35,7 @@ import {
   type WebContents,
 } from "electron";
 import type { Lang } from "../../../src/core/turn.ts";
+import { ownInstance } from "../../../src/server/instance.ts";
 import { desktopText } from "./text.ts";
 import { overlayBounds, overlayLimits, pickDisplay, type Corner } from "./placement.ts";
 import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN, trayTaskText } from "./protocol.ts";
@@ -226,6 +227,7 @@ function loadPrefs() {
       ...prefs,
       corner: isCorner(saved.corner) ? saved.corner : prefs.corner,
       still: saved.still === true,
+      hidden: saved.hidden === true,
       ...(typeof saved.displayId === "number" && Number.isSafeInteger(saved.displayId) ? { displayId: saved.displayId } : {}),
       ...(isPoint(saved.position) && [saved.position.x, saved.position.y].every(value => value >= 0 && value <= 1) ? { position: saved.position } : {}),
       ...(isDesktopLanguage(saved.lang) ? { lang: saved.lang } : {}),
@@ -235,11 +237,11 @@ function loadPrefs() {
   }
 }
 
-/** 구석·움직임·언어 설정을 저장한다. 숨기기는 이번 실행에만(다음에 켜면 다시 보인다). */
+/** 구석·움직임·표시 여부·언어를 다음 실행에도 복원한다. */
 function savePrefs(patch: Partial<typeof prefs>) {
   prefs = { ...prefs, ...patch };
   try {
-    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang, displayId: prefs.displayId, position: prefs.position }));
+    writeFileSync(PREFS_FILE(), JSON.stringify(prefs));
   } catch {
     /* 저장하지 못하면 이번 실행에만 */
   }
@@ -387,9 +389,10 @@ function requestVisibility(animate: boolean) {
 }
 
 function setOverlayHidden(hidden: boolean) {
-  if (!overlay || overlay.isDestroyed() || prefs.hidden === hidden) return;
-  prefs.hidden = hidden;
-  updateTray();
+  if (!AVATAR || prefs.hidden === hidden) return;
+  savePrefs({ hidden });
+  controllerAction({ type: "avatar-visibility", visible: !hidden });
+  if (!overlay || overlay.isDestroyed()) return;
   if (hidden) {
     moveAvatar("cancel", undefined);
     focusRequested = false;
@@ -484,6 +487,11 @@ const fromController = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && !win.i
 const isText = (v: unknown, max = 80): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 
 function bindBridge() {
+  ipcMain.handle("cheongeum:avatar-visible", (e, visible: unknown) => {
+    if (!fromController(e) || !AVATAR) return null;
+    if (typeof visible === "boolean") setOverlayHidden(!visible);
+    return !prefs.hidden;
+  });
   ipcMain.on("cheongeum:show-setup", (e) => {
     if (fromController(e)) showConversation();
   });
@@ -608,6 +616,11 @@ function startService(): Promise<string> {
     const timeout = setTimeout(() => reject(new Error(copy().startTimeout)), 90_000);
     // Only trust a bound address reported over our own child's channel.
     child.on("message", (data: unknown) => {
+      if (isRecord(data) && data.type === "avatar" && typeof data.id === "string" && typeof data.visible === "boolean") {
+        setOverlayHidden(!data.visible);
+        child.postMessage({ type: "avatar-result", id: data.id, applied: AVATAR && prefs.hidden !== data.visible });
+        return;
+      }
       const url = readyUrl(data);
       if (url === undefined) return;
       clearTimeout(timeout);
@@ -766,7 +779,12 @@ async function startApp() {
 
 if (app.requestSingleInstanceLock()) {
   app.on("second-instance", showConversation);
-  app.whenReady().then(startApp).catch(startupFailed);
+  app.whenReady().then(async () => {
+    const owner = await ownInstance(showConversation);
+    if (owner === undefined) { app.quit(); return; }
+    app.once("will-quit", () => { void owner.close(); });
+    await startApp();
+  }).catch(startupFailed);
 } else {
   app.quit();
 }

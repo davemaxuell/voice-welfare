@@ -14,6 +14,27 @@ const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
 afterAll(runtime.close);
 async function newSession() { return (await runtime.createBrowserSession()).session; }
+
+it("모델이 데스크톱에서만 마스코트 보기·닫기를 요청하고 실제 결과를 읽는다", async () => {
+  const session = await newSession();
+  const applied: boolean[] = [];
+  session.deps.setAvatarVisible = async value => { applied.push(value); return true; };
+  for (const [type, request, speech] of [
+    ["HIDE_AVATAR", "곁에 있는 캐릭터가 잠깐 안 보이면 좋겠어", "마스코트를 닫았어요."],
+    ["SHOW_AVATAR", "아까 곁에 있던 친구 다시 데려와", "마스코트를 다시 열었어요."],
+  ] as const) {
+    const llm = new FakeLlm({ intent_plan: { steps: [{type}] } });
+    withLlm(session, llm);
+    expect((await session.handleTurn(request)).speech).toContain(speech);
+    expect(JSON.stringify(llm.calls.find(call => call.schemaName === "intent_plan")?.schema)).toContain(type);
+  }
+  expect(applied).toEqual([false, true]);
+  session.deps.setAvatarVisible = undefined;
+  const unavailable = new FakeLlm({intent_plan: {steps: [{type: "SHOW_AVATAR"}]}});
+  withLlm(session, unavailable);
+  await session.handleTurn("곁에 있던 친구 데려와");
+  expect(JSON.stringify(unavailable.calls.find(call => call.schemaName === "intent_plan")?.schema)).not.toContain("SHOW_AVATAR");
+});
 const rules = new RuleBasedIntentProvider(fieldVocabulary(createMockWelfareProfile("http://localhost:5174")));
 const exampleTypes = new Map(INTENTS.flatMap(i => i.examples.map(example => [example.text, i.type] as const)));
 /** Python conftest의 flat: 계획 스키마의 모든 칸을 null로 두고 준 칸만 채운다. */
@@ -120,7 +141,7 @@ it("test_general_question_then_resume", async () => {
 it("test_realtime_question_searches_and_grounds", async () => {
   const session = await newSession();
   withLlm(session, new FakeLlm({
-    chat_route: { route: "web_search", reply: "", searchQuery: "오늘 날씨" },
+    chat_route: { route: "web_search", reply: "", keywords: ["오늘", "날씨"] },
     web_answer: { found: true, answer: "첫 검색 결과는 오늘 날씨 신청 방법이에요.", evidence: ["오늘 날씨 신청 방법"] },
   }));
   const result = await session.handleTurn("오늘 날씨 어때");
@@ -133,7 +154,7 @@ it("test_realtime_question_searches_and_grounds", async () => {
 it("test_verifier_blocks_ungrounded_search_answer", async () => {
   const session = await newSession();
   withLlm(session, new FakeLlm({
-    chat_route: { route: "web_search", reply: "", searchQuery: "오늘 날씨" },
+    chat_route: { route: "web_search", reply: "", keywords: ["오늘", "날씨"] },
     web_answer: { found: true, answer: "오늘은 맑고 기온은 23도예요.", evidence: ["맑음 23도"] },
   }));
   const result = await session.handleTurn("오늘 날씨 어때");

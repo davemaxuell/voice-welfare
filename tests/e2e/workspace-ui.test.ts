@@ -1,4 +1,7 @@
 import { chromium, expect as screen, type Browser, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { soundCues } from "../../src/core/assets.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { z } from "zod";
 import { recordCues, startUi } from "./web-ui-fixtures.ts";
@@ -9,7 +12,7 @@ let page: Page;
 beforeAll(async () => { ui = await startUi(); browser = await chromium.launch(); });
 beforeEach(async () => { page = await browser.newPage({ locale: "ko-KR" }); });
 afterEach(async () => { await page.close(); await ui.reset(); });
-afterAll(async () => { await browser?.close(); await ui?.close(); });
+afterAll(async () => { await Promise.all([browser?.close(), ui?.close()]); });
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });
 const box = () => page.locator("#command");
@@ -150,6 +153,8 @@ it("test_workspace_language_changes_starter_and_example_payloads", async () => {
 
 it.each([true, false])("test_private_prompt_never_uses_remote_speech", async localVoice => {
   await recordCues(page);
+  const audio = await readFile(join(soundCues, "done.ogg"));
+  await page.route("**/api/audio/speak", route => route.fulfill({ contentType: "audio/ogg", body: audio }));
   await page.addInitScript(`
     window.privateSpeech = [];
     window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
@@ -161,13 +166,12 @@ it.each([true, false])("test_private_prompt_never_uses_remote_speech", async loc
   const remote: string[] = [];
   page.on("request", req => { if (req.url().endsWith("/api/audio/speak")) remote.push(z.object({ text: z.string() }).parse(req.postDataJSON()).text); });
   await consent();
+  const cue = page.waitForRequest(req => req.url().endsWith("/api/audio/speak") &&
+    z.object({ text: z.string() }).parse(req.postDataJSON()).text.includes("개인정보가 있는 안내"));
   await send("내 이름은 별구름이라고 저장해줘");
   await screen(page.locator("#log")).toContainText("이름 별구름");
-  if (localVoice) await page.waitForFunction("window.privateSpeech.some(([s, voice]) => s.includes('별구름') && voice === 'Device')");
-  else {
-    await screen(page.locator("#error")).toContainText("기기");
-    expect(await page.evaluate("window.privateSpeech")).toEqual([]);
-  }
+  await cue;
+  expect(await page.evaluate("window.privateSpeech")).toEqual([]);
   expect(remote.every(text => !text.includes("별구름"))).toBe(true);
 });
 

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Browser, BrowserContext } from "playwright";
+import { openControllerWindow } from "./controller_window.ts";
 import { WebExecutionAgent } from "../agents/web/agent.ts";
 import { closeLaunchedBrowser, launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../agents/web/browser/index.ts";
 import { browserDriver } from "../agents/web/browser/stagehand_browser.ts";
@@ -87,8 +88,7 @@ export function loadConfig(env: Env = process.env) {
   const voice: VoiceConfig = {
     ...VOICE_DEFAULTS, apiKey: blank(env.VOICE_API_KEY) ?? (officialVoice ? openaiKey ?? (officialLlm ? llm.apiKey : undefined) : undefined),
     baseUrl: voiceUrl ?? VOICE_DEFAULTS.baseUrl, sttModel: blank(env.STT_MODEL) ?? VOICE_DEFAULTS.sttModel,
-    liveModel: blank(env.VOICE_LIVE_MODEL) ?? VOICE_DEFAULTS.liveModel, ttsModel: blank(env.TTS_MODEL) ?? VOICE_DEFAULTS.ttsModel,
-    ttsVoice: blank(env.TTS_VOICE) ?? VOICE_DEFAULTS.ttsVoice, ttsInstructions: blank(env.TTS_INSTRUCTIONS),
+    liveModel: blank(env.VOICE_LIVE_MODEL) ?? VOICE_DEFAULTS.liveModel,
     ttsSpeed: speed !== undefined && speed > 0 ? Math.min(4, Math.max(0.25, speed)) : VOICE_DEFAULTS.ttsSpeed,
   };
   const pilotProfile = env.PILOT_PROFILE === "shared" || env.PILOT_PROFILE === "personal" ? env.PILOT_PROFILE : "unidentified";
@@ -138,6 +138,7 @@ export function loadConfig(env: Env = process.env) {
 export type RuntimeConfig = ReturnType<typeof loadConfig>;
 
 export class AgentRuntime {
+  setAvatarVisible?: (visible: boolean, signal: AbortSignal) => Promise<boolean>;
   readonly config: RuntimeConfig;
   readonly profile;
   readonly welfareProvider;
@@ -163,6 +164,8 @@ export class AgentRuntime {
   private seal?: Seal;
   private browser?: Promise<Browser>;
   private workerBrowser?: Promise<Browser>;
+  private controllerBrowser?: Promise<Browser>;
+  private controller?: ReturnType<typeof openControllerWindow>;
   private chrome?: Promise<BrowserContext>;
   private closed = false;
   browserFallback = false;
@@ -290,6 +293,21 @@ export class AgentRuntime {
       });
     return opening;
   }
+  async showController(url: string) {
+    const getVisible = () => {
+      if (!this.config.headless) return this.getBrowser();
+      return this.controllerBrowser ??= launchBrowser(false, 0, this.config.browserDriver).then(browser => {
+        browser.once("disconnected", () => { this.controllerBrowser = undefined; });
+        return browser;
+      }).catch((error: unknown) => { this.controllerBrowser = undefined; throw error; });
+    };
+    const opening = this.controller ??= getVisible().then(browser => openControllerWindow(browser, url));
+    try {
+      const page = await opening;
+      page.once("close", () => { if (this.controller === opening) this.controller = undefined; });
+      await page.bringToFront();
+    } catch (error) { if (this.controller === opening) this.controller = undefined; throw error; }
+  }
   openChrome() {
     this.chrome ??= launchChromeProfile(this.config.chromeProfileDir, this.config.slowMoMs, this.config.browserDriver)
       .then((c) => {
@@ -324,7 +342,9 @@ export class AgentRuntime {
       }
       return await this.getBrowser(background);
     };
+    let session: SessionOrchestrator | undefined;
     const adapter = new PlaywrightExecutionAdapter({ browserSource: source, driver: cfg.browserDriver,
+      protectedTab: page => session?.dialogue.authHandoff?.browser === page && session.dialogue.authWaiting,
       allowedOrigins, readOnlyWeb, visualCursor: cfg.visualCursor && !background, downloads });
     try {
       if (background || cfg.practiceMode || (cfg.headless && this.browserMode() !== "chrome")) await adapter.start();
@@ -363,6 +383,7 @@ export class AgentRuntime {
         events: background ? new InMemoryEventLog() : this.events,
         requireConsent: cfg.requireConsent && !background, practiceMode: cfg.practiceMode && !background,
         publicPlanning: cfg.publicPlanning,
+        setAvatarVisible: background ? undefined : this.setAvatarVisible,
         initialRegion: settings?.preferences.region ?? "", initialLanguage: settings?.preferences.language ?? "ko",
         initialService: remember ? settings.lastService : undefined, rememberService: remember ? settings.rememberService.bind(settings) : undefined,
         firstRunStep: settings?.completed === true && settings.firstRun !== "done" ? settings.firstRun : undefined,
@@ -373,7 +394,7 @@ export class AgentRuntime {
         downloads,
         sharedBrowser: shared && !this.browserFallback,
       };
-      const session = new SessionOrchestrator(sessionOptions);
+      session = new SessionOrchestrator(sessionOptions);
       if (!background && !cfg.requireConsent) await session.prepare();
       return session;
     } catch (e) {
@@ -389,6 +410,7 @@ export class AgentRuntime {
       this.browser?.then(closeLaunchedBrowser),
       this.pii?.close(),
       this.workerBrowser?.then(closeLaunchedBrowser),
+      this.controllerBrowser?.then(closeLaunchedBrowser),
       this.connections.close(),
     ]);
   }

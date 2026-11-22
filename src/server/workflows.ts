@@ -7,7 +7,8 @@ import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { ResearchSource, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
 import { strip } from "../core/text.ts";
-import { draft, type Draft, type Lang } from "../core/turn.ts";
+import { draft, LangSchema, type Draft, type Lang } from "../core/turn.ts";
+import { RESEARCH_UNDELIVERED } from "../orchestrator/public_task.ts";
 import { REDACTED, detectSensitive, redactPictureText, type SecretSpan } from "../safety/privacy.ts";
 import { withDeadline } from "../voice/live.ts";
 import { AsyncLock } from "./recovery.ts";
@@ -151,6 +152,7 @@ export interface ResearchSession {
   close(): Promise<void>;
 }
 export interface WorkspaceSession {
+  speakable?(text: string): boolean;
   readonly consentStatus: string;
   readonly lang: string;
   readonly generation: number;
@@ -538,6 +540,28 @@ export function registerWorkflows<S extends WorkspaceSession>(app: Hono, service
     const store = await service.store();
     const [jobs, notes] = await Promise.all([store.jobs(), store.notes()]);
     return c.json({ jobs, notes });
+  });
+
+  app.get(base + "/deliveries", async c => {
+    const session = authorize(sidOf(c), c);
+    if (session instanceof Response) return session;
+    const store = await service.store();
+    const rows = await store.pendingDeliveries();
+    const pending = rows.map(job => {
+      const result = StoredResearch.safeParse(job.result);
+      if (result.success && [result.data.text ?? "", ...result.data.missing ?? []].some(value => session.speakable?.(value) === false)) {
+        const lang = LangSchema.safeParse(job.language).data ?? "ko";
+        return {...job, result: {text: RESEARCH_UNDELIVERED[lang]}};
+      }
+      return job;
+    });
+    return c.json({pending});
+  });
+  app.delete(base + "/research/:jobId/delivery/:token", async c => {
+    const session = authorize(sidOf(c), c);
+    if (session instanceof Response) return session;
+    await (await service.store()).heard(c.req.param("jobId") ?? "", c.req.param("token") ?? "");
+    return c.json({heard: true});
   });
 
   app.post(base + "/research", async c => {

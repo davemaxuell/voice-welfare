@@ -54,13 +54,15 @@ import { fullMatch, sessionPatterns } from "./patterns.ts";
 import { FirstRunGuide } from "./first_run.ts";
 import { spokenPlanNames } from "../agents/web/skills/known_plan.ts";
 import { PublicPlanner, type QuietAnswer } from "./public_plan.ts";
-import { PublicTask } from "./public_task.ts";
+import { PublicTask, publicDestinations, RESEARCH_UNDELIVERED } from "./public_task.ts";
+import { SessionNeed } from "./session_need.ts";
 import { SessionReplies } from "./replies.ts";
 import { LIVE_DIFFICULTY, REVIEW_LIMITS, ReviewLoop, ReviewedTask, isDifficulty } from "./review_loop.ts";
 import { VOCAB, interpretSpeech } from "./speech_repair.ts";
 import { decisionReply } from "../understanding/decision_reply.ts";
 
 export interface OrchestratorDeps {
+  setAvatarVisible?: (visible: boolean, signal: AbortSignal) => Promise<boolean>;
   intentProvider: IntentProvider;
   web: WebExecutionAgent;
   welfare: WelfareInformationAgent;
@@ -120,6 +122,7 @@ export interface Turn {
   original?: Redacted;
   fromVoice: boolean; linkQuestion: boolean; staleLinkOffer: boolean;
   progressReply: string; researchState: string; researchEvidence: string;
+  researchOutcome?: boolean;
   initialApprovalId?: string; initialApproval?: Approval; approvalNotice?: ApprovalNotice;
 }
 export interface TurnOptions {
@@ -213,6 +216,8 @@ export class SessionOrchestrator {
   /** 지금 이야기하는 공공기관과 업무. 이어 묻는 말("필요한 서류는?")이 여기에 붙는다. */
   activeService?: readonly [agency: string, topic: string];
   publicTask = new PublicTask();
+  readonly need = new SessionNeed();
+  readonly #suppliedOrigins = new Set<string>();
   /** 검토하던 일이 사용자 대답을 기다리는 자리(되물음·본인인증·지역 물음) */
   reviewQuestion?: readonly [PublicTask, ReviewedTask];
   inspectedScreen?: {task: PublicTask; confirmedPageKey: string};
@@ -227,6 +232,8 @@ export class SessionOrchestrator {
   #controller = new AbortController();
   #approvals = new Set<string>();
   #busy = false;
+  readonly #researchReceipts = new Map<string, Pick<TurnResult, "turnId" | "lang" | "speech">>();
+  #pendingResearch?: {turnId: string; lang: Lang};
   // 마지막 응답이 제안한 선택지. 다음 응답·멈춤·종료 때 바뀐다.
   #offer?: Offer;
   #nextModels: ModelRoles = {};
@@ -308,6 +315,9 @@ export class SessionOrchestrator {
       this.#consent = granted ? "granted" : "declined";
       if (d.approval?.kind === "file") d.clearApproval();
       if (!granted) {
+        this.#pendingResearch = undefined;
+        this.#researchReceipts.clear();
+        this.need.clear();
         this.publicTask = new PublicTask();
         this.inspectedScreen = undefined;
         this.reviewQuestion = this.authReview = this.placeReview = undefined;
@@ -577,13 +587,23 @@ export class SessionOrchestrator {
 
   exportHistory(): HistoryRow[] { return this.#history.map(row => ({ ...row })); }
 
+  researchReceipts() {
+    for (const item of this.#researchReceipts.values()) {
+      if (!this.speakable(item.speech) || detectSensitive(item.speech).kinds.length > 0) item.speech = RESEARCH_UNDELIVERED[item.lang];
+    }
+    return {working: this.#busy, outcomes: Array.from(this.#researchReceipts.values())};
+  }
+
+  startResearchDelivery(turnId: string) { this.#pendingResearch = {turnId, lang: this.lang}; }
+  acknowledgeResearch(turnId: string) { this.#researchReceipts.delete(turnId); }
+
   /** 실시간 음성의 시작 문맥. 길이를 묶고 보내기 전에 한 번 더 가린다. */
   recentVoiceDialogue(): { role: "user" | "assistant"; text: string }[] {
     const history: { role: "user" | "assistant"; text: string }[] = [];
     // 시작 문맥에 메시지 틀이 들어갈 자리를 남긴다.
     let remaining = 6400;
     for (const message of this.#history.slice(-32).reverse()) {
-      const text = strip(redactPictureText(this.historySpeech(message.text)));
+      const text = strip(redactPictureText(this.modelSpeech(message.text)));
       if (text.length === 0) continue;
       const excerpt = Buffer.from(text, "utf8").subarray(0, 800);
       if (excerpt.length > remaining) break;
@@ -600,7 +620,10 @@ export class SessionOrchestrator {
   reminders() { return dueReminder(this.personal.applications(), this.today); }
 
   /** 저장해 둔 조사 한 건을 한다. 격리된 새 작업 세션에서만 부른다. */
-  researchPublic(...args: Parameters<PublicPlanner["research"]>) { return this.planner.research(...args); }
+  researchPublic(...args: Parameters<PublicPlanner["research"]>) {
+    const work = () => this.planner.research(...args);
+    return this.web.adapter.withTask?.(work) ?? work();
+  }
 
   /** 받아쓴 말이 비었을 때 다시 말해 달라는 안내 */
   missedSpeechHint(): string {
@@ -617,6 +640,11 @@ export class SessionOrchestrator {
     const approvalKind = this.dialogue.confirmation?.kind;
     const state = this.state;
     const view = this.web.currentView;
+    if (this.#pendingResearch !== undefined) {
+      const {turnId, lang} = this.#pendingResearch;
+      this.#researchReceipts.set(turnId, {turnId, lang, speech: RESEARCH_UNDELIVERED[lang]});
+      this.#pendingResearch = undefined;
+    }
     this.#interrupt();
     this.web.forgetNative();
     this.#approvals.clear();
@@ -625,6 +653,7 @@ export class SessionOrchestrator {
     this.browse.linkChoices = undefined;
     this.guardian.takePending();
     this.#history = [];
+    this.need.clear();
     this.publicTurns.length = 0;
     this.activeService = undefined;
     this.publicTask = new PublicTask();
@@ -670,6 +699,10 @@ export class SessionOrchestrator {
   }
 
   async close() {
+    this.#suppliedOrigins.clear();
+    this.#pendingResearch = undefined;
+    this.#researchReceipts.clear();
+    this.need.clear();
     this.publicTask = new PublicTask();
     this.inspectedScreen = undefined;
     this.reviewQuestion = this.authReview = this.placeReview = undefined;
@@ -701,7 +734,7 @@ export class SessionOrchestrator {
           if (this.#nextPreferences.region !== undefined) this.profile.ctpv = this.#nextPreferences.region;
           this.#nextPreferences = {};
         }
-        return await work();
+        return this.web.adapter.withTask === undefined ? await work() : await this.web.adapter.withTask(work);
       } finally { this.#busy = false; }
     }, () => this.voided());
   }
@@ -718,6 +751,8 @@ export class SessionOrchestrator {
   }
 
   #stop(text: Redacted): TurnResult {
+    this.#pendingResearch = undefined;
+    this.#researchReceipts.clear();
     this.inspectedScreen = undefined;
     this.reviewQuestion = this.authReview = this.placeReview = undefined;
     this.browse.linkChoices = undefined;
@@ -792,6 +827,8 @@ export class SessionOrchestrator {
   // ---------------------------------------------------------------- 턴 처리
 
   beginTurn(text: Redacted): Turn {
+    // 이전 턴에 받은 주소가 열린 채로 새 탐색을 시작해도 경로는 기기에 남긴다.
+    for (const origin of publicDestinations(text).urls.keys()) this.#suppliedOrigins.add(origin);
     const epoch = this.#queue.epoch;
     const started = performance.now();
     const trace: TraceEntry[] = [];
@@ -803,7 +840,7 @@ export class SessionOrchestrator {
         signal: this.#controller.signal, approvals: this.#approvals,
         isStopped: () => epoch !== this.#queue.epoch || this.state === "STOPPED",
         trace: (phase, agent, note) => trace.push(omitAbsent({ phase, agent, note, atMs: Math.floor(performance.now() - started) })),
-        counter: { actions: 0 }, sessionId: this.id, taskId: id, requestedControl: requestedControl(text),
+        counter: { actions: 0 }, sessionId: this.id, taskId: id, requestedControl: requestedControl(text), suppliedOrigins: this.#suppliedOrigins,
       }),
     };
   }
@@ -930,6 +967,21 @@ export class SessionOrchestrator {
 
   /** 한국어 응답을 사용자 언어로. 숫자가 바뀌면 원문 한국어를 들려준다(지어낸 숫자 방지). */
   async localize(r: TurnResult): Promise<TurnResult> {
+    const result = await this.#localized(r);
+    this.#keepResearch(result);
+    return result;
+  }
+
+  #keepResearch(result: TurnResult) {
+    if (result.researchDelivery !== "outcome" || result.state === "STOPPED" || this.#consent !== "granted") return;
+    const {turnId, lang} = result;
+    if (this.#pendingResearch?.turnId === turnId) this.#pendingResearch = undefined;
+    if (result.localSpeechOnly === true) return;
+    const speech = this.speakable(result.speech) && detectSensitive(result.speech).kinds.length === 0 ? result.speech : RESEARCH_UNDELIVERED[lang];
+    this.#researchReceipts.set(turnId, {turnId, speech, lang});
+  }
+
+  async #localized(r: TurnResult): Promise<TurnResult> {
     const lang = this.lang, reviewer = this.deps.llm;
     if (lang === "ko" || r.lang === lang || reviewer === undefined || r.localSpeechOnly === true) return r;
     const started = performance.now();
@@ -1426,7 +1478,7 @@ export class SessionOrchestrator {
     });
     const suggestions = (out.publicSuggestions ?? []).filter(label => VOCAB.has(label));
     const approvalReply = stopped ? undefined : approvalNarration(approvalNotice, this.lang, speech, shown?.speech);
-    return parseTurnResult({
+    const result = parseTurnResult({
       sessionId: this.id, turnId: turn.id, userUtterance: turn.original ?? turn.text, localSpeechOnly: localSpeechOnly ? true : undefined,
       intentType: turn.intentType, state, stopGeneration: state === "STOPPED" ? this.#queue.epoch : undefined,
       semanticAction: out.semanticAction, publicSuggestions: suggestions.length > 0 ? suggestions : undefined,
@@ -1438,17 +1490,21 @@ export class SessionOrchestrator {
       answerCard: stopped ? undefined : out.answerCard, introScript: stopped ? undefined : out.introScript,
       sources: out.sources ?? [], missingFields: out.missingFields ?? [], pendingActions: 0, realSubmission: false,
       flags: { secretDetected: out.secretDetected === true, masked: out.masked === true }, latencyMs: Math.floor(performance.now() - turn.started),
-      speechPrefs: this.personal.speech(),
+      speechPrefs: this.personal.speech(), researchDelivery: stopped || d.confirmation !== undefined || d.authWaiting ? undefined :
+        out.researchDelivery ?? (turn.researchOutcome === true || this.#pendingResearch?.turnId === turn.id ? "outcome" : undefined),
       // 응답 말은 뒤에서 대화 언어로 옮겨지므로 버튼 이름도 대화 언어로
       offeredChoices: offer?.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
     });
+    if (result.researchDelivery === undefined && this.#pendingResearch?.turnId === turn.id) this.#pendingResearch = undefined;
+    if (result.lang === this.lang || this.deps.llm === undefined) this.#keepResearch(result);
+    return result;
   }
 
   /** 이 응답이 어느 공공기관 일이었는지 적어 둔다. 다음 공공업무 판단과 이어 묻는 말이 읽는다. */
   #rememberPublicTurn(turn: Turn, out: Draft, state: SessionState, view: View | undefined, userText: Redacted, reply: Redacted) {
     if (turn.ctx.browsingScope === "personal-inspection") return;
     const lookup = turn.ctx.publicLookup;
-    const clip = (text: string, size: number) => Array.from(redactText(text)).slice(0, size).join("");
+    const clip = (text: string, size: number) => Array.from(this.modelSpeech(text)).slice(0, size).join("");
     const known = this.publicTask.agency ?? "";
     let label = "";
     if (lookup && out.semanticAction === "web-answer") {
@@ -1526,6 +1582,8 @@ export class SessionOrchestrator {
   /** 보조 턴 기록용: 금고에 있거나 저장 확인 대기 중인 값을 [비공개]로 바꾼다(들은 말은 그대로). */
   historySpeech(speech: string): Redacted { return redactText(this.#withoutSecrets(speech)); }
 
+  modelSpeech(speech: string): Redacted { return publicDestinations(this.historySpeech(speech)).text; }
+
   /** 금고 값이 들어 있지 않은 글인지 */
   speakable(text: string): boolean { return this.#withoutSecrets(text) === text; }
 
@@ -1533,6 +1591,10 @@ export class SessionOrchestrator {
   redactEarlierMentions(mentioned: readonly string[]) {
     const values = [...new Set(mentioned.filter(value => value.length > 0))].sort(byLengthDesc);
     if (values.length === 0) return;
+    this.need.forget(values);
+    for (const item of this.#researchReceipts.values()) {
+      if (values.some(value => item.speech.includes(value))) item.speech = RESEARCH_UNDELIVERED[item.lang];
+    }
     for (const entry of this.#history) entry.text = redactText(replaceValues(entry.text, values));
     for (const entry of this.publicTurns) {
       entry.request = replaceValues(entry.request, values);
@@ -1547,7 +1609,7 @@ export class SessionOrchestrator {
   }
 
   recentDialogue(n = 6) {
-    return this.#history.slice(-n).map(row => historyLine(row.role, row.text));
+    return this.#history.slice(-n).map(row => historyLine(row.role, this.modelSpeech(row.text)));
   }
 
   get history(): readonly HistoryRow[] { return this.#history; }
@@ -1597,7 +1659,8 @@ export class SessionOrchestrator {
   async understand(text: Redacted, turn: Turn, { maxSteps = 6 }: { maxSteps?: number } = {}): Promise<Understood> {
     const awaiting = this.dialogue.awaiting !== undefined && this.dialogue.awaiting.length > 0 ? this.dialogue.awaiting : undefined;
     const current = this.web.currentView;
-    const followup = this.planner.followup(text);
+    const need = this.dialogue.hasPendingInteraction ? undefined : this.need.context();
+    const followup = this.deps.llm === undefined || need === undefined ? this.planner.followup(text) : undefined;
     if (this.web.guard.directActions && !this.dialogue.hasPendingInteraction && current?.pageId === "external") {
       const name = requestedControl(text);
       if (name !== undefined && current.outline?.items?.some(item => !item.disabled && item.name === name) === true) {
@@ -1605,9 +1668,11 @@ export class SessionOrchestrator {
       }
     }
     if (followup !== undefined) return { intents: [{ type: "GOAL", goal: followup }], by: "context" };
-    const understood = await this.understanding.understand(text, { state: this.state, awaitingFieldId: awaiting === undefined ? undefined : redactText(awaiting) }, {
+    const understood = await this.understanding.understand(text, { state: this.state, need,
+      avatarControl: this.deps.setAvatarVisible !== undefined && !this.dialogue.hasPendingInteraction,
+      awaitingFieldId: awaiting === undefined ? undefined : redactText(awaiting) }, {
       awaited: awaiting === undefined ? undefined : this.web.field(awaiting), clarifying: this.dialogue.clarification !== undefined,
-      page: current === undefined ? undefined : redactText(current.title), recent: this.recentDialogue(4), maxSteps,
+      page: current === undefined ? undefined : this.modelSpeech(current.title), recent: this.recentDialogue(4), maxSteps,
       trace: note => turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, note),
     });
     if (awaiting === undefined && understood.intents.length === 1 && understood.intents[0]?.type === "UNKNOWN" && sessionPatterns.goThere.test(text)) {
@@ -1732,6 +1797,11 @@ export class SessionOrchestrator {
   async dispatch(intent: Intent, turn: Turn, exclusions: readonly string[] = [], confirmPicture = false): Promise<Draft> {
     const ctx = turn.ctx;
     const welfare = this.deps.welfare;
+    if (intent.type === "SHOW_AVATAR" || intent.type === "HIDE_AVATAR") {
+      const visible = intent.type === "SHOW_AVATAR";
+      const updated = await this.deps.setAvatarVisible?.(visible, ctx.signal);
+      return draft(this.state, "none", updated === true ? (visible ? "마스코트를 다시 열었어요." : "마스코트를 닫았어요.") : "마스코트 창을 변경할 수 없었어요.");
+    }
     switch (intent.type) {
       case "START_APPLICATION": return this.application.start(turn);
       case "OPEN_OFFICIAL": return this.application.openOfficial(intent.service, turn);

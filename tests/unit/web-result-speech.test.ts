@@ -7,8 +7,9 @@ it("test_press_result_confirmed_moved", () => {
   expect(pressResult("'안내'를", "moved", { moved })).toBe(moved);
 });
 it("test_press_result_confirmed_changed_with_and_without_reveal", () => {
-  expect(pressResult("'신청방법'을", "changed", { revealed: "창구 방문" })).toBe("'신청방법'을 눌렀어요. 새로 보이는 내용입니다. 창구 방문");
-  expect(pressResult("'탭'을", "changed")).toBe("'탭'을 눌렀어요. 같은 화면에서 내용이 바뀌었어요.");
+  expect(pressResult("'신청방법'을", "changed", { revealed: "창구 방문" })).toBe("새로 보이는 내용입니다. 창구 방문");
+  expect(pressResult("'탭'을", "changed")).toBe("같은 화면에서 내용이 바뀌었어요.");
+  expect(pressResult("'저장'을", "changed", { approved: true, revealed: "저장 완료" })).toBe("'저장'을 눌렀어요. 새로 보이는 내용입니다. 저장 완료");
 });
 it("test_press_result_nothing_changed", () => {
   expect(pressResult("'글자 크게'를", "none")).toBe("'글자 크게'를 눌렀지만 화면이 바뀌지 않았어요.");

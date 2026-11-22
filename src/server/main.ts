@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -10,6 +11,7 @@ import { bindLocal, serviceEnvironment, startPracticeSite, toPort } from "./laun
 import { makeApp } from "./app.ts";
 import { AgentRuntime, loadConfig } from "./runtime.ts";
 import { SettingsStore } from "./settings.ts";
+import { ownInstance } from "./instance.ts";
 
 export async function build(desktop = false, env: NodeJS.ProcessEnv = process.env) {
   const settings = { ...env };
@@ -74,10 +76,11 @@ export async function main(args = process.argv.slice(2)) {
       });
       return closing;
     }
+    let url: string;
     try {
       const boundPort = await bindLocal(server, values.host, port, saved);
       const host = values.host.includes(":") ? `[${values.host}]` : values.host;
-      const url = `http://${host}:${boundPort}`;
+      url = `http://${host}:${boundPort}`;
       const tag = desktop ? "desktop" : "server";
       process.stdout.write(`[${tag}] ${url}  (LLM: ${runtime.intentProvider.name}, 복지데이터: ${runtime.welfareProvider.mode})\n`);
       const browser = runtime.config.headless ? "headless" : "headed";
@@ -96,15 +99,37 @@ export async function main(args = process.argv.slice(2)) {
       await stop();
       throw e;
     }
-    return { server, stop };
+    return { server, stop, showOnLaunch: !desktop && !runtime.config.headless, activate() {
+      if (app.presentation.activate()) return;
+      void runtime.showController(url).catch(() => {
+        const [command, ...args] = process.platform === "win32" ? ["rundll32.exe", "url.dll,FileProtocolHandler", url] :
+          process.platform === "darwin" ? ["open", url] : ["xdg-open", url];
+        const opener = spawn(command!, args, { detached: true, stdio: "ignore", windowsHide: true });
+        opener.on("error", error => console.warn("[server] 대화 창을 앞에 띄울 수 없어요.", error.name));
+        opener.unref();
+      });
+    } };
   } catch (e) {
     await stopMock();
     throw e;
   }
 }
 
+async function launch() {
+  let activate: (() => void) | undefined;
+  let requested = false;
+  const owner = await ownInstance(() => { requested = true; activate?.(); });
+  if (owner === undefined) return;
+  try {
+    const service = await main();
+    activate = service.activate;
+    if (requested || service.showOnLaunch) activate();
+    service.server.once("close", () => { void owner.close(); });
+  } catch (error) { await owner.close(); throw error; }
+}
+
 if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  main().catch(() => {
+  launch().catch(() => {
     process.stderr.write("[server] 서버를 시작할 수 없습니다. 포트와 실행 환경을 확인하세요.\n");
     process.exitCode = 1;
   });

@@ -8,7 +8,7 @@ const runtime = createTestRuntime();
 afterEach(runtime.closeSessions);
 afterAll(runtime.close);
 const goal = PORTAL + "에서 장애인연금 안내 기사 내용 알려줘";
-const clicked = "127.0.0.1에서 '장애인연금 안내'를 눌렀어요.";
+const moved = "[테스트] 외부 포털 - 안내 기사 페이지가 열렸어요.";
 const article = "두 번째 페이지라는 안내 기사예요.";
 
 function goalMode(session: SessionOrchestrator, steps: ReturnType<typeof step>[]) {
@@ -147,11 +147,11 @@ it("test_progress_question_mid_goal_names_the_current_step", async () => {
   try {
     await within(reached, 30_000);
     const progress = await within(session.handleTurn("청음아, 지금 어디까지 했어?"), 5_000);
-    expect(progress.speech).toBe("지금까지 2단계 했어요. 방금 " + clicked);
+    expect(progress.speech).toBe("지금까지 2단계 했어요. 방금 " + moved);
     expect(progress.actions).toEqual([]);
   } finally { gate.release(); }
   expect((await running).speech).toBe(article);
-  expect((await session.handleTurn("어디까지 됐어?")).speech).toBe("지금 하고 있는 일은 없어요. 마지막으로 " + clicked);
+  expect((await session.handleTurn("어디까지 됐어?")).speech).toBe("지금 하고 있는 일은 없어요. 마지막으로 " + moved);
 });
 
 it("test_stop_still_interrupts_a_goal", async () => {
@@ -166,7 +166,7 @@ it("test_stop_still_interrupts_a_goal", async () => {
   } finally { gate.release(); }
   const progress = await session.handleTurn("지금 어디까지 했어?");
   expect(progress.state).toBe("STOPPED");
-  expect(progress.speech).toBe("지금 하고 있는 일은 없어요. 마지막으로 " + clicked);
+  expect(progress.speech).toBe("지금 하고 있는 일은 없어요. 마지막으로 " + moved);
   expect(gate.calls).toBe(3);
 });
 

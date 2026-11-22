@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("cheongeumDesktop", {
   isDesktop: true,
+  avatarVisible: (visible?: boolean) => ipcRenderer.invoke("cheongeum:avatar-visible", visible),
   showSetup: () => ipcRenderer.send("cheongeum:show-setup"),
   /** 컴퓨터를 켤 때 청음도 켤지(Windows 시작 프로그램) */
   setAutoStart: (on: unknown) => ipcRenderer.send("cheongeum:set-auto-start", on === true),

@@ -1,24 +1,16 @@
 import { getOpcodes } from "../../core/sequence_matcher.ts";
 import { strip } from "../../core/text.ts";
-import { chunkText, josa } from "../../speech/phrasing.ts";
+import { josa, pressResult, type ClickEffect } from "../../speech/phrasing.ts";
 import type { WebObservation } from "./view.ts";
 
-export type Effect = "moved" | "changed" | "none";
+export { pressResult };
+export type Effect = ClickEffect;
 export const effectPatterns = {
   loading: /(불러오는\p{White_Space}*중|로딩\p{White_Space}*중|읽어\p{White_Space}*오는\p{White_Space}*중|조회\p{White_Space}*중|처리\p{White_Space}*중|잠시만\p{White_Space}*기다려|load[iİ]ng|please\p{White_Space}*wa[iİ]t)/iu,
   newlines: /\n+/gu,
 };
 export const LOADING_MAX_CHARS = 80;
 export const CHURN_CONFIRMATIONS = 2;
-
-export function pressResult(pressed: string, effect?: Effect, { revealed, moved }: { revealed?: string; moved?: string } = {}): string {
-  if (effect === "none") return pressed + " 눌렀지만 화면이 바뀌지 않았어요.";
-  if (effect === "changed") {
-    const shown = chunkText((revealed ?? "").replace(effectPatterns.newlines, " "), 0);
-    return pressed + " 눌렀어요. " + (shown.length > 0 ? "새로 보이는 내용입니다. " + shown : "같은 화면에서 내용이 바뀌었어요.");
-  }
-  return moved !== undefined && moved.length > 0 ? moved : pressed + " 눌렀어요.";
-}
 
 export function unconfirmedMessage(what: string): string {
   return what + " 확인하지 못했어요.";
@@ -32,7 +24,7 @@ export function clickNote(target: string, { status, effect, revealed, title, mes
     return pressResult(pressed, "changed", { revealed: strip((revealed ?? "").split("\n")[0]!) });
   }
   if (status === "ok" && effect === "none") return pressResult(pressed, "none");
-  if (status === "ok") return pressResult(pressed, "moved", { moved: title === undefined || title === "" ? undefined : "'" + title + "' 열림" });
+  if (status === "ok") return pressResult(pressed, effect, { moved: title === undefined || title === "" ? undefined : "'" + title + "' 열림" });
   if (status === "unconfirmed") return message === undefined || message === "" ? unconfirmedMessage("눌렸는지") : message;
   if (status === "policy-denied") return "안전 규칙으로 막힘: " + (message ?? "");
   if (candidates !== undefined && candidates.length > 0) return "여러 개가 맞음: " + candidates.join(", ");

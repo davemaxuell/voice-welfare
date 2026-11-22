@@ -41,7 +41,9 @@ export class ApplicationCommands {
     if (opened !== undefined) return opened;
     if (!practice) {
       // 공식 상세 주소를 모르면 주소를 지어내지 않고 검색해서 연다
-      const out = await s.web.openSite(s.browse.searchUrl(`${current} 신청 방법 복지로`), turn.ctx);
+      const terms = await s.browse.visibleSearchTerms(`${current} 신청 방법 복지로`, turn.ctx);
+      if (terms === undefined) return draft(s.state, "clarify", "공식 신청 안내를 찾을 제도 이름을 말씀해 주세요.");
+      const out = await s.web.openSite(s.browse.searchUrl(terms), turn.ctx);
       if (out.status === "ok" && out.view !== undefined) {
         s.browse.afterNavigation(out.view);
         const intro = await s.narrator.pageIntro(out.view, turn.ctx);
@@ -175,7 +177,8 @@ export class ApplicationCommands {
       d.clearApproval();
       const delegate = s.deps.delegateResearch;
       const saved = !late && s.consentStatus === "granted" && delegate !== undefined && await delegate(approval.confirmation.actionId, approval.goal);
-      return draft("IDLE", "none", saved ? "조사를 맡겼어요. 자료 조사와 저장한 메모에서 결과를 확인할 수 있어요." : "조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요.");
+      return draft("IDLE", "none", saved ? "조사를 맡겼어요. 결과가 나오면 알려 드릴게요." : "조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요.",
+        saved ? {researchDelivery: "queued"} : {});
     }
     if (approval.kind === "visual") {
       if (expired()) {

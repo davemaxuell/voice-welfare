@@ -63,8 +63,8 @@ const publicTaskPrompt = "107a4430968baaa5a5663b5cfdda43a4a7a5ebf3e824d35cefaf0c
 const promptRevisions = new Map([
   ["public_service_decision/22a52d57ec64dd88f4e0a766ac2e27544d66000b9d8d5de14575c47c23251d49", publicTaskPrompt],
   ["intent_plan/9988af5abe511f8995bb8c6bdd6ff2832a29c43c1e7752c5ae409301841ce207", "c50b20405167e18184eec4bba70d1d5b87f7ed362ec28fa208d0f7b2c90949a8"],
-  ["chat_route/33f0972df08b71633d280e6cfec6e5b0105249faa7c431a2fa43210482b59647", "83be42e5646d46c7f3083d98668464dfa341cdfc8239e45f70b1a140bae8132c"],
-  ["chat_route/616694c49fa03cfe3a0afa238faceca5222cbee32f5626a93767b2c4077e7264", "9da1b5b6bd2354c3f6ad6d46cab91fd55a00105c0feafb3331460fa7688558bb"],
+  ["chat_route/33f0972df08b71633d280e6cfec6e5b0105249faa7c431a2fa43210482b59647", "890f6da26354d9df3ddd113fc7ac96dcaf2a32c4a8323a92ae53a6d927e647e3"],
+  ["chat_route/616694c49fa03cfe3a0afa238faceca5222cbee32f5626a93767b2c4077e7264", "7627c213c843b0bfcda12796c98873db0fd9e08a3a44db9256d2154e21338155"],
   ["browse_step/fcf351d87bcaabed87b5c73022947c1122b30946651164ce4b282e8cec5da833", "46e129981870f3a11c672d952a841b4b42c2e7bf8846c2fda748e01cac6e15e9"],
 ]);
 const conversationCase = "tests/e2e/test_conversation.py::";
@@ -80,6 +80,38 @@ const browserIntakeTurns = new Map([
   [conversationCase + "test_summary_with_unknown_number_dropped", 2],
 ]);
 
+// 녹취의 외부 포털 주소는 실행·복구 검증에 그대로 두고, 모델 요청의 해당 필드만 출처로 옮긴다.
+const recordedPortal = "http://127.0.0.1:5174";
+function recordedModelUrls(value: Json): Json {
+  if (typeof value === "string") return value.replace(/(?:http:\/\/)?127\.0\.0\.1:5174\/[A-Za-z0-9._~/?=&%#-]*/gu, recordedPortal);
+  if (Array.isArray(value)) return value.map(recordedModelUrls);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, recordedModelUrls(field)]));
+}
+
+function migrateRecordedModelUrls(call: Turn["llm"][number], hasSuppliedPage: boolean) {
+  if (!call.user.includes("127.0.0.1:5174/")) return;
+  if (call.schemaName === "translate_in" || call.schemaName === "translate_out" || call.schemaName === "simple") {
+    call.user = String(recordedModelUrls(call.user));
+    return;
+  }
+  const inputs = fields.parse(JSON.parse(call.user));
+  if ((call.schemaName === "browse_step" || call.schemaName === "public_browse_step") && hasSuppliedPage) {
+    call.user = JSON.stringify(recordedModelUrls(inputs));
+    return;
+  }
+  const scoped = call.schemaName === "public_service_decision" && typeof inputs.utterance === "string" && inputs.utterance.includes("127.0.0.1:5174/");
+  for (const name of ["utterance", "recent", "lastAssistant", "previousInputs", "savedNotes"]) {
+    if (inputs[name] !== undefined) inputs[name] = recordedModelUrls(inputs[name]);
+  }
+  if (scoped) {
+    assert.equal(call.systemHash, publicTaskPrompt);
+    call.systemHash = "d662b20d708181f2827c5c812dc857236722666897647d92fa37bde5242e8358";
+    call.user = JSON.stringify(Object.fromEntries(Object.entries(inputs).flatMap(([key, value]) => key === "task" ?
+      [[key, value], ["suppliedPage", {origin: recordedPortal}]] : [[key, value]])));
+  } else call.user = JSON.stringify(inputs);
+}
+
 export function loadTranscript(base: URL, entry: IndexEntry) {
   const rows = readFileSync(new URL(entry.file, base), "utf8").trimEnd().split("\n");
   const [first, ...rest] = rows;
@@ -88,13 +120,54 @@ export function loadTranscript(base: URL, entry: IndexEntry) {
   assert.equal(session.case, entry.case);
   assert.equal(rest.length, entry.turns);
   const turns = rest.map(line => turn.parse(JSON.parse(line)));
+  // 과거 녹취의 화면 이동 안내는 누른 링크를 먼저 읽었다. 이동이 확인된 경우 원래 페이지 소개만 기대한다.
+  let lastUrl: string | undefined;
   for (const row of turns) {
-    for (const call of row.llm) call.systemHash = promptRevisions.get(`${call.schemaName}/${call.systemHash}`) ?? call.systemHash;
+    const observation = z.object({url: z.string()}).safeParse(row.result.observation);
+    const click = z.array(z.object({action: z.object({type: z.string(), target: z.object({name: z.string()}).optional()}),
+      result: z.object({ok: z.boolean(), verified: z.boolean()}).optional()})).safeParse(row.result.actions);
+    if (observation.success && lastUrl !== undefined && observation.data.url !== lastUrl && row.result.intentType === "FOLLOW_LINK" &&
+        typeof row.result.speech === "string" && click.success) {
+      const followed = click.data.find(a => a.action.type === "click" && a.result?.ok === true && a.result.verified);
+      if (followed?.action.target !== undefined) {
+        const receipt = `'${followed.action.target.name}' 링크를 열었습니다. `;
+        assert(row.result.speech.startsWith(receipt), "기존 녹취의 이동 확인 문장");
+        row.result.speech = row.result.speech.slice(receipt.length);
+      }
+    }
+    if (observation.success) lastUrl = observation.data.url;
+    for (const call of row.llm) {
+      call.systemHash = promptRevisions.get(`${call.schemaName}/${call.systemHash}`) ?? call.systemHash;
+      if (call.schemaName !== "chat_route" || !("reply" in call)) continue;
+      const previous = call.reply.value;
+      if (typeof previous === "object" && previous !== null && !Array.isArray(previous) && previous.route === "web_search" && typeof previous.searchQuery === "string") {
+        const {searchQuery, ...reply} = previous;
+        call.reply.value = {...reply, keywords: searchQuery.split(" ")};
+      }
+    }
     // 보관함 요청은 동의 대기나 중단 상태에서 거절할 때도 로컬에서만 읽는다.
     if ((row.result.state === "AWAITING_CONSENT" || row.result.state === "STOPPED") &&
         typeof row.result.intentType === "string" && row.result.intentType.startsWith("PERSONAL_VAULT_")) {
       row.result.localSpeechOnly = true;
     }
+  }
+  // 끝난 본문을 두 번 다시 읽던 녹취에서는 첫 실패 뒤 곧바로 링크를 확인한다.
+  if (entry.case === "tests/e2e/test_autopilot.py::test_stops_when_looping") {
+    const row = turns.at(-1);
+    assert(row?.llm[5]?.schemaName === "browse_step" && row.llm.length === 7);
+    row.llm.splice(5, 1);
+    const last = row.llm.at(-1)!;
+    const payload = z.object({history: z.array(z.string())}).passthrough().parse(JSON.parse(last.user));
+    assert(payload.history[2]?.startsWith("3. read_more") === true && payload.history[3]?.startsWith("4. find_links") === true);
+    const history = payload.history;
+    const ordered = fields.parse(JSON.parse(last.user));
+    ordered.history = [...history.slice(0, 2), history[3]!.replace("4. find_links", "3. find_links")];
+    last.user = JSON.stringify(ordered);
+    const trace = z.array(fields).parse(row.result.trace);
+    assert.equal(trace[15]?.note, "자율 3: read_more ✗ 본문 끝이라 더 읽을 부분이 없음 → find로 낱말을 찾거나 답할 것");
+    trace.splice(14, 2);
+    for (const line of trace.slice(14)) if (typeof line.note === "string") line.note = line.note.replace("자율 4", "자율 3").replace("자율 5", "자율 4");
+    row.result.trace = trace;
   }
   const intakeTurn = browserIntakeTurns.get(entry.case);
   if (intakeTurn !== undefined) {
@@ -111,6 +184,11 @@ export function loadTranscript(base: URL, entry: IndexEntry) {
     const trace = z.array(fields).parse(row.result.trace);
     trace.splice(1, 0, { agent: "orchestrator", phase: "PLANNING", note: "공공업무 결정" });
     row.result.trace = trace;
+  }
+  let hasSuppliedPage = false;
+  for (const row of turns) {
+    if (row.call.method === "handle_turn" && row.call.args[0].includes("127.0.0.1:5174/")) hasSuppliedPage = true;
+    for (const call of row.llm) migrateRecordedModelUrls(call, hasSuppliedPage);
   }
   return { session, turns };
 }

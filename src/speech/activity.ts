@@ -1,6 +1,6 @@
 import type { StructuredLlm } from "../core/llm.ts";
 import { redactPictureText } from "../safety/privacy.ts";
-import { josa } from "./phrasing.ts";
+import { josa, pressResult, type ClickEffect as Effect } from "./phrasing.ts";
 
 export type ActivityPhase = "thinking" | "pulling" | "tool" | "checking" | "step";
 export interface ActivityFact {
@@ -9,6 +9,7 @@ export interface ActivityFact {
   action?: string;
   target?: string;
   ok?: boolean;
+  outcome?: Effect;
 }
 
 const CLAIM = /열었|열렸|열림|찾았|끝났|완료|눌렀|성공|됐|되었|이동했|들어갔/u;
@@ -34,9 +35,9 @@ export function fixedActivity(fact: ActivityFact): string {
 
 function stepLine(fact: ActivityFact): string {
   const name = Array.from(fact.target ?? "").slice(0, 20).join("");
-  if (fact.action === "click" && name.length > 0) {
-    const target = josa(`'${name}'`, "을", "를");
-    return fact.ok === true ? `${target} 눌렀어요.` : `${target} 누르려고 했어요.`;
+  if (fact.action === "click") {
+    if (fact.outcome === undefined) return fact.ok === false ? "요청한 결과를 확인하지 못했어요." : "화면을 확인하고 있어요.";
+    return pressResult(josa(`'${name}'`, "을", "를"), fact.outcome);
   }
   return "다음에 할 일을 다시 고르고 있어요.";
 }
@@ -51,7 +52,7 @@ function claimedSuccess(line: string, ok: boolean | undefined): boolean {
 
 export async function describeActivity(llm: StructuredLlm | undefined, fact: ActivityFact, signal?: AbortSignal): Promise<string> {
   const fixed = fixedActivity(fact);
-  if (llm === undefined) return fixed;
+  if (llm === undefined || fact.phase === "step" && fact.action === "click") return fixed;
   const body: ActivityFact = {
     phase: fact.phase, action: fact.action, ok: fact.ok,
     source: cut(fact.source, 40), target: cut(fact.target, 20),

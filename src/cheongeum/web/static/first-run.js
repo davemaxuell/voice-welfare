@@ -3,7 +3,8 @@
 import { api } from './api.js';
 
 const LANGS = ['ko', 'en', 'zh', 'ja'];
-const SPEEDS = [0.85, 1, 1.35, 1.6];
+import profile from './voice-profile.json' with { type: 'json' };
+const SPEEDS = [0.85, 1, profile.speed, 1.6];
 // 단계가 바뀐 직후의 키는 받지 않는다(같은 키를 두 번 눌러 다음 단계까지 답하지 않게)
 const SETTLE_MS = 250;
 
@@ -96,7 +97,7 @@ export function createFirstRun(deps) {
   const dialog = document.getElementById('first-run');
   const host = document.getElementById('first-run-steps');
   const live = document.getElementById('first-run-live');
-  const state = { lang: 'ko', helper: false, key: '', deviceUse: 'personal', browser: 'separate', speed: 1.35, prefs: {} };
+  const state = { lang: 'ko', helper: false, key: '', deviceUse: 'personal', browser: 'separate', speed: profile.speed, prefs: {} };
   let current = null;
   let history = [];
   let settling = false;
@@ -116,11 +117,13 @@ export function createFirstRun(deps) {
     deps.stopSpeaking?.();
   }
   function playOne(src) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const a = new Audio(src);
       audio = a;
-      a.onended = a.onerror = a.onpause = () => resolve();
-      a.play().catch(() => resolve());
+      a.playbackRate = state.speed;
+      a.onended = a.onpause = () => resolve();
+      a.onerror = () => reject(new Error('SETUP_AUDIO_UNAVAILABLE'));
+      a.play().catch(reject);
     });
   }
   async function playClips(ids) {
@@ -128,12 +131,20 @@ export function createFirstRun(deps) {
     const token = clipToken;
     for (const id of ids) {
       if (token !== clipToken) return;
-      await playOne(`/setup-audio/${id.startsWith('lang-') ? id.slice(5) : state.lang}/${id}.mp3`);
+      const lang = id.startsWith('lang-') ? id.slice(5) : state.lang;
+      try {
+        if (state.prefs.hasKey === true) await deps.speak(clip(id), lang, state.speed);
+        else await playOne(`/setup-audio/${lang}/${id}.mp3`);
+      } catch {
+        if (token === clipToken) showSoundHelp();
+        return;
+      }
     }
   }
   function say(text) {
     stopSound();
-    return deps.speak(text, state.lang, state.speed).catch(() => undefined);
+    const token = clipToken;
+    return deps.speak(text, state.lang, state.speed).catch(() => { if (token === clipToken) showSoundHelp(); });
   }
   function announce(text) {
     live.textContent = '';
@@ -339,12 +350,14 @@ export function createFirstRun(deps) {
   }
 
   // 소리 확인: 스페이스로 다시 듣기. 세 번째부터는 스피커를 확인하라는 안내를 화면에 남긴다.
-  function replaySound() {
-    replays++;
-    if (replays >= 3 && !host.querySelector('.first-run-sound-help')) {
+  function showSoundHelp() {
+    if (!host.querySelector('.first-run-sound-help')) {
       host.querySelector('.first-run-step')?.append(el('p', { className: 'hint first-run-sound-help', textContent: t('soundHelp') }));
       announce(t('soundHelp'));
     }
+  }
+  function replaySound() {
+    if (++replays >= 3) showSoundHelp();
     void say(t('soundSay'));
   }
 
@@ -406,7 +419,7 @@ export function createFirstRun(deps) {
         state.prefs = {};
       }
       state.lang = state.prefs.language ?? 'ko';
-      state.speed = Number(state.prefs.speed) || 1.35;
+      state.speed = Number(state.prefs.speed) || profile.speed;
       state.deviceUse = state.prefs.deviceUse === 'shared' ? 'shared' : 'personal';
       state.browser = state.prefs.browser ?? 'separate';
       history = [];

@@ -1,3 +1,5 @@
+import { destinationOrigins } from "../core/url.ts";
+import { REDACTED } from "../core/text.ts";
 import type { Redacted } from "../core/llm.ts";
 
 export const SENSITIVE_LABELS_KO = {
@@ -7,7 +9,13 @@ export const SENSITIVE_LABELS_KO = {
 export type SensitiveKind = keyof typeof SENSITIVE_LABELS_KO;
 // 위치는 원문의 유니코드 코드 포인트 기준이다.
 export type SecretSpan = readonly [kind: SensitiveKind, start: number, end: number];
-export const REDACTED = "[비공개]";
+export { REDACTED } from "../core/text.ts";
+
+/** 모델에 보낼 문장은 개인정보와 주소 경로를 가리고, 정확한 목적지는 기기에 둔다. */
+export function publicDestinations(text: string, origins?: ReadonlySet<string>) {
+  const projected = destinationOrigins(text, origins);
+  return {text: redactText(projected.text), urls: projected.urls};
+}
 
 const noticeStart = "보안을 위해 ";
 const noticeMiddle = "는 저에게 말하지 마세요. 방금 말씀하신 값은 저장하거나 화면에 입력하지 않았습니다. ";

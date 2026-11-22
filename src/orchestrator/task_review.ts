@@ -10,7 +10,7 @@ import { redactedJson, type Redacted, type StructuredLlm } from "../core/llm.ts"
 import { boundedText, integer } from "../core/schema.ts";
 import { asciiDecimalDigits, strip } from "../core/text.ts";
 import type { Draft, ReviewPage } from "../core/turn.ts";
-import { PICTURE_CONTACT, REDACTED, redactPictureText, redactText } from "../safety/privacy.ts";
+import { PICTURE_CONTACT, REDACTED, publicDestinations, redactPictureText, redactText } from "../safety/privacy.ts";
 import { unsupportedNumbers } from "../safety/verify.ts";
 
 export const ROUTES = ["browser", "welfare", "places", "quiet", "existing"] as const;
@@ -19,6 +19,7 @@ export type EvidenceKind = "action" | "page" | "fact";
 export type RepairReason = "shape" | "coverage" | "citation" | "proof" | "arrival" | "sequence" | "answer";
 
 export interface ReviewEvidence {
+  readonly documentTitle?: string;
   readonly kind: EvidenceKind;
   readonly text: string;
   readonly receiptId: string;
@@ -68,7 +69,7 @@ async function inspectionSpeech(model: StructuredLlm, answer: string, quotes: re
 
 const Citation = z.strictObject({ id: integer.min(0), quote: boundedText(1, 900) });
 const Check = z.strictObject({
-  request: boundedText(1, 8000), kind: z.enum(["action", "arrival", "visit", "fact"]), citations: z.array(Citation).max(32),
+  request: boundedText(1, 8000), kind: z.enum(["action", "arrival", "visit", "fact", "document_title"]), citations: z.array(Citation).max(32),
 });
 const Verdict = z.strictObject({
   checks: z.array(Check).min(1).max(32), nextRoute: z.enum(ROUTES).nullish().transform(route => route ?? null), answer: boundedText(0, 3200),
@@ -110,7 +111,7 @@ const REVIEW_SCHEMA = {
       additionalProperties: false,
       properties: {
         request: { maxLength: 8000, minLength: 1, title: "Request", type: "string" },
-        kind: { enum: ["action", "arrival", "visit", "fact"], title: "Kind", type: "string" },
+        kind: { enum: ["action", "arrival", "visit", "fact", "document_title"], title: "Kind", type: "string" },
         citations: { items: { $ref: "#/$defs/_Citation" }, maxItems: 32, title: "Citations", type: "array" },
       },
       required: ["request", "kind", "citations"], title: "_Check", type: "object",
@@ -234,7 +235,7 @@ export function safe(text: string, privateValues: readonly string[], publicPhone
   return redactText(strip(masked));
 }
 
-function pageRecord(snapshot: ReviewPage, privateValues: readonly string[]): ReviewEvidence | undefined {
+function pageRecord(snapshot: ReviewPage, privateValues: readonly string[], publicMetadata = true): ReviewEvidence | undefined {
   const url = location(snapshot.url);
   if (url.length === 0) return undefined;
   const title = clip(safe(snapshot.title, privateValues), 160);
@@ -246,7 +247,7 @@ function pageRecord(snapshot: ReviewPage, privateValues: readonly string[]): Rev
   const pageKey = createHash("sha256").update(JSON.stringify([
     snapshot.urlKey, title, headings.filter(h => h !== title).slice(0, 3), [...new Set(selected)].sort(byCodePoint),
   ]), "utf8").digest("hex");
-  return reviewEvidence("page", text, { pageKey });
+  return reviewEvidence("page", text, { pageKey, ...(publicMetadata && title.length > 0 && !title.includes(REDACTED) ? {documentTitle: title, sourceUrls: [url]} : {}) });
 }
 
 type View = NonNullable<Draft["view"]>;
@@ -254,7 +255,7 @@ type View = NonNullable<Draft["view"]>;
 function currentPage(view: View | undefined, privateValues: readonly string[], personal = false): ReviewEvidence | undefined {
   if (view === undefined || view.url.length === 0 || view.loading === true) return undefined;
   const snapshot = reviewPage(view, "", personal ? privateValues : undefined);
-  return snapshot === undefined ? undefined : pageRecord(snapshot, privateValues);
+  return snapshot === undefined ? undefined : pageRecord(snapshot, privateValues, !personal);
 }
 
 export function pageMatches(verdict: Pick<ReviewDecision, "confirmedPageKey">, view: View | undefined, privateValues: readonly string[] = [], personal = false): boolean {
@@ -273,7 +274,7 @@ export async function inspectionEvidence(draft: Pick<Draft, "view" | "reviewQuot
   const page = reviewPage(view, "", values);
   const origin = tryUrl(view.url)?.origin;
   if (!page || origin === undefined) return [];
-  const record = pageRecord({ ...page, url: origin }, values);
+  const record = pageRecord({ ...page, url: origin }, values, false);
   if (!record) return [];
   const visible = new Set(digestPage(view).main.split("\n"));
   const quotes = [...new Set(draft.reviewQuotes)].filter(q => q.length > 0 && q.length <= 1400 &&
@@ -401,6 +402,8 @@ function smallNumbers(text: string): Set<number> {
 }
 
 interface ReviewOptions {
+  suppliedOrigins?: ReadonlySet<string>;
+  requiredDocumentTitle?: boolean;
   exclusions?: readonly string[];
   inspection?: "answer" | "arrival";
   publicArrival?: boolean;
@@ -414,29 +417,34 @@ interface ReviewOptions {
 
 export async function reviewBeforeOutput(
   model: StructuredLlm | undefined, request: string, evidence: readonly ReviewEvidence[], signal: AbortSignal,
-    { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection, publicFactsOnly = false, publicArrival = false, publicContext, exclusions = [] }: ReviewOptions = {},
+    { language = "ko", requirements = [], privateValues = [], repairReason = "", inspection, publicFactsOnly = false, publicArrival = false, publicContext, exclusions = [], requiredDocumentTitle = false, suppliedOrigins }: ReviewOptions = {},
 ): Promise<ReviewDecision> {
   const personal = inspection !== undefined;
   if (signal.aborted || model === undefined || points(request).length > 8000) return decision();
   const values = [...new Set(privateValues)].sort(byLengthDesc);
-  const question = safe(request, values);
+  const supplied = publicDestinations(request);
+  const origins = new Set([...suppliedOrigins ?? [], ...supplied.urls.keys()]);
+  const visible = (text: string, phones: readonly string[] = []) =>
+    safe(origins.size > 0 ? publicDestinations(text, origins).text : text, values, phones);
+  const question = safe(supplied.text, values);
   if (question.length === 0) return decision();
-  const required = requirements.map(part => safe(part, values));
+  const required = requirements.map(part => visible(part));
   if (required.some(part => part.length === 0 || !question.includes(part))) return decision();
   // 승인 뒤 이전 로그를 다시 받더라도 한 번의 실행을 두 번으로 세지 않는다.
   // 같은 이름의 두 번 실행, 같은 페이지 재방문은 순서대로 남긴다. 실행 번호는 모델에 보내지 않는다.
   const seenActions = new Set<string>();
   const publicPhones = evidence.filter(e => e.publicPhone).map(e => e.text);
-  let records: { kind: EvidenceKind; text: Redacted; sources: Redacted[]; valueVerified: boolean; pageKey: string; urls: readonly string[] }[] = [];
+  let records: { kind: EvidenceKind; text: Redacted; sources: Redacted[]; valueVerified: boolean; pageKey: string; urls: readonly string[]; documentTitle?: Redacted }[] = [];
   for (const e of evidence) {
     if (e.kind === "action") {
       const key = e.receiptId.length > 0 ? e.receiptId : e.text;
       if (seenActions.has(key)) continue;
       seenActions.add(key);
     }
-    const text = redactText(clip(safe(e.text, values, e.publicPhone ? [e.text] : []), 1400));
+    const text = redactText(clip(visible(e.text, e.publicPhone ? [e.text] : []), 1400));
     if (text.length === 0) continue;
-    records.push({ kind: e.kind, text, sources: e.sources.slice(0, 8).map(s => redactText(clip(safe(s, values), 300))),
+    records.push({ kind: e.kind, text, sources: e.sources.slice(0, 8).map(s => redactText(clip(visible(s), 300))),
+      ...(personal || e.documentTitle === undefined ? {} : {documentTitle: visible(e.documentTitle)}),
       valueVerified: e.valueVerified, pageKey: e.pageKey, urls: e.sourceUrls ?? [] });
   }
   if (records.length > 128) {
@@ -451,9 +459,10 @@ export async function reviewBeforeOutput(
   const correction = new Map(Object.entries(REPAIRS)).get(repairReason);
   const payload = {
     request: question, requirements: required, replyLanguage: redactText(language), currentPageId: currentPageId ?? null,
-    ...(publicContext === undefined ? {} : { publicContext: safe(clip(publicContext, 1500), values) }),
+    ...(publicContext === undefined ? {} : { publicContext: visible(clip(publicContext, 1500)) }),
     evidence: records.map((r, id) => ({
       id, kind: redactText(r.kind), text: r.text,
+      ...(r.documentTitle === undefined ? {} : {documentTitle: r.documentTitle}),
       ...(r.sources.length > 0 ? { sources: r.sources } : {}), ...(r.valueVerified ? { valueVerified: true } : {}),
     })),
     ...(correction === undefined ? {} : { reviewCorrection: redactText(correction) }),
@@ -466,6 +475,7 @@ export async function reviewBeforeOutput(
         : publicFactsOnly ? REVIEW_SYSTEM + "\nVerify only the requested item. Use publicContext to resolve its program, jurisdiction, applicant group and date. A different program's evidence or a general guide cannot establish the fact."
         : REVIEW_SYSTEM;
     if (publicArrival) system += "\nThe requested outcome is arrival at a public page. Cite evidence that the latest observed page is the requested destination. A search result or a link to the target cannot establish arrival.";
+    if (records.some(record => record.documentTitle !== undefined)) system += "\nA page's documentTitle is its browser-observed title. To read the title of a page, screen or homepage, use a document_title check and quote that field exactly. Article headlines, page sections, notices and dialog titles belong to content and require a fact check when explicitly requested.";
     if (records.some(record => record.kind === "fact" && /\p{Nd}/u.test(record.text))) {
       system += "\nKeep numeric values in the notation of their cited source, including units and clock format, so the verifier can match the figures.";
     }
@@ -501,11 +511,13 @@ export async function reviewBeforeOutput(
       missing.push(required.find(part => span.includes(part) || (required.length > 1 && part.includes(span))) ?? span);
       continue;
     }
-    const kind: EvidenceKind = check.kind === "arrival" || check.kind === "visit" ? "page" : check.kind;
+    const titleCheck = check.kind === "document_title";
+    const kind: EvidenceKind = check.kind === "arrival" || check.kind === "visit" || check.kind === "document_title" ? "page" : check.kind;
     const cited = check.citations.map(cite => ({ ...cite, source: records[cite.id] }));
     if (cited.some(c => c.source === undefined)) return decision({ repairReason: "citation" });
-    const primary = cited.filter(c => c.source?.kind === kind && (!publicFactsOnly || (kind === "fact" && c.source.urls.length > 0)));
+    const primary = cited.filter(c => c.source?.kind === kind && (!publicFactsOnly || ((kind === "fact" || titleCheck) && c.source.urls.length > 0)));
     if (primary.length === 0) return decision({ repairReason: "proof" });
+    if (titleCheck && primary.some(c => c.source?.documentTitle !== c.quote)) return decision({repairReason: "citation"});
     if (personal && (!current || primary.some(c => c.source?.pageKey !== current.pageKey))) return decision({ repairReason: "arrival" });
     if (personal && kind === "fact") {
       for (const cite of primary) {
@@ -554,7 +566,7 @@ export async function reviewBeforeOutput(
         lastStep = cite.id;
       }
       quotes.push(quote);
-      if (source.kind === "fact" && source.urls.length > 0) {
+      if ((source.kind === "fact" || titleCheck && source.kind === "page") && source.urls.length > 0) {
         facts.set(quote, [...new Set([...facts.get(quote) ?? [], ...source.urls])]);
       }
     }
@@ -568,10 +580,13 @@ export async function reviewBeforeOutput(
   }
   const links = new Set(records.flatMap(r => [r.text, ...r.sources]).flatMap(text => text.match(reviewPatterns.url) ?? []));
   if (inspection === "answer" && currentQuotes.length === 0) return decision({ repairReason: "proof" });
+  const titles = verdict.checks.filter(c => c.kind === "document_title").flatMap(c => c.citations.filter(cite => records[cite.id]?.kind === "page").map(cite => cite.quote));
+  if (requiredDocumentTitle && titles.length === 0) return decision({repairReason: "proof"});
   if ((publicArrival || inspection === "arrival") && !verdict.checks.some(check => check.kind === "arrival")) return decision({ repairReason: "arrival" });
   if ((verdict.answer.match(reviewPatterns.url) ?? []).some(url => !links.has(url))) return decision({ repairReason: "answer" });
   // 음성 답변에서는 링크 제목만 읽는다. 실제 주소는 응답의 sources로 제공한다.
   const answer = strip(verdict.answer.replace(reviewPatterns.link, "$1").replaceAll("**", ""));
+  if (titles.some(title => !answer.includes(title))) return decision({repairReason: "answer"});
   const words = answer.replace(reviewPatterns.url, "");
   const supported = smallNumbers(quotes.join(" "));
   if (answer.length === 0 || quotes.length === 0 || verdict.nextRoute !== null || answer.includes(REDACTED) ||
@@ -580,7 +595,9 @@ export async function reviewBeforeOutput(
     return decision({ repairReason: "answer" });
   }
   const page = personal || verdict.checks.some(c => c.kind === "arrival") ? current : undefined;
-  const speech = inspection === "answer" ? await inspectionSpeech(model, answer, currentQuotes, signal) : answer;
+  const titleOnly = titles.length > 0 && verdict.checks.every(check => check.kind !== "fact");
+  const speech = titleOnly ? [...new Set(titles)].join(". ") :
+    inspection === "answer" ? await inspectionSpeech(model, answer, currentQuotes, signal) : answer;
   if (signal.aborted) return decision();
   return decision({ status: "complete", answer: speech, confirmedPage: page?.text, confirmedPageKey: page?.pageKey ?? "",
     ...(personal ? {currentQuotes} : {}), ...(publicFactsOnly ? { facts: Object.fromEntries(facts) } : {}) });

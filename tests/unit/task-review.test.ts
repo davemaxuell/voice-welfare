@@ -20,6 +20,18 @@ const RECORDS = [
 ];
 const KINDS = ["action", "arrival", "fact"];
 
+it("페이지 제목을 공지의 제목과 구분하고 현재 문서의 제목만 증거로 인정한다", async () => {
+  const title = "보행 자료관", notice = "금요일 특별 개관";
+  const request = "열린 탭 제목을 읽어 주세요";
+  const evidence = [reviewEvidence("page", `https://archive.go.kr/ · ${title} · ${notice}`, {documentTitle: title, pageKey: "a"}),
+    reviewEvidence("fact", notice)];
+  const review = (id: number, value: string) => reviewBeforeOutput(answering({checks: [check(request, "document_title", id, value)],
+    nextRoute: null, answer: value}), request, evidence, new AbortController().signal, {requiredDocumentTitle: true});
+  expect((await review(1, notice)).status).not.toBe("complete");
+  expect((await review(0, notice)).status).not.toBe("complete");
+  expect((await review(0, title)).answer).toContain(title);
+});
+
 interface Check { request: string; kind: string; citations: { id: unknown; quote: string }[] }
 interface Verdict { checks: Check[]; nextRoute: string | null; answer: string }
 

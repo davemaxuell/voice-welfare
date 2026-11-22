@@ -11,7 +11,7 @@ const rules = new RuleBasedIntentProvider(practiceVocabulary);
 const examples = INTENTS.flatMap(spec => spec.examples.map(example => ({ type: spec.type, ...example })));
 const spoken = INTENTS.filter(spec => spec.help !== undefined).map(spec => ({ type: spec.type, text: spec.examples[0].text }));
 const schema = INTENT_JSON_SCHEMA.schema;
-const beforeConsent = new Set(INTENTS.filter(spec => spec.beforeConsent).map(spec => spec.type));
+const beforeConsent: ReadonlySet<Intent["type"]> = new Set(INTENTS.filter(spec => spec.beforeConsent).map(spec => spec.type));
 function parse(text: string, state: SessionState = "IDLE") { return rules.parseSync(text, { state }); }
 
 it("test_one_row_per_type_with_two_examples", () => {

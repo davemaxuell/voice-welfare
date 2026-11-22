@@ -8,6 +8,7 @@ import type { Browser, BrowserContext, Locator } from "playwright";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { ACTION_TYPES, type Action } from "../../src/core/actions.ts";
 import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
+import { siteSearchTerms } from "../../src/agents/web/search_terms.ts";
 import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { DownloadStore } from "../../src/agents/web/downloads.ts";
 import { PlaywrightExecutionAdapter, closeLaunchedBrowser, launchBrowser, launchChromeProfile, stopPlaywright } from "../../src/agents/web/browser/index.ts";
@@ -373,7 +374,7 @@ it("Stagehand 개인 조회 검색은 같은 칸과 양식을 다시 확인하�
     maxActionsPerTurn: 12, readOnlyWeb: true });
   const web = new WebExecutionAgent(adapter, guard, createMockWelfareProfile("http://localhost:5174"));
   const ctx = new ExecContext({ browsingScope: "personal-inspection", isStopped: () => false, signal: new AbortController().signal, trace() {} });
-  const search = () => web.withInspection(ctx, () => web.search("배송 안내", ctx));
+  const search = () => web.withInspection(ctx, () => web.search(siteSearchTerms("배송 안내")!, ctx));
   const requests: string[] = [];
   page.on("request", req => { if (req.isNavigationRequest()) requests.push(req.method() + " " + req.url()); });
   const perform = adapter.execute.bind(adapter), execute = vi.spyOn(adapter, "execute");

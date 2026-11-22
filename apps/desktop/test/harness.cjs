@@ -154,6 +154,8 @@ async function launch({ env: extra = {}, avatarPrefs, mic = {} } = {}) {
     MOCK_SITE_URL: 'http://localhost:5174',
     WEB_SEARCH_URL: 'http://127.0.0.1:5174/external.html?q={q}',
     CHEONGEUM_DATA_DIR: '',
+    CHEONGEUM_SETTINGS_DIR: userData,
+    NODE_ENV: 'test',
     LLM_API_KEY: '',
     STT_MODEL: 'fake-stt',
     TTS_MODEL: 'fake-tts',

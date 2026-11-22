@@ -83,9 +83,13 @@ export class PersonalStore {
     return { name, phone };
   }
   setGuardian(contact: GuardianContact | undefined) { this.#save({ ...this.#data, guardian: contact === undefined ? null : { ...contact } }); }
-  speech(): SpeechPrefs { return { ...this.#data.speech }; }
+  speech(): SpeechPrefs {
+    const { voice: _legacy, ...prefs } = this.#data.speech;
+    return prefs;
+  }
   saveSpeech(patch: SpeechPatch) {
-    const speech = SpeechPrefsSchema.parse({ ...this.#data.speech, ...patch });
+    const { voice: _legacy, ...changes } = patch;
+    const speech = SpeechPrefsSchema.parse({ ...this.#data.speech, ...changes });
     this.#save({ ...this.#data, speech });
     return this.speech();
   }

@@ -60,5 +60,5 @@ async def test_saved_slow_rate_reaches_the_server_voice(ui_with_server_voice):
             break
         await asyncio.sleep(0.1)
     assert 0.9 in rates, rates
-    # 첫 안내에는 기본 속도에 짧은 안내용 가속을 적용한다.
-    assert rates[0] == 1.25 * 1.12
+    # 첫 안내에도 대화와 같은 보통 속도를 사용한다.
+    assert rates[0] == 1.25

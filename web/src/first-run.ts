@@ -2,10 +2,11 @@
 // 동의 전이라 마이크는 쓰지 않는다. 대답은 숫자·Enter·Esc·스페이스 키와 버튼으로만 받는다.
 // 이 모듈은 단계와 키만 안다. 그리기는 FirstRun.tsx, 소리·서버는 deps가 맡는다.
 import { LANGS, type Lang } from "../../src/core/turn.ts";
+import { VOICE_PROFILE } from "../../src/core/voice_profile.ts";
 import type { Settings, SettingsInput } from "./api.ts";
 import { TEXT } from "./first-run-text.ts";
 
-const SPEEDS = [0.85, 1, 1.35, 1.6];
+const SPEEDS = [0.85, 1, VOICE_PROFILE.speed, 1.6];
 // 단계가 바뀐 직후의 키는 받지 않는다(같은 키를 두 번 눌러 다음 단계까지 답하지 않게)
 export const SETTLE_MS = 250;
 
@@ -22,7 +23,7 @@ export interface FirstRunDeps {
   onConsentReady(): Promise<void>;
   loadManifest(): Promise<Manifest>;
   /** 녹음 파일 하나를 튼다. 끝나거나 실패하거나 멈추면 끝난다. */
-  playClip(src: string): Promise<void>;
+  playClip(src: string, speed: number): Promise<void>;
   pauseClip(): void;
   settings(): Promise<Partial<Settings>>;
   checkKey(key: string): Promise<string>;
@@ -69,7 +70,7 @@ export interface FirstRunView {
 export function createFirstRun(deps: FirstRunDeps) {
   const state = {
     lang: "ko", helper: false, key: "", deviceUse: "personal" as "personal" | "shared", browser: "separate" as "separate" | "chrome",
-    speed: 1.35, prefs: {} as Partial<Settings>,
+    speed: VOICE_PROFILE.speed as number, prefs: {} as Partial<Settings>,
   };
   let manifest: Manifest | null = null;
   let current: StepName | null = null;
@@ -101,12 +102,22 @@ export function createFirstRun(deps: FirstRunDeps) {
     const token = clipToken;
     for (const id of ids) {
       if (token !== clipToken) return;
-      await deps.playClip(`/setup-audio/${id.startsWith("lang-") ? id.slice(5) : state.lang}/${id}.mp3`);
+      const lang = id.startsWith("lang-") ? id.slice(5) : state.lang;
+      try {
+        if (state.prefs.hasKey === true) await deps.speak(clip(id), lang, state.speed);
+        else await deps.playClip(`/setup-audio/${lang}/${id}.mp3`, state.speed);
+      } catch {
+        if (token === clipToken) { soundHelp = true; publish(); }
+        return;
+      }
     }
   }
   function say(text: string) {
     stopSound();
-    return deps.speak(text, state.lang, state.speed).catch(() => undefined);
+    const token = clipToken;
+    return deps.speak(text, state.lang, state.speed).catch(() => {
+      if (token === clipToken) { soundHelp = true; publish(); }
+    });
   }
   function announce(text: string) {
     live = { text, seq: live.seq + 1 };
@@ -359,7 +370,7 @@ export function createFirstRun(deps: FirstRunDeps) {
         state.prefs = {};
       }
       state.lang = state.prefs.language ?? "ko";
-      state.speed = state.prefs.speed !== undefined && state.prefs.speed !== 0 && Number.isFinite(state.prefs.speed) ? state.prefs.speed : 1.35;
+      state.speed = state.prefs.speed !== undefined && state.prefs.speed !== 0 && Number.isFinite(state.prefs.speed) ? state.prefs.speed : VOICE_PROFILE.speed;
       state.deviceUse = state.prefs.deviceUse === "shared" ? "shared" : "personal";
       state.browser = state.prefs.browser ?? "separate";
       history = [];

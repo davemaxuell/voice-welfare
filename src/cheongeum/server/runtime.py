@@ -203,7 +203,7 @@ def load_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
             ttsModel=_blank(env.get("TTS_MODEL")) or VoiceConfig.ttsModel,
             ttsVoice=_blank(env.get("TTS_VOICE")) or VoiceConfig.ttsVoice,
             liveModel=_blank(env.get("VOICE_LIVE_MODEL")) or STACK.voice,
-            ttsInstructions=_blank(env.get("TTS_INSTRUCTIONS")),
+            ttsInstructions=_blank(env.get("TTS_INSTRUCTIONS")) or VoiceConfig.ttsInstructions,
             ttsSpeed=min(4.0, max(0.25, speed)) if speed and speed > 0 else DEFAULT_SPEED,
         ),
         welfareApiKey=_blank(env.get("WELFARE_API_KEY")) if env.get("WELFARE_DATA_MODE") == "official-api" else None,

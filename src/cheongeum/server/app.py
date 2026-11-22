@@ -21,7 +21,7 @@ from cheongeum.core.choices import CHOICE_KEYS
 from cheongeum.core.region import CTPV
 from cheongeum.core.turn import LANGS
 from cheongeum.orchestrator import SessionOrchestrator
-from cheongeum.personal.store import DEFAULT_SPEECH
+from cheongeum.core.voice_profile import VOICE_PROFILE, speech_pace
 from cheongeum.safety import detect_sensitive, redact_text
 from cheongeum.server.key_check import check_openai_key
 from cheongeum.server.live_audio import LiveAudio, TranscriptTooLong, turn_transcript
@@ -42,13 +42,6 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
 MAX_SESSIONS = 3
-
-
-def speech_pace(rate: Any) -> float | None:
-    """웹 화면의 말 빠르기 설정(speechPrefs.rate, 보통 1.25)을 서버 음성 속도 배수로(보통=1). 이상한 값은 버린다."""
-    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not 0.5 <= rate <= 2:
-        return None
-    return rate / DEFAULT_SPEECH["rate"]
 
 
 def _err(status: int, code: str, message: str) -> JSONResponse:
@@ -120,7 +113,11 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None, *
             if e.status in (401, 403):
                 return _err(502, "VOICE_KEY", "음성 API 인증에 실패했어요. 이용 설정에서 키와 사용 권한을 확인해 주세요.")
             if e.status == 429:
-                return _err(429, "VOICE_LIMIT", "음성 API 사용 한도에 도달했어요. API 잔액이나 요청 한도를 확인해 주세요.")
+                quota = e.provider_code == "insufficient_quota"
+                response = _err(429, "VOICE_QUOTA" if quota else "VOICE_LIMIT", "음성 API 사용 한도에 도달했어요. API 잔액이나 요청 한도를 확인해 주세요.")
+                if e.retry_after:
+                    response.headers["Retry-After"] = e.retry_after
+                return response
             if e.status == 404:
                 return _err(502, "VOICE_MODEL", "설정한 음성 모델을 이용할 수 없어요. API 키의 모델 권한을 확인해 주세요.")
         log.error("[server] voice error %s", type(e).__name__)
@@ -617,7 +614,10 @@ def create_app(runtime: AgentRuntime, voice: Any = None, lifespan: Any = None, *
         if not isinstance(text, str) or not (1 <= len(text.strip()) <= 1000) or (lang is not None and lang not in LANGS):
             return _err(400, "BAD_REQUEST", "text(1~1000자)가 필요합니다.")
         try:
-            out = await audio_services.tts.synthesize(text.strip(), language=lang or "ko", pace=speech_pace((body or {}).get("rate")))
+            speed = body.get("absoluteSpeed")
+            pace = (speed / (getattr(audio_services.tts, "speed", None) or VOICE_PROFILE.speed)
+                    if type(speed) in (int, float) and 0.5 <= speed <= 2 else speech_pace(body.get("rate")))
+            out = await audio_services.tts.synthesize(text.strip(), language=lang or "ko", pace=pace)
         except Exception as e:  # noqa: BLE001
             return voice_error(e)
         return Response(content=out["audio"], media_type=out["mimeType"])
@@ -655,6 +655,13 @@ def mount_web_ui(app: FastAPI, csp: bool = False) -> FastAPI:
             response.headers["Content-Security-Policy"] = AVATAR_CSP if request.url.path.startswith("/avatar/") else CSP
             return response
 
+    @app.get("/voice-profile.json", include_in_schema=False)
+    async def voice_profile():
+        return VOICE_PROFILE.model_dump()
+
+    # 개발 체크아웃과 설치한 wheel 모두 같은 공개 안내 녹음을 제공한다.
+    setup_audio = Path(__file__).resolve().parents[3] / "web" / "public" / "setup-audio"
+    app.mount("/setup-audio", StaticFiles(directory=setup_audio if setup_audio.is_dir() else WEB_DIR / "setup-audio"), name="setup-audio")
     app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
     return app
 

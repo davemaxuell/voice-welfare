@@ -10,6 +10,8 @@ import { VoiceProviderError } from "../voice/errors.ts";
 import { connectSocket, withDeadline, type SocketConnect, type UpstreamSocket } from "../voice/live.ts";
 import type { SttProvider } from "../voice/stt.ts";
 import type { TtsProvider } from "../voice/tts.ts";
+import { speechPace, speechSpeed, VOICE_PROFILE, type SpeechProfile } from "../core/voice_profile.ts";
+import { liveClosure } from "../voice/recovery.ts";
 import { SocketDisconnected, refuseForeignOrigin, socketEvents, type AccessWriter, type ServerSocket, type VoiceErrorBody } from "./live_audio.ts";
 import { RequestConflict, type Lease, type RequestLedger } from "./recovery.ts";
 import { TURN_TEXT_LIMIT, type HeaderList } from "./request_policy.ts";
@@ -62,7 +64,7 @@ function quoteAll(text: string): string {
   return encodeURIComponent(text).replace(/[!'()*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
-export interface EdgeSource { readonly baseUrl?: string | undefined; readonly apiKey?: string | undefined; readonly edgeModel?: string | undefined; readonly voice?: string | undefined }
+export interface EdgeSource { readonly baseUrl?: string | undefined; readonly apiKey?: string | undefined; readonly edgeModel?: string | undefined }
 export interface OfferSession {
   readonly lang: string;
   readonly state: string;
@@ -78,14 +80,16 @@ export class LiveProvider implements LiveSessionProvider {
   readonly headers: Record<string, string>;
   readonly model: string;
   readonly voice: string;
+  readonly instructions: string;
   readonly #fetch: typeof fetch;
   readonly #connect: SocketConnect;
 
-  constructor(stt: EdgeSource, { fetch: fetcher = fetch, connect = connectSocket }: { fetch?: typeof fetch; connect?: SocketConnect } = {}) {
+  constructor(stt: EdgeSource, { fetch: fetcher = fetch, connect = connectSocket, profile }: { fetch?: typeof fetch; connect?: SocketConnect; profile?: SpeechProfile | undefined } = {}) {
     this.url = (stt.baseUrl ?? "").replace(/\/+$/u, "") + "/live/sessions";
     this.headers = { Authorization: `Bearer ${stt.apiKey ?? ""}` };
     this.model = stt.edgeModel ?? "";
-    this.voice = stt.voice ?? "coral";
+    this.voice = profile?.voice ?? VOICE_PROFILE.voice;
+    this.instructions = profile?.instructions ?? VOICE_PROFILE.instructions;
     this.#fetch = fetcher;
     this.#connect = connect;
   }
@@ -126,7 +130,7 @@ export class LiveProvider implements LiveSessionProvider {
         + "Voice and language\n"
         + `Start quietly and let the user finish speaking. Use the app's selected reply language (${session.lang}) `
         + "until the app changes it. Keep official Korean names when the speaker mixes languages. "
-        + `Speak clearly and briskly, about ${formatG(speed)} times normal speed. `
+        + `${this.instructions} Speak at ${formatG(speed)} times normal speed. `
         + "Use short, natural sentences and plain words. In Korean, use polite conversational speech. "
         + "Name the item you mean so the user can follow without seeing the screen. "
         + `The application state at the start of this call is ${session.state}.\n\n`
@@ -178,9 +182,10 @@ export class LiveProvider implements LiveSessionProvider {
   async offer(sdp: string, session: OfferSession, speed: number): Promise<readonly [string, string]> {
     const config = this.config(session, speed);
     const payload = { session: config, transport: { type: "webrtc", sdp } };
+    const signal = AbortSignal.timeout(15_000);
     const post = async (body: unknown) => await this.#fetch(this.url, {
       method: "POST", headers: { ...this.headers, "Content-Type": "application/json" }, body: JSON.stringify(body),
-      redirect: "manual", signal: AbortSignal.timeout(15_000),
+      redirect: "manual", signal,
     });
     let result = await post(payload);
     if (result.status === 400 || result.status === 403) {
@@ -188,7 +193,7 @@ export class LiveProvider implements LiveSessionProvider {
       await result.arrayBuffer();
       result = await post({ ...payload, session: { ...config, delegation: { type: "client" } } });
     }
-    if (result.status < 200 || result.status >= 300) throw new VoiceProviderError(result.status);
+    if (!result.ok) throw await VoiceProviderError.fromResponse(result);
     const body: unknown = await result.json();
     const session_ = isRecord(body) && isRecord(body.session) ? body.session : undefined;
     const transport = isRecord(body) && isRecord(body.transport) ? body.transport : undefined;
@@ -317,6 +322,7 @@ export class Transcript {
 
 export interface TurnResultLike { readonly state: string; readonly speech: string; readonly [key: string]: unknown }
 export interface EdgeSession extends OfferSession {
+  readonly personal?: { speech(): { rate: number } };
   readonly generation: number;
   readonly consentStatus: string;
   readonly dialogue: { readonly authWaiting: boolean; readonly confirmation?: { readonly actionId?: string } | null | undefined };
@@ -407,15 +413,15 @@ export interface ConversationDeps<S extends EdgeSession> {
 }
 
 export class VoiceEdge {
-  readonly provider: (stt: EdgeSource) => LiveSessionProvider;
-  readonly active = new Set<string>();
+  readonly provider: (stt: EdgeSource, profile?: SpeechProfile) => LiveSessionProvider;
+  readonly active = new Map<string, ServerSocket>();
   readonly work = new Set<Promise<unknown>>();
   readonly #clock: Clock;
   readonly #sleep: Sleep;
   readonly #timing: EdgeTiming;
 
-  constructor({ provider = stt => new LiveProvider(stt), clock = loopClock, sleep = realSleep, timing = {} }: {
-    provider?: (stt: EdgeSource) => LiveSessionProvider; clock?: Clock; sleep?: Sleep; timing?: Partial<EdgeTiming>;
+  constructor({ provider = (stt, profile) => new LiveProvider(stt, { profile }), clock = loopClock, sleep = realSleep, timing = {} }: {
+    provider?: (stt: EdgeSource, profile?: SpeechProfile) => LiveSessionProvider; clock?: Clock; sleep?: Sleep; timing?: Partial<EdgeTiming>;
   } = {}) {
     this.provider = provider;
     this.#clock = clock;
@@ -450,7 +456,6 @@ export class VoiceEdge {
   /** After the origin check and accept. Mirrors the body of Python's conversation handler. */
   async conversation<S extends EdgeSession>(socket: ServerSocket, sid: string, deps: ConversationDeps<S>): Promise<void> {
     const { audio, sessions, accessWriter, voiceError } = deps;
-    let owned = false;
     try {
       const message = await withDeadline(15_000, socket.receive());
       if (message.type === "disconnect") throw new SocketDisconnected();
@@ -463,11 +468,13 @@ export class VoiceEdge {
       if (typeof writer !== "string" || Array.from(writer).length > 128 || typeof sdp !== "string" || !sdp.startsWith("v=0")) throw new RequestConflict();
       const session = accessWriter(sid, writer);
       const stt = audio.stt;
-      if (session instanceof Response || stt.edgeModel === undefined || stt.edgeModel === "" || this.active.has(sid)) throw new RequestConflict();
+      const previous = this.active.get(sid);
+      if (session instanceof Response || stt.edgeModel === undefined || stt.edgeModel === "" || previous?.disconnected === false) throw new RequestConflict();
       const ledger = sessions.ledgers.get(sid);
       if (ledger === undefined) throw new RangeError(sid);
       const generation = session.generation;
       const current = () => {
+        if (socket.disconnected) throw new SocketDisconnected();
         const lease = sessions.leases.get(sid);
         if (sessions.ledgers.get(sid) !== ledger || session.generation !== generation || session.consentStatus !== "granted"
           || session.dialogue.authWaiting || stt !== audio.stt || (lease !== undefined && (lease.waiting || lease.writer !== writer))) {
@@ -475,14 +482,14 @@ export class VoiceEdge {
         }
       };
       current();
-      this.active.add(sid);
-      owned = true;
+      this.active.set(sid, socket);
       // Bind speech to the decision presented before this microphone
       // opened. Delayed transcript packets must never approve a new card.
       let action = session.dialogue.confirmation?.actionId ?? "";
       if (("approvalId" in hello ? hello.approvalId : "") !== action) action = "";
-      const provider = this.provider(stt);
-      const [liveId, answer] = await provider.offer(sdp, session, audio.tts.speed ?? 1.35);
+      const provider = this.provider(stt, audio.tts.profile);
+      const pace = speechSpeed(audio.tts.speed ?? VOICE_PROFILE.speed, speechPace(session.personal?.speech().rate));
+      const [liveId, answer] = await provider.offer(sdp, session, pace);
       const upstream = await provider.attach(liveId);
       try {
         try {
@@ -498,7 +505,7 @@ export class VoiceEdge {
     } catch (error) {
       if (!(error instanceof SocketDisconnected)) await socket.sendJson(voiceError(error)).catch(() => {});
     } finally {
-      if (owned) this.active.delete(sid);
+      if (this.active.get(sid) === socket) this.active.delete(sid);
       await socket.close().catch(() => {});
     }
   }
@@ -537,7 +544,7 @@ export class VoiceEdge {
         replyLanguage = language;
       }
       if (typeof result.speech !== "string") throw new TypeError("speech");
-      const exact = Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
+      const exact = result.researchDelivery === "outcome" || Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
         || Boolean(result.pendingConfirmation) || Buffer.byteLength(result.speech, "utf8") > 1100;
       await socket.sendJson({ result, exact });
       if (exact) await append("thinking", delegate, "The application is reading its response. Wait for the user.");
@@ -584,9 +591,11 @@ export class VoiceEdge {
             if (rating !== undefined && !rating.done) rating.set(effortChoice(decision));
           }
         } else if (kind === "session.closed") {
+          const fault = liveClosure(event.reason);
+          if (fault !== undefined) throw fault;
           return;
         } else if (kind === "error") {
-          throw new VoiceProviderError(502);
+          throw VoiceProviderError.fromBody(event);
         }
       }
     };
@@ -668,13 +677,8 @@ export class VoiceEdge {
         alive();
         await show();
         if (settled) {
-          if (session.progress.hasSpoken()) {
-            while (clock() - transcript.updated < 1.5) {
-              await this.#sleep(0.1, signal).catch(() => {});
-              if (signal.aborted) return;
-            }
-            await speakQueued();
-          }
+          // 결과가 준비되면 지난 진행 안내가 음성 결과보다 늦게 재생되지 않도록 비운다.
+          while (session.progress.shiftSpoken() !== undefined) { /* 방금 끝난 작업의 안내 */ }
           return;
         }
         await speakQueued();

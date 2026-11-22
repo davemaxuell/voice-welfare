@@ -15,6 +15,26 @@ function delegation(id: string, offset: number, target = "client") {
   return { type: "session.delegation.created", offset_ms: offset, delegation: { id, target } };
 }
 
+it("공식 조사 완료는 대기 안내가 남아 있어도 최종 음성 한 번으로 전달한다", async () => {
+  const progress = new Progress(), complete = latch();
+  const result = { state: "BROWSING", speech: "신청은 주민센터에서 할 수 있어요.", researchDelivery: "outcome" };
+  const run = startMonitor(async () => {
+    progress.milestone("research", "공식 자료를 확인하고 있어요.");
+    await complete.pending;
+    return result;
+  }, "", "", {}, progress);
+  try {
+    run.enqueue(delta("신청 방법 알려줘", 0, 400));
+    run.enqueue(delegation("research", 500));
+    await run.advance(2500);
+    complete.release();
+    await run.advance(1200);
+    expect(run.socket.sendJson.mock.calls.filter(([packet]) => (packet as {result?: unknown}).result === result))
+      .toEqual([[{result, exact: true}]]);
+    expect(run.appended("commentary", "research")).not.toContain(result.speech);
+  } finally { complete.release(); await run.close(); }
+});
+
 it("test_transcript_matches_offsets_and_keeps_fragments_and_approval_together", () => {
   const transcript = new Transcript();
   transcript.add(delta("Thanks", 0, 250), "old");

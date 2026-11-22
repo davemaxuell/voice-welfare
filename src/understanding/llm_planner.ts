@@ -6,6 +6,7 @@ import {
 } from "../core/llm.ts";
 import { strip } from "../core/text.ts";
 import { cleanValue, RuleBasedIntentProvider } from "./rules.ts";
+import { bindDestinations, destinationOrigins } from "../core/url.ts";
 import { requestedSiteName, sitesPatterns } from "./sites.ts";
 
 export const LLM_INTENT_TYPES = INTENTS.filter(i => i.llm).map(i => i.type);
@@ -64,8 +65,9 @@ export function flatToIntent(raw: unknown, utterance: string): Intent | undefine
     case "GOAL": {
       const goal = supplied(flat.topic) ? flat.topic : utterance;
       const site = flat.site;
-      candidate.goal = typeof site === "string" && site.length > 0 && typeof goal === "string" && !goal.includes(site)
+      const scoped = typeof site === "string" && site.length > 0 && typeof goal === "string" && !goal.includes(site)
         ? `${site}에서 ${goal}` : goal;
+      candidate.goal = typeof scoped === "string" ? bindDestinations(scoped, destinationOrigins(utterance).urls) : scoped;
       break;
     }
     case "OPEN_SITE": {
@@ -135,7 +137,7 @@ export class OpenAICompatibleIntentProvider {
     if (ruled.type !== "UNKNOWN" || (ctx.awaitingFieldId !== undefined && ctx.awaitingFieldId !== "")) return ruled;
     const output = await chatCompletion({ ...cfg, timeoutMs: cfg.timeoutMs === 0 ? 10_000 : cfg.timeoutMs ?? 10_000 }, {
       system: systemPrompt(cfg.vocabulary),
-      user: redactedJson({ state: ctx.state, awaitingField: ctx.awaitingFieldId ?? null, utterance: text }),
+      user: redactedJson({ state: ctx.state, awaitingField: ctx.awaitingFieldId ?? null, utterance: destinationOrigins(text).text }),
       format: cfg.structured ? { type: "json_schema", json_schema: INTENT_JSON_SCHEMA } : { type: "json_object" },
     }, this.fetchImpl);
     return flatToIntent(output, text) ?? ruled;
@@ -166,6 +168,10 @@ export const PLAN_JSON_SCHEMA = {
   type: "object", additionalProperties: false, required: ["steps"],
   properties: { steps: { type: "array", items: INTENT_JSON_SCHEMA.schema } },
 };
+const desktopIntent = z.object({ type: z.enum(["SHOW_AVATAR", "HIDE_AVATAR"]) });
+const desktopStep = { ...INTENT_JSON_SCHEMA.schema, properties: { ...INTENT_JSON_SCHEMA.schema.properties,
+  type: { type: "string", enum: [...LLM_INTENT_TYPES, ...desktopIntent.shape.type.options] } } };
+const desktopPlan = { ...PLAN_JSON_SCHEMA, properties: { steps: { type: "array", items: desktopStep } } };
 
 export function planSystem(vocabulary: readonly string[], maxSteps = 6): string {
   return `${systemPrompt(vocabulary)}
@@ -193,9 +199,11 @@ export async function planWithLlm(
   { page, history = [], maxSteps = 6, signal }: PlanOptions = {},
 ): Promise<Intent[] | undefined> {
   const raw = await llm.generate({
-    system: planSystem(vocabulary, maxSteps),
-    user: redactedJson({ state: ctx.state, awaitingField: ctx.awaitingFieldId ?? null, page: page ?? null, recent: history, utterance: text }),
-    schemaName: "intent_plan", schema: PLAN_JSON_SCHEMA, signal,
+    system: planSystem(vocabulary, maxSteps) + (ctx.avatarControl === true ?
+      "\n데스크톱 마스코트를 보이게 해 달라는 요청은 SHOW_AVATAR, 닫아 달라는 요청은 HIDE_AVATAR다. 대화와 마이크는 이어진다." : ""),
+    user: redactedJson({ state: ctx.state, awaitingField: ctx.awaitingFieldId ?? null, page: page ?? null, recent: history, utterance: destinationOrigins(text).text,
+      ...(ctx.need === undefined ? {} : {need: ctx.need}) }),
+    schemaName: "intent_plan", schema: ctx.avatarControl === true ? desktopPlan : PLAN_JSON_SCHEMA, signal,
   });
   const plan = z.object({ steps: z.array(z.unknown()) }).safeParse(raw);
   if (!plan.success) return undefined;
@@ -203,6 +211,10 @@ export async function planWithLlm(
   if (steps.length < 1 || steps.length > maxSteps) return undefined;
   const intents: Intent[] = [];
   for (const step of steps) {
+    if (ctx.avatarControl === true) {
+      const avatar = desktopIntent.safeParse(step);
+      if (avatar.success) { intents.push({type: avatar.data.type}); continue; }
+    }
     let question: string = text;
     const shape = planStep.safeParse(step);
     if (steps.length > 1 && shape.success && shape.data.type === "UNKNOWN" && shape.data.text !== undefined && shape.data.text !== null) {

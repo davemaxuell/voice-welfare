@@ -339,8 +339,8 @@ export class ReviewLoop {
           turn.ctx.trace("VERIFYING", AGENT_IDS.orchestrator, `요청 완료 검토 ${run.rounds}/${rounds}`);
           const correction = repair;
           verdict = await raceAbort(signal => reviewBeforeOutput(s.deps.llm, s.historySpeech(run.request), run.evidence, signal, {
-            language: s.lang, requirements: run.requirements, exclusions: run.task.exclusions, privateValues, repairReason: correction,
-            inspection: run.inspection, publicArrival: run.publicArrival,
+            language: s.lang, requirements: run.requirements, exclusions: run.task.exclusions, privateValues, repairReason: correction, suppliedOrigins: turn.ctx.suppliedOrigins,
+            inspection: run.inspection, publicArrival: run.publicArrival, requiredDocumentTitle: !personal && run.task.facts.includes("page_title"),
             publicFactsOnly: run.publicFactsOnly, ...(run.publicFactsOnly ? { publicContext: run.task.goal } : {}),
           }), turn.ctx.signal);
           if (repair.length > 0 || run.rounds >= rounds || verdict.repairReason.length === 0) break;

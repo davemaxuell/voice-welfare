@@ -4,12 +4,13 @@
  * - 묶은 주소는 부모 포트로 알린다. 부모가 shutdown을 보내면 세션·브라우저를 정리하고 끝낸다.
  */
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { createHttpService } from "../../../src/server/http.ts";
 import { REPO_ROOT } from "../../../src/core/assets.ts";
 import { bindLocal, serviceEnvironment, startPracticeSite } from "../../../src/server/launcher.ts";
 import { build, listenPort } from "../../../src/server/main.ts";
-import { isShutdown, type ReadyMessage } from "./protocol.ts";
+import { isRecord, isShutdown, type ReadyMessage } from "./protocol.ts";
 
 async function main() {
   const { values } = parseArgs({
@@ -33,6 +34,22 @@ async function main() {
 
   const stopMock = values["no-mock"] ? async () => {} : await startPracticeSite(env, bundled);
   const { app, runtime, close } = await build(true, env);
+  const avatarReplies = new Map<string, (applied: boolean) => void>();
+  if (parent !== undefined && env.CHEONGEUM_AVATAR !== "0") {
+    runtime.setAvatarVisible = (visible, signal) => new Promise(resolve => {
+      if (signal.aborted) { resolve(false); return; }
+      const id = randomUUID();
+      const abort = () => done(false);
+      function done(applied: boolean) {
+        avatarReplies.delete(id);
+        signal.removeEventListener("abort", abort);
+        resolve(applied);
+      }
+      avatarReplies.set(id, done);
+      signal.addEventListener("abort", abort, { once: true });
+      parent.postMessage({ type: "avatar", id, visible });
+    });
+  }
   const { server, closeServer } = createHttpService(app);
   let closing: Promise<void> | undefined;
   function stop() {
@@ -43,6 +60,10 @@ async function main() {
   process.once("SIGTERM", () => void stop());
   parent?.on("message", (event) => {
     if (isShutdown(event.data)) void stop();
+    const message: unknown = event.data;
+    if (isRecord(message) && message.type === "avatar-result" && typeof message.id === "string") {
+      avatarReplies.get(message.id)?.(message.applied === true);
+    }
   });
 
   const bound = await bindLocal(server, values.host, port, auto ? join(dirname(envFile), "service-port") : undefined);

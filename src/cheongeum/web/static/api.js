@@ -22,7 +22,10 @@ async function call(path, init, retry = false) {
 }
 async function failure(res) {
     const body = (await res.json().catch(() => ({})));
-    throw Object.assign(new Error(body.message ?? `요청 실패 (${res.status})`), { code: body.error, status: res.status });
+    const after = res.headers.get('Retry-After');
+    const delay = after === null ? NaN : Number.isFinite(Number(after)) ? Number(after) * 1000 : Date.parse(after) - Date.now();
+    throw Object.assign(new Error(body.message ?? `요청 실패 (${res.status})`), { code: body.error, status: res.status,
+        retryAfterMs: Number.isFinite(delay) ? Math.max(0, delay) : undefined });
 }
 
 // The renderer only receives a one-use receipt. Transcript text stays on the local server.
@@ -125,8 +128,8 @@ export const api = {
         return res.ok ? (await res.json()) : failure(res);
     },
     /** rate: 말 빠르기 설정(speechPrefs.rate). 서버 음성도 이 빠르기로 합성한다. */
-    async speak(text, lang, rate) {
-        const res = await fetch('/api/audio/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, lang, rate }) });
+    async speak(text, lang, rate, absoluteSpeed, signal) {
+        const res = await fetch('/api/audio/speak', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, lang, rate, absoluteSpeed }) });
         return res.ok ? res.blob() : failure(res);
     },
     createSession: (recoverable = false) => call('/api/session', { method: 'POST', body: JSON.stringify(recoverable ? { recovery: true } : { attached: true }) }),

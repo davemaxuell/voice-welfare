@@ -3,6 +3,7 @@ import { agree, approval, wholeRejection } from "../core/lexicon.ts";
 import { rstrip, rstripChars, strip } from "../core/text.ts";
 import { draft, type Draft, type Lang, type SpeechPrefs } from "../core/turn.ts";
 import { speakCallName, speakDate } from "../speech/phrasing.ts";
+import { VOICE_PROFILE } from "../core/voice_profile.ts";
 import { localDay, type ActionLog } from "./action_log.ts";
 import { daysUntil, vaultKeyForLabel, type PersonalCommand } from "./commands.ts";
 import { VAULT_LABELS, type Application, type PersonalStore, type Vault, type VaultKey } from "./store.ts";
@@ -72,8 +73,7 @@ export function vaultReply(text: string, kind: VaultQuestion, lang: string): boo
 function speakSpeech(prefs: SpeechPrefs): string {
   const speed = prefs.rate <= 1.0 ? "천천히" : prefs.rate >= 1.4 ? "빨리" : "보통";
   const length = { short: "짧게", normal: "보통", detailed: "자세히" }[prefs.length];
-  const voice = prefs.voice === undefined || prefs.voice === "" ? "기본" : prefs.voice;
-  return "말하는 속도는 " + speed + ", 답 길이는 " + length + ", 목소리는 " + voice +
+  return "말하는 속도는 " + speed + ", 답 길이는 " + length + ", 목소리는 " + VOICE_PROFILE.voice +
     ", 진행 상황 알림은 " + (prefs.progressSpoken ? "켭니다." : "끕니다.");
 }
 function listed(values: Vault, lang: Lang): string[] {
@@ -199,7 +199,8 @@ export class PersonalDialogue {
       case "speech-set": {
         const prefs = cmd.kind === "speech-set" ? store.saveSpeech(cmd.values) : store.clearSpeech();
         this.#onSpeech?.(prefs);
-        const lead = cmd.kind === "speech-set" ? "알겠어요. " : "말하기 설정을 기본값으로 돌렸어요. ";
+        const lead = cmd.kind === "speech-set" ? (cmd.values.voice === undefined ? "알겠어요. " : "청음의 목소리는 한 가지예요. ") :
+          "말하기 설정을 기본값으로 돌렸어요. ";
         return draft(state, "none", lead + speakSpeech(prefs));
       }
       case "action-log-read":

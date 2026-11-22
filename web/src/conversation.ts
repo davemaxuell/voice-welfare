@@ -2,6 +2,7 @@ import { timing, type TimingPoint } from "./perf.ts";
 // 청음 대화 창의 상태와 동작(Python app.js). 화면은 App.tsx가 이 상태(snapshot)를 그린다.
 // 입력란·버튼은 다시 만들지 않으므로 포커스가 유지된다(화면낭독기 사용자를 위해).
 import { LangSchema, type Lang } from "../../src/core/turn.ts";
+import { speechPace, speechSpeed, VOICE_PROFILE } from "../../src/core/voice_profile.ts";
 import {
   api, ApiError, errorCode, errorMessage, errorStatus, type Health, type Session, type Settings, type SettingsInput, type Turn,
 } from "./api.ts";
@@ -11,11 +12,13 @@ import { createFirstRun } from "./first-run.ts";
 import { issues, type Capture, type IssueKey, type IssueAction } from "./presentation.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
 import { watchProgress } from "./progress-watch.ts";
+import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
 import {
-  applySpeechPrefs, earcon, onSpeaking, preloadCues, serverTts, speakOnDevice, speechPrefs,
-  takeInterruptedSpeech, transitionCue, type CueKind,
+  applySpeechPrefs, earcon, noteVoiceInterruption, onSpeaking, preloadCues, reportVoiceRecovery, serverTts, withPrivateReadback, speechPrefs,
+  isSpeechReserved, reserveSpeech, takeInterruptedSpeech, transitionCue, type CueKind,
 } from "./speaker.ts";
 import { LiveConversation } from "./voice-edge.ts";
+import { voiceFault, type VoiceFault } from "../../src/voice/recovery.ts";
 import {
   consentText as consentTextFor, dictationHelp, GREETINGS, progressUpdate, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
 } from "./view.ts";
@@ -64,13 +67,15 @@ const consentText = (lang: string = ui.lang) => consentTextFor(ui, env, lang);
 // 서버 음성 설정을 받아 오기 전에는 동의 안내를 읽지 않는다(어디로 전송되는지가 바뀌므로)
 let healthReady: Promise<Health | undefined> = Promise.resolve(undefined);
 
-let clip: HTMLAudioElement | null = null;
+let stopSetupClip: (() => void) | undefined;
 // 첫 실행 설정(키·이 PC·소리 확인·빠르기). 끝나면 동의 화면으로 넘어간다.
 export const firstRun = createFirstRun({
   desktop,
-  speak: (text, lang, rate) => {
+  speak: async (text, lang, rate) => {
     unlockAudio();
-    return serverTts.speak(text, (chunk, speed) => api.speak(chunk, langOf(lang), speed), 0, rate);
+    const status = await serverTts.speak(text, (chunk, speed, signal) => api.speak(chunk, langOf(lang), speed, signal, rate), 0, rate, langOf(lang));
+    if (status === "blocked") throw new Error("PLAYBACK_BLOCKED");
+    return status;
   },
   stopSpeaking: () => serverTts.cancel(),
   onSaved: () => { desktopLanguage = undefined; return refreshHealth(); },
@@ -85,16 +90,24 @@ export const firstRun = createFirstRun({
     const data: unknown = await res.json();
     return typeof data === "object" && data !== null ? manifestOf(data) : {};
   },
-  playClip: (src) => new Promise<void>((resolve) => {
-    const a = new Audio(src);
-    clip = a;
-    a.onended = a.onerror = a.onpause = () => resolve();
-    a.play().catch(() => resolve());
-  }),
-  pauseClip: () => {
-    clip?.pause();
-    clip = null;
+  playClip: async (src, speed) => {
+    const release = reserveSpeech();
+    let stop: (() => void) | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const audio = new Audio(src);
+        audio.playbackRate = speed;
+        stop = stopSetupClip = () => { audio.pause(); resolve(); };
+        audio.onended = audio.onpause = () => resolve();
+        audio.onerror = () => reject(new Error("SETUP_AUDIO_UNAVAILABLE"));
+        audio.play().catch(reject);
+      });
+    } finally {
+      if (stopSetupClip === stop) stopSetupClip = undefined;
+      release();
+    }
   },
+  pauseClip: () => stopSetupClip?.(),
   settings: () => api.settings(),
   checkKey: async (key) => (await api.checkKey(key)).result,
   saveSettings: (values) => api.saveSettings(values),
@@ -127,6 +140,10 @@ const readVoiceMode = () => {
   }
 };
 
+let narrationMuted = false;
+try { narrationMuted = localStorage.getItem("cheongeum.narrationMuted") === "1"; } catch { /* 임시 세션 */ }
+export const isNarrationMuted = () => narrationMuted;
+
 export interface SettingsDialog {
   /** 열 때마다 늘어난다(입력란을 새로 채운다). */
   seq: number;
@@ -155,7 +172,7 @@ let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: L
   contrast: false,
   error: undefined,
   phase: "off",
-  baseSpeed: 1.35,
+  baseSpeed: VOICE_PROFILE.speed,
   consent: "loading",
   mics: [],
   micId: readMicId(),
@@ -310,9 +327,20 @@ function kindOf(error: unknown, fallback: IssueKey = "turnFailed"): IssueKey {
   if (error.kind === "timeout" || error.kind === "expired") return error.kind;
   if (error.kind === "network") return "offline";
   const code = error.code ?? "";
-  if (/^(?:VOICE|STT|TTS)_/u.test(code)) return "voiceDown";
+  if (/^(?:VOICE|STT|TTS)_/u.test(code)) return voiceIssue(voiceFault(error));
   if (code.includes("BLOCK") || code === "SITE_NOT_ALLOWED") return "blocked";
   return fallback;
+}
+
+function voiceIssue(fault: VoiceFault): IssueKey {
+  switch (fault.code) {
+    case "MIC_DENIED": return "micDenied";
+    case "MIC_LOST": return "micLost";
+    case "VOICE_KEY": case "VOICE_MODEL": return "voiceCredentials";
+    case "VOICE_QUOTA": return "voiceQuota";
+    case "VOICE_LIMIT": return "voiceLimit";
+    default: return "voiceDown";
+  }
 }
 
 let missedHeartbeats = 0;
@@ -320,6 +348,7 @@ let pendingResult: { sessionId: string; generation: number } | undefined;
 let checkingResult: Promise<void> | undefined;
 
 function connectionChanged(path: string, failure?: ApiError, requestSessionId?: string) {
+  if (path === "/api/audio/speak") return;
   const sid = ui.sessionId;
   if ((sid === undefined && path !== "/api/session" && path !== "/api/health") || path.endsWith("/detach") ||
       (requestSessionId !== undefined && requestSessionId !== sid) ||
@@ -328,6 +357,7 @@ function connectionChanged(path: string, failure?: ApiError, requestSessionId?: 
     if (path.endsWith("/heartbeat") || ui.offline === true) missedHeartbeats = 0;
     if (ui.offline === true) {
       set({ offline: false, error: ui.error === "offline" ? undefined : ui.error });
+      if (sid !== undefined) checkResearchAfterLoss(sid);
       if (pendingResult !== undefined && !path.endsWith("/state") && !path.endsWith("/resume")) void reconcileResult();
     }
     return;
@@ -373,6 +403,7 @@ async function reconcileResult() {
       if (!current()) return;
       pendingResult = undefined;
       applyServerState(state, ui.error === "timeout" ? "timeout" : "lostTurn");
+      checkResearchAfterLoss(pending.sessionId);
     } catch { if (current() && ui.error !== "timeout") setError("lostTurn"); }
   };
   checkingResult = run().finally(() => { checkingResult = undefined; });
@@ -520,6 +551,11 @@ async function readyForInput() {
 
 type TurnOptions = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint; controlLabel?: string };
 async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnOptions) {
+  const apply = () => applyTurnResult(result, speakIt, sleepOnStop, trace);
+  return result.localSpeechOnly === true ? withPrivateReadback(apply) : apply();
+}
+
+async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: boolean, trace?: TurnOptions) {
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
@@ -563,8 +599,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     set({ listening: false });
   }
   setSpeechLang(language);
-  edge?.setLanguage(language);
   if (r.speechPrefs !== undefined) applySpeechPrefs(r.speechPrefs);
+  edge?.setLanguage(language, speechSpeed(ui.baseSpeed, speechPace(speechPrefs.rate)));
   // 새 응답: 남아 있는 결정이어도 새 카드 번호로(이전 화면에서 누른 버튼은 무효)
   desk.card = undefined;
   desk.dropped.clear();
@@ -573,6 +609,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
   set({ last: r, state: r.state, lang: language, hasTurn, error: undefined,
     activity: r.intentType === "PROGRESS" ? ui.activity : null });
+  if (r.researchDelivery === "queued") researchStarted();
+  if (r.researchDelivery === "outcome") presentedResearch.add(r.turnId);
   if (isConsent) {
     recordConsent(ui.consent === "granted" ? r.speech : undefined, r.lang);
     if (ui.consent !== "granted") announce(r.speech, "transcript", r.lang);
@@ -596,6 +634,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     // 본인인증 인계: 안내 한 번만 말하고 TTS를 멈춰 화면 낭독기가 입력 칸을 읽게 한다
     if (r.state === "AUTH_HANDOFF") void speakTurn(r).then(() => stopSpeaking());
     else void speakTurn(r);
+  } else if (!ui.tts && r.researchDelivery === "outcome") {
+    void speakTurn(r);
   }
 }
 
@@ -605,6 +645,70 @@ function speak(text: string) {
 
 export function speakResearch(text: string) {
   if (ui.workspaceAvailable && ui.consent === "granted") speak(text);
+}
+
+const presentedResearch = new Set<string>();
+const researchChunks = new Map<string, number>();
+async function playResearch(token: string, text: string, lang?: Lang) {
+  const heard = isNarrationMuted() || await speakAndWaitFrom(text, researchChunks.get(token) ?? 0, speechPrefs.rate, lang,
+    next => researchChunks.set(token, next));
+  if (heard) researchChunks.delete(token);
+  return heard;
+}
+function canReportResearch() {
+  return ui.consent === "granted" && !ui.busy && !ui.speaking && !isSpeechReserved() && !ui.listening &&
+    !userTalking && !busyTalking && !desk.sleeping && ui.state !== "AUTH_HANDOFF" && ui.state !== "WAITING_FOR_USER_CONFIRMATION" &&
+    ui.phase !== "thinking" && ui.phase !== "hearing";
+}
+function presentResearch(token: string, text: string, lang: Lang) {
+  if (!presentedResearch.has(token)) {
+    announce(text, "transcript", lang);
+    presentedResearch.add(token);
+  }
+}
+export async function deliverResearch(token: string, text: string, lang: Lang): Promise<boolean> {
+  if (!ui.workspaceAvailable || !canReportResearch()) return false;
+  presentResearch(token, text, lang);
+  const heard = await playResearch(token, text, lang);
+  if (heard) presentedResearch.delete(token);
+  return heard;
+}
+
+const researchPlayback = new Map<string, Promise<boolean>>();
+const heardOutcomes = new Set<string>();
+let researchRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+let recoveringResearch = false;
+
+function scheduleResearchCheck(id: string, delay: number) {
+  if (ui.sessionId !== id) return;
+  clearTimeout(researchRecoveryTimer);
+  researchRecoveryTimer = setTimeout(() => checkResearchAfterLoss(id), delay);
+}
+
+/** 회선이 끊긴 뒤에는 명령을 다시 보내지 않고, 끝난 조사 응답만 받는다. */
+function checkResearchAfterLoss(id: string) {
+  if (ui.sessionId === id && ui.workspaceAvailable && ui.consent === "granted") researchStarted();
+  if (recoveringResearch || ui.sessionId !== id || ui.consent !== "granted" || desk.sleeping) return;
+  const generation = stoppedGeneration;
+  const current = () => ui.sessionId === id && stoppedGeneration === generation;
+  recoveringResearch = true;
+  void (async () => {
+    try {
+      const {outcomes, working} = await api.researchOutcomes(id);
+      if (!current()) return;
+      for (const outcome of outcomes) {
+        if (!current()) return;
+        if (!canReportResearch()) { scheduleResearchCheck(id, PROGRESS_POLL_MS); return; }
+        if (ui.error === "timeout" || ui.error === "lostTurn") set({error: undefined});
+        if (!heardOutcomes.has(outcome.turnId) && tabStore("cheongeum.heard." + outcome.turnId) !== "1") {
+          presentResearch(outcome.turnId, outcome.speech, outcome.lang);
+        }
+        if (!await speakTurn({...outcome, sessionId: id, researchDelivery: "outcome"})) return;
+      }
+      if (working && current()) scheduleResearchCheck(id, PROGRESS_POLL_MS);
+    } catch { if (current()) scheduleResearchCheck(id, RESEARCH_POLL_MS); }
+    finally { recoveringResearch = false; }
+  })();
 }
 
 // 청음 소개: 줄마다 카드(정지 그림·글)를 보이고 아바타에 그 동작을 보낸 뒤 말한다.
@@ -641,54 +745,84 @@ export function skipIntro() {
 
 export function stopSpeaking() {
   serverTts.cancel();
-  if (edge !== undefined && ui.phase === "speaking") edge.interrupt();
+  if (edge !== undefined && (ui.phase === "speaking" || edge.hasNativeSpeech)) edge.interrupt();
 }
 
-async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speechPrefs.rate, lang = getSpeechLang()) {
-  if (!ui.tts || !ui.voiceMode.tts) return;
+let speechOutputError: number | undefined;
+function showSpeechError(key: IssueKey) {
+  const previous = ui.errorSeq;
+  setError(key);
+  if (ui.errorSeq !== previous) speechOutputError = ui.errorSeq;
+}
+
+export async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speechPrefs.rate, lang = getSpeechLang(),
+  onChunkPlayed?: (nextChunk: number) => void): Promise<boolean> {
+  if (!ui.tts || !ui.voiceMode.tts || text.trim().length === 0) return false;
   try {
-    const result = await serverTts.speak(text, (chunk, speed) => api.speak(chunk, lang, speed), fromChunk, rate);
-    if (result === "blocked") setError("voiceDown");
+    const result = await serverTts.speak(text, (chunk, speed, signal) => api.speak(chunk, lang, speed, signal), fromChunk, rate, lang, onChunkPlayed);
+    if (result === "blocked") showSpeechError("playbackBlocked");
+    if (result === "played" && ui.errorSeq === speechOutputError) {
+      speechOutputError = undefined;
+      set({ error: undefined });
+    }
+    return result === "played";
   } catch (error) {
     const code = errorCode(error);
-    if (code === "VOICE_KEY" || code === "VOICE_LIMIT") desktop?.showSetup?.();
-    setError(kindOf(error, "voiceDown"));
+    if (code === "VOICE_KEY" || code === "VOICE_QUOTA") desktop?.showSetup?.();
+    showSpeechError(voiceIssue(voiceFault(error)));
+    return false;
   }
 }
 
 const speakAndWait = (text: string) => speakAndWaitFrom(text);
 
-type Spoken = Pick<Turn, "speech"> & Partial<Pick<Turn, "localSpeechOnly" | "lang">>;
+type Spoken = Pick<Turn, "speech"> & Partial<Pick<Turn, "localSpeechOnly" | "lang" | "authHandoff" | "turnId" | "sessionId" | "researchDelivery">>;
 async function speakTurn(result: Spoken, text = result.speech) {
-  if (result.localSpeechOnly !== true) return speakAndWaitFrom(text, 0, speechPrefs.rate, result.lang ?? getSpeechLang());
-  if (!ui.tts) return;
-  const status = await speakOnDevice(text, result.lang ?? "ko");
-  if (status === "unavailable") {
-    setError("localVoiceUnavailable");
+  const id = result.sessionId, token = result.turnId;
+  if (result.researchDelivery === "outcome" && token !== undefined && id !== undefined && result.localSpeechOnly !== true) {
+    const current = researchPlayback.get(token);
+    if (current !== undefined) return current;
+    const play = async () => {
+      const generation = stoppedGeneration;
+      const receiptKey = "cheongeum.heard." + token;
+      const heard = heardOutcomes.has(token) || tabStore(receiptKey) === "1" || await playResearch(token, text, result.lang);
+      if (id !== ui.sessionId || stoppedGeneration !== generation) return false;
+      if (heard) {
+        heardOutcomes.add(token);
+        tabStore(receiptKey, "1");
+        try { await api.heardResearch(id, token); tabStore(receiptKey, null); } catch { scheduleResearchCheck(id, RESEARCH_POLL_MS); }
+      } else scheduleResearchCheck(id, RESEARCH_POLL_MS);
+      return heard;
+    };
+    const playing = play().finally(() => researchPlayback.delete(token));
+    researchPlayback.set(token, playing);
+    return playing;
   }
+  if (result.localSpeechOnly !== true) return speakAndWaitFrom(text, 0, speechPrefs.rate, result.lang ?? getSpeechLang());
+  const lang = getSpeechLang();
+  const decision = currentDecision(ui);
+  const cue = workspaceText("개인정보가 있는 안내를 대화 기록에 표시했어요. 화면 낭독기로 내용을 들을 수 있어요.", lang);
+  // 카드 종류만으로 만든 질문은 공개 안내이다. 값과 원문은 로컬 접근성 기록에서만 읽는다.
+  const purpose = result.authHandoff?.status === "waiting" ? workspaceText("마이크를 껐어요. 사이트에서 직접 로그인이나 본인 확인을 마쳐 주세요.", lang)
+    : decision?.kind === "approval" ? decision.prompt : "";
+  return withPrivateReadback(() => speakAndWaitFrom([purpose, cue].filter(Boolean).join(" "), 0, speechPrefs.rate, lang));
 }
 
 const THINKING_DELAY_MS = 1000;
 const WORKING_START_MS = 3000;
-const WORKING_EVERY_MS = 2500;
 
-/** work가 끝날 때까지만 생각중·일하는중 신호음을 낸다. 답을 말하기 전에 그치고, 일하는 중에 안내를 말하는 동안은 건너뛴다. */
+/** 상태가 바뀔 때 한 번씩 알린다. 이후에는 실제로 확인한 진행 상황을 들려준다. */
 async function withProgressCues<T>(work: Promise<T>) {
   const tick = (kind: CueKind) => {
-    if (!busyTalking) void cue(kind);
+    if (!busyTalking && !ui.speaking && !isSpeechReserved()) void cue(kind);
   };
-  let intervalId: ReturnType<typeof setInterval> | undefined;
   const thinkingId = setTimeout(() => tick("thinking"), THINKING_DELAY_MS);
-  const workingId = setTimeout(() => {
-    tick("working");
-    intervalId = setInterval(() => tick("working"), WORKING_EVERY_MS);
-  }, WORKING_START_MS);
+  const workingId = setTimeout(() => tick("working"), WORKING_START_MS);
   try {
     return await work;
   } finally {
     clearTimeout(thinkingId);
     clearTimeout(workingId);
-    clearInterval(intervalId);
   }
 }
 
@@ -709,6 +843,16 @@ export function endConversation(withCue = true) {
   loop?.stop();
   loop = undefined;
   setPhase("off");
+}
+
+export function suspendConversation() {
+  const resume = conversationOn;
+  endConversation(false);
+  recording?.cancel();
+  recording = undefined;
+  stopSpeaking();
+  set({listening: false});
+  return resume;
 }
 
 /**
@@ -736,9 +880,29 @@ export async function startConversation() {
   if (ui.voiceMode.edge !== undefined && ui.voiceMode.edge.length > 0 && ui.conversationMode === "native") {
     let captionEnd = -1;
     const approvalId = ui.last?.pendingConfirmation?.actionId ?? "";
+    const voiceFailure = (error: VoiceFault) => {
+      if (ticket !== conversationStarts) return;
+      endConversation(false);
+      if (error.code === "VOICE_KEY" || error.code === "VOICE_QUOTA") desktop?.showSetup?.();
+      setError(voiceIssue(error));
+      checkResearchAfterLoss(sessionId);
+    };
     const current: LiveConversation = new LiveConversation(sessionId, {
-      offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: () => setError("voiceDown"),
+      offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: () => setError("playbackBlocked"),
       captureChanged,
+      recovered() {
+        if (ticket !== conversationStarts) return;
+        captionEnd = -1;
+        set({ liveCaption: "", error: undefined });
+        setPhase("listening");
+        const message = t("음성 연결이 잠시 끊겼다가 다시 연결됐어요.");
+        announce(message);
+        if (ui.tts && ui.voiceMode.tts) {
+          const lang = getSpeechLang();
+          void reportVoiceRecovery((chunk, rate, signal) => api.speak(chunk, lang, rate, signal), lang).catch(() => {});
+        }
+        checkResearchAfterLoss(sessionId);
+      },
       activity(text) {
         if (ticket !== conversationStarts || ui.activity === text) return;
         set({ activity: text });
@@ -778,12 +942,7 @@ export async function startConversation() {
           }
         }
       },
-      failure(message) {
-        if (ticket !== conversationStarts) return;
-        endConversation(false);
-        const key = message === t("마이크 연결이 끊겼어요.") ? "micLost" : "voiceDown";
-        setError(key);
-      },
+      failure: voiceFailure,
     });
     edge = startingLoop = current;
     current.enabled = ui.tts;
@@ -797,10 +956,7 @@ export async function startConversation() {
       await cue("start");
     } catch (error) {
       if (ticket !== conversationStarts) return;
-      if (error instanceof DOMException && ["NotAllowedError", "SecurityError"].includes(error.name)) {
-        endConversation(false);
-        setError("micDenied");
-      } else current.fail(errorMessage(error));
+      voiceFailure(voiceFault(error));
     }
     return;
   }
@@ -898,14 +1054,17 @@ export async function startConversation() {
       stopWatch();
       if (barged && conversationOn) {
         const interrupted = takeInterruptedSpeech();
+        const resumeAnswer = async () => {
+          if (interrupted?.kind !== "server" || interrupted.text.length === 0) return;
+          setPhase("speaking");
+          if (r.researchDelivery === "outcome" && r.localSpeechOnly !== true) await speakTurn(r);
+          else await speakAndWaitFrom(interrupted.text, interrupted.fromChunk);
+        };
         setPhase("listening");
         const bargeAsked = ui.last?.pendingConfirmation?.actionId ?? "";
         const clip = await current.listenAfterBarge(2000, () => setPhase("hearing"));
         if (clip === null) {
-          if (interrupted?.kind === "server" && interrupted.text.length > 0) {
-            setPhase("speaking");
-            await speakAndWaitFrom(interrupted.text, interrupted.fromChunk);
-          }
+          await resumeAnswer();
           continue;
         }
         void cue("done");
@@ -920,8 +1079,7 @@ export async function startConversation() {
           await speakTurn(again);
         } catch (be) {
           if (interrupted?.kind === "server" && interrupted.text.length > 0 && errorCode(be) === "EMPTY_TRANSCRIPT") {
-            setPhase("speaking");
-            await speakAndWaitFrom(interrupted.text, interrupted.fromChunk);
+            await resumeAnswer();
           } else {
             throw be;
           }
@@ -940,13 +1098,14 @@ export async function startConversation() {
         await speakAndWait(message);
         continue;
       }
-      if (e instanceof ApiError && (e.kind === "network" || e.kind === "timeout")) break;
-      setError(kindOf(e, "voiceDown"));
-      if (++failures >= 3) {
-        await cue("problem");
-        await speakAndWait(t("문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요."));
-        break;
+      if (voiceFault(e).retryable && ++failures < 3 && ui.offline !== true) {
+        await speakAndWait(t("말씀을 끝까지 받지 못했어요. 한 번 더 말씀해 주세요."));
+        continue;
       }
+      setError(ui.offline === true ? "offline" : voiceIssue(voiceFault(e)));
+      await cue("problem");
+      await speakAndWait(t("문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요."));
+      break;
     }
     // 스피커 소리 잔향이 마이크로 들어가지 않게 잠깐 쉰다.
     await new Promise((r) => setTimeout(r, 300));
@@ -1025,7 +1184,7 @@ function trackProgress(voice?: VoiceLoop) {
       if (ui.activity !== activity) set({ activity });
     },
     considerSpeech(report) {
-      if (userTalking || busyTalking) return;
+      if (userTalking || busyTalking || ui.speaking || isSpeechReserved()) return;
       const next = progressUpdate(report, session.spoken);
       if (next.speak === undefined) return;
       session.spoken = next.seq;
@@ -1110,7 +1269,7 @@ export function talkNow() {
     return;
   }
   if (edge !== undefined && ui.phase === "thinking") { void stopAll(); return; }
-  if (ui.phase === "speaking") {
+  if (ui.phase === "speaking" || edge?.hasNativeSpeech === true) {
     stopSpeaking();
     announce(t("안내를 멈췄습니다. 말씀하세요."));
   } else if (ui.phase === "hearing") {
@@ -1158,8 +1317,7 @@ export async function hearConsent() {
     ja: "チョンウムが公共サービスの画面を読み上げます。音声と読み上げ文は音声サービスに、質問や画面の内容は設定したAIに送られる場合があります。パスワードは言わないでください。"
       + (BACKGROUND ? "同意するには " + modifier + "、Shift、スペースを同時に押してください。" : "同意はエンター、辞退はエスケープです。"),
   }[ui.lang];
-  const rate = ui.baseSpeed >= 1.25 && speechPrefs.rate >= 1.25 ? Math.min(2, speechPrefs.rate * 1.12) : speechPrefs.rate;
-  await speakAndWaitFrom(brief, 0, rate);
+  await speakAndWaitFrom(brief);
 }
 
 let consentSending = false;
@@ -1553,10 +1711,12 @@ export async function toggleMic() {
     recording = Object.assign(rec, { asked });
     set({ listening: true });
     announce(t("듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요."));
-  } catch {
+  } catch (error) {
     if (cancelled || !current() || authWaiting() || ui.consent !== "granted" || dialogNow() !== undefined) return;
     microphoneTrouble = true;
-    setError("micDenied");
+    const fault = voiceFault(error);
+    console.warn("[voice]", { operation: "microphone", code: fault.code });
+    setError(voiceIssue(fault));
   } finally {
     openingMic = false;
     if (recording === undefined) manualStream = undefined;
@@ -1565,6 +1725,11 @@ export async function toggleMic() {
 }
 
 export function toggleTts() {
+  narrationMuted = ui.tts;
+  try {
+    if (narrationMuted) localStorage.setItem("cheongeum.narrationMuted", "1");
+    else localStorage.removeItem("cheongeum.narrationMuted");
+  } catch { /* 임시 세션 */ }
   if (ui.tts) {
     stopSpeaking();
     set({ tts: false });
@@ -1648,7 +1813,9 @@ export function focusCommand() { focus("command"); }
 // ---------------------------------------------------------------- 이벤트 연결
 
 function bind() {
+  void desktop?.avatarVisible?.().then(value => { if (typeof value === "boolean") set({ avatarVisible: value }); });
   api.onConnection(connectionChanged);
+  api.onVoiceRestored(noteVoiceInterruption);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && skipIntro()) e.preventDefault();
   });
@@ -1658,6 +1825,7 @@ function bind() {
   desktop?.onAction?.((action) => {
     if (typeof action !== "object" || action === null || !("type" in action)) return;
     if (action.type === "settings") void openSettings();
+    else if (action.type === "avatar-visibility" && "visible" in action && typeof action.visible === "boolean") set({ avatarVisible: action.visible });
     else if (action.type === "stop") void stopAll();
     else if (action.type === "reveal") {
       wakeAvatar();
@@ -1743,6 +1911,10 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 }
 
 export async function endSession() {
+  clearTimeout(researchRecoveryTimer);
+  presentedResearch.clear();
+  researchChunks.clear();
+  heardOutcomes.clear();
   timing?.cancelPending();
   const sid = ui.sessionId;
   progressSession = undefined;
@@ -1819,6 +1991,7 @@ export async function answerRecovery(yes: boolean) {
     push({ role: "assistant", text: message });
     if (ui.tts) speak(message);
     focus("command");
+    if (ui.sessionId !== undefined) checkResearchAfterLoss(ui.sessionId);
   } catch (error) {
     const status = errorStatus(error);
     if (status === 410 || status === 404) await endSession();
@@ -1897,14 +2070,14 @@ function refreshHealth() {
       workspaceAvailable: h.workspaceAvailable === true,
       directActions: h.directActions === true,
       settingsAvailable: h.settingsAvailable === true,
-      baseSpeed: h.voiceSpeed ?? 1.35,
+      baseSpeed: h.voiceSpeed ?? VOICE_PROFILE.speed,
       voiceMode: {
         known: true, stt: h.stt.supported, tts: h.tts.supported, edge: h.voiceEdge, llmRoles: h.llmRoles ?? {},
         label: "",
         sttProvider: h.stt.supported ? h.stt.liveModel ?? h.stt.provider : undefined,
         ttsProvider: h.tts.supported ? h.tts.provider : undefined,
       },
-      tts: h.tts.supported,
+      tts: h.tts.supported && !narrationMuted,
     });
     return h;
   }).catch((error: unknown) => {

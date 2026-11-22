@@ -7,9 +7,15 @@ import { SettingsStore } from "../../src/server/settings.ts";
 import { AgentRuntime, loadConfig } from "../../src/server/runtime.ts";
 import { STACK } from "../../src/core/model_stack.ts";
 import { createVoiceProviders } from "../../src/voice/config.ts";
+import { VOICE_PROFILE } from "../../src/core/voice_profile.ts";
 import { OpenAISttProvider, UnsupportedSttProvider } from "../../src/voice/stt.ts";
 import { makeApp, speechPace } from "../../src/server/app.ts";
 import { listenPort, main } from "../../src/server/main.ts";
+
+it("이전의 개별 음성 설정이 있어도 청음 목소리와 첫 실행 녹음의 말투가 일치한다", () => {
+  const { voice } = loadConfig({ TTS_MODEL: "old-model", TTS_VOICE: "old-voice", TTS_INSTRUCTIONS: "old-style", TTS_SPEED: "1.1" });
+  expect(voice).toMatchObject({ ttsModel: VOICE_PROFILE.model, ttsVoice: VOICE_PROFILE.voice, ttsInstructions: VOICE_PROFILE.instructions, ttsSpeed: 1.1 });
+});
 
 it("test_load_config_role_overrides", () => {
   const cfg = loadConfig({

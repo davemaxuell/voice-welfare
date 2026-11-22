@@ -4,13 +4,14 @@ import { api } from './api.js';
 import { syncWorkspace } from './workflows.js';
 import { LiveConversation } from './voice-edge.js';
 import { localizeWorkspace, workspaceText } from './workspace-language.js';
+import profile from './voice-profile.json' with { type: 'json' };
 import { getSpeechLang, setSpeechLang, unlockAudio } from './audio.js';
 import { APPROVE_LABELS, currentDecision, desktopView, turnNotice } from './companion.js';
 import { fullGuide, localizePanel, localizeSettings } from './onboarding.js';
 import { createFirstRun } from './first-run.js';
 import { renderRecordingReview } from './recording-review.js';
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop } from './mic.js';
-import { applySpeechPrefs, speechPrefs, earcon, onSpeaking, preloadCues, progressVoice, serverTts, speakOnDevice, takeInterruptedSpeech, transitionCue } from './speaker.js';
+import { applySpeechPrefs, speechPrefs, earcon, onSpeaking, preloadCues, progressVoice, serverTts, withPrivateReadback, takeInterruptedSpeech, transitionCue } from './speaker.js';
 
 const STATE_LABELS_KO = {
   AWAITING_CONSENT: '동의 대기',
@@ -129,9 +130,11 @@ const $ = (id) => document.getElementById(id);
 // 첫 실행 설정(키·이 PC·소리 확인·빠르기). 끝나면 동의 화면으로 넘어간다.
 const firstRun = createFirstRun({
   desktop,
-  speak: (text, lang, rate) => {
+  speak: async (text, lang, rate) => {
     unlockAudio();
-    return serverTts.speak(text, (chunk, speed) => api.speak(chunk, lang, speed), 0, rate);
+    const status = await serverTts.speak(text, (chunk, speed, signal) => api.speak(chunk, lang, speed, rate, signal), 0, rate, lang);
+    if (status === 'blocked') throw new Error('PLAYBACK_BLOCKED');
+    return status;
   },
   stopSpeaking: () => serverTts.cancel(),
   onSaved: () => refreshHealth(),
@@ -166,7 +169,7 @@ const ui = {
   contrast: false,
   error: undefined,
   phase: 'off',
-  baseSpeed: 1.35,
+  baseSpeed: profile.speed,
   consent: 'loading', // loading | intro | ask | granted | declined
   mics: [],
   micId: readMicId(),
@@ -684,6 +687,11 @@ async function readyForInput() {
 // ---------------------------------------------------------------- 응답·음성
 
 async function applyResult(r, speakIt = true, sleepOnStop = true) {
+  const apply = () => applyTurnResult(r, speakIt, sleepOnStop);
+  return r.localSpeechOnly === true ? withPrivateReadback(apply) : apply();
+}
+
+async function applyTurnResult(r, speakIt, sleepOnStop) {
   const prevTurn = ui.last?.turnId;
   if (!ui.sessionId || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
   if (r.intentType === 'READ_START_GUIDE') r.speech = consentText(r.lang);
@@ -716,8 +724,8 @@ async function applyResult(r, speakIt = true, sleepOnStop = true) {
     set({ listening: false });
   }
   setSpeechLang(r.lang);
-  edge?.setLanguage(r.lang);
   if (r.speechPrefs) applySpeechPrefs(r.speechPrefs);
+  edge?.setLanguage(r.lang, Math.min(4, Math.max(0.25, ui.baseSpeed * speechPrefs.rate / profile.normalRate)));
   // 새 응답: 남아 있는 결정이어도 새 카드 번호로(이전 화면에서 누른 버튼은 무효)
   desk.card = undefined;
   desk.dropped.clear();
@@ -802,10 +810,11 @@ function stopSpeaking() {
 async function speakAndWaitFrom(text, fromChunk = 0, rate = speechPrefs.rate) {
   if (!ui.tts || !ui.voiceMode.tts) return;
   try {
-    const result = await serverTts.speak(text, (chunk, speed) => api.speak(chunk, getSpeechLang(), speed), fromChunk, rate);
+    const lang = getSpeechLang();
+    const result = await serverTts.speak(text, (chunk, speed, signal) => api.speak(chunk, lang, speed, undefined, signal), fromChunk, rate, lang);
     if (result === 'blocked') setError('소리를 재생하려면 화면을 한 번 누른 뒤 소리 확인을 선택해 주세요.');
   } catch (error) {
-    if (error.code === 'VOICE_KEY' || error.code === 'VOICE_LIMIT') desktop?.showSetup?.();
+    if (error.code === 'VOICE_KEY' || error.code === 'VOICE_QUOTA') desktop?.showSetup?.();
     setError(error.code ? error.message : '음성 API 안내를 재생하지 못했어요. 연결을 확인해 주세요. 안내는 화면에서도 읽을 수 있어요.');
   }
 }
@@ -814,11 +823,12 @@ const speakAndWait = (text) => speakAndWaitFrom(text);
 
 async function speakTurn(result, text = result.speech) {
   if (!result.localSpeechOnly) return speakAndWait(text);
-  if (!ui.tts) return;
-  const status = await speakOnDevice(text, result.lang ?? 'ko');
-  if (status === 'unavailable') {
-    setError(workspaceText('이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.', ui.lang));
-  }
+  const lang = result.lang ?? ui.lang;
+  const decision = currentDecision(ui);
+  const cue = workspaceText('개인정보가 있는 안내를 대화 기록에 표시했어요. 화면 낭독기로 내용을 들을 수 있어요.', lang);
+  const purpose = result.authHandoff?.status === 'waiting' ? workspaceText('마이크를 껐어요. 사이트에서 직접 로그인이나 본인 확인을 마쳐 주세요.', lang)
+    : decision?.kind === 'approval' ? decision.prompt : '';
+  return withPrivateReadback(() => speakAndWait([purpose, cue].filter(Boolean).join(' ')));
 }
 
 const THINKING_DELAY_MS = 1000;
@@ -1245,8 +1255,7 @@ async function hearConsent() {
     ja: 'チョンウムが公共サービスの画面を読み上げます。音声と読み上げ文は音声サービスに、質問や画面の内容は設定したAIに送られる場合があります。パスワードは言わないでください。'
       + (BACKGROUND ? '同意するには ' + modifier + '、Shift、スペースを同時に押してください。' : '同意はエンター、辞退はエスケープです。'),
   }[ui.lang];
-  const rate = ui.baseSpeed >= 1.25 && speechPrefs.rate >= 1.25 ? Math.min(2, speechPrefs.rate * 1.12) : speechPrefs.rate;
-  await speakAndWaitFrom(brief, 0, rate);
+  await speakAndWaitFrom(brief);
 }
 
 let consentSending = false;
@@ -1925,7 +1934,7 @@ function refreshHealth() {
     set({
       practiceMode: h.practiceMode === true,
       workspaceAvailable: h.workspaceAvailable === true,
-      baseSpeed: h.voiceSpeed ?? 1.35,
+      baseSpeed: h.voiceSpeed ?? profile.speed,
       voiceMode: {
         known: true, stt: h.stt.supported, tts: h.tts.supported, edge: h.voiceEdge, llmRoles: h.llmRoles ?? {},
         label: [h.voiceEdge && '실시간 대화 ' + h.voiceEdge,

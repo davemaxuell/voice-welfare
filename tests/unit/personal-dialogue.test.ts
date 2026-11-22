@@ -12,6 +12,14 @@ import { PersonalDialogue, vaultReply } from "../../src/personal/dialogue.ts";
 import { PersonalStore } from "../../src/personal/store.ts";
 
 const today = "2026-11-16";
+it("예전 음성 이름을 요청해도 실제 청음 목소리와 조절 가능한 빠르기를 안내한다", () => {
+  const store = new PersonalStore(), dialogue = new PersonalDialogue(store, new DialogueState("IDLE"));
+  const result = dialogue.run({ kind: "speech-set", values: { voice: "이전 기기 음성", rate: 0.9 } });
+  expect(result?.speech).toContain("coral");
+  expect(result?.speech).not.toContain("이전 기기 음성");
+  expect(store.speech().rate).toBe(0.9);
+  expect(store.speech().voice).toBeUndefined();
+});
 it("test_vault_values", () => {
   expect(parseVaultValues("내 이름은 김하늘이고 주소는 부산광역시 예시구 예시로 10이고 연락처는 010-1234-5678이라고 저장해줘")).toEqual({
     name: "김하늘", address: "부산광역시 예시구 예시로 10", phone: "010-1234-5678",

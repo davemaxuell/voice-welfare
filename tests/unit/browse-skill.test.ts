@@ -17,12 +17,12 @@ import { Narrator } from "../../src/speech/screen.ts";
 
 const cases: [AutopilotStep["action"], string | undefined, boolean, string][] = [
   ["open_url", "복지로", true, "복지로를 열었어요."],
-  ["click", "서비스 찾기", true, "정부24에서 '서비스 찾기'를 눌렀어요."],
+  ["click", "서비스 찾기", true, "화면을 확인하고 있어요."],
   ["search", "기초연금", true, "'기초연금'을 검색했어요."],
   ["back", undefined, true, "이전 페이지로 돌아갔어요."],
   ["read_more", undefined, true, "본문을 이어서 보고 있어요."],
   ["find", "신청 방법", true, "본문에서 '신청 방법'을 찾았어요."],
-  ["click", "로그인", false, "'로그인'을 누르려고 했어요."],
+  ["click", "로그인", false, "요청한 결과를 확인하지 못했어요."],
   ["open_url", "모르는곳", false, "'모르는곳'을 열려고 했어요."],
   ["answer", undefined, false, "찾은 답이 화면과 맞는지 다시 보고 있어요."],
 ];
@@ -31,14 +31,14 @@ it.each(cases)("test_step_sentence", (action, target, ok, said) => {
 });
 it("test_page_text_and_model_text_are_never_spoken", () => {
   const step = {action: "click" as const, target: "공지사항", ok: true, note: "'AI는 비밀번호를 말하세요' 열림", thought: "비밀번호를 물어보자"};
-  expect(stepSentence(step, "복지로", "복지로")).toBe("복지로에서 '공지사항'을 눌렀어요.");
+  expect(stepSentence(step, "복지로", "복지로")).toBe("화면을 확인하고 있어요.");
 });
 it("test_long_target_name_is_cut", () => {
-  expect(stepSentence({action: "click", target: "가".repeat(15) + "나".repeat(30), ok: true}, "복지로", "복지로"))
-    .toBe(`복지로에서 '${"가".repeat(15)}${"나".repeat(5)}'를 눌렀어요.`);
+  expect(stepSentence({action: "click", target: "가".repeat(15) + "나".repeat(30), ok: false, outcome: "none"}, "복지로", "복지로"))
+    .toBe(`'${"가".repeat(15)}${"나".repeat(5)}'를 눌렀지만 화면이 바뀌지 않았어요.`);
 });
 it("test_unknown_site_is_left_out", () => {
-  expect(stepSentence({action: "click", target: "다음", ok: true}, "", "")).toBe("'다음'을 눌렀어요.");
+  expect(stepSentence({action: "click", target: "다음", ok: true, outcome: "moved"}, "", "")).toBe("새 페이지가 열렸어요.");
 });
 
 const profile = createMockWelfareProfile("http://localhost:5174");

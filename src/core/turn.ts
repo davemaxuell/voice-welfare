@@ -1,4 +1,5 @@
 import type { Redacted } from "./llm.ts";
+import { NORMAL_SPEECH_RATE } from "./voice_profile.ts";
 import { z } from "zod";
 import {
   ActionSchema, ActionResultSchema, ObservedFieldSchema, StepInfoSchema, UrlStringSchema,
@@ -123,7 +124,7 @@ export const VerificationSchema = z.object({
 }).transform(omitAbsent);
 export type Verification = z.infer<typeof VerificationSchema>;
 export const SpeechPrefsSchema = z.object({
-  rate: z.number().default(1.25), length: z.enum(["short", "normal", "detailed"]).default("normal"),
+  rate: z.number().default(NORMAL_SPEECH_RATE), length: z.enum(["short", "normal", "detailed"]).default("normal"),
   voice: optional(text), progressSpoken: z.boolean().default(true),
 }).transform(omitAbsent);
 export type SpeechPrefs = z.infer<typeof SpeechPrefsSchema>;
@@ -140,6 +141,7 @@ export const TurnResultSchema = z.object({
   sessionId: text, turnId: text, userUtterance: text, intentType: text, state: SessionStateSchema, stopGeneration: optional(natural),
   semanticAction: SemanticActionSchema, field: optional(text), value: optional(text), page: optional(text),
   speech: text, localSpeechOnly: optional(literalTrue), lang: LangSchema.default("ko"), trace: z.array(TraceEntrySchema),
+  researchDelivery: optional(z.enum(["queued", "outcome"])),
   actions: z.array(ExecutedActionSchema), observation: optional(ObservationSummarySchema), verification: optional(VerificationSchema),
   review: optional(TaskReviewSummarySchema), pendingConfirmation: optional(PendingConfirmationSchema),
   authHandoff: optional(HumanAuthHandoffSchema), answerCard: optional(GroundedAnswerCardSchema), handoff: optional(AgentHandoffSchema),
@@ -173,7 +175,7 @@ export type DraftAction = Omit<ExecutedAction, "result"> & {
   result?: ExecutedAction["result"] | { ok: false; errorCode: "LOG_FAILED"; latencyMs: 0 };
 };
 type DraftExtras = Partial<Pick<TurnResult,
-  "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang" | "review" | "answerCard" | "introScript" | "publicSuggestions"
+  "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang" | "review" | "answerCard" | "introScript" | "publicSuggestions" | "researchDelivery"
 >> & {
   actions?: DraftAction[];
   view?: Observation & { pageId: string };
@@ -189,6 +191,8 @@ type DraftExtras = Partial<Pick<TurnResult,
   privateHistory?: boolean;
   /** 목표 수행이 브라우저를 움직인 횟수 */
   browserIterations?: number;
+  /** 현재 사용자의 탭과 별개로 조사 창에서 실제로 확인한 공개 문서 제목. */
+  lastVisitedTitle?: string;
   reviewPages?: readonly ReviewPage[];
   reviewQuotes?: readonly string[];
   reviewQuoteSources?: Readonly<Record<string, readonly string[]>>;

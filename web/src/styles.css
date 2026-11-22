@@ -487,10 +487,6 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .composer input:disabled { cursor: not-allowed; }
 .send { --icon: var(--i-send); width: 44px; height: 44px; flex: none; padding: 0; font-size: 0; border-radius: 50%; }
 .send::before { width: 22px; height: 22px; }
-.send[aria-busy="true"]::before {
-  width: 20px; height: 20px; border-radius: 50%; background: none; -webkit-mask: none; mask: none;
-  border: 2.5px solid currentColor; border-right-color: transparent;
-}
 .voice-actions { margin-top: .7rem; gap: .45rem; }
 .voice-actions button { min-height: 44px; padding: .45rem 1rem; border-radius: var(--radius-pill); font-size: .9rem; }
 .voice-actions button::before { width: 1.05rem; height: 1.05rem; }
@@ -728,7 +724,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .msg.assistant::before { animation: fade-in 260ms var(--ease-out) backwards, pop-in var(--spring-pop) backwards; animation-delay: inherit; }
   .msg details[open] > :not(summary) { animation: drop-in var(--spring-fast) backwards; }
   .typing:not([hidden]) { animation: fade-in 220ms var(--ease-out) 180ms backwards, msg-rise var(--spring) 180ms backwards; }
-  .typing-dots i { animation: typing-dot 1.2s var(--ease-in-out) infinite; }
+  .typing-dots i { animation: typing-dot 1.8s ease-in-out infinite; }
   .typing-dots i:nth-child(2) { animation-delay: .15s; }
   .typing-dots i:nth-child(3) { animation-delay: .3s; }
 
@@ -780,21 +776,16 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .phase-hearing .phase-eq i, .phase-speaking .phase-eq i { animation: eq-live .9s var(--ease-in-out) infinite; }
   .phase-eq i:nth-child(2) { animation-delay: -.3s; }
   .phase-eq i:nth-child(3) { animation-delay: -.6s; }
-  .phase-thinking .phase-eq i, .phase-starting .phase-eq i { animation: typing-dot 1.2s var(--ease-in-out) infinite; }
+  .phase-thinking .phase-eq i, .phase-starting .phase-eq i { animation: typing-dot 1.8s ease-in-out infinite; }
   .phase-thinking .phase-eq i:nth-child(2), .phase-starting .phase-eq i:nth-child(2) { animation-delay: .15s; }
   .phase-thinking .phase-eq i:nth-child(3), .phase-starting .phase-eq i:nth-child(3) { animation-delay: .3s; }
   .conversation-header:has(.phase-listening, .phase-hearing) .portrait::after { animation: halo 1.8s var(--ease-out) infinite; }
   .conversation-header:has(.phase-hearing) .portrait::after { animation-duration: 1.1s; }
   .conversation-header:has(.phase-speaking) .portrait::after { border-color: var(--accent-bright); animation: halo 1.4s var(--ease-out) infinite; }
-  .conversation-header:has(.phase-thinking, .phase-starting) .portrait::after {
-    opacity: 1; border-color: transparent; border-top-color: var(--accent-bright); border-left-color: var(--accent-bright);
-    animation: spin-mirrored .9s linear infinite;
-  }
   .app:has(#phase:is(.phase-speaking, .phase-hearing)) .brand-eq i { animation: eq-brand .8s var(--ease-in-out) infinite alternate; }
   .app:has(#phase:is(.phase-speaking, .phase-hearing)) .brand-eq i:nth-child(2) { animation-delay: -.3s; }
   .app:has(#phase:is(.phase-speaking, .phase-hearing)) .brand-eq i:nth-child(3) { animation-delay: -.55s; }
   #mic-btn[aria-pressed="true"]::before { animation: breathe 1.2s var(--ease-in-out) infinite; }
-  .send[aria-busy="true"]::before { animation: spin .8s linear infinite; }
 }
 @media (prefers-reduced-motion: no-preference) and (hover: hover) {
   .starter-actions button:not(:disabled):hover { transform: translateY(-2px); }
@@ -811,13 +802,11 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 @keyframes toast-in { from { transform: translateY(24px) scale(.96); } }
 @keyframes pop-in { from { transform: scale(.6); } }
 @keyframes art-in { from { transform: scaleX(-1) translateY(14px) scale(.9); } to { transform: scaleX(-1); } }
-@keyframes typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+@keyframes typing-dot { 0%, 75%, 100% { transform: translateY(0); opacity: .45; } 35% { transform: translateY(-2px); opacity: .9; } }
 @keyframes eq-idle { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(.7); } }
 @keyframes eq-live { 0%, 100% { transform: scaleY(.3); } 25% { transform: scaleY(1); } 50% { transform: scaleY(.55); } 75% { transform: scaleY(.85); } }
 @keyframes eq-brand { from { transform: scaleY(.55); } to { transform: scaleY(1.15); } }
 @keyframes halo { 0% { opacity: .75; transform: scale(.94); } 100% { opacity: 0; transform: scale(1.18); } }
-@keyframes spin { to { transform: rotate(1turn); } }
-@keyframes spin-mirrored { to { transform: rotate(-1turn); } }
 @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 @property --p { syntax: "<number>"; inherits: false; initial-value: 0; }
 

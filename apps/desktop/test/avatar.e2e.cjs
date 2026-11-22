@@ -1,6 +1,8 @@
 // 아바타 창 E2E: node apps/desktop/test/avatar.e2e.cjs [시나리오 이름…]
 // 실제 Electron 앱을 띄워 아바타 창과 대화 창이 세션 하나를 함께 쓰는지 확인한다(창이 잠깐 화면에 뜬다).
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 const { launch, native, windows, until } = require('./harness.cjs');
@@ -79,6 +81,49 @@ async function recordPoses(overlay) {
 }
 
 const scenarios = {
+  async 'close-restore'({ app, controller, overlay, session }) {
+    await consentByOverlay(overlay);
+    await until(async () => await liveTracks(controller) > 0, { what: 'microphone starts before closing the mascot' });
+    const id = session();
+    const profile = await app.evaluate(({ app }) => app.getPath('userData'));
+    await overlay.getByRole('button', { name: '마스코트 닫기' }).press('Enter');
+    await until(async () => JSON.parse(await readFile(path.join(profile, 'avatar.json'), 'utf8').catch(() => '{}')).hidden, { what: 'choice saved' });
+    await until(async () => !(await windows(app)).find(isOverlay).visible, { what: 'native overlay actually closed' });
+    assert.equal(session(), id);
+    assert.ok(await liveTracks(controller) > 0);
+    await controller.getByRole('button', { name: '마스코트 다시 열기' }).press('Enter');
+    await until(async () => !JSON.parse(await readFile(path.join(profile, 'avatar.json'), 'utf8')).hidden, { what: 'mascot reopened from chat' });
+    await until(async () => (await windows(app)).find(isOverlay).visible, { what: 'native overlay shown again' });
+    assert.equal(session(), id);
+  },
+  async 'closed-at-start'({ app, controller }) {
+    await controller.getByRole('button', { name: '마스코트 다시 열기' }).waitFor();
+    assert.equal((await windows(app)).find(isOverlay).visible, false);
+  },
+  async 'screen-reader-close'({ app, controller, overlay, session }) {
+    await consentByOverlay(overlay);
+    await until(async () => await liveTracks(controller) > 0, { what: '마이크 준비' });
+    const id = session();
+    const handle = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('/avatar/')).getNativeWindowHandle().readUInt32LE(0));
+    await until(() => native('uia-invoke', handle, '마스코트 닫기').invoked, {what: '화면 낭독기의 닫기 버튼'});
+    await until(async () => !(await windows(app)).find(isOverlay).visible, {what: '화면 낭독기 버튼으로 창 닫기'});
+    await controller.getByRole('button', {name: '마스코트 다시 열기'}).press('Enter');
+    await until(async () => (await windows(app)).find(isOverlay).visible, {what: '대화 창에서 다시 열기'});
+    assert.equal(session(), id);
+    assert.ok(await liveTracks(controller) > 0);
+  },
+  async 'cli-activates-desktop'({ app, controller, session }) {
+    await controller.locator('#consent-hear').waitFor({state: 'attached'});
+    const id = await until(session, { what: 'original conversation session' });
+    const profile = await app.evaluate(({ app }) => app.getPath('userData'));
+    const { stdout } = await promisify(execFile)(process.execPath,
+      [path.resolve(__dirname, '../../../src/server/main.ts'), '--no-mock', '--port', '0'],
+      { env: { ...process.env, NODE_ENV: 'test', CHEONGEUM_SETTINGS_DIR: profile }, timeout: 20000 });
+    assert.equal(stdout.includes('[server]'), false);
+    await until(async () => (await windows(app)).find(isController).focused, { what: 'the existing native conversation is activated' });
+    assert.equal(session(), id);
+  },
   async drag({ app, controller, overlay, errors }) {
     await overlay.getByRole('button', { name: '동의하고 음성 대화 시작' }).waitFor();
     await until(async () => (await windows(app)).find(isOverlay).visible, { what: 'native mascot is visible' });
@@ -197,7 +242,7 @@ const scenarios = {
     await until(async () => await liveTracks(controller) === 0, { what: '초기 마이크 종료' });
     await sample(0, 'idle');
     for (let cycle = 1; cycle <= 20; cycle++) {
-      await overlay.getByRole('button', { name: '숨기기' }).click();
+      await overlay.getByRole('button', { name: '마스코트 닫기' }).click();
       await until(async () => !await visible(), { what: '아바타 숨김' });
       await app.evaluate(() => globalThis.__soakShow());
       await until(visible, { what: '아바타 표시' });
@@ -268,7 +313,7 @@ const scenarios = {
       window.cheongeumOverlay.onVisibility((request) => window.__visibilityRequests.push(request));
     });
     const acknowledged = (id) => app.evaluate((_, n) => globalThis.__avatarVisibilityTest.acknowledgements.includes(n), id);
-    await overlay.getByRole('button', { name: '숨기기' }).click();
+    await overlay.getByRole('button', { name: '마스코트 닫기' }).click();
     await until(async () => !(await native()).visible, { what: 'native hide after exit' });
     const firstExit = await overlay.evaluate(() => window.__visibilityRequests.at(-1));
     assert.equal(firstExit.visible, false);
@@ -371,7 +416,7 @@ const scenarios = {
     await until(async () => (await overlayState(overlay)).mode !== 'offline', { what: '아바타의 다시 연결' });
     assert.deepEqual(await logLines(controller), lines, '다시 연결한 뒤 대화 기록을 반복하지 않는다');
     assert.equal(voice.transcriptions, 1, '다시 연결해도 마이크를 열지 않는다');
-    await overlay.getByRole('button', { name: '숨기기' }).click();
+    await overlay.getByRole('button', { name: '마스코트 닫기' }).click();
     await until(async () => !(await windows(app)).find(isOverlay).visible, { what: 'hide removes the avatar' });
     assert.equal((await windows(app)).find(isController).visible, false, 'hide leaves the session in place');
     assert.deepEqual(errors, []);
@@ -654,6 +699,7 @@ const scenarios = {
 };
 
 const OPTIONS = {
+  'closed-at-start': { avatarPrefs: { hidden: true } },
   'saved-position': { avatarPrefs: { still: true, position: { x: .33, y: .27 } } },
   soak: { mic: { burstAt: null } },
   approvals: { mic: { burstAt: null } },
@@ -667,6 +713,7 @@ async function main() {
   const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(scenarios);
   let failed = 0;
   for (const name of names) {
+    if (name === 'screen-reader-close' && process.platform !== 'win32') { console.log('SKIP Windows UI Automation'); continue; }
     const t = await launch(OPTIONS[name]);
     const started = Date.now();
     try {

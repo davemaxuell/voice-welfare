@@ -1,12 +1,13 @@
 """웹 UI(바닐라 JS) E2E: 실제 서버(API + 정적 UI)를 띄우고 Chromium으로 화면을 조작한다."""
 import asyncio
+import json
 import socket
 from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
 import uvicorn
-from conftest import create_test_runtime
+from conftest import ROOT, create_test_runtime
 from playwright.async_api import expect
 
 from cheongeum.agents.web.browser import launch_browser
@@ -392,7 +393,7 @@ async def test_private_speech_mutes_existing_and_new_uploading_microphones(ui_ur
     await page.locator("h1").click()
     state = await page.evaluate("""async () => {
       const { VoiceLoop, startRecording } = await import('/mic.js');
-      const { speakOnDevice } = await import('/speaker.js');
+      const { withPrivateReadback } = await import('/speaker.js');
       const { LiveConversation } = await import('/voice-edge.js');
       const { audioContext } = await import('/audio.js');
       const tracks = [];
@@ -401,14 +402,11 @@ async def test_private_speech_mutes_existing_and_new_uploading_microphones(ui_ur
         tracks.push(stream.getAudioTracks()[0]);
         return stream;
       };
-      window.SpeechSynthesisUtterance = class {};
-      speechSynthesis.getVoices = () => [{name: 'Device', lang: 'ko-KR', localService: true}];
       let complete;
-      speechSynthesis.speak = utterance => { complete = () => utterance.onend(); };
       const loop = new VoiceLoop();
       await loop.start();
       const stopWatch = loop.watchBargeIn(() => {});
-      const playback = speakOnDevice('비공개 테스트', 'ko');
+      const playback = withPrivateReadback(() => new Promise(resolve => { complete = resolve; }));
       const pendingRecord = await startRecording(() => ({ append() {}, cancel() {} }), undefined, () => {});
       const live = new LiveConversation('test', {});
       const muted = tracks.every(track => !track.enabled) && live.localSpeech === true;
@@ -487,33 +485,67 @@ async def consented(page, ui_url):
     await expect(page.locator("#consent-panel")).to_be_hidden()
 
 
-@pytest.mark.parametrize("local_voice", [True, False], ids=["on-device-voice", "only-online-voices"])
-async def test_private_prompt_never_uses_remote_speech(ui_url, page, local_voice):
+async def test_private_prompt_never_uses_remote_or_device_speech(ui_url, page):
     await record_cues(page)
+    await page.route("**/api/audio/speak", lambda route: route.fulfill(path=ROOT / "web/public/cues/done.ogg", content_type="audio/ogg"))
     await page.add_init_script("""
       window.privateSpeech = [];
       window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
       const voices = [{name: 'Online', lang: 'ko-KR', localService: false}];
-      if (LOCAL_VOICE) voices.push({name: 'Device', lang: 'ko-KR', localService: true});
+      voices.push({name: 'Device', lang: 'ko-KR', localService: true});
       window.speechSynthesis.getVoices = () => voices;
       window.speechSynthesis.speak = u => {
         window.privateSpeech.push([u.text, u.voice?.name]);
         queueMicrotask(() => u.onend?.());
       };
-    """.replace("LOCAL_VOICE", str(local_voice).lower()))
+    """)
     remote = []
     page.on("request", lambda req: remote.append(req.post_data_json["text"]) if req.url.endswith("/api/audio/speak") else None)
     await consented(page, ui_url)
     box = page.locator("#command")
     await box.fill("내 이름은 별구름이라고 저장해줘")
-    await box.press("Enter")
+    async with page.expect_request(lambda req: req.url.endswith("/api/audio/speak") and "화면 낭독기" in req.post_data_json["text"],
+                                   timeout=5000):
+        await box.press("Enter")
     await expect(page.locator("#log")).to_contain_text("이름 별구름")
-    if local_voice:
-        await page.wait_for_function("window.privateSpeech.some(([s, voice]) => s.includes('별구름') && voice === 'Device')", timeout=3000)
-    else:
-        await expect(page.locator("#error")).to_contain_text("기기", timeout=3000)
-        assert await page.evaluate("window.privateSpeech") == []
+    await expect(page.locator("#log")).to_have_attribute("tabindex", "0")
+    assert any("화면 낭독기" in text for text in remote)
+    assert await page.evaluate("window.privateSpeech") == []
     assert all("별구름" not in text for text in remote)
+
+
+async def test_provider_speech_recovers_the_interrupted_chunk_and_announces_once(ui_url, page):
+    await page.goto(ui_url)
+    await page.locator("h1").click()
+    calls = await page.evaluate("""async () => {
+      const { serverTts } = await import('/speaker.js');
+      const { audioContext } = await import('/audio.js');
+      await audioContext().resume();
+      const cue = await (await fetch('/cues/done.ogg')).blob();
+      const calls = [];
+      let interrupted = false;
+      const synthesize = async text => {
+        calls.push(text);
+        if (text === '두 번째.' && !interrupted) {
+          interrupted = true;
+          throw Object.assign(new Error(), {status: 503});
+        }
+        return cue;
+      };
+      await serverTts.speak('첫 번째. 두 번째.', synthesize);
+      await serverTts.speak('다음 안내.', synthesize);
+      return calls;
+    }""")
+    assert calls == ["첫 번째.", "두 번째.", "두 번째.", "음성 연결이 잠시 끊겼다가 다시 연결됐어요.", "다음 안내."]
+
+
+async def test_static_ui_serves_the_shared_voice_profile_and_all_coral_setup_recordings(ui_url, page):
+    profile = await page.request.get(ui_url + "voice-profile.json")
+    assert await profile.json() == json.loads((ROOT / "src/core/voice_profile.json").read_text(encoding="utf-8"))
+    directory = ROOT / "web/public/setup-audio"
+    for path in (path for path in directory.rglob("*") if path.is_file()):
+        response = await page.request.get(ui_url + "setup-audio/" + path.relative_to(directory).as_posix())
+        assert response.ok and await response.body() == path.read_bytes(), path.name
 
 
 async def fill_to_approval(page):

@@ -1,7 +1,7 @@
 import { KNOWN_SITES, type KnownSite as ListedSite } from "../core/sites.ts";
 import type { Intent } from "../core/intents.ts";
 import { splitWhitespace, strip } from "../core/text.ts";
-import { tryUrl } from "../core/url.ts";
+import { addressSite, spokenAddressPatterns, tryUrl } from "../core/url.ts";
 
 /**
  * 사이트 이름 → 주소. 목록에 없는 이름은 추측하지 않고 사용자에게 주소를 묻는다.
@@ -13,11 +13,10 @@ export type KnownSite = Omit<ListedSite, "services"> & { services?: readonly str
 export type SiteAddress = Pick<KnownSite, "url" | "label">;
 
 export const sitesPatterns = {
+  ...spokenAddressPatterns,
   siteNoun: /(홈페이지|누리집|웹\p{White_Space}*사이트|사이트|페이지)/gu,
   openCommand: /(을|를|에|로|으로|좀)?\p{White_Space}*(열어|접속|들어가|이동해|가|켜|띄워)\P{White_Space}*\p{White_Space}*(줘|주세요|봐)?/gu,
   spaces: /\p{White_Space}+/gu,
-  domain: /(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİ0-9-]+\.)+[a-zİ]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?)/iu,
-  domainWhole: /^(?:(?:(?<![A-Za-z0-9_İı])(?=[A-Za-z0-9_İı])|(?<=[A-Za-z0-9_İı])(?![A-Za-z0-9_İı]))((?:https?:\/\/)?(?:(?:[a-zİ0-9-]+\.)+[a-zİ]{2,}|localhost|\p{Nd}{1,3}(?:\.\p{Nd}{1,3}){3})(?::\p{Nd}+)?(?:\/[^\p{White_Space}]*)?))$/iu,
   space: /\p{White_Space}/gu,
   otherThanHangul: /[^가-힣]/gu,
   particle: /(으로|에서|을|를|로|에|좀|이|가)(?=\n?$)/gu,
@@ -25,9 +24,6 @@ export const sitesPatterns = {
   www: /^www\./gu,
   dotCom: /\p{White_Space}*(닷|점)\p{White_Space}*(컴|com)/gu,
   dotKr: /\p{White_Space}*(닷|점)\p{White_Space}*(케이알|kr)/gu,
-  linkEnding: /[.,)]+(?=\n?$)/gu,
-  localAddress: /^(localhost|\p{Nd}{1,3}(\.\p{Nd}{1,3}){3})(:|\/|(?=\n?$))/iu,
-  protocol: /^https?:\/\//iu,
   scholarshipType2: /(?:2|Ⅱ|ⅱ|ii)유형/u,
   scholarshipType1: /(?:1|Ⅰ|ⅰ|i)유형/u,
   civilPortal: /^민원(?:사이트|홈페이지|누리집)?(?:에서|으로|로|에|을|좀|열|접속|들어|가|$)/u,
@@ -35,11 +31,8 @@ export const sitesPatterns = {
   guessDestination: /(에서|으로|로|에|가서)$/u,
   guessOpen: /^(열어|들어가|접속|가\p{White_Space}*줘|켜)/u,
   guessParticle: /(으로|에서|가서|을|를|로|에|좀|이|가)$/u,
-  goalMarker: /에서|들어가서|가서|열어서|열고|접속해서/gu,
   goalParticle: /(?:으로|로|에|을|를)$/u,
   goalSiteNoun: /\p{White_Space}*(?:사이트|홈페이지|누리집)$/u,
-  // 전체 주소를 말했으면 그 화면을 연다(주소 속 'bokjiro'로 사이트 첫 화면을 열지 않는다)
-  explicitUrl: /https?:\/\/[A-Za-z0-9İı\-._~:/?#[\]@!$&'()*+,;=%]+/iu,
 };
 
 const destinationCommand = /^(.+?)\s*(?:좀\s*)?(?:열어|접속(?:해|해봐)?|들어가|이동해|가|띄워|켜)(?:\s*(?:줘요?|주세요|주어|줄래요?|주실래요?|봐요?))?[.!?。]*$/u;
@@ -210,8 +203,8 @@ export function siteLabel(url: string, extra: readonly KnownSite[] = []): string
 }
 
 /** 한 사이트에서 찾아 달라는 요청을 [사이트 주소, 질문]으로 나눈다. */
-export function goalSiteRequest(goal: string, extra: readonly KnownSite[] = []): [string | undefined, string] {
-  const aliases = [...extra, ...KNOWN_SITES]
+export function goalSiteRequest(goal: string, extra: readonly KnownSite[] = [], {addressesOnly = false} = {}): [string | undefined, string] {
+  const aliases = addressesOnly ? [] : [...extra, ...KNOWN_SITES]
     .flatMap(site => site.names.map(alias => [normalizedName(alias), site.url] as const))
     .sort((a, b) => codePoints(b[0]) - codePoints(a[0]));
   const destinations: Array<[string, string]> = [];
@@ -225,7 +218,7 @@ export function goalSiteRequest(goal: string, extra: readonly KnownSite[] = []):
     let url: string | undefined;
     if (sitesPatterns.domainWhole.test(token)) {
       url = addressSite(token)?.url;
-    } else {
+    } else if (!addressesOnly) {
       const full = normalizedName(prefix), short = normalizedName(bare);
       url = aliases.find(([alias]) => full.endsWith(alias) || short.endsWith(alias))?.[1];
       url ??= nearSite(token, extra)?.url;
@@ -234,7 +227,7 @@ export function goalSiteRequest(goal: string, extra: readonly KnownSite[] = []):
   }
   const [only] = destinations;
   if (only !== undefined) return destinations.length === 1 ? only : [undefined, goal];
-  return [publicServiceSite(goal)?.url, goal];
+  return [addressesOnly ? undefined : publicServiceSite(goal)?.url, goal];
 }
 
 /** 이름이나 주소를 실제 URL로. 연습용 모의 사이트는 extra로 넘긴다. */
@@ -271,13 +264,4 @@ export function resolveSite(target: string, extra: readonly KnownSite[] = []): S
   const spoken = target.replace(sitesPatterns.dotCom, ".com").replace(sitesPatterns.dotKr, ".kr");
   const match = sitesPatterns.domain.exec(spoken)?.[1];
   return match === undefined ? undefined : addressSite(match);
-}
-
-function addressSite(address: string): SiteAddress | undefined {
-  const raw = address.replace(sitesPatterns.linkEnding, "");
-  // 로컬 주소(localhost, IP)는 http, 그 외 도메인은 https로 연다.
-  const scheme = sitesPatterns.localAddress.test(raw) ? "http" : "https";
-  const url = sitesPatterns.protocol.test(raw) ? raw : `${scheme}://${raw}`;
-  const parsed = tryUrl(url);
-  return parsed === undefined ? undefined : { url, label: parsed.host };
 }
