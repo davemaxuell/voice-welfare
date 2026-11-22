@@ -4,11 +4,14 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { Browser, BrowserContext } from "playwright";
+import type { Browser, BrowserContext, Locator } from "playwright";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
-import { type Action } from "../../src/core/actions.ts";
+import { ACTION_TYPES, type Action } from "../../src/core/actions.ts";
+import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
+import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { DownloadStore } from "../../src/agents/web/downloads.ts";
 import { PlaywrightExecutionAdapter, launchBrowser, launchChromeProfile, stopPlaywright } from "../../src/agents/web/browser/index.ts";
+import { PolicyGuard } from "../../src/safety/guard.ts";
 
 let browser: Browser;
 const adapters: PlaywrightExecutionAdapter[] = [];
@@ -191,11 +194,13 @@ it("test_changed_element_is_not_clicked", async () => {
 
 it("멈춘 뒤에는 기다리던 클릭이 실행되지 않고 후속 페이지 호출도 없다", async () => {
   const { page, adapter } = await start();
-  await page.setContent('<button data-testid="go" disabled onclick="document.title=String(321)">신청</button>');
-  const target = page.getByTestId("go");
-  vi.spyOn(page, "getByTestId").mockReturnValue(target);
-  vi.spyOn(target, "filter").mockReturnValue(target);
-  const originalClick = target.click.bind(target);
+  await page.setContent('<button data-testid="go" onclick="document.title=String(321)">신청</button><div id="cover" style="position:fixed;inset:0"></div>');
+  // 두 구동기가 모두 쓰는 실제 포인터 입력이 가려진 단추를 기다릴 때 멈춘다.
+  const button = page.locator("button");
+  const node = await button.elementHandle();
+  const locator = Object.getPrototypeOf(process.env.BROWSER_DRIVER === "stagehand" ? node : button) as Locator;
+  await node.dispose();
+  const originalClick = locator.click;
   const signal = new AbortController();
   const callsAfterStop: PropertyKey[] = [];
   adapter.page = new Proxy(page, {
@@ -210,8 +215,8 @@ it("멈춘 뒤에는 기다리던 클릭이 실행되지 않고 후속 페이지
   });
   let entered!: () => void;
   const clicking = new Promise<void>(done => { entered = done; });
-  const call = vi.spyOn(target, "click").mockImplementation(opts => {
-    const pending = originalClick(opts); entered(); return pending;
+  const call = vi.spyOn(locator, "click").mockImplementation(function (this: Locator, opts) {
+    const pending = originalClick.call(this, opts); entered(); return pending;
   });
   const evaluations = vi.spyOn(page, "evaluate");
   const running = adapter.execute(action("click", { target: { testId: "go" } }), signal.signal);
@@ -219,7 +224,7 @@ it("멈춘 뒤에는 기다리던 클릭이 실행되지 않고 후속 페이지
   await delay(80);
   signal.abort("멈춰");
   expect((await running).errorCode).toBe("ABORTED");
-  await target.evaluate(el => el.removeAttribute("disabled"));
+  await page.locator("#cover").evaluate(el => el.remove());
   await delay(250);
   expect(await page.title()).not.toBe("321");
   expect(call).toHaveBeenCalledTimes(1);
@@ -353,6 +358,54 @@ it("reads a verified same-site search form as a GET without filling or submittin
   expect(await run()).toMatchObject({ ok: true, verified: true });
   expect(new URL(page.url()).searchParams.get("q")).toBe("배송 안내");
   expect(await page.evaluate(() => sessionStorage.getItem("submit-fired"))).toBeNull();
+  expect(site.posts()).toBe(0);
+});
+
+it("Stagehand 개인 조회 검색은 같은 칸과 양식을 다시 확인하고 GET으로만 이동한다", async () => {
+  const site = await formSite(), home = site.url + "/inspection";
+  const stagehand = await launchBrowser(true, 0, "stagehand");
+  cleanup.push(() => stagehand.close());
+  const { adapter, page } = await start({ browser: stagehand, driver: "stagehand", allowedOrigins: [], readOnlyWeb: true });
+  await page.goto(home);
+  const form = `<form method="get" action="/search" onsubmit="sessionStorage.setItem('사용', '제출')">
+    <label for="q">검색어</label><input id="q" name="q" type="search" oninput="sessionStorage.setItem('사용', '입력')"
+    onkeydown="sessionStorage.setItem('사용', '키')"><button>찾기</button></form>`;
+  await page.setContent(form);
+  const guard = new PolicyGuard({ allowedOrigins: [], allowedActionTypes: ACTION_TYPES, allowedFieldIds: [], secretFieldIds: [],
+    maxActionsPerTurn: 12, readOnlyWeb: true });
+  const web = new WebExecutionAgent(adapter, guard, createMockWelfareProfile("http://localhost:5174"));
+  const ctx = new ExecContext({ browsingScope: "personal-inspection", isStopped: () => false, signal: new AbortController().signal, trace() {} });
+  const search = () => web.withInspection(ctx, () => web.search("배송 안내", ctx));
+  const requests: string[] = [];
+  page.on("request", req => { if (req.isNavigationRequest()) requests.push(req.method() + " " + req.url()); });
+  const perform = adapter.execute.bind(adapter), execute = vi.spyOn(adapter, "execute");
+  await web.observe(ctx);
+  const proof = { kind: "search", fieldId: "q", ...(await adapter.inspectionSearch("q"))! } as const;
+  const extra = action("press", { target: { fieldId: "q", role: "searchbox", nth: 0 }, url: proof.destination, value: "배송 안내" });
+  expect(await web.run(extra, ctx, [], undefined, proof)).toBeUndefined();
+  expect(execute).not.toHaveBeenCalled();
+
+  for (const change of [
+    () => page.locator("label").evaluate(el => { el.textContent = "다른 칸"; }),
+    () => page.locator("input").evaluate(el => el.replaceWith(el.cloneNode(true))),
+    () => page.locator("form").evaluate(el => el.setAttribute("action", "/other")),
+  ]) {
+    execute.mockImplementationOnce(async (...args) => { await change(); return perform(...args); });
+    const result = await search();
+    expect(result.actions[0]).toMatchObject({ policy: { code: "ALLOWED_INSPECTION" }, result: { ok: false, errorCode: "VERIFY_FAILED" } });
+    expect(page.url()).toBe(home);
+    await page.setContent(form);
+  }
+  const result = await search();
+  expect(result.status).toBe("ok");
+  const [checked, , binding] = execute.mock.lastCall!;
+  expect(binding?.kind).toBe("search");
+  expect(checked.target).toEqual({ fieldId: "q", role: "searchbox", ref: expect.any(String), name: "검색어", label: "검색어" });
+  expect(binding).toMatchObject({ field: { ref: checked.target?.ref, name: "검색어" } });
+  const destination = new URL("/search", site.url);
+  destination.searchParams.set("q", "배송 안내");
+  expect(requests).toEqual(["GET " + destination.href]);
+  expect(await page.evaluate(() => sessionStorage.getItem("사용"))).toBeNull();
   expect(site.posts()).toBe(0);
 });
 

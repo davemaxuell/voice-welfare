@@ -1,25 +1,38 @@
 import { randomUUID } from "node:crypto";
-import type { Page } from "playwright";
+import { setTimeout as delay } from "node:timers/promises";
+import type { ElementHandle, Page } from "playwright";
 import type { ActionTarget, ExecuteGrants } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
+import { stampDocument, type DocumentStamp } from "./document_stamp.ts";
 import type { InspectionBinding } from "../../../safety/guard.ts";
-import { AdapterError, call, cssEscape, observeWith, playwrightElement, playwrightTarget, type PageDriver } from "./driver.ts";
-import { observePage } from "./observe.ts";
-import { observedSelectors, stagehandTab } from "./stagehand_browser.ts";
-import { framesOf } from "./frame_controls.ts";
-import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
-import type { SemanticObservation } from "./semantic_observation.ts";
+import { AdapterError, call, cssEscape, observeWith, playwrightElement, type PageDriver } from "./driver.ts";
+import { observePage, type ControlQuery } from "./observe.ts";
+import { stagehandTab } from "./stagehand_browser.ts";
+import { optionBindings, type ObservedOptions } from "./option_binding.ts";
 
 export interface ClickEvidence { grants?: ExecuteGrants; inspection?: InspectionBinding }
 
+// 이 함수와 이를 부르는 입력·클릭 검사는 선택된 탭의 문서 안에서 실행한다.
+function boundItem(observe: typeof observePage, query: ControlQuery, expected: ActionTarget, stamp: DocumentStamp, extra?: ControlQuery) {
+  const current = document.__cheongeumDocument;
+  if (current?.id !== stamp.id || current.revision !== stamp.revision || location.href !== stamp.url) return;
+  const fresh = observe({ ...query, ...extra });
+  if (!("items" in fresh) || (fresh.more === true && query.target?.nth === undefined)) return;
+  const item = fresh.items?.[0];
+  if (item !== undefined && item.ref === expected.ref && item.role === expected.role && item.name === expected.name && !item.disabled) return item;
+}
+type ReadBound = (extra?: ControlQuery) => ReturnType<typeof boundItem>;
+
 // Stagehand의 fill은 초점을 준 뒤 현재 초점에 키 입력을 보낸다. 입력 값은 이 요소의 한 번짜리
 // 함수에만 두고, Stagehand에는 이를 부를 표지만 건넨다. 멈춤·교체·초점 이동 시에는 값에 손대지 않는다.
-function armFill(el: Element, { value, token }: { value: string; token: string }) {
+function armFill(el: Element, { value, token, ref, read, safeSelector }: { value: string; token: string; ref: string; read: ReadBound; safeSelector: string }) {
   let applied = false;
+  const writable = () => el.isConnected && el.matches(safeSelector) && !el.matches(':disabled, [readonly], [aria-disabled="true"], [inert]');
   function write() {
-    if (!(el instanceof HTMLElement) || !el.isConnected || el.matches(':disabled, [readonly], [aria-disabled="true"], [inert], input[type="password" i], [autocomplete="one-time-code" i]')) return;
+    if (!(el instanceof HTMLElement) || !writable()) return;
+    if (!read() || window.__cheongeumElementRefs?.get(el)?.ref !== ref) return;
     el.focus();
-    if (document.activeElement !== el || !el.isConnected || el.matches(':disabled, [readonly], input[type="password" i], [autocomplete="one-time-code" i]')) return;
+    if (document.activeElement !== el || !writable() || !read()) return;
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
       if (el instanceof HTMLInputElement && !["", "text", "search", "url", "tel", "email", "number", "date", "time", "datetime-local", "month", "week", "range", "color"].includes(el.type)) return;
       const prototype = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
@@ -38,18 +51,36 @@ function armFill(el: Element, { value, token }: { value: string; token: string }
   return () => { el.removeEventListener(token, write); return applied; };
 }
 
+// SDK가 이미 찾은 요소에도 뒤늦게 선택을 보낼 수 있다. 같은 칸의 같은 옵션에만 한 번 선택을 허용한다.
+function armSelect({read, selector, token, label, choices, approved}: {
+  read: ReadBound; selector: string; token: string; label: string; choices: ObservedOptions; approved: string;
+}) {
+  const el = document.querySelector(selector);
+  if (!(el instanceof HTMLSelectElement)) return;
+  let applied = false;
+  const select = () => {
+    const item = read();
+    const option = choices.selected(el, label, approved);
+    if (!item || !option || !el.matches(selector) || window.__cheongeumElementRefs?.get(el)?.ref !== item.ref) return;
+    el.selectedIndex = option.index;
+    applied = true;
+    el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  el.addEventListener(token, select, { once: true });
+  return () => { el.removeEventListener(token, select); return applied; };
+}
+
 // 마지막 실제 포인터 입력은 중단 신호와 적중 검사를 지원하는 Playwright에 맡긴다.
 // 누르는 도중 사이트가 같은 요소를 바꾸는 경우에는 해당 문서의 이벤트 시점에도 청음의 관찰 규칙으로 확인한다.
-function installClickCheck(observe: typeof observePage, expected: ActionTarget, evidence: ClickEvidence) {
-  const { ref, role, name } = expected;
+function installInputCheck(read: ReadBound, ref: string, evidence: ClickEvidence, keyboard: boolean) {
+  if (!read()) return undefined;
   const { grants, inspection } = evidence;
   let rejected = false;
   const matches = (event: Event) => {
-    const fresh = observe({ ref, limit: 1, inspection: inspection?.kind === "control" || grants?.plan !== undefined,
-      notice: grants?.notice !== undefined });
-    const item = "items" in fresh ? fresh.items?.[0] : undefined;
-    let valid = item !== undefined && item.ref === ref && item.role === role && item.name === name && !item.disabled &&
-      event.composedPath().some(node => node instanceof Element && node.getAttribute("data-cheongeum-ref") === ref);
+    const item = read({ inspection: inspection?.kind === "control" || grants?.plan !== undefined, notice: grants?.notice !== undefined });
+    let valid = item !== undefined && event.composedPath().some(node => (node instanceof HTMLElement || node instanceof SVGElement) &&
+      window.__cheongeumElementRefs?.get(node)?.ref === ref && node.dataset.cheongeumRef === ref);
     if (inspection?.kind === "control") valid &&= location.href === inspection.url && item?.inspection?.signature === inspection.control.signature;
     if (grants?.native !== undefined) valid &&= location.href === grants.native.url;
     if (grants?.plan !== undefined) valid &&= location.href === grants.plan.url &&
@@ -71,7 +102,7 @@ function installClickCheck(observe: typeof observePage, expected: ActionTarget, 
       event.stopImmediatePropagation();
     }
   };
-  const events = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+  const events = keyboard ? ["keydown", "keypress", "keyup"] : ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
   for (const name of events) window.addEventListener(name, check, true);
   return () => {
     for (const name of events) window.removeEventListener(name, check, true);
@@ -81,32 +112,53 @@ function installClickCheck(observe: typeof observePage, expected: ActionTarget, 
 
 export function stagehandDriver(page: Page, timeout: number): PageDriver {
   const selected = () => stagehandTab(page);
+  const bindOption = optionBindings(page);
   const run = async <T>(script: string) => (await selected()).tab.evaluate<T>(script);
-  const observation = observeWith(run, page);
+  const observations = observeWith(run);
+  const documents = new WeakMap<ActionTarget, DocumentStamp>();
+  async function bind(target: ActionTarget, signal: AbortSignal) {
+    const tab = (await call(signal, selected)).tab;
+    const stamp = documents.get(target) ?? await call(signal, () => tab.evaluate(stampDocument, randomUUID()));
+    if (target.ref === undefined && target.fieldId === undefined && target.label === undefined && target.testId === undefined &&
+      (target.role === undefined || target.name === undefined)) throw new AdapterError("TARGET_NOT_FOUND");
+    const query: ControlQuery = target.ref !== undefined && target.fieldId === undefined ? { ref: target.ref, limit: 1 }
+      : { target, offset: target.ref === undefined ? target.nth : 0, limit: 1 };
+    const lookup = () => call(signal, () => observations.controlWindow(query));
+    let fresh = await lookup();
+    // 이름·칸으로 찾는 첫 조회만 늦게 그리는 화면을 기다린다. 한 번 묶은 ref는 다시 골라 주지 않는다.
+    const deadline = Date.now() + Math.min(timeout, 2000);
+    while (target.ref === undefined && target.nth === undefined && fresh.items.length === 0 && !fresh.more && Date.now() < deadline) {
+      await delay(80, undefined, { signal });
+      fresh = await lookup();
+    }
+    if (fresh.more && target.nth === undefined) throw new AdapterError("AMBIGUOUS_TARGET");
+    const item = fresh.items[0];
+    if (!item) throw new AdapterError(target.ref === undefined ? "TARGET_NOT_FOUND" : "VERIFY_FAILED");
+    if (target.ref !== undefined && (target.ref !== item.ref || target.role !== item.role || target.name !== item.name))
+      throw new AdapterError("VERIFY_FAILED");
+    const expected: ActionTarget = { ref: item.ref, role: item.role, name: item.name };
+    if (item.fieldId !== undefined) {
+      expected.fieldId = item.fieldId;
+      expected.label = item.name;
+    }
+    if (fresh.url !== stamp.url || page.url() !== stamp.url) throw new AdapterError("VERIFY_FAILED");
+    documents.set(expected, stamp);
+    return { query, expected, ref: item.ref, stamp };
+  }
   return {
-    ...observation,
-    async findByMeaning(term, linksOnly, url, picker, signal) {
-      try {
-        const before = await call(signal, () => observation.controlWindow({limit:600, semanticOnly:true}));
-        if (before.url !== url || page.url() !== url) return undefined;
-        const semantic: SemanticObservation = {term, picker, controls:before.items.filter(i => !linksOnly || i.role === "link")};
-        const paths = await observedSelectors(page, term, picker.model, signal, semantic);
-        const original = semantic.selected;
-        if (original === undefined || paths.length !== 1 || page.url() !== url ||
-            await framesOf(page).path(original.ref) !== paths[0]) return undefined;
-        const fresh = await call(signal, () => observation.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true}));
-        const [item] = fresh.items;
-        return fresh.url === url && !fresh.more && fresh.items.length === 1 && item?.ref === original.ref && item.role === original.role &&
-          item.name === original.name && item.context === original.context && !item.disabled && item.pictureMasked !== true ? item : undefined;
-      } catch { signal.throwIfAborted(); return undefined; }
+    ...observations,
+    async bindTarget(target, signal, optionLabel) {
+      const {expected} = await bind(target, signal);
+      if (optionLabel !== undefined) await bindOption(target, expected, optionLabel, signal);
+      return expected;
     },
     scroll: signal => call(signal, async () => {
       const { tab } = await selected();
       signal.throwIfAborted();
       await tab.scroll(0, 0, 0, 600);
     }),
-    // SDK에는 접근성 이름의 정확 일치 검색이 없다. 기존 이름의 판정만 호스트에서 가져온다.
-    hasVisibleLink: (name, signal) => call(signal, async () => (await page.getByRole("link", { name, exact: true }).filter({ visible: true }).count()) > 0),
+    hasVisibleLink: (name, signal) => call(signal, async () =>
+      (await observations.controlWindow({ target: { role: "link", name }, limit: 1 })).items.length > 0),
     async hiddenLinkUrls(name, signal) {
       const { tab } = await call(signal, selected);
       return call(signal, () => tab.evaluate(wanted => {
@@ -118,60 +170,72 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
     },
     async resolve(target, signal) {
       const { tab } = await call(signal, selected);
-      if (target.ref !== undefined && isEmbeddedRef(target.ref)) {
-        const host = playwrightElement(await playwrightTarget(page, target, signal), signal, timeout);
-        const path = await framesOf(page).path(target.ref);
-        if (path === undefined || await call(signal, () => tab.locator(path).count({timeout})) !== 1) throw new AdapterError("VERIFY_FAILED");
-        return embeddedElement(page, target, signal, timeout, host);
-      }
-      const hostLocator = target.ref === undefined ? await playwrightTarget(page, target, signal)
-        : page.locator('[data-cheongeum-ref="' + cssEscape(target.ref) + '"]').filter({ visible: true });
+      const { query, expected, ref, stamp } = await bind(target, signal);
+      const readBound = "(" + boundItem.toString() + ").bind(null," + observePage.toString() + "," + JSON.stringify(query) + "," + JSON.stringify(expected) + "," + JSON.stringify(stamp) + ")";
+      const selector = '[data-cheongeum-ref="' + cssEscape(ref) + '"]';
+      const hostLocator = page.locator(selector).filter({ visible: true });
       const host = playwrightElement(hostLocator, signal, timeout);
-      // 입력 칸·기존 label/nth 대상에도 한 번 찾은 DOM 요소만 가리키는 표지를 붙인다.
-      const selector = target.ref !== undefined ? '[data-cheongeum-ref="' + cssEscape(target.ref) + '"]'
-        : await call(signal, () => hostLocator.evaluate((el, id) => {
-          const existing = el.getAttribute("data-cheongeum-ref");
-          if (existing !== null && existing !== "") return '[data-cheongeum-ref="' + CSS.escape(existing) + '"]';
-          el.setAttribute("data-cheongeum-element", id);
-          return '[data-cheongeum-element="' + id + '"]';
-        }, randomUUID()));
       const locator = tab.locator(selector);
       const opts = { timeout };
       if (await call(signal, () => locator.count(opts)) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
-      const safeSelector = selector + ':not(input[type="password" i], [autocomplete="one-time-code" i])';
+      const safeSelector = selector + ':not(input[type="password" i], [autocomplete~="one-time-code" i], [autocomplete~="current-password" i], [autocomplete~="new-password" i])';
       const fieldType = () => call(signal, () => tab.evaluate(sel => document.querySelector(sel)?.getAttribute("type")?.toLowerCase() ?? null, selector));
       const inputValue = () => call(signal, () => tab.locator(safeSelector).inputValue(opts));
       const selectedLabel = () => call(signal, async () => strip(await tab.locator(selector + " option:checked").textContent(opts)));
       const isChecked = () => call(signal, () => locator.isChecked(opts));
+      async function trusted(work: (node: ElementHandle<HTMLElement | SVGElement>) => Promise<void>, evidence: ClickEvidence = {}, keyboard = false) {
+        signal.throwIfAborted();
+        const script = "(" + installInputCheck.toString() + ")(" + readBound + "," + JSON.stringify(ref) + "," +
+          JSON.stringify(evidence) + "," + String(keyboard) + ")";
+        // 기다리다 문서가 바뀌어도 같은 셀렉터로 새 문서의 요소를 다시 잡지 않는다.
+        const node = await call(signal, () => hostLocator.elementHandle({ timeout, signal }));
+        try {
+          const check = await page.evaluateHandle<ReturnType<typeof installInputCheck>>(script);
+          try {
+            if (!await call(signal, () => check.evaluate(armed => typeof armed === "function"))) throw new AdapterError("VERIFY_FAILED");
+            await call(signal, () => work(node));
+          } finally {
+            const rejected = await check.evaluate(cleanup => cleanup?.() ?? true).catch(() => false);
+            await check.dispose().catch(() => {});
+            if (rejected) throw new AdapterError("VERIFY_FAILED");
+          }
+        } finally { await node.dispose().catch(() => {}); }
+      }
+      async function apply(operation: "scroll" | "focus" | "disclosure") {
+        const mutate = (read: ReadBound, sel: string, mode: typeof operation) => {
+          const el = document.querySelector(sel);
+          const item = read();
+          if (!(el instanceof HTMLElement || el instanceof SVGElement) || item === undefined ||
+            window.__cheongeumElementRefs?.get(el)?.ref !== item.ref) return false;
+          if (mode === "scroll") el.scrollIntoView({ block: "nearest", inline: "nearest" });
+          else if (mode === "focus") el.focus();
+          else {
+            const details = el.parentElement;
+            if (!(details instanceof HTMLDetailsElement) || details.querySelector(":scope > summary") !== el) return false;
+            details.open = !details.open;
+          }
+          return true;
+        };
+        const script = "(" + mutate.toString() + ")(" + readBound + "," + JSON.stringify(selector) + "," + JSON.stringify(operation) + ")";
+        if (!await call(signal, () => tab.evaluate<boolean>(script))) throw new AdapterError("VERIFY_FAILED");
+      }
       return {
         ...host, fieldType, inputValue, selectedLabel, isChecked,
-        async click(evidence = {}) {
-          signal.throwIfAborted();
-          if (target.ref === undefined) return host.click();
-          const script = "(" + installClickCheck.toString() + ")(" + observePage.toString() + "," + JSON.stringify(target) + "," + JSON.stringify(evidence) + ")";
-          const check = await page.evaluateHandle<() => boolean>(script);
-          let rejected = false;
-          try { await host.click(); }
-          finally {
-            rejected = await check.evaluate(cleanup => cleanup()).catch(() => false);
-            await check.dispose().catch(() => {});
-          }
-          if (rejected) throw new AdapterError("VERIFY_FAILED");
+        click: evidence => trusted(node => node.click({ timeout, signal }), evidence),
+        check: checked => trusted(node => node.setChecked(checked, { timeout, signal })),
+        async press(key) {
+          if (await call(signal, () => tab.locator(safeSelector).count(opts)) !== 1) throw new AdapterError("NOT_SUPPORTED");
+          await trusted(node => node.press(key, { timeout, signal }), {}, true);
         },
-        async scroll() {
-          await call(signal, () => tab.evaluate(sel => document.querySelector(sel)?.scrollIntoView({ block: "nearest", inline: "nearest" }), selector));
-        },
-        async focus() {
-          await call(signal, () => tab.evaluate(sel => {
-            const el = document.querySelector(sel);
-            if (!(el instanceof HTMLElement || el instanceof SVGElement)) throw new Error("초점을 옮길 대상이 없어요.");
-            el.focus();
-          }, selector));
-        },
+        scroll: () => apply("scroll"),
+        focus: () => apply("focus"),
+        toggleDisclosure: () => apply("disclosure"),
         async fill(value) {
           if (await call(signal, () => tab.locator(safeSelector).count(opts)) !== 1) throw new AdapterError("NOT_SUPPORTED");
           const token = "cheongeum-" + randomUUID();
-          const handle = await hostLocator.evaluateHandle(armFill, { token, value }, { timeout, signal });
+          const read = await page.evaluateHandle<ReadBound>(readBound);
+          const handle = await hostLocator.evaluateHandle(armFill, { token, value, ref, read, safeSelector }, { timeout, signal })
+            .finally(() => read.dispose().catch(() => {}));
           const cancel = () => { void handle.evaluate(revoke => revoke()).catch(() => {}); };
           signal.addEventListener("abort", cancel, { once: true });
           let applied = false;
@@ -187,15 +251,26 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
           if (!applied) throw new AdapterError("VERIFY_FAILED");
         },
         async select(label) {
-          // SDK는 옵션의 label 또는 value가 같은 모든 항목을 고른다. 값 충돌·중복 이름만 정확한 label 선택에 맡긴다.
-          const unique = await call(signal, () => tab.evaluate(({ selector, label }) => {
-            const el = document.querySelector(selector);
-            if (!(el instanceof HTMLSelectElement) || el.disabled) return false;
-            const matches = [...Array.from(el.options)].filter(o => [o.label.trim(), o.value.trim()].includes(label.trim()));
-            return matches.length === 1 && matches[0]?.label === label && !matches[0].disabled;
-          }, { selector, label }));
-          if (!unique) return host.select(label);
-          await call(signal, () => locator.selectOption(label, opts));
+          signal.throwIfAborted();
+          const token = "cheongeum-" + randomUUID();
+          const option = await bindOption(target, expected, label, signal);
+          const read = await page.evaluateHandle<ReadBound>(readBound);
+          const handle = await page.evaluateHandle(armSelect, {read, selector:safeSelector, token, label, choices:option.reader, approved:option.token})
+            .finally(() => read.dispose().catch(() => {}));
+          const revoke = () => handle.evaluate(clear => clear?.() ?? false).catch(() => false);
+          const cancel = () => { void revoke(); };
+          signal.addEventListener("abort", cancel, { once: true });
+          let applied = false;
+          try {
+            await call(signal, () => tab.evaluate(({ selector, token }) => {
+              document.querySelector(selector)?.dispatchEvent(new Event(token));
+            }, { selector: safeSelector, token }));
+          } finally {
+            signal.removeEventListener("abort", cancel);
+            applied = await revoke();
+            await handle.dispose().catch(() => {});
+          }
+          if (!applied) throw new AdapterError("VERIFY_FAILED");
         },
         async read() {
           const type = await fieldType();

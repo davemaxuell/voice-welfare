@@ -14,7 +14,7 @@ import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
 import { boundPlanClick, revokePlanClick } from "../../../core/plan.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
-import { isInspectionUrl, isNotice, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
+import { isInspectionUrl, isNotice, matchesInspectionSearchTarget, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
 import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts";
@@ -25,9 +25,6 @@ import { fullPageLayout } from "./full_page.ts";
 import { AdapterError, call, optional, playwrightDriver, type ControlWindow, type PageDriver, type ResolvedElement } from "./driver.ts";
 import { attachStagehand, browserDriver, stagehandLaunchOptions, type BrowserDriver } from "./stagehand_browser.ts";
 import { stagehandDriver } from "./stagehand_driver.ts";
-import { framesOf } from "./frame_controls.ts";
-import { isEmbeddedRef } from "./embedded_element.ts";
-import type { ControlPicker } from "../control_picker.ts";
 import { restingCursor } from "./rest_cursor.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
@@ -310,6 +307,7 @@ export class PlaywrightExecutionAdapter {
   /** 마지막으로 끝난 조작들이 겪은 confirm() 창. takeNative로 한 번만 가져간다. */
   readonly #nativeSeen = new Map<string, NativeSeen>();
   readonly #drivers = new WeakMap<Page, PageDriver>();
+  readonly #targetDocuments = new WeakMap<ActionTarget, {page: Page; document: number | undefined}>();
   readonly #loads = new Map<Page, PageLoad>();
   #onPage?: (page: Page) => void;
   #lifecycle = Promise.resolve();
@@ -395,6 +393,14 @@ export class PlaywrightExecutionAdapter {
   }
 
   #attach(page: Page): void {
+    const previous = this.page;
+    if (previous !== undefined && previous !== page && this.#drivers.get(previous)?.bindTarget !== undefined) {
+      // 새 탭을 고른 뒤 이전 탭에서 기다리던 클릭이나 입력이 도착해도 실행할 수 없다.
+      void previous.evaluate(() => {
+        const stamp = document.__cheongeumDocument;
+        if (stamp !== undefined) stamp.revision++;
+      }).catch(() => {});
+    }
     this.page = page;
     claimed.add(page);
     const load: PageLoad = { method: "GET", fetching: new Map(), tab: randomUUID(), docSeq: 0 };
@@ -578,12 +584,21 @@ export class PlaywrightExecutionAdapter {
     return driver;
   }
 
-  frameOrigins(ref: string) { return framesOf(this.#requirePage()).origins(ref); }
-  hasOpaqueContent() { return framesOf(this.#requirePage()).hasOpaqueContent(); }
-  async findByMeaning(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal) {
-    const page = this.#requirePage();
-    const result = await this.#driver(page).findByMeaning?.(name, linksOnly, url, picker, signal);
-    return this.page === page && page.url() === url ? result : undefined;
+  get bindTarget(): PageDriver["bindTarget"] {
+    const page = this.page;
+    if (page === undefined) return undefined;
+    const driver = this.#driver(page);
+    const bind = driver.bindTarget;
+    if (bind === undefined) return undefined;
+    const document = this.#loads.get(page)?.docSeq;
+    return async (target, signal, optionLabel) => {
+      const before = this.#targetDocuments.get(target);
+      if (before !== undefined && (before.page !== page || before.document !== document)) throw new AdapterError("VERIFY_FAILED");
+      const result = await bind.call(driver, target, signal, optionLabel);
+      if (this.page !== page || this.#loads.get(page)?.docSeq !== document) throw new AdapterError("VERIFY_FAILED");
+      this.#targetDocuments.set(result, {page, document});
+      return result;
+    };
   }
 
   async bringToFront(signal = new AbortController().signal): Promise<void> {
@@ -754,6 +769,13 @@ export class PlaywrightExecutionAdapter {
   async #perform(page: Page, action: Action, signal: AbortSignal, inspection?: InspectionBinding, grants?: ExecuteGrants): Promise<Completed> {
     signal.throwIfAborted();
     const { type, target } = action;
+    const bound = target === undefined ? undefined : this.#targetDocuments.get(target);
+    const verifyDocument = () => {
+      if (bound !== undefined && (this.page !== page || bound.page !== page || bound.document !== this.#loads.get(page)?.docSeq)) {
+        throw new AdapterError("VERIFY_FAILED");
+      }
+    };
+    verifyDocument();
     const opts = { timeout: this.#actionTimeout, signal };
     if (inspection !== undefined && inspection.kind !== "start" && page.url() !== inspection.url) {
       throw new AdapterError("VERIFY_FAILED");
@@ -763,13 +785,15 @@ export class PlaywrightExecutionAdapter {
       [grants.notice, grants.native, grants.plan].filter(grant => grant !== undefined).length !== 1)) throw new AdapterError("VERIFY_FAILED");
     if (inspection?.kind === "search") {
       const fresh = await call(signal, () => this.inspectionSearch(inspection.fieldId));
-      if (this.page !== page || fresh?.signature !== inspection.signature || fresh.url !== inspection.url ||
+      if (this.page !== page || type !== "press" || fresh === undefined || !matchesInspectionSearchTarget(target, inspection.fieldId, fresh.field) ||
+        fresh.signature !== inspection.signature || fresh.url !== inspection.url ||
         fresh.destination !== inspection.destination || fresh.parameter !== inspection.parameter ||
         !isInspectionUrl(fresh.destination) || !this.#mayLoad(fresh.destination)) throw new AdapterError("VERIFY_FAILED");
       const url = new URL(fresh.destination);
       url.search = "";
       url.searchParams.set(fresh.parameter, action.value ?? "");
       if (!isInspectionUrl(url.href)) throw new AdapterError("NOT_SUPPORTED");
+      verifyDocument();
       await this.#open(page, url.href, signal);
       return ok;
     }
@@ -823,6 +847,7 @@ export class PlaywrightExecutionAdapter {
       const href = inspection.control.href;
       if (!isInspectionUrl(href) || !this.#mayLoad(href)) throw new AdapterError("NOT_SUPPORTED");
       // Read a native link's destination without dispatching a page click handler.
+      verifyDocument();
       await this.#open(page, href, signal);
       return ok;
     }
@@ -838,6 +863,7 @@ export class PlaywrightExecutionAdapter {
     if (inspection?.kind === "control") {
       await this.#verifyInspectionControl(page, inspection, target, signal);
       if (inspection.control.kind === "disclosure") {
+        verifyDocument();
         await element.toggleDisclosure();
         return ok;
       }
@@ -856,6 +882,7 @@ export class PlaywrightExecutionAdapter {
     }
     if (grants?.notice !== undefined) await this.#verifyNotice(page, grants.notice, target, signal);
     if (grants?.native !== undefined) this.#armHolds(page, this.#flights.get(page));
+    verifyDocument();
     switch (type) {
       case "click":
         // 아래 #acting 안(실제로 누르는 동안)에 뜬 confirm() 창만 이 조작의 것으로 본다.
@@ -903,7 +930,7 @@ export class PlaywrightExecutionAdapter {
     const driver = this.#driver(page);
     if (await driver.hasVisibleLink(name, signal)) return false;
     const window = await this.controlWindow(name, 0, { exact: true });
-    const links = window.items.filter(item => item.role === "link" && !isEmbeddedRef(item.ref));
+    const links = window.items.filter(item => item.role === "link");
     if (links.length > 1 || window.more) throw new AdapterError("AMBIGUOUS_TARGET");
     const [link] = links;
     if (link !== undefined) {
@@ -930,14 +957,15 @@ export class PlaywrightExecutionAdapter {
     signal.throwIfAborted();
     if (target === undefined) throw new AdapterError("TARGET_NOT_FOUND");
     const ref = target.ref;
-    if (ref === undefined) return driver.resolve(target, signal);
+    // 입력 칸의 식별자는 누를 수 있는 항목 목록에 없다. 연결한 구동기가 같은 칸을 다시 확인한다.
+    if (ref === undefined || target.fieldId !== undefined && driver.bindTarget !== undefined) return driver.resolve(target, signal);
     const fresh = await call(signal, () => driver.controlWindow({ ref }));
     const item = fresh.items.find(it => it.ref === ref);
     if (item === undefined) throw new AdapterError("TARGET_NOT_FOUND");
     if (item.role !== target.role || item.name !== target.name) {
       throw new AdapterError("VERIFY_FAILED", "누르려던 요소의 이름이나 역할이 바뀌었습니다.");
     }
-    return driver.resolve({ ref, role: item.role, name: item.name }, signal);
+    return driver.resolve(driver.bindTarget === undefined ? { ref, role: item.role, name: item.name } : target, signal);
   }
 
   async #verifyInspectionControl(page: Page, binding: Extract<InspectionBinding, {kind: "control"}>, target: ActionTarget | undefined, signal: AbortSignal): Promise<void> {
@@ -973,15 +1001,15 @@ export class PlaywrightExecutionAdapter {
   }
 
   /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
-  async controlWindow(text = "", offset = 0, { ref, refs, exact = false, inspection, destination, notice, semanticOnly }: {
-    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean; semanticOnly?: boolean;
+  async controlWindow(text = "", offset = 0, { ref, refs, exact = false, inspection, destination, notice }: {
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   } = {}): Promise<ControlWindow> {
     const page = this.#requirePage();
     const load = this.#loads.get(page);
     const document = load?.docSeq;
     // notice: ref로 찾은 단추가 팝업 안에 있으면 그 팝업의 사실을 새로 읽어 함께 돌려준다(ref가 있을 때만).
     const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? refs?.length ?? 24 : 1,
-      ref: ref ?? null, refs, exact, inspection, destination, semanticOnly, notice: ref === undefined ? undefined : notice };
+      ref: ref ?? null, refs, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
     const window = await this.#driver(page).controlWindow(query);
     // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
     for (const item of window.items) {

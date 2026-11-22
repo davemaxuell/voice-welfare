@@ -9,7 +9,10 @@ import { pickControl, type ControlPicker } from "./control_picker.ts";
 import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
-import { PolicyGuard, isNotice, type AccessTier, type InspectionBinding, type InspectionControl, type PolicyContext } from "../../safety/guard.ts";
+import {
+  PolicyGuard, isNotice, matchesInspectionSearchTarget, type AccessTier, type InspectionBinding, type InspectionControl,
+  type InspectionSearchEvidence, type PolicyContext,
+} from "../../safety/guard.ts";
 import { AdapterError } from "./browser/index.ts";
 import { redactText } from "../../safety/privacy.ts";
 import { speakLabel } from "../../speech/phrasing.ts";
@@ -86,6 +89,7 @@ export interface ControlWindow {
 }
 export interface WebAdapter {
   observe(signal?: AbortSignal): Promise<Observation>;
+  bindTarget?(target: ActionTarget, signal: AbortSignal, optionLabel?: string): Promise<ActionTarget>;
   /** grants: 이 조작 한 번에만 붙는 허가(안내 팝업 증명·confirm() 답). 어댑터는 정책 검사와 따로 새 관찰·자기 기록으로 다시 확인한다. */
   execute(action: Action, signal?: AbortSignal, inspection?: InspectionBinding, grants?: ExecuteGrants): Promise<ActionResult>;
   close(): Promise<void>;
@@ -94,17 +98,14 @@ export interface WebAdapter {
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
   controlWindow?(text?: string, offset?: number, options?: {
-    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean; semanticOnly?: boolean;
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   }): Promise<ControlWindow>;
   /** 이 조작 중에 취소하거나 받아 준 사이트의 confirm() 창(한 번만 가져간다). */
   takeNative?(actionId: string): NativeSeen | undefined;
   peekNative?(actionId: string): NativeSeen | undefined;
-  frameOrigins?(ref: string): readonly string[] | undefined;
-  hasOpaqueContent?(): Promise<boolean>;
-  findByMeaning?(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal): Promise<ControlWindow["items"][number] | undefined>;
   /** 대신 답할 수 있는 confirm() 기록을 모두 버린다. */
   dropNative?(): void;
-  inspectionSearch?(fieldId: string): Promise<{ url: string; destination: string; parameter: string; signature: string } | undefined>;
+  inspectionSearch?(fieldId: string): Promise<InspectionSearchEvidence | undefined>;
   withInspection?<T>(work: () => Promise<T>): Promise<T>;
   fullPageLayout?<T>(work: () => Promise<T>): Promise<T>;
   prepareFullPage?(url: string, signal: AbortSignal): Promise<ShotRefusal | undefined>;
@@ -220,6 +221,8 @@ export class WebExecutionAgent {
   }
   accessMode(view = this.lastView): AccessTier { return this.guard.tierOf(view?.url); }
   #inspectionPending?: { action: Action; sessionId: string; binding: InspectionBinding };
+  // 사용자에게 물은 조작은 같은 요소에만 쓴다. 브라우저의 임시 식별자는 대화 기록에 저장하지 않는다.
+  readonly #targets = new WeakMap<Action, ActionTarget>();
   /** 이미 말로 알린 안내 팝업(출처와 제목·글). 같은 안내가 다시 뜨면 닫기만 하고 다시 읽지 않는다. */
   readonly #noticeSaid = new Set<string>();
   /** 닫으려다 닫히지 않은 안내(팝업 서명). 같은 팝업을 단계마다 다시 눌러 보며 기다리지 않는다. */
@@ -262,9 +265,7 @@ export class WebExecutionAgent {
       const exact = pool.filter(item => normalizeTerm(item.name) === term);
       const matches = exact.length > 0 ? exact : pool.filter(item => [...term].length >= 2 && normalizeTerm(item.name).includes(term));
       const hits = [...new Set(matches.map(item => item.name))];
-      const same = hits.length === 1 ? all.filter(i => i.name === hits[0] && (!linksOnly || i.role === "link")) : [];
-      const repeatedFrameName = same.length > 1 && same.some(i => /^(?:f-|s\d+-)/u.test(i.ref));
-      if (hits.length > 0) return { item: hits.length === 1 && !repeatedFrameName ? matches[0] : undefined, hits };
+      if (hits.length > 0) return { item: hits.length === 1 ? matches[0] : undefined, hits };
     }
     return { item: undefined, hits: [] };
   }
@@ -293,7 +294,7 @@ export class WebExecutionAgent {
     }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
     if (matchedControl !== undefined) {
-      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref, semanticOnly:matchedControl.requireUnmasked });
+      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref });
       const requireUnmasked = visual || matchedControl.requireUnmasked === true;
       item = fresh?.items.find(it => !it.disabled && (!requireUnmasked || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
         it.context === matchedControl.context);
@@ -316,20 +317,11 @@ export class WebExecutionAgent {
         if (window.url === view.url && candidates.length === 1 && !window.more) item = candidates[0];
         if (picker && candidates.length === 0 && !window.more && window.url === view.url && !visual &&
           !ctx.publicLookup && this.guard.config.publicLookupOnly !== true && ctx.browsingScope === undefined && !ctx.isStopped()) {
-          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal) ??
-            await this.adapter.findByMeaning?.(name, linksOnly, view.url, picker, ctx.signal);
+          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal);
           if (picked) return this.followLink(picked.name, ctx, linksOnly, { matchedControl: { ...picked, url: view.url, requireUnmasked: true } });
         }
       }
-      if (item === undefined) {
-        if (located.hits.length === 1) return {status:"needs-clarification", actions:log, view,
-          message:"여러 영역에 같은 이름의 항목이 있어요. 화면에서 원하는 항목을 직접 선택해 주세요."};
-        if (located.hits.length === 0 && await this.adapter.hasOpaqueContent?.() === true) return {
-          status:"needs-clarification", actions:log, view,
-          message:"읽을 수 없는 영역이 있어요. 다른 항목 이름을 말씀하시거나 화면에서 직접 선택해 주세요.",
-        };
-        return this.notLocated(view, name, located.hits);
-      }
+      if (item === undefined) return this.notLocated(view, name, located.hits);
     }
     if (plan) {
       const target = plan.action.target;
@@ -348,7 +340,9 @@ export class WebExecutionAgent {
     if (proof !== undefined && result?.errorCode === "VERIFY_FAILED") {
       // 누르기 직전에 팝업이 바뀌어 증명이 맞지 않았다. 안내로 확인되지 않은 '확인'이니 증명 없이 누를 때와 같이 사용자에게 묻는다.
       const plain = this.action({ type: "click", target: { ...target }, reason: `'${item.name}' 누르기(${item.role})` });
-      const policy = this.guard.check(plain, this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
+      const checked = await this.observedAction(plain, ctx.signal, click);
+      if (checked === undefined) return this.failed(log, result, view);
+      const policy = this.guard.check(checked, this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
       if (policy.code === "NEEDS_CONFIRMATION") {
         log.push({ agent: this.id, action: plain, policy });
         return this.failed(log, undefined, view);
@@ -370,8 +364,12 @@ export class WebExecutionAgent {
     const { item, hits } = this.locate(view, name, preferButton);
     if (item === undefined) return this.notLocated(view, name, hits);
     const target = { ref: item.ref, role: item.role, name: item.name };
-    const result = await this.run(this.action({ type: "focus", target, reason: `'${item.name}'(으)로 이동` }), ctx, log);
+    const focus = this.action({ type: "focus", target, reason: `'${item.name}'(으)로 이동` });
+    const result = await this.run(focus, ctx, log);
     const pending = this.action({ type: "click", target: { ...target }, reason: `사용자 확인 후 '${item.name}' 누르기` });
+    if (!await this.observedAction(pending, ctx.signal, focus)) return {
+      status: "needs-clarification", actions: log, view, message: "항목이 바뀌었어요. 지금 보이는 항목을 다시 골라 주세요.",
+    };
     return { status: "needs-approval", actions: log, view, pending, focused: result?.ok === true };
   }
 
@@ -683,12 +681,39 @@ export class WebExecutionAgent {
     return { kind: "control", url: fresh.url, ref, control: item.inspection };
   }
 
+  async observedAction(action: Action, signal: AbortSignal, original: Action = action): Promise<Action | undefined> {
+    if (action.target === undefined) return action;
+    const previous = this.#targets.get(original);
+    const bind = this.adapter.bindTarget;
+    if (bind === undefined) return previous === undefined ? action : undefined;
+    // 새 확인 요청도 처음 관찰한 요소에 묶는다. 봤던 요소를 확인할 수 없으면 새 요소로 바꾸지 않는다.
+    if (original !== action && previous === undefined) return undefined;
+    try {
+      const option = action.type === "select" ? action.value ?? "" : undefined;
+      const target = await bind.call(this.adapter, previous ?? action.target, signal, option);
+      this.#targets.set(action, target);
+      return { ...action, target };
+    } catch {
+      signal.throwIfAborted();
+      return undefined;
+    }
+  }
+
+  copyObservedTarget(original: Action, copy: Action): void {
+    const target = this.#targets.get(original);
+    if (target !== undefined) this.#targets.set(copy, target);
+  }
+
   async run(
     action: Action, ctx: ExecContext, log: WebAction[], perform?: () => Promise<ActionResult>, binding?: InspectionBinding,
     grants?: ExecuteGrants,
   ): Promise<WebActionResult | undefined> {
     ctx.trace("POLICY_CHECK", this.id, action.type);
     const personal = this.inspectionEnabled(ctx);
+    // 조회용 GET에서 허용하지 않는 찾기 조건은 관찰 과정에서 사라지지 않도록 그대로 정책에 넘긴다.
+    const outsideSearch = personal && action.type === "press" && binding?.kind === "search" &&
+      !matchesInspectionSearchTarget(action.target, binding.fieldId, binding.field);
+    const checked = ctx.isStopped() || ctx.signal.aborted || outsideSearch ? action : await this.observedAction(action, ctx.signal);
     const pending = this.#inspectionPending?.action.id === action.id ? this.#inspectionPending : undefined;
     const approved = ctx.approvals.has(action.id);
     if (pending !== undefined && approved) this.#inspectionPending = undefined;
@@ -700,11 +725,12 @@ export class WebExecutionAgent {
     const bound = grants !== undefined && perform !== undefined
       ? { allowed: false, code: "DENIED_GRANT_BINDING", reason: "허가가 필요한 조작은 어댑터가 확인하는 길로만 실행할 수 있어요." }
       : undefined;
-    const policy = bound ?? (changed
+    const policy = bound ?? (checked === undefined
+      ? { allowed: false, code: "DENIED_TARGET_CHANGED", reason: "항목이 바뀌었어요. 지금 보이는 항목을 다시 골라 주세요." }
+      : changed
       ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
-      : this.guard.check(action, {
+      : this.guard.check(checked, {
         ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
-        frameOrigins: action.target?.ref === undefined ? undefined : this.adapter.frameOrigins?.(action.target.ref),
         notice: grants?.notice, native: grants?.native, plan: grants?.plan,
       }));
     if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {
@@ -712,7 +738,7 @@ export class WebExecutionAgent {
     }
     const entry: WebAction = { agent: this.id, action, policy };
     log.push(entry);
-    if (!policy.allowed) {
+    if (!policy.allowed || checked === undefined) {
       try {
         await this.actionLog?.append({ actionType: action.type, phase: "refused", ok: false, actor: ctx.actor, reasonCode: policy.code });
       } catch { /* 막힌 조작은 기록하지 못해도 실행하지 않는다. */ }
@@ -740,12 +766,12 @@ export class WebExecutionAgent {
     }
     // 허가가 있으면 같은 허가를 붙여 한 번만 실행한다. 허가가 없는 호출은 지금처럼 인자를 늘리지 않는다.
     let result = perform !== undefined ? await perform()
-      : grants === undefined ? await this.adapter.execute(action, ctx.signal, inspection)
-        : await this.adapter.execute(action, ctx.signal, inspection, grants);
+      : grants === undefined ? await this.adapter.execute(checked, ctx.signal, inspection)
+        : await this.adapter.execute(checked, ctx.signal, inspection, grants);
     // 시간이 넘었다고 다시 하는 것은 허가가 없는 저위험 조작뿐이다. 허가·승인이 붙은 조작은 이미 됐을 수 있고, 허가 없이 다시 하면 어댑터의 확인을 건너뛴다.
     if (!personal && perform === undefined && grants === undefined && action.risk === "low" && policy.code !== "APPROVED" && policy.code !== "ALLOWED_NOTICE" &&
       !result.ok && result.errorCode === "TIMEOUT" && this.adapter.peekNative?.(action.id) === undefined && !ctx.signal.aborted) {
-      result = await this.adapter.execute(action, ctx.signal);
+      result = await this.adapter.execute(checked, ctx.signal);
     }
     entry.result = result;
     try { await writeLog("after", result.ok); } catch { /* 조작이 끝난 뒤에는 재실행하지 않는다. */ }
@@ -1198,7 +1224,8 @@ export class WebExecutionAgent {
   /** 승인 없이 정책 판단만 미리 기록(실행하지 않음). */
   previewPolicy(action: Action, ctx: ExecContext): ExecutedAction {
     ctx.trace('POLICY_CHECK', this.id, `${action.type} (승인 전 사전 확인)`);
-    const policy = this.guard.check(action, this.policyContext(ctx, ctx.isStopped()));
+    const target = this.#targets.get(action);
+    const policy = this.guard.check(target === undefined ? action : { ...action, target }, this.policyContext(ctx, ctx.isStopped()));
     return { agent: this.id, action, policy };
   }
 

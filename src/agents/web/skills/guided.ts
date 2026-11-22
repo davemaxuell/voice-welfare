@@ -112,6 +112,7 @@ export class GuidedFill {
       ? g.suggestion : cleanValue(text.replace(guidedPatterns.yesPrefix, ""));
     if (value.length === 0 || guidedPatterns.onlyYes.test(value)) return draft("BROWSING", "clarify", `${speakLabel(field.label)}에 넣을 값을 말씀해 주세요.`);
     const action = this.web.buildAssistAction(field, value);
+    if (!await this.web.observedAction(action, ctx.signal)) return draft("BROWSING", "clarify", "입력 칸이 바뀌었어요. 채울 칸을 다시 말씀해 주세요.", {view});
     const siteName = siteLabel(view.url);
     const site = siteName.length > 0 ? siteName : tryUrl(view.url)?.host ?? view.url;
     const label = speakLabel(field.label);

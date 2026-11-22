@@ -8,6 +8,7 @@ import type { Action } from "../../src/core/actions.ts";
 import { createStructuredLlm, ModelConnections } from "../../src/core/llm.ts";
 import { launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../../src/agents/web/browser/index.ts";
 import { observedSelectors, stagehandTab } from "../../src/agents/web/browser/stagehand_browser.ts";
+import { stagehandDriver } from "../../src/agents/web/browser/stagehand_driver.ts";
 
 let browser: Browser;
 const adapters: PlaywrightExecutionAdapter[] = [];
@@ -59,6 +60,113 @@ it("실제 누르기의 포인터 입력 도중 이름이 바뀌면 이어지는
   const item = (await adapter.observe()).outline!.items![0]!;
   expect((await adapter.execute(action("click", item))).errorCode).toBe("VERIFY_FAILED");
   expect(await page.locator("button").innerText()).toBe("999");
+  expect(await page.title()).toBe("");
+});
+
+it("단추 이름·링크 역할·입력 칸 표지는 Stagehand 탭에서 찾고 호스트에는 찾은 ref만 넘긴다", async () => {
+  const { adapter, page } = await fixture('<button onclick="document.title=String(event.isTrusted)">안내</button>' +
+    '<a href="https://example.invalid/" onclick="event.preventDefault()">본문</a><label for="a">성명</label><input id="a"><input placeholder="연락처" data-testid="phone">');
+  const { tab } = await stagehandTab(page);
+  const lookup = vi.spyOn(tab, "evaluate");
+  const host = vi.spyOn(page, "locator");
+  const byRole = vi.spyOn(page, "getByRole"), byLabel = vi.spyOn(page, "getByLabel"), byId = vi.spyOn(page, "getByTestId");
+  expect((await adapter.execute(action("click", { role: "button", name: "안내" }))).ok).toBe(true);
+  expect(await page.title()).toBe("true");
+  expect((await adapter.execute(action("click", { role: "link", name: "본문" }))).ok).toBe(true);
+  expect((await adapter.execute(action("fill", { label: "성명", fieldId: "a" }, "하늘"))).readValue).toBe("하늘");
+  expect((await adapter.execute(action("fill", { label: "연락처" }, "시험"))).readValue).toBe("시험");
+  expect((await adapter.execute(action("read", { testId: "phone" }))).readValue).toBe("시험");
+  expect(lookup).toHaveBeenCalled();
+  expect(byRole).not.toHaveBeenCalled();
+  expect(byLabel).not.toHaveBeenCalled();
+  expect(byId).not.toHaveBeenCalled();
+  expect(host).toHaveBeenCalled();
+  for (const [selector] of host.mock.calls) expect(selector).toMatch(/^\[data-cheongeum-ref="r[\w-]+"\]$/u);
+});
+
+it("같은 이름이 둘이면 순번이 있을 때만 누르고 칸의 id와 이름도 함께 대조한다", async () => {
+  const { adapter, page } = await fixture('<button onclick="document.title=String(1)">안내</button><button onclick="document.title=String(2)">안내</button>' +
+    '<input id="one" aria-label="성명"><input id="two" aria-label="주소"><input aria-label="성명">');
+  expect((await adapter.execute(action("click", { role: "button", name: "안내" }))).errorCode).toBe("AMBIGUOUS_TARGET");
+  expect(await page.title()).toBe("");
+  expect((await adapter.execute(action("click", { role: "button", name: "안내", nth: 1 }))).ok).toBe(true);
+  expect(await page.title()).toBe("2");
+  expect((await adapter.execute(action("fill", { label: "성명" }, "하늘"))).errorCode).toBe("AMBIGUOUS_TARGET");
+  expect((await adapter.execute(action("fill", { fieldId: "two", label: "성명" }, "하늘"))).ok).toBe(false);
+  expect((await adapter.execute(action("fill", { fieldId: "two", role: "searchbox" }, "시험"))).ok).toBe(false);
+  expect(await page.evaluate(() => Array.from(document.querySelectorAll("input"), input => input.value))).toEqual(["", "", ""]);
+});
+
+it("이름으로 찾은 단추가 누르는 사이에 바뀌거나 입력 초점에서 칸 이름이 바뀌면 실행하지 않는다", async () => {
+  const { adapter, page } = await fixture('<button onpointerdown="this.textContent=String(999)" onclick="document.title=String(321)">안내</button>' +
+    '<input id="a" aria-label="성명" onfocus="this.setAttribute(\'aria-label\',\'다른 칸\')">');
+  expect((await adapter.execute(action("click", { role: "button", name: "안내" }))).errorCode).toBe("VERIFY_FAILED");
+  expect((await adapter.execute(action("fill", { fieldId: "a", name: "성명" }, "하늘"))).errorCode).toBe("VERIFY_FAILED");
+  expect(await page.title()).toBe("");
+  expect(await page.locator("#a").inputValue()).toBe("");
+});
+
+it("칸의 실제 이름·id까지 정책에 묶고 초점·키·체크 시점의 역할과 이름도 다시 확인한다", async () => {
+  const { page } = await fixture('<input id="name" aria-label="성명" onfocus="this.setAttribute(\'aria-label\',\'다른 칸\')" onkeydown="document.title=String(1)">' +
+    '<input type="checkbox" id="notice" aria-label="알림" onpointerdown="this.setAttribute(\'aria-label\',\'다른 설정\')">');
+  const driver = stagehandDriver(page, 5000);
+  const signal = new AbortController().signal;
+  const bound = await driver.bindTarget!({ label: "성명" }, signal);
+  expect(bound).toEqual({ fieldId: "name", ref: expect.any(String), role: "textbox", name: "성명", label: "성명" });
+  const element = await driver.resolve(bound, signal);
+  await expect(element.press("Enter")).rejects.toMatchObject({ code: "VERIFY_FAILED" });
+  await expect(element.focus()).rejects.toMatchObject({ code: "VERIFY_FAILED" });
+  expect(await page.title()).toBe("");
+  const checkbox = await driver.resolve({ fieldId: "notice", label: "알림" }, signal);
+  await expect(checkbox.check(true)).rejects.toMatchObject({ code: "VERIFY_FAILED" });
+  expect(await page.locator("#notice").isChecked()).toBe(false);
+});
+
+it("옵션 이름과 값이 겹치고 이름도 중복되면 처음으로 이름이 맞는 옵션 하나를 고른다", async () => {
+  const { adapter, page } = await fixture('<select id="city" aria-label="지역" multiple oninput="document.title+=event.type" onchange="document.title+=event.type">' +
+    '<option value="서울" selected>부산</option><option value="seoul">서울</option><option value="duplicate">서울</option></select>');
+  expect(await adapter.execute(action("select", { fieldId: "city", label: "지역" }, "서울"))).toMatchObject({ verified: true, readValue: "서울" });
+  expect(await page.locator("select").inputValue()).toBe("seoul");
+  expect(await page.locator("option:checked").count()).toBe(1);
+  expect(await page.title()).toBe("inputchange");
+});
+
+it.each(["멈춤", "칸 이름 변경", "옵션 값 변경", "옵션 그룹 비활성화", "옵션 그룹 숨김", "같은 문서 주소 변경"])("이미 찾은 칸에 뒤늦게 선택이 도착해도 %s 뒤에는 값과 이벤트가 그대로다", async change => {
+  const { adapter, page } = await fixture('<select id="city" aria-label="지역" oninput="document.title+=event.type" onchange="document.title+=event.type">' +
+    '<option value="busan">부산</option><optgroup label="수도권"><option value="seoul">서울</option></optgroup></select>');
+  const { tab } = await stagehandTab(page);
+  const evaluate = tab.evaluate.bind(tab);
+  const delivered = gate();
+  vi.spyOn(tab, "evaluate").mockImplementation(async (source, arg) => {
+    if (typeof arg !== "object" || arg === null || !("selector" in arg) || typeof arg.selector !== "string" ||
+      !("token" in arg) || typeof arg.token !== "string") return evaluate(source, arg);
+    return evaluate(async ({ selector, token }) => {
+      const field = document.querySelector(selector);
+      if (!(field instanceof HTMLSelectElement)) throw new Error("선택 칸을 찾지 못했습니다.");
+      // SDK처럼 요소를 먼저 잡는다. 풀려난 뒤에는 셀렉터를 다시 찾지 않는다.
+      document.documentElement.dataset.selectionReady = "true";
+      await new Promise<void>(resume => window.addEventListener("resume-selection", () => resume(), { once: true }));
+      field.dispatchEvent(new Event(token));
+    }, { selector: arg.selector, token: arg.token }).finally(delivered.resolve);
+  });
+  const stop = new AbortController();
+  const running = adapter.execute(action("select", { fieldId: "city", label: "지역" }, "서울"), stop.signal);
+  await page.locator("html[data-selection-ready]").waitFor({ state: "attached", timeout: 5000 });
+  if (change === "멈춤") {
+    stop.abort();
+    await running;
+  } else await page.evaluate(change => {
+    const field = document.querySelector("select")!;
+    if (change === "칸 이름 변경") field.setAttribute("aria-label", "다른 지역");
+    else if (change === "옵션 값 변경") field.options[1]!.value = "changed";
+    else if (change === "옵션 그룹 비활성화") field.querySelector("optgroup")!.disabled = true;
+    else if (change === "옵션 그룹 숨김") field.querySelector("optgroup")!.style.display = "none";
+    else location.hash = "다른-화면";
+  }, change);
+  await page.evaluate(() => window.dispatchEvent(new Event("resume-selection")));
+  await delivered.promise;
+  expect((await running).errorCode).toBe(change === "멈춤" ? "ABORTED" : "VERIFY_FAILED");
+  expect(await page.locator("select").inputValue()).toBe("busan");
   expect(await page.title()).toBe("");
 });
 

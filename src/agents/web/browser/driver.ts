@@ -1,12 +1,9 @@
-import type { Frame, Locator, Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import { z } from "zod";
 import type { ActionTarget, ExecutionErrorCode } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
 import type { ClickEvidence } from "./stagehand_driver.ts";
 import { observePage, type ControlQuery } from "./observe.ts";
-import { framesOf } from "./frame_controls.ts";
-import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
-import type { ControlPicker } from "../control_picker.ts";
 
 const InspectionControlSchema = z.union([
   z.object({ kind: z.literal("navigation"), href: z.string(), signature: z.string() }),
@@ -22,9 +19,12 @@ const ControlItemSchema = z.looseObject({
   ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
   context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
   notice: NoticeFactsSchema.optional(), planSignature: z.string().optional(),
+  fieldId: z.string().optional(),
 });
 const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
-const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
+const InspectionSearchSchema = z.object({
+  url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string(), field: z.object({ ref: z.string(), name: z.string() }),
+});
 export type ControlItem = z.infer<typeof ControlItemSchema>;
 export type ControlWindow = z.infer<typeof ControlWindowSchema>;
 
@@ -57,10 +57,11 @@ export interface ResolvedElement {
 
 /** 호스트가 선택한 단일 탭의 관찰과 요소 조작. 이동과 승인 기록은 호스트가 맡는다. */
 export interface PageDriver {
-  findByMeaning?(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal): Promise<ControlItem | undefined>;
   observe(signal: AbortSignal): Promise<z.infer<typeof PageObservationSchema>>;
   controlWindow(query: ControlQuery): Promise<ControlWindow>;
   inspectionSearch(fieldId: string): Promise<InspectionSearch | undefined>;
+  /** 정책 검사에 사용할 현재 요소의 ref·역할·이름을 구한다. 입력 칸에는 칸 id도 남긴다. */
+  bindTarget?(target: ActionTarget, signal: AbortSignal, optionLabel?: string): Promise<ActionTarget>;
   resolve(target: ActionTarget, signal: AbortSignal): Promise<ResolvedElement>;
   scroll(signal: AbortSignal): Promise<void>;
   hasVisibleLink(name: string, signal: AbortSignal): Promise<boolean>;
@@ -125,8 +126,8 @@ export function playwrightElement(loc: Locator, signal: AbortSignal, timeout: nu
 export async function playwrightTarget(page: Page, target: ActionTarget, signal: AbortSignal): Promise<Locator> {
   signal.throwIfAborted();
   if (target.ref !== undefined) {
-    const loc = await framesOf(page).locator(target.ref);
-    if (loc === undefined || await call(signal, () => loc.count()) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
+    const loc = page.locator('[data-cheongeum-ref="' + cssEscape(target.ref) + '"]').filter({ visible: true });
+    if (await call(signal, () => loc.count()) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
     return loc;
   }
   let loc: Locator;
@@ -156,21 +157,14 @@ export async function playwrightTarget(page: Page, target: ActionTarget, signal:
   return loc;
 }
 
-export function observeWith(evaluate: (script: string) => Promise<unknown>, page?: Page): Pick<PageDriver, "observe" | "controlWindow" | "inspectionSearch"> {
-  const read = async (frame: Frame | undefined, query: ControlQuery) => {
-    const script = controlsJson(query);
-    const text = frame === undefined || frame === page?.mainFrame() ? await evaluate(script) : await frame.evaluate(script);
-    return ControlWindowSchema.parse(JSON.parse(z.string().parse(text)));
-  };
+export function observeWith(evaluate: (script: string) => Promise<unknown>): Pick<PageDriver, "observe" | "controlWindow" | "inspectionSearch"> {
   return {
     async observe(signal) {
-      const topId = page === undefined ? undefined : framesOf(page).documentId();
       const text = z.string().parse(await call(signal, () => evaluate(observeJson)));
-      const raw = PageObservationSchema.parse(JSON.parse(text));
-      return page === undefined || topId === undefined ? raw : await call(signal, () => framesOf(page).includeOutline(raw, topId, read));
+      return PageObservationSchema.parse(JSON.parse(text));
     },
     async controlWindow(query) {
-      return page === undefined ? read(undefined, query) : framesOf(page).query(query, read);
+      return ControlWindowSchema.parse(JSON.parse(z.string().parse(await evaluate(controlsJson(query)))));
     },
     async inspectionSearch(fieldId) {
       return InspectionSearchSchema.safeParse(JSON.parse(z.string().parse(
@@ -182,11 +176,8 @@ export function observeWith(evaluate: (script: string) => Promise<unknown>, page
 
 export function playwrightDriver(page: Page, timeout: number): PageDriver {
   return {
-    ...observeWith(script => page.evaluate(script), page),
-    async resolve(target, signal) {
-      const host = playwrightElement(await playwrightTarget(page, target, signal), signal, timeout);
-      return isEmbeddedRef(target.ref) ? embeddedElement(page, target, signal, timeout, host) : host;
-    },
+    ...observeWith(script => page.evaluate(script)),
+    async resolve(target, signal) { return playwrightElement(await playwrightTarget(page, target, signal), signal, timeout); },
     scroll: signal => call(signal, () => page.mouse.wheel(0, 600)),
     async hasVisibleLink(name, signal) {
       const byRole = page.getByRole("link", { name, exact: true }).filter({ visible: true });
