@@ -1,5 +1,7 @@
+import { workspaceText } from "./workspace-language.ts";
+import { timing } from "./perf.ts";
 // ① 마이크 녹음과 핸즈프리 VAD. 받아쓰기는 서버의 음성 API가 맡는다.
-import { audioContext } from "./audio.ts";
+import { getSpeechLang, audioContext } from "./audio.ts";
 import clapWorkletUrl from "./clap-worklet.ts?worker&url";
 import pcmWorkletUrl from "./pcm-worklet.ts?worker&url";
 import { isSpeakingOnDevice, onSpeaking } from "./speaker.ts";
@@ -20,11 +22,12 @@ interface PcmInput {
 }
 
 // The hardware stream is resampled by Web Audio before the worklet packs it for Realtime.
-async function pcmInput(stream: MediaStream): Promise<PcmInput> {
+async function pcmInput(stream: MediaStream, captureChanged?: () => void): Promise<PcmInput> {
   const context = new AudioContext({ sampleRate: 24000 });
   // Mute at capture so dictation, barge-in pre-roll, and existing uploads all receive silence.
   const syncMic = () => {
     for (const track of stream.getAudioTracks()) track.enabled = !isSpeakingOnDevice();
+    captureChanged?.();
   };
   const stopWatching = onSpeaking(syncMic);
   syncMic();
@@ -71,22 +74,34 @@ async function pcmInput(stream: MediaStream): Promise<PcmInput> {
   }
 }
 
-const openMicrophone = (deviceId: string | undefined, audio: MediaTrackConstraints = {}) =>
-  navigator.mediaDevices.getUserMedia({
+async function openMicrophone(deviceId: string | undefined, audio: MediaTrackConstraints = {}) {
+  const request = timing?.mark("microphone-requested");
+  const stream = await navigator.mediaDevices.getUserMedia({
     audio: deviceId !== undefined && deviceId.length > 0 ? { ...audio, deviceId: { exact: deviceId } } : Object.keys(audio).length > 0 ? audio : true,
   });
+  if (request !== undefined && stream.getAudioTracks().some(track => track.readyState === "live")) timing?.measure(request, "track-live");
+  return stream;
+}
 
 export interface Recording {
   stop(): Promise<LiveAudio>;
   cancel(): void;
 }
 
-export async function startRecording(openLive: OpenLive, deviceId: string | undefined, onMax: () => void): Promise<Recording> {
+export async function startRecording(openLive: OpenLive, deviceId: string | undefined, onMax: () => void,
+  acquired?: (stream: MediaStream) => boolean, captureChanged?: () => void): Promise<Recording> {
   const stream = await openMicrophone(deviceId);
+  if (acquired?.(stream) === false) {
+    stream.getTracks().forEach(track => track.stop());
+    throw new Error("stopped");
+  }
+  for (const track of stream.getAudioTracks()) {
+    track.onmute = track.onunmute = track.onended = () => captureChanged?.();
+  }
   let mic: PcmInput | undefined;
   let live: LiveAudio;
   try {
-    mic = await pcmInput(stream);
+    mic = await pcmInput(stream, captureChanged);
     live = openLive();
   } catch (error) {
     mic?.close();
@@ -103,6 +118,7 @@ export async function startRecording(openLive: OpenLive, deviceId: string | unde
     clearTimeout(timer);
     input.close();
     stream.getTracks().forEach(track => track.stop());
+    captureChanged?.();
   }
   return {
     async stop() { clearTimeout(timer); await input.flush(); release(); return live; },
@@ -126,7 +142,8 @@ export class VoiceLoop {
   analyser: AnalyserNode | undefined;
   /** 청음이 말하는 동안은 앞 소리(pre-roll)를 모으지 않는다. */
   ignore: (() => boolean) | undefined;
-  onTrouble: ((reason: "ended" | "muted") => void) | undefined;
+  onTrouble: ((reason: "ended" | "muted" | "unmuted") => void) | undefined;
+  captureChanged?: () => void;
   abort: (() => void) | undefined;
   finishNow: (() => boolean) | undefined;
   bargeFrames: ArrayBuffer[] | undefined;
@@ -147,8 +164,9 @@ export class VoiceLoop {
     if (track !== undefined) {
       track.onended = () => this.onTrouble?.("ended");
       track.onmute = () => this.onTrouble?.("muted");
+      track.onunmute = () => this.onTrouble?.("unmuted");
     }
-    const mic = await pcmInput(stream);
+    const mic = await pcmInput(stream, this.captureChanged);
     if (this.stopped) { mic.close(); throw new Error("stopped"); }
     this.mic = mic;
     this.analyser = mic.analyser;
@@ -323,7 +341,7 @@ export async function listMicrophones() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   return devices
     .filter((d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications")
-    .map((d) => ({ id: d.deviceId, label: d.label.length > 0 ? d.label : "이름 없는 마이크" }));
+    .map((d) => ({ id: d.deviceId, label: d.label.length > 0 ? d.label : workspaceText("이름 없는 마이크", getSpeechLang()) }));
 }
 export interface Microphone { id: string; label: string }
 export function preferredMicrophone(mics: Microphone[]) {

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createClapDetector } from "../../web/src/clap.ts";
-import { progressVoice, splitForSpeech, transitionCue } from "../../web/src/speaker.ts";
+import { splitForSpeech, transitionCue } from "../../web/src/speaker.ts";
 import { BargeDetector } from "../../web/src/voice-edge.ts";
 
 afterEach(() => {
@@ -75,25 +75,10 @@ it("긴 안내는 문장으로 나누고 첫 조각은 짧게 둔다", () => {
   expect(splitForSpeech("  ")).toEqual([]);
 });
 
-it("진행 안내는 시작 15초 뒤, 새 단계만, 조용할 때만 말한다", () => {
-  vi.useFakeTimers();
-  progressVoice.seen = 0;
-  progressVoice.start();
-  const report = (seq: number, latest = "복지로를 여는 중이에요.") => ({ running: true, spoken: true, seq, latest });
-  expect(progressVoice.pick(report(1), false)).toBeUndefined();
-  vi.advanceTimersByTime(15_000);
-  expect(progressVoice.pick(report(1), true)).toBeUndefined();
-  expect(progressVoice.pick({ ...report(1), spoken: false }, false)).toBeUndefined();
-  expect(progressVoice.pick(report(1), false)).toBe("복지로를 여는 중이에요.");
-  vi.advanceTimersByTime(15_000);
-  expect(progressVoice.pick(report(1), false)).toBeUndefined();
-  expect(progressVoice.pick(report(2, "검색 결과를 읽는 중이에요."), false)).toBe("검색 결과를 읽는 중이에요.");
-});
-
 function microphone(level: () => number) {
   const stop = vi.fn();
-  const track = { stop, onended: null, onmute: null, enabled: true, label: "내장 마이크", readyState: "live" };
-  return { stop, stream: { getTracks: () => [track], getAudioTracks: () => [track] }, level };
+  const track = { stop, onended: () => {}, onmute: null, enabled: true, label: "내장 마이크", readyState: "live" };
+  return { stop, track, stream: { getTracks: () => [track], getAudioTracks: () => [track] }, level };
 }
 
 /** 마이크 워크릿 대신: 소리 크기는 analyser가, 40 ms 묶음은 onFrame으로 직접 넣는다. */
@@ -127,6 +112,16 @@ async function voiceLoop(level: () => number) {
   const feed = (n: number) => { for (let i = 0; i < n; i++) ports[0]?.onmessage?.({ data: new ArrayBuffer(4) }); };
   return { loop, sent, feed, mic };
 }
+
+it("열려 있는 마이크 트랙이 끝나면 연결 끊김을 알린다", async () => {
+  vi.useFakeTimers();
+  const { loop, mic } = await voiceLoop(() => 0.1);
+  const trouble = vi.fn();
+  loop.onTrouble = trouble;
+  mic.track.onended();
+  expect(trouble).toHaveBeenCalledExactlyOnceWith("ended");
+  loop.stop();
+});
 
 it("말이 시작되기 전 소리를 앞에 붙여 보내고, 조용해지면 끝낸다", async () => {
   vi.useFakeTimers();

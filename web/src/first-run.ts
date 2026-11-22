@@ -10,7 +10,7 @@ const SPEEDS = [0.85, 1, 1.35, 1.6];
 export const SETTLE_MS = 250;
 
 export type TextKey = keyof typeof TEXT.ko;
-const TABLE: Readonly<Partial<Record<string, Readonly<Partial<Record<TextKey, string>>>>>> = TEXT;
+const TABLE: Readonly<Record<Lang, Readonly<Record<TextKey, string>>>> = TEXT;
 /** setup-audio/manifest.json: 녹음 문장 이름 → 언어 → 화면 글 */
 export type Manifest = Readonly<Partial<Record<string, Readonly<Partial<Record<string, string>>>>>>;
 
@@ -49,7 +49,7 @@ interface StepDef {
 export interface FirstRunChoice { label: string; kbd: string; act: Act }
 export interface FirstRunView {
   open: boolean;
-  dialogLang: string;
+  dialogLang: Lang;
   step: StepName | null;
   /** 단계를 새로 그릴 때마다 늘어난다(초점과 화면 다시 만들기). */
   shown: number;
@@ -78,7 +78,7 @@ export function createFirstRun(deps: FirstRunDeps) {
   let busy = false;
   let replays = 0;
   let open = false;
-  let dialogLang = "ko";
+  let dialogLang: Lang = "ko";
   let shown = 0;
   let soundHelp = false;
   let live = { text: "", seq: 0 };
@@ -86,7 +86,7 @@ export function createFirstRun(deps: FirstRunDeps) {
   const listeners = new Set<() => void>();
   let view: FirstRunView = { open: false, dialogLang, step: null, shown, title: "", text: "", choices: [], live, focus };
 
-  const t = (k: TextKey) => TABLE[state.lang]?.[k] ?? TEXT.ko[k];
+  const t = (k: TextKey) => TABLE[langOf(state.lang)][k];
   const clip = (id: string) => manifest?.[id]?.[id.startsWith("lang-") ? id.slice(5) : state.lang] ?? "";
 
   // ---------------------------------------------------------- 소리
@@ -120,10 +120,10 @@ export function createFirstRun(deps: FirstRunDeps) {
   // 단계마다: 제목, 화면 글(녹음 문장과 같음), 틀 소리, 키 → 할 일
   const STEPS: Record<StepName, () => StepDef> = {
     language: () => ({
-      title: TEXT.ko.language + " · Language",
+      title: state.lang === "ko" ? t("language") + " · Language" : t("language"),
       text: LANGS.map((l) => clip(`lang-${l}`)).join(" · "),
       clips: LANGS.map((l) => `lang-${l}`),
-      keys: LANGS.map((l: Lang, i): [string, Act] => [String(i + 1), () => { state.lang = l; go("who"); }]),
+      keys: LANGS.map((l: Lang, i): [string, Act] => [String(i + 1), () => { state.lang = l; dialogLang = l; go("who"); }]),
       labels: LANGS.map((l) => clip(`lang-${l}`)),
     }),
     who: () => ({
@@ -365,7 +365,7 @@ export function createFirstRun(deps: FirstRunDeps) {
       replays = 0;
       deps.desktop?.showSetup?.();
       open = true;
-      dialogLang = state.lang;
+      dialogLang = langOf(state.lang);
       show(stage === 2 ? "sound" : "language");
     },
     finish() {
