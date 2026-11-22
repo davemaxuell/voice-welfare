@@ -90,9 +90,11 @@ export function digestPage(view: WebObservation, { preserveRows = false } = {}):
   const fields = (view.fields ?? []).filter(f => f.visible === true);
   const hasSearchBox = fields.some(f => f.searchable === true), inputCount = fields.filter(f => f.searchable !== true).length;
   const rows = (o?.mainText ?? "").split(p.newlines);
-  // Evidence needs short values and repeated labels in their original row order.
-  const main = (preserveRows ? rows.map(clean).filter(Boolean) : unique(rows)
-    .filter(line => (Array.from(line).length > 2 || p.digit.test(line)) && !menuSet.has(line) && !p.utility.test(line))).join("\n");
+  // 근거로 쓸 표의 짧은 값과 반복 행은 순서대로 남기고, 메뉴와 화면 도구는 제외한다.
+  const main = (preserveRows ? rows.map(clean) : unique(rows)).filter(line =>
+    !menuSet.has(line) && !p.utility.test(line) && (preserveRows
+      ? line.length > 0 && !p.utilityButton.test(line) && !p.uiLine.test(line)
+      : Array.from(line).length > 2 || p.digit.test(line))).join("\n");
   const title = view.title ?? "";
   const headings = unique((o?.headings ?? []).map(h => h.text ?? "")).filter(heading => heading !== strip(title));
   const kind = classify(view, main, contentLinks.length, inputCount);

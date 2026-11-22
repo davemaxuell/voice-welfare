@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { ACTION_TYPES, type Observation } from "../../src/core/actions.ts";
-import { type LlmRequest, type StructuredLlm } from "../../src/core/llm.ts";
+import { ModelConnections, OpenAIStructuredLlm, type LlmRequest, type StructuredLlm } from "../../src/core/llm.ts";
 import { Progress } from "../../src/core/progress.ts";
 import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
 import { Autopilot, historyLine, isKoreanText, pageForLlm, type AutopilotOptions } from "../../src/agents/web/autopilot.ts";
@@ -73,6 +73,27 @@ it("test_unknown_action_uses_a_step_and_continues", async () => {
   const stuck = await pilot(async () => { calls++; return { action: "scroll" }; }).run("알려줘", context());
   expect(stuck).toMatchObject({ status: "limit", steps: [] });
   expect(calls).toBe(10);
+});
+
+it.each([401, 429, 503, "offline"] as const)("계획 모델 연결 오류를 한 번 만에 알린다 (%s)", async failure => {
+  let calls = 0;
+  const pool = new ModelConnections(async () => {
+    calls++;
+    if (failure === "offline") throw new TypeError("fetch failed");
+    return Response.json({error: "provider error"}, {status: failure});
+  });
+  const model = new OpenAIStructuredLlm({baseUrl: "http://localhost:3100/v1", model: "test", pool});
+  await expect(pilot(request => model.generate(request)).run("항목을 열어줘", context()))
+    .rejects.toMatchObject({name: "ModelTransportError", status: failure === "offline" ? undefined : failure});
+  expect(calls).toBe(1);
+});
+
+it("계획 중 예상하지 못한 예외에서는 조작 목록을 읽거나 모델을 다시 호출하지 않는다", async () => {
+  const failure = new Error("planner failure");
+  let calls = 0;
+  const auto = pilot(async () => { calls++; throw failure; });
+  await expect(auto.run("항목을 열어줘", context())).rejects.toBe(failure);
+  expect(calls).toBe(1);
 });
 
 it("모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 멈춘다", async () => {

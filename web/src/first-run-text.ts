@@ -1,6 +1,6 @@
+import type { Lang } from "../../src/core/turn.ts";
 // 첫 실행 설정의 화면 글. src/cheongeum/web/static/first-run.js의 TEXT를 그대로 옮겼다.
-export const TEXT = {
-  ko: {
+const ko = {
     title: '청음 처음 설정', language: '대화 언어', who: '설정하는 분', key: 'OpenAI API 키', keyLabel: 'API 키',
     keyHelp: '키 받는 방법', keyLimit: 'OpenAI 계정에서 사용 한도를 정해 두세요.', keyEmpty: '키를 입력해 주세요.',
     keyHelper: 'OpenAI API 키를 붙여 넣고 Enter를 눌러 주세요.', next: '다음', back: '이전',
@@ -17,7 +17,10 @@ export const TEXT = {
     guardian: '보호자 연락처', guardianSay: '도움이 필요할 때 연락할 보호자를 적어 주세요. 건너뛰려면 Esc 대신 “건너뛰기”를 누르세요.',
     guardianName: '보호자 이름', guardianPhone: '휴대전화 번호', skip: '건너뛰기', save: '저장',
     guardianError: '이름과 휴대전화 번호를 확인해 주세요.',
-  },
+  } as const;
+
+export const TEXT = {
+  ko,
   en: {
     title: 'Cheongeum first-time setup', language: 'Language', who: 'Who is setting up', key: 'OpenAI API key', keyLabel: 'API key',
     keyHelp: 'How to get a key', keyLimit: 'Set a spending limit in your OpenAI account.', keyEmpty: 'Enter a key.',
@@ -72,4 +75,4 @@ export const TEXT = {
     guardianName: '保護者の名前', guardianPhone: '携帯電話番号', skip: 'スキップ', save: '保存',
     guardianError: '名前と携帯電話番号を確認してください。',
   },
-} as const;
+} satisfies Record<Lang, Record<keyof typeof ko, string>>;
