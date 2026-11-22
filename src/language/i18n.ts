@@ -378,14 +378,13 @@ function stripQuotes(value: string): string {
   return trimmed;
 }
 
-/** 숫자를 포함한 다국어 입력란 채우기 요청은 모델에 값을 보내지 않고 관찰된 입력란과 직접 맞춘다. */
-export function parseForeignFieldFill(
-  text: string,
-  lang: Lang,
+const COMPOUND_FILL_ACTION = /\b(?:and|then)\s+(?:please\s+)?(?:put|enter|type|write|input|fill|click|press|submit|open|go|select|check)\b|(?:并|并且|然后|再)\s*(?:请)?(?:把|在|往|填|输|点击|按|提交|打开)|(?:して|してから|、|。)\s*(?:.*?)(?:欄|枠|フィールド|項目)に|(?:,|;)\s*(?:please\s+)?(?:put|enter|type|write|input|fill)\b/iu;
+const CLAUSE_SPLIT = /\s*(?:,\s*(?:and|then)\s+|\b(?:and|then)\s+|;\s*|[，；]\s*(?:并|并且|然后|再)?\s*|、\s*)\s*/iu;
+
+function parseSingleForeignFieldFill(
+  trimmed: string,
   observedLabels: readonly string[],
 ): { fieldMention: string; value: string } | undefined {
-  if (lang === "ko" || observedLabels.length === 0) return undefined;
-  const trimmed = strip(text);
   let rawField: string | undefined;
   let rawValue: string | undefined;
   const enPut = /^(?:please\s+)?(?:put|enter|type|write|input|fill\s+in)\s+(.+?)\s+(?:in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:field|box|input))?[.!?]*$/iu.exec(trimmed);
@@ -400,7 +399,7 @@ export function parseForeignFieldFill(
   else if (jaIn !== null) { rawField = jaIn[1]; rawValue = jaIn[2]; }
   if (rawField === undefined || rawValue === undefined) return undefined;
   const value = stripQuotes(rawValue);
-  if (value.length === 0 || value.length > 200 || !/\p{Nd}/u.test(value)) return undefined;
+  if (value.length === 0 || value.length > 200 || COMPOUND_FILL_ACTION.test(value)) return undefined;
   const fieldKey = casefold(stripQuotes(rawField));
   const exact = observedLabels.find(label => casefold(label) === fieldKey);
   if (exact !== undefined) return { fieldMention: exact, value };
@@ -411,6 +410,28 @@ export function parseForeignFieldFill(
     }
   }
   return undefined;
+}
+
+/** 숫자를 포함한 다국어 입력란 채우기 요청은 모델에 값을 보내지 않고 관찰된 입력란과 직접 맞춘다. */
+export function parseForeignFieldFill(
+  text: string,
+  lang: Lang,
+  observedLabels: readonly string[],
+): { fieldMention: string; value: string }[] | undefined {
+  if (lang === "ko" || observedLabels.length === 0) return undefined;
+  const trimmed = strip(text);
+  const parts = trimmed.split(CLAUSE_SPLIT).map(strip).filter(part => part.length > 0);
+  if (parts.length > 1) {
+    const fills: { fieldMention: string; value: string }[] = [];
+    for (const part of parts) {
+      const parsed = parseSingleForeignFieldFill(part, observedLabels);
+      if (parsed === undefined) { fills.length = 0; break; }
+      fills.push(parsed);
+    }
+    if (fills.length > 1 && fills.some(fill => /\p{Nd}/u.test(fill.value))) return fills;
+  }
+  const single = parseSingleForeignFieldFill(trimmed, observedLabels);
+  return single !== undefined && /\p{Nd}/u.test(single.value) ? [single] : undefined;
 }
 
 type Waiting = Approval | VaultCommand;

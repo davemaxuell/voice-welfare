@@ -813,10 +813,10 @@ export class SessionOrchestrator {
     }
     if (!d.expectsConfirmation && !this.#secretHint) {
       const labels = (this.web.currentView?.fields ?? []).filter(f => f.visible && !f.sensitive).map(f => f.label);
-      const localFill = parseForeignFieldFill(text, lang, labels);
-      if (localFill !== undefined) {
+      const localFills = parseForeignFieldFill(text, lang, labels);
+      if (localFills !== undefined) {
         return this.localize(await this.#korean(redactText("[입력 요청]"), sensitive,
-          { type: "FILL", fills: [localFill] }, text, { fromVoice, staleLinkOffer }));
+          { type: "FILL", fills: localFills }, text, { fromVoice, staleLinkOffer }));
       }
     }
     // 외국어 공공업무는 원문에서 바로 판단한다. 별도 입력 번역으로 기관·부정·요구사항을 잃지 않는다.
