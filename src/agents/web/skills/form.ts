@@ -249,6 +249,11 @@ export class FormSkill {
     if (approval.kind === "visual") return draft("BROWSING", "reject", "화면 사진을 보내지 않았어요.");
     if (approval.kind === "file") return draft(this.web.currentView ? browseState(this.web.currentView) : "IDLE", "reject", "파일을 보내지 않았어요.");
     if (approval.kind === "assist") return draft("BROWSING", "reject", "넣지 않았어요. 다시 말씀해 주세요.");
+    if (approval.kind === "click" && approval.native !== undefined) {
+      // 사이트의 질문에 대신 답하지 않기로 했다. 그 질문에 답할 수 있던 기록도 버린다.
+      this.web.forgetNative();
+      return draft(this.web.currentView ? browseState(this.web.currentView) : "IDLE", "reject", "사이트의 질문에 답하지 않았어요. 화면은 그대로예요.");
+    }
     if (approval.kind === "click") return draft(this.web.currentView ? browseState(this.web.currentView) : "IDLE", "reject", "누르지 않았어요. 화면은 그대로예요.");
     return draft("APPLICATION_OPEN", "reject", "모의접수를 하지 않았어요. 입력 내용은 그대로 있어요.");
   }
