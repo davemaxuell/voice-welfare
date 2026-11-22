@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type RefObject } from "react";
 import { LangSchema } from "../../src/core/turn.ts";
 import {
-  answerConsent, answerRecovery, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
+  answerConsent, answerRecovery, actOnIssue, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
   focusCommand, hearConsent, openSettings, selectLanguage, selectMic, send, setConversationMode, skipIntro, snapshot, soundCheck, speakConsent,
   speakResearch, stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
   type Snapshot,
@@ -12,6 +12,7 @@ import { RecordingReview } from "./recording-review.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
 import { EXAMPLES, UNSUPPORTED, viewOf, type Env, type LogEntry, type WorkspaceView } from "./view.ts";
 import { WorkflowPanel } from "./workflows.tsx";
+import { workflowText } from "./workflows-text.ts";
 import { LANGUAGE_NAMES, sourceLanguage, workspaceText } from "./workspace-language.ts";
 
 const env: Env = { background: new URLSearchParams(location.search).get("background") === "1", mac: /Mac/.test(navigator.platform) };
@@ -98,6 +99,13 @@ function WelcomePanel({ view, t, onStarter }: { view: WorkspaceView; t: (s: stri
   </section>;
 }
 
+/** 같은 안내도 다시 전달되도록 한 번의 변경으로 내용을 바꾼다. */
+function LiveText({ text, sequence }: { text: string; sequence: number }) {
+  const element = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => { element.current?.replaceChildren(document.createTextNode(text)); }, [text, sequence]);
+  return <span ref={element}/>;
+}
+
 function Message({ m }: { m: LogEntry }) {
   const who = <span className="who">{m.who}</span>;
   return <li className={`msg ${m.role}`} data-id={m.id} lang={m.lang}>
@@ -134,9 +142,9 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <p className="hint" id="confirm-hint" lang={sourceLanguage(confirm?.hint)} hidden={confirm?.hint === undefined}>{confirm?.hint}</p>
       <div className="row">
         {/* 새 카드면 단추를 새로 만든다: 이전 카드에서 누르고 있던 손가락·키가 새 승인을 누르지 않게 */}
-        <button type="button" className="primary" id="confirm-yes" key={`yes-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={() => void choose(view.confirmCard, "approve")}>{confirm?.approveLabel ?? t("이 동작 승인")}</button>
+        <button type="button" className="primary" id="confirm-yes" key={`yes-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={e => void choose(view.confirmCard, "approve", e.detail === 0)}>{confirm?.approveLabel ?? t("이 동작 승인")}</button>
         <button type="button" id="confirm-edit" hidden={confirm?.edit !== true} onClick={focusCommand}>{t("수정하기")}</button>
-        <button type="button" id="confirm-no" key={`no-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={() => void choose(view.confirmCard, "reject")}>{t("거절")}</button>
+        <button type="button" id="confirm-no" key={`no-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={e => void choose(view.confirmCard, "reject", e.detail === 0)}>{t("거절")}</button>
       </div>
     </div>
     <div className="decision auth" id="auth-panel" role="region" aria-labelledby="auth-title" hidden={auth === undefined} data-card={auth?.cardId ?? ""}>
@@ -147,12 +155,17 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
         <button type="button" id="auth-cancel" key={`cancel-${auth?.cardId ?? ""}`} disabled={view.decisionDisabled} onClick={() => { if (auth !== undefined) void authChoice(auth.cardId, "auth-cancel", auth.viaCard); }}>{t("인증 취소")}</button>
       </div>
     </div>
+    {view.readMain !== undefined && <button type="button" id="read-main" disabled={view.decisionDisabled}
+      onClick={() => { if (view.readMain !== undefined) void choose(view.readMain.id, "read-main"); }}>{view.readMain.label}</button>}
     <div className="decision result" id="result-panel" role="region" aria-labelledby="result-title" hidden={view.receipt === undefined}>
       <h3 id="result-title">{t("모의접수 결과")}</h3>
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
       <p>{t("실제 접수가 아니며 어떤 기관에도 전송되지 않았어요.")}</p>
     </div>
-    <p className="error" role="alert" id="error" hidden={view.error === undefined}><span key={ui.errorSeq}>{view.error}</span></p>
+    <div className="error" id="error" role={ui.backgroundMic === "speech" && ui.tts ? undefined : "alert"} hidden={view.error === undefined}>
+      <LiveText sequence={ui.errorSeq} text={view.error?.text ?? ""}/>
+      {view.error?.actions.map(action => <button key={action.key} type="button" onClick={() => void actOnIssue(action.key)}>{action.label}</button>)}
+    </div>
     <div className="typing" id="typing" aria-hidden="true" hidden={!view.command.typing}><span className="typing-avatar"></span><span className="typing-dots"><i></i><i></i><i></i></span></div>
   </>;
 }
@@ -179,17 +192,23 @@ function AnswerPanel({ view, t }: { view: WorkspaceView; t: (text: string) => st
 function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s: string) => string }) {
   const input = useRef<HTMLInputElement>(null);
   const { command: c, conversation: conv } = view;
+  const keyboardSubmit = useRef(false);
   useEffect(() => { if (ui.commandReset > 0 && input.current !== null) input.current.value = ""; }, [ui.commandReset]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const el = input.current;
-    if (el !== null && submitCommand(el.value)) el.value = "";
+    const keyboard = keyboardSubmit.current;
+    keyboardSubmit.current = false;
+    if (el !== null) {
+      const draft = el.value;
+      submitCommand(draft, keyboard, () => { if (el.value === draft) el.value = ""; });
+    }
   };
   return <form className="command-form" id="command-form" onSubmit={submit}>
     <label className="sr-only" htmlFor="command">{t("명령 입력 (말하듯이 입력하세요)")}</label>
     <div className="composer">
       <input id="command" ref={input} placeholder={t("청음에게 물어보세요")} autoComplete="off" aria-describedby="command-help" disabled={c.disabled} onInput={e => commandInput(e.currentTarget.value)}/>
-      <button type="submit" className="primary send" id="send" title={t("보내기")} disabled={c.sendDisabled} aria-busy={c.busy}>{c.sendLabel}</button>
+      <button type="submit" className="primary send" id="send" onClick={e => { keyboardSubmit.current = e.detail === 0; }} title={t("보내기")} disabled={c.sendDisabled} aria-busy={c.busy}>{c.sendLabel}</button>
     </div>
     <div className="voice-actions">
       <button type="button" className="voice-start" id="conv-start" aria-label={t("대화 시작 (Enter)")} hidden={!conv.startShown} disabled={conv.startDisabled} onClick={() => void startConversation()}><Kbd label={t("대화 시작 (Enter)")}/></button>
@@ -203,7 +222,7 @@ function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s
   </form>;
 }
 
-export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) => string }) {
+export function StatusPanel({ view, t, researchStatus = "" }: { view: WorkspaceView; t: (s: string) => string; researchStatus?: string }) {
   const s = view.status;
   const progress = useRef<HTMLProgressElement>(null);
   useEffect(() => { if (s.progress !== undefined) progress.current?.style.setProperty("--p", String(s.progress.ratio)); }, [s.progress?.ratio]);
@@ -211,7 +230,8 @@ export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) =
     <h2 id="status-title"><span className="panel-icon status-icon" aria-hidden="true"></span>{t("현재 작업")}</h2>
     <progress id="step-progress" aria-label={t("신청 진행률")} hidden={s.progress === undefined} max={s.progress?.max} value={s.progress?.value} ref={progress}></progress>
     <dl className="status work-status">
-      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)} aria-live="polite">{s.activity}</dd></div>
+      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)}>{s.activity}</dd></div>
+      <div className="st-research-row" hidden={researchStatus.length === 0}><dt>{workflowText("statusLabel", view.lang)}</dt><dd id="st-research" aria-live="polite">{researchStatus}</dd></div>
       <div className="st-state-row"><dt>{t("진행 상태")}</dt><dd><span id="st-state" data-state={s.state}>{s.stateLabel}</span></dd></div>
       <div className="st-step-row" hidden={s.step === undefined}><dt>{t("신청 단계")}</dt><dd id="st-step" lang={sourceLanguage(s.step)}>{s.step ?? t("없음")}</dd></div>
       <div className="st-title-row" hidden={s.title === undefined}><dt>{t("현재 화면")}</dt><dd id="st-title" lang={sourceLanguage(s.title)}>{s.title ?? t("아직 열지 않음")}</dd></div>
@@ -245,6 +265,14 @@ function SoundPanel({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s:
       </select>
     </label>
     <button type="button" className="voice-switch" id="tts-toggle" aria-pressed={view.tts.pressed} disabled={view.tts.disabled} onClick={toggleTts}>{view.tts.label}</button>
+    <dialog id="microphone-settings" aria-labelledby="microphone-settings-title">
+      <h2 id="microphone-settings-title">{t("마이크 설정")}</h2>
+      <p>{t("기기의 개인정보 설정과 브라우저에서 청음의 마이크 사용을 허용한 뒤 마이크 확인을 눌러 주세요.")}</p>
+      {ui.mics.length > 0 && <label className="setting-row">{t("마이크 선택")}<select value={view.micId} onChange={e => selectMic(e.currentTarget.value)}>
+        {ui.mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+      </select></label>}
+      <form method="dialog"><button type="submit" onClick={() => void checkMic()}>{t("마이크 확인")}</button><button type="submit">{t("닫기")}</button></form>
+    </dialog>
     <div className="audio-tools">
       <button type="button" id="mic-check" disabled={view.micCheckDisabled} onClick={() => void checkMic()}>{t("마이크 확인")}</button>
       <button type="button" id="sound-check" disabled={view.soundCheckDisabled} onClick={soundCheck}>{t("소리 확인")}</button>
@@ -326,6 +354,7 @@ export function App() {
   const view = viewOf(ui, env);
   const lang = view.lang;
   const t = (s: string) => workspaceText(s, lang);
+  const [researchStatus, setResearchStatus] = useState("");
   const { thread, log, unread, jumpToLatest } = useFollowThread(ui.messages.length);
   const layout = useRef<HTMLDivElement>(null);
   const layoutTop = useRef<number | undefined>(undefined);
@@ -368,7 +397,7 @@ export function App() {
   return <div id="app" className={view.appClass} data-stage={view.stage}>
     <a className="skip-link" href="#command">{t("명령 입력으로 바로가기")}</a>
     <Header view={view} t={t}/>
-    <div className="sr-only" aria-live="assertive" id="announce"><span key={ui.announcement.seq}>{ui.announcement.text}</span></div>
+    <div className="sr-only" aria-live="assertive" id="announce"><LiveText sequence={ui.announcement.seq} text={ui.announcement.text}/></div>
     <SettingsDialog dialog={ui.settings} continuing={ui.sessionId !== undefined}/>
     <FirstRunDialog machine={firstRun}/>
     <section id="intro-card" className="intro-card" aria-label={t("청음 소개")} hidden={view.intro === undefined}>
@@ -394,7 +423,7 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
-              <p className={`phase phase-${view.conversation.phase}`} aria-live="polite" id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label">{view.conversation.phaseLabel}</span></p>
+              <p className={`phase phase-${view.conversation.phase}`} id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
             <div className="thread" id="thread" ref={thread}>
@@ -407,14 +436,14 @@ export function App() {
             </div>
             <CommandForm view={view} ui={ui} t={t}/>
             <details className="examples-disclosure"><summary>{t("예시 명령 보기")}</summary><ul className="examples" id="examples">
-              {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={() => void send(t(ex))}>{t(ex)}</button></li>)}
+              {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={e => void send(t(ex), { keyboard: e.detail === 0 })}>{t(ex)}</button></li>)}
             </ul></details>
             <RecordingReview owner={view.recordingOwner} lang={lang}/>
           </section>
         </div>
 
         <aside className="side" aria-label={t("작업 정보와 설정")}>
-          <StatusPanel view={view} t={t}/>
+          <StatusPanel view={view} t={t} researchStatus={researchStatus}/>
           <section aria-labelledby="src-title" className="panel" id="sources-panel" hidden={view.sources.length === 0}>
             <h2 id="src-title">{t("근거 자료")}</h2><ul id="sources">{view.sources.map((s, i) => <li key={`${s.url}-${i}`}>
               <a lang={sourceLanguage(s.title)} href={s.url} target="_blank" rel="noreferrer">{s.title}</a> ({t("확인일")} {s.lastCheckedAt}{s.note !== undefined && s.note.length > 0 && <span lang={sourceLanguage(s.note)}>, {s.note}</span>})
@@ -426,7 +455,7 @@ export function App() {
             </li>)}</ol>
           </section>
           <SoundPanel view={view} ui={ui} t={t}/>
-          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch}/>
+          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch} onStatus={setResearchStatus}/>
           <details className="support-details">
             <summary id="unsupported-title">{t("지원하지 않는 기능")}</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{t(u)}</li>)}</ul>
           </details>

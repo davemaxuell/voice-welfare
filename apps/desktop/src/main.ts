@@ -35,7 +35,8 @@ import {
 } from "electron";
 import type { Lang } from "../../../src/core/turn.ts";
 import { desktopText } from "./text.ts";
-import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN } from "./protocol.ts";
+import { overlayBounds, overlayLimits, pickDisplay, type Corner } from "./placement.ts";
+import { isDesktopLanguage, isRecord, readyUrl, SHUTDOWN, trayTaskText } from "./protocol.ts";
 import { appUpdater, createUpdates, type Updates } from "./updates.ts";
 
 // The development bundle runs from apps/desktop/out/app, four levels below the checkout.
@@ -49,9 +50,7 @@ app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 const BACKGROUND = process.env.CHEONGEUM_SHOW_WINDOW !== "1";
 const AVATAR = process.env.CHEONGEUM_AVATAR !== "0";
-type Corner = keyof typeof desktopText.ko.corners;
 const isCorner = (value: unknown): value is Corner => typeof value === "string" && Object.hasOwn(desktopText.ko.corners, value);
-const OVERLAY_MARGIN = 12;
 const FOCUS_TARGETS = ["confirm", "consent", "command"];
 
 let service: UtilityProcess | undefined;
@@ -77,9 +76,20 @@ let overlayRegions: Rectangle[] = [];
 let appliedShape: string | undefined;
 let overlayInteractive: boolean | undefined;
 const shortcuts = { talk: false, choices: false };
-let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang } = { corner: "bottom-right", still: false, hidden: false };
+let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang; displayId?: number } = { corner: "bottom-right", still: false, hidden: false };
 
 const copy = () => desktopText[prefs.lang ?? "ko"];
+
+let lastTooltip: string | undefined;
+function updateTooltip() {
+  if (!tray) return;
+  const labels = copy();
+  const task = trayTaskText(lastSnapshot);
+  const next = task === undefined ? labels.tip : `${labels.brand} · ${task}`;
+  if (next === lastTooltip) return;
+  tray.setToolTip(next);
+  lastTooltip = next;
+}
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ height: 20 }));
@@ -91,8 +101,10 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   const labels = copy();
+  const displays = screen.getAllDisplays();
+  const selected = preferredDisplay(displays);
   if (process.platform === "darwin") tray.setTitle(labels.brand);
-  tray.setToolTip(labels.tip);
+  updateTooltip();
   const keyLabel = (ok: boolean, keys: string) => (ok ? ` (${keys})` : labels.shortcutUnavailable);
   const avatarItems: MenuItemConstructorOptions[] = overlay
     ? [
@@ -109,6 +121,15 @@ function updateTray() {
             },
           })),
         },
+        ...(displays.length > 1 ? [{
+          label: labels.avatarDisplay,
+          submenu: displays.map((display, index): MenuItemConstructorOptions => ({
+            label: display.label.length > 0 ? `${labels.displayNumber(index + 1)} — ${display.label}` : labels.displayNumber(index + 1),
+            type: "radio",
+            checked: display.id === selected.id,
+            click: () => savePrefs({ displayId: display.id }),
+          })),
+        }] : []),
         { label: labels.still, type: "checkbox", checked: prefs.still, click: (item) => savePrefs({ still: item.checked }) },
       ]
     : [];
@@ -202,6 +223,7 @@ function loadPrefs() {
       ...prefs,
       corner: isCorner(saved.corner) ? saved.corner : prefs.corner,
       still: saved.still === true,
+      ...(typeof saved.displayId === "number" && Number.isSafeInteger(saved.displayId) ? { displayId: saved.displayId } : {}),
       ...(isDesktopLanguage(saved.lang) ? { lang: saved.lang } : {}),
     };
   } catch {
@@ -213,11 +235,11 @@ function loadPrefs() {
 function savePrefs(patch: Partial<typeof prefs>) {
   prefs = { ...prefs, ...patch };
   try {
-    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang }));
+    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang, displayId: prefs.displayId }));
   } catch {
     /* 저장하지 못하면 이번 실행에만 */
   }
-  if (patch.corner !== undefined || patch.still !== undefined) {
+  if (patch.corner !== undefined || patch.still !== undefined || patch.displayId !== undefined) {
     placeOverlay();
     sendOverlayPrefs();
   }
@@ -225,36 +247,21 @@ function savePrefs(patch: Partial<typeof prefs>) {
   updateTray();
 }
 
-function overlayLimits(area: Rectangle = screen.getPrimaryDisplay().workArea) {
-  return {
-    maxWidth: Math.max(1, Math.min(560, area.width - 2 * OVERLAY_MARGIN)),
-    maxHeight: Math.max(1, Math.min(720, area.height - 2 * OVERLAY_MARGIN)),
-  };
+function preferredDisplay(all = screen.getAllDisplays()) {
+  return pickDisplay({ all, primary: screen.getPrimaryDisplay() }, prefs.displayId);
 }
 
 function sendOverlayPrefs() {
-  sendOverlay("overlay:prefs", { corner: prefs.corner, still: prefs.still, ...overlayLimits() });
+  sendOverlay("overlay:prefs", { corner: prefs.corner, still: prefs.still, ...overlayLimits(preferredDisplay().workArea) });
 }
 
-/** 고른 구석에 붙인다. 작업 영역(작업 표시줄 제외) 안쪽, 주 모니터 기준. */
-function overlayBounds(): Rectangle {
-  const area = screen.getPrimaryDisplay().workArea;
-  const { maxWidth, maxHeight } = overlayLimits(area);
-  const width = Math.min(overlaySize.width, maxWidth);
-  const height = Math.min(overlaySize.height, maxHeight);
-  const right = prefs.corner.endsWith("right");
-  const bottom = prefs.corner.startsWith("bottom");
-  return {
-    width,
-    height,
-    x: Math.round(right ? area.x + area.width - width - OVERLAY_MARGIN : area.x + OVERLAY_MARGIN),
-    y: Math.round(bottom ? area.y + area.height - height - OVERLAY_MARGIN : area.y + OVERLAY_MARGIN),
-  };
+function preferredBounds() {
+  return overlayBounds(preferredDisplay().workArea, prefs.corner, overlaySize);
 }
 
 function placeOverlay() {
   if (!overlay || overlay.isDestroyed()) return;
-  const bounds = overlayBounds();
+  const bounds = preferredBounds();
   const current = overlay.getBounds();
   if (bounds.x !== current.x || bounds.y !== current.y || bounds.width !== current.width || bounds.height !== current.height) {
     overlay.setBounds(bounds);
@@ -385,7 +392,7 @@ function createOverlay() {
   ses.setPermissionCheckHandler(() => false);
   ses.webRequest.onBeforeRequest((details, cb) => cb({ cancel: !overlayAsset(details.url) }));
   const window = new BrowserWindow({
-    ...overlayBounds(),
+    ...preferredBounds(),
     title: copy().assistant,
     frame: false,
     transparent: true,
@@ -447,8 +454,9 @@ function bindBridge() {
   // 대화 창 → 아바타: 표시 상태(마지막 것만 기억해 아바타가 새로 뜨면 다시 보낸다)
   ipcMain.on("cheongeum:snapshot", (e, snapshot: unknown) => {
     if (!fromController(e) || !isRecord(snapshot)) return;
-    if (isDesktopLanguage(snapshot.lang) && snapshot.lang !== prefs.lang) savePrefs({ lang: snapshot.lang });
     lastSnapshot = snapshot;
+    if (isDesktopLanguage(snapshot.lang) && snapshot.lang !== prefs.lang) savePrefs({ lang: snapshot.lang });
+    updateTooltip();
     sendOverlay("cheongeum:snapshot", snapshot);
   });
   ipcMain.on("overlay:ready", (e) => {
@@ -657,6 +665,7 @@ async function createWindow() {
   // 대화 창이 새로 고쳐지거나 죽으면 아바타는 그 세션의 버튼을 더 보여 주지 않는다
   const lost = () => {
     lastSnapshot = null;
+    updateTooltip();
     sendOverlay("cheongeum:snapshot", { connected: false });
   };
   window.webContents.on("did-start-loading", lost);
@@ -684,10 +693,15 @@ async function startApp() {
   await createWindow();
   if (AVATAR) {
     createOverlay();
+    let pendingPlacement: NodeJS.Timeout | undefined;
     const replace = () => {
-      appliedShape = undefined;
-      placeOverlay();
-      sendOverlayPrefs();
+      clearTimeout(pendingPlacement);
+      pendingPlacement = setTimeout(() => {
+        appliedShape = undefined;
+        placeOverlay();
+        sendOverlayPrefs();
+        updateTray();
+      }, 150);
     };
     screen.on("display-added", replace);
     screen.on("display-removed", replace);

@@ -195,7 +195,8 @@ it("움직임 줄이기 설정에서는 단계 전환 때 애니메이션을 실
   const runningAnimations = await page.evaluate(() => document.getAnimations().filter(a => a.playState === "running").length);
   expect(runningAnimations).toBe(0);
   await screen(page.locator("#st-state")).toBeVisible();
-  await screen(page.locator("#phase-label")).toBeVisible();
+  await screen(page.locator("#capture-label")).toBeVisible();
+  await screen(page.locator("#task-label")).toBeVisible();
 });
 
 it("1,000개의 메시지가 있어도 입력란이 포커스를 유지하고 글자가 빠지지 않는다", async () => {
