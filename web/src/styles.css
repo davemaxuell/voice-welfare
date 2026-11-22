@@ -924,6 +924,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .high-contrast .hero:not([hidden]) .hero-content > *,
 .high-contrast .hero-buttons button:not([hidden]),
 .high-contrast .consent-details[open] > p { animation: none; }
+.high-contrast :is(button, summary, select, .composer, .phase, #st-state, .header-button, a) { transition: none; }
 .high-contrast .ripples, .high-contrast .ripples i { border-color: var(--line); }
 .high-contrast :is(.starter-actions button, .composer, .decision, .answer, .panel, .msg, .phase, #st-state, .mode-note, .examples button, .fields li, #sources li) { border: 1px solid var(--line); }
 .high-contrast .msg .who { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; font-weight: 700; color: var(--accent); }
