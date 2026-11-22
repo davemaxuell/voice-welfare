@@ -44,7 +44,7 @@ it.each([true, false])("discovers the venue and checks the requested day's admis
   };
   const directory = process.env.CHEONGEUM_EVAL_SETTINGS_DIR;
   const settings = live && directory !== undefined ? new SettingsStore(join(directory, "preferences.json")) : undefined;
-  const config = loadConfig({...(live ? process.env : {OPENAI_API_KEY: "fixture"}), PILOT_PROFILE: "shared",
+  const config = loadConfig({...(live ? process.env : {OPENAI_API_KEY: "fixture", BROWSER_DRIVER: process.env.BROWSER_DRIVER}), PILOT_PROFILE: "shared",
     HEADLESS: "true", REQUIRE_CONSENT: "false", PRACTICE_MODE: "false", WEB_SEARCH_URL: searchOrigin + "/?q={q}",
     TAVILY_API_KEY: ""});
   const runtime = await AgentRuntime.create(config, live ? fetch : completions, settings);

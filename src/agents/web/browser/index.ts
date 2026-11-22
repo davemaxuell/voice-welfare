@@ -23,6 +23,8 @@ import { markBlocks } from "./blocks.ts";
 import { drawCursor, type CursorMode } from "./cursor.ts";
 import { fullPageLayout } from "./full_page.ts";
 import { AdapterError, call, optional, playwrightDriver, type ControlWindow, type PageDriver, type ResolvedElement } from "./driver.ts";
+import { attachStagehand, browserDriver, stagehandLaunchOptions, type BrowserDriver } from "./stagehand_browser.ts";
+import { stagehandDriver } from "./stagehand_driver.ts";
 import { restingCursor } from "./rest_cursor.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
@@ -95,14 +97,30 @@ async function launch<T extends Browser | BrowserContext>(start: () => Promise<T
   } finally { launching.delete(pending); }
 }
 
-export function launchBrowser(headless: boolean, slowMoMs = 0): Promise<Browser> {
-  // 설치본은 보이는 창과 headless 모두에 Chromium 전체 실행 파일을 싣는다.
-  const channel = (process.env.CHEONGEUM_DESKTOP_RUNTIME ?? "") !== "" ? "chromium" : undefined;
-  return launch(() => chromium.launch({ channel, headless, slowMo: slowMoMs }));
+async function launchForDriver<T extends Browser | BrowserContext>(driver: BrowserDriver, start: (extra: import("playwright").LaunchOptions) => Promise<T>): Promise<T> {
+  return launch(async () => {
+    const resource = await start(driver === "stagehand" ? await stagehandLaunchOptions() : {});
+    if (driver === "stagehand") {
+      try {
+        const host: Browser | BrowserContext = resource;
+        const browser = "contexts" in host ? host : host.browser();
+        if (browser === null) throw new AdapterError("NOT_SUPPORTED");
+        await attachStagehand(browser, "newContext" in resource);
+      } catch (error) { await resource.close(); throw error; }
+    }
+    return resource;
+  });
 }
-export function launchChromeProfile(userDataDir: string, slowMoMs = 0): Promise<BrowserContext> {
-  return launch(() => chromium.launchPersistentContext(userDataDir, {
-    channel: "chrome", headless: false, viewport: null, locale: "ko-KR", slowMo: slowMoMs, acceptDownloads: true,
+
+export function launchBrowser(headless: boolean, slowMoMs = 0, driver = browserDriver()): Promise<Browser> {
+  const channel = driver === "stagehand" || (process.env.CHEONGEUM_DESKTOP_RUNTIME ?? "") !== "" ? "chromium" : undefined;
+  return launchForDriver(driver, extra => chromium.launch({ channel, headless, slowMo: slowMoMs, ...extra }));
+}
+
+export function launchChromeProfile(userDataDir: string, slowMoMs = 0, driver = browserDriver(),
+  options: { channel?: "chrome" | "chromium"; headless?: boolean } = {}): Promise<BrowserContext> {
+  return launchForDriver(driver, extra => chromium.launchPersistentContext(userDataDir, {
+    channel: "chrome", headless: false, viewport: null, locale: "ko-KR", slowMo: slowMoMs, acceptDownloads: true, ...options, ...extra,
   }));
 }
 export function stopPlaywright(): Promise<void> {
@@ -120,6 +138,7 @@ type Options = (
   | { browserSource: BrowserSource; browser?: never; context?: never }
 ) & {
   allowedOrigins: readonly string[]; readOnlyWeb?: boolean; visualCursor?: boolean;
+  driver?: BrowserDriver;
   createPageDriver?: (page: Page, actionTimeoutMs: number) => PageDriver;
   actionTimeoutMs?: number; navigationTimeoutMs?: number; downloads?: DownloadSink;
 };
@@ -525,7 +544,7 @@ export class PlaywrightExecutionAdapter {
   #driver(page: Page): PageDriver {
     const existing = this.#drivers.get(page);
     if (existing !== undefined) return existing;
-    const create = this.#options.createPageDriver ?? playwrightDriver;
+    const create = this.#options.createPageDriver ?? ((this.#options.driver ?? browserDriver()) === "stagehand" ? stagehandDriver : playwrightDriver);
     const driver = create(page, this.#actionTimeout);
     this.#drivers.set(page, driver);
     return driver;
@@ -799,7 +818,7 @@ export class PlaywrightExecutionAdapter {
     switch (type) {
       case "click":
         // 아래 #acting 안(실제로 누르는 동안)에 뜬 confirm() 창만 이 조작의 것으로 본다.
-        await this.#acting(page, () => element.click());
+        await this.#acting(page, () => element.click({ grants, inspection }));
         return ok;
       case "focus":
         await element.focus();

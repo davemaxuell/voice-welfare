@@ -4,11 +4,11 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import type { Browser, BrowserContext } from "playwright";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { type Action } from "../../src/core/actions.ts";
 import { DownloadStore } from "../../src/agents/web/downloads.ts";
-import { PlaywrightExecutionAdapter, launchBrowser, stopPlaywright } from "../../src/agents/web/browser/index.ts";
+import { PlaywrightExecutionAdapter, launchBrowser, launchChromeProfile, stopPlaywright } from "../../src/agents/web/browser/index.ts";
 
 let browser: Browser;
 const adapters: PlaywrightExecutionAdapter[] = [];
@@ -141,7 +141,7 @@ it("test_footer_text_is_the_site_footer_not_article_footers", async () => {
 });
 
 async function shared() {
-  const ctx = await chromium.launchPersistentContext(await temp(), { headless: true });
+  const ctx = await launchChromeProfile(await temp(), 0, undefined, { channel: "chromium", headless: true });
   cleanup.push(() => ctx.close());
   return ctx;
 }
