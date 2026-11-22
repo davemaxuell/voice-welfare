@@ -329,6 +329,7 @@ export class BrowseSkill {
       const candidates = out.candidates ?? [];
       this.linkChoices = candidates.length > 0 && out.view ? LinkChoices.named(out.view, candidates) : undefined;
       if (expected) return draft(this.dialogue.state, "follow-link", "화면이나 항목이 바뀌었어요. 현재 화면에서 다시 골라 주세요.");
+      if (out.candidates === undefined && hasText(out.message)) return draft(this.dialogue.state, "follow-link", out.message, {view: out.view});
       const speech = candidates.length > 0
         ? `${out.message} ${candidates.map((c, i) => `${i+1}번 ${c}`).join(", ")}. 번호나 정확한 이름을 말씀해 주세요.`
         : `${out.message} '링크 목록 알려줘'라고 하시면 이 화면의 링크를 읽어드립니다.`;

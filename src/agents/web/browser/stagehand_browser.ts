@@ -8,6 +8,8 @@ import { z } from "zod";
 import type { Browser, LaunchOptions, Page } from "playwright";
 import type { StructuredLlm } from "../../../core/llm.ts";
 import { redactPictureText } from "../../../safety/privacy.ts";
+import { selectObservedControl, type SemanticObservation } from "./semantic_observation.ts";
+import { framesOf } from "./frame_controls.ts";
 import { AdapterError, observeWith } from "./driver.ts";
 
 export type BrowserDriver = "playwright" | "stagehand";
@@ -34,6 +36,7 @@ interface Inference {
   labels: Set<string>;
   llm: StructuredLlm;
   signal: AbortSignal;
+  semantic?: SemanticObservation;
 }
 
 // 한 브라우저에서 여러 세션이 동시에 관찰해도, 추론은 해당 요청의 모델과 중단 신호만 쓴다.
@@ -49,6 +52,12 @@ function clientModel(pending: Map<string, Inference>): ClientLLM {
     const request = token === undefined ? undefined : pending.get(token);
     if (request === undefined) throw unavailable();
     request.signal.throwIfAborted();
+    if (request.semantic !== undefined) {
+      const id = await selectObservedControl(text, request.semantic, request.signal);
+      request.signal.throwIfAborted();
+      return {role:"assistant", content:[], outputFormat:"json_schema", structuredContent:{elements:id === undefined ? [] :
+        [{elementId:id, method:"click", arguments:[], description:"고른 항목"}]}};
+    }
     const labels = text.split("\n").flatMap(line => {
       const item = /^\s*\[(\d+-\d+)\] (button|link|tab|menuitem|menuitemcheckbox|menuitemradio): (.{1,512})$/u.exec(line);
       return item === null || !request.labels.has(item[3]!) ? [] : ["[" + item[1] + "] " + item[2] + ": " + redactPictureText(item[3]!)];
@@ -121,17 +130,21 @@ export function stagehandTab(page: Page) {
 }
 
 // 셀렉터만 돌려준다. 모델이 붙인 이름·설명은 승인이나 정책에 쓰지 않는다.
-export async function observedSelectors(page: Page, instruction: string, llm: StructuredLlm, signal: AbortSignal): Promise<string[]> {
+export async function observedSelectors(page: Page, instruction: string, llm: StructuredLlm, signal: AbortSignal, semantic?: SemanticObservation): Promise<string[]> {
   const { connection, tab } = await stagehandTab(page);
   signal.throwIfAborted();
   const token = "청음-" + randomUUID();
-  const controls = await observeWith(script => tab.evaluate(script)).controlWindow({ limit: 600 });
+  const controls = semantic?.controls ?? (await observeWith(script => tab.evaluate(script)).controlWindow({ limit: 600 })).items;
   signal.throwIfAborted();
-  const labels = new Set(controls.items.filter(item => !item.disabled && item.pictureMasked !== true).map(item => item.name));
-  connection.pending.set(token, { instruction, llm, signal, labels });
+  const labels = new Set(controls.filter(item => !item.disabled && item.pictureMasked !== true).map(item => item.name));
+  connection.pending.set(token, { instruction, llm, signal, labels, semantic });
   try {
+    const mask = 'input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=searchbox], object, embed';
+    const excluded = semantic === undefined ? [mask + ', iframe, frame'] :
+      await framesOf(page).ignoredSelectors(mask + ', [inert], [hidden], [aria-hidden="true"], form:has(input[type=password])');
+    signal.throwIfAborted();
     const { data } = await connection.sdk.observe(token, { page: tab, timeout: 10_000,
-      ignoreLocators: [tab.locator('input, textarea, select, [contenteditable], [role=textbox], [role=combobox], iframe, frame, object, embed')] });
+      ignoreLocators: excluded.map(selector => tab.locator(selector)) });
     signal.throwIfAborted();
     return data.map(action => action.selector);
   } finally { connection.pending.delete(token); }
