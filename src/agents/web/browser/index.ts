@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, errors, type Browser, type BrowserContext, type CDPSession, type Dialog, type Download, type Locator, type Page, type Request, type Route } from "playwright";
+import { chromium, errors, type Browser, type BrowserContext, type CDPSession, type Dialog, type Download, type Page, type Request, type Route } from "playwright";
 import { z } from "zod";
 import {
-  parseObservation, type Action, type ActionResult, type ActionTarget, type ExecuteGrants, type ExecutionErrorCode, type NativeDialogRecord, type NativeGrant,
+  parseObservation, type Action, type ActionResult, type ActionTarget, type ExecuteGrants, type NativeDialogRecord, type NativeGrant,
   type NativeSeen, type NoticeProof,
 } from "../../../core/actions.ts";
 import { browserAsset } from "../../../core/assets.ts";
@@ -14,7 +14,6 @@ import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
 import { boundPlanClick, revokePlanClick } from "../../../core/plan.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
-import { strip } from "../../../core/text.ts";
 import { isInspectionUrl, isNotice, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
@@ -23,24 +22,18 @@ import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts"
 import { markBlocks } from "./blocks.ts";
 import { drawCursor, type CursorMode } from "./cursor.ts";
 import { fullPageLayout } from "./full_page.ts";
-import { observePage, type ControlQuery } from "./observe.ts";
+import { AdapterError, call, optional, playwrightDriver, type ControlWindow, type PageDriver, type ResolvedElement } from "./driver.ts";
 import { restingCursor } from "./rest_cursor.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
 // Native Node erases the types on import. Bundled Electron uses these same self-contained function bodies.
-const observeFunction = observePage.toString();
 const blocksFunction = markBlocks.toString();
 const fullPageFunction = fullPageLayout.toString();
-// 일부 포털은 브라우저 드라이버가 객체를 돌려받을 때 쓰는 내장 함수를 바꿔 둔다. 관찰은 글(JSON)로 받는다.
-const observeJson = `JSON.stringify((${observeFunction})())`;
-const controlsJson = (query: ControlQuery) => `JSON.stringify((${observeFunction})(${JSON.stringify(query)}))`;
 // Node의 page.evaluate는 함수 글을 부르지 않으므로 인자를 JSON으로 넣어 부르는 식으로 보낸다.
 const callScript = (script: string, arg: unknown) => `(${script})(${JSON.stringify(arg)})`;
 // 사진을 찍는 동안만 글 조각에 붙였다 떼는 표시
 const SHOT_ATTR = "data-cheongeum-shot";
-export const browserPatterns = { attributeQuotes: /["\\]/gu, spaces: /\p{White_Space}+/gu };
-const cssEscape = (value: string) => value.replace(browserPatterns.attributeQuotes, ch => "\\" + ch);
-
+export { AdapterError, browserPatterns, type ControlItem, type ControlWindow } from "./driver.ts";
 export type { CursorMode };
 // 초점만 옮기는 동작은 누르라는 말(승인)이나 사용자의 입력을 기다리는 때이고, 나머지는 움직여 가거나 누르는 때다
 const CURSOR_MODE: Partial<Record<Action["type"], CursorMode>> = { focus: "wait", click: "click", check: "click", press: "click" };
@@ -79,31 +72,6 @@ const MarksSchema = z.object({
   frames: z.array(z.object({ src: z.string(), shown: z.boolean() })),
   inputs: z.int(), passwords: z.int(), overlays: z.int(),
 });
-
-const InspectionControlSchema = z.union([
-  z.object({ kind: z.literal("navigation"), href: z.string(), signature: z.string() }),
-  z.object({ kind: z.enum(["disclosure", "ambiguous", "blocked"]), href: z.string().optional(), signature: z.string() }),
-]);
-// shadows는 페이지 안에서는 알 수 없어 읽은 그대로는 -1(세지 않음)이다. controlWindow가 브라우저의 DOM 정보로 세어 채운다.
-const NoticeFactsSchema = z.object({
-  kind: z.enum(["dialog", "layer"]), title: z.string(), text: z.string(), textLength: z.number(), buttons: z.array(z.string()),
-  buttonCount: z.number(), others: z.number(), hasInputs: z.boolean(), popups: z.number(), signature: z.string(), root: z.string(),
-  shadows: z.number().default(-1),
-});
-const ControlItemSchema = z.looseObject({
-  ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
-  context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
-  notice: NoticeFactsSchema.optional(), planSignature: z.string().optional(),
-});
-const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
-const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
-export type ControlItem = z.infer<typeof ControlItemSchema>;
-export type ControlWindow = z.infer<typeof ControlWindowSchema>;
-
-export class AdapterError extends Error {
-  readonly code: ExecutionErrorCode;
-  constructor(code: ExecutionErrorCode, message: string = code) { super(message); this.code = code; }
-}
 
 // Playwright는 대부분의 실패를 꾸미지 않은 Error로, 시간 초과는 TimeoutError로 던진다.
 function fromPlaywright(error: unknown): error is Error {
@@ -152,6 +120,7 @@ type Options = (
   | { browserSource: BrowserSource; browser?: never; context?: never }
 ) & {
   allowedOrigins: readonly string[]; readOnlyWeb?: boolean; visualCursor?: boolean;
+  createPageDriver?: (page: Page, actionTimeoutMs: number) => PageDriver;
   actionTimeoutMs?: number; navigationTimeoutMs?: number; downloads?: DownloadSink;
 };
 type Completed = Pick<ActionResult, "ok" | "verified" | "readValue">;
@@ -223,14 +192,6 @@ export function shadowRootCount(root: DomNode): number {
   return found;
 }
 
-function call<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
-  signal.throwIfAborted();
-  return work().then(value => { signal.throwIfAborted(); return value; });
-}
-async function optional<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T | undefined> {
-  try { return await call(signal, work); }
-  catch { signal.throwIfAborted(); return undefined; }
-}
 type InspectionRequests = { blocked: number };
 
 async function guardedInspection<T>(
@@ -301,6 +262,7 @@ export class PlaywrightExecutionAdapter {
   readonly #nativePending = new Map<string, NativePending>();
   /** 마지막으로 끝난 조작들이 겪은 confirm() 창. takeNative로 한 번만 가져간다. */
   readonly #nativeSeen = new Map<string, NativeSeen>();
+  readonly #drivers = new WeakMap<Page, PageDriver>();
   readonly #loads = new Map<Page, PageLoad>();
   #onPage?: (page: Page) => void;
   #lifecycle = Promise.resolve();
@@ -560,6 +522,15 @@ export class PlaywrightExecutionAdapter {
     return this.page;
   }
 
+  #driver(page: Page): PageDriver {
+    const existing = this.#drivers.get(page);
+    if (existing !== undefined) return existing;
+    const create = this.#options.createPageDriver ?? playwrightDriver;
+    const driver = create(page, this.#actionTimeout);
+    this.#drivers.set(page, driver);
+    return driver;
+  }
+
   async bringToFront(signal = new AbortController().signal): Promise<void> {
     await this.start();
     const page = this.page;
@@ -570,8 +541,7 @@ export class PlaywrightExecutionAdapter {
     await this.start();
     const page = this.#requirePage();
     const load = this.#loads.get(page);
-    const text = z.string().parse(await call(signal, () => page.evaluate(observeJson)));
-    const raw = z.looseObject({ errors: z.array(z.string()).optional() }).parse(JSON.parse(text));
+    const raw = await this.#driver(page).observe(signal);
     signal.throwIfAborted();
     const errors = [...raw.errors ?? [], ...this.#nativeDialogs.splice(0).map(msg => "브라우저 경고창: " + msg)];
     const fresh = performance.now() - FETCH_FRESH_MS;
@@ -774,18 +744,19 @@ export class PlaywrightExecutionAdapter {
       return ok;
     }
     if (type === "back") return this.#back(page, signal);
+    const driver = this.#driver(page);
     if (type === "scroll") {
-      if (target === undefined) await call(signal, () => page.mouse.wheel(0, 600));
+      if (target === undefined) await driver.scroll(signal);
       else {
-        const loc = await this.#resolve(page, target, signal);
-        await call(signal, () => loc.scrollIntoViewIfNeeded({ signal }));
+        const element = await this.#resolve(driver, target, signal);
+        await element.scroll();
       }
       return ok;
     }
     if (type === "click" && target?.ref === undefined && target?.role === "link" && target.name !== undefined) {
       if (await this.#linkFallback(page, target.name, signal)) return ok;
     }
-    let loc = await this.#resolve(page, target, signal);
+    let element = await this.#resolve(driver, target, signal);
     if (inspection?.kind === "control" && inspection.control.kind === "blocked") throw new AdapterError("NOT_SUPPORTED");
     if (inspection?.kind === "control" && inspection.control.kind === "navigation") {
       await this.#verifyInspectionControl(page, inspection, target, signal);
@@ -796,24 +767,18 @@ export class PlaywrightExecutionAdapter {
       return ok;
     }
     if (this.#options.visualCursor === true && type !== "read") {
-      await this.#showCursor(page, loc, CURSOR_MODE[type] ?? "move", signal);
+      await this.#showCursor(page, element, CURSOR_MODE[type] ?? "move", signal);
     }
     if (target?.ref !== undefined && type !== "read" && (this.#options.visualCursor === true || type === "click")) {
       // Waiting for actionability can outlast the identity check. A relabelled
       // button must be rejected before the real click, including after cursor motion.
-      if (type === "click") await call(signal, () => loc.click({ ...opts, trial: true }));
-      loc = await this.#resolveRef(page, target, signal);
+      if (type === "click") await element.waitForClick();
+      element = await this.#resolve(driver, target, signal);
     }
     if (inspection?.kind === "control") {
       await this.#verifyInspectionControl(page, inspection, target, signal);
       if (inspection.control.kind === "disclosure") {
-        await call(signal, () => loc.evaluate(element => {
-          const details = element.parentElement;
-          if (!(details instanceof HTMLDetailsElement) || details.querySelector(":scope > summary") !== element) {
-            throw new Error("Disclosure changed");
-          }
-          details.open = !details.open;
-        }));
+        await element.toggleDisclosure();
         return ok;
       }
     }
@@ -834,45 +799,37 @@ export class PlaywrightExecutionAdapter {
     switch (type) {
       case "click":
         // 아래 #acting 안(실제로 누르는 동안)에 뜬 confirm() 창만 이 조작의 것으로 본다.
-        await this.#acting(page, () => call(signal, () => loc.click(opts)));
+        await this.#acting(page, () => element.click());
         return ok;
       case "focus":
-        await call(signal, () => loc.focus(opts));
+        await element.focus();
         return ok;
       case "press":
-        await this.#acting(page, () => call(signal, () => loc.press(action.value === undefined || action.value === "" ? "Enter" : action.value, opts)));
+        await this.#acting(page, () => element.press(action.value === undefined || action.value === "" ? "Enter" : action.value));
         await optional(signal, () => page.waitForLoadState("domcontentloaded", opts));
         return ok;
       case "fill": {
-        if (await call(signal, () => loc.getAttribute("type", { signal })) === "password") {
+        if (await element.fieldType() === "password") {
           throw new AdapterError("NOT_SUPPORTED", "비밀번호 입력란은 조작하지 않습니다.");
         }
         const value = action.value ?? "";
-        await this.#acting(page, () => call(signal, () => loc.fill(value, opts)));
-        const readValue = await call(signal, () => loc.inputValue(opts));
+        await this.#acting(page, () => element.fill(value));
+        const readValue = await element.inputValue();
         return { ok: true, verified: readValue === value, readValue };
       }
       case "select": {
-        await this.#acting(page, () => call(signal, () => loc.selectOption({ label: action.value ?? "" }, opts)));
-        const readValue = strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "");
+        await this.#acting(page, () => element.select(action.value ?? ""));
+        const readValue = await element.selectedLabel();
         return { ok: true, verified: readValue === action.value, readValue };
       }
       case "check": {
         const want = action.checked ?? false;
-        await this.#acting(page, () => call(signal, () => loc.setChecked(want, opts)));
-        const checked = await call(signal, () => loc.isChecked(opts));
+        await this.#acting(page, () => element.check(want));
+        const checked = await element.isChecked();
         return { ok: true, verified: checked === want, readValue: checked ? "예" : "아니오" };
       }
-      case "read": {
-        const inputType = await call(signal, () => loc.getAttribute("type", { signal }));
-        if (inputType === "password") return { ...ok, readValue: "" };
-        if (inputType === "checkbox") return { ...ok, readValue: await call(signal, () => loc.isChecked(opts)) ? "예" : "아니오" };
-        const hasOptions = await call(signal, () => loc.locator("option").count()) > 0;
-        const value = await call(signal, () => loc.inputValue(opts));
-        const readValue = hasOptions && value.length > 0
-          ? strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "") : value;
-        return { ...ok, readValue };
-      }
+      case "read":
+        return { ...ok, readValue: await element.read() };
       case "capture":
         throw new AdapterError("NOT_SUPPORTED");
     }
@@ -883,27 +840,22 @@ export class PlaywrightExecutionAdapter {
    * 접근성 이름으로 못 찾을 때만 화면에 보이는 같은 이름의 링크 하나를 누르고, 보이지 않으면 그 링크 주소(http/https)로 이동한다.
    */
   async #linkFallback(page: Page, name: string, signal: AbortSignal): Promise<boolean> {
-    const byRole = page.getByRole("link", { name, exact: true }).filter({ visible: true });
-    if (await call(signal, () => byRole.count()) > 0) return false;
+    const driver = this.#driver(page);
+    if (await driver.hasVisibleLink(name, signal)) return false;
     const window = await this.controlWindow(name, 0, { exact: true });
     const links = window.items.filter(item => item.role === "link");
     if (links.length > 1 || window.more) throw new AdapterError("AMBIGUOUS_TARGET");
     const [link] = links;
     if (link !== undefined) {
-      let loc = await this.#resolveRef(page, link, signal);
+      let element = await this.#resolve(driver, link, signal);
       if (this.#options.visualCursor === true) {
-        await this.#showCursor(page, loc, "click", signal);
-        loc = await this.#resolveRef(page, link, signal);
+        await this.#showCursor(page, element, "click", signal);
+        element = await this.#resolve(driver, link, signal);
       }
-      await this.#acting(page, () => call(signal, () => loc.click({ signal, timeout: this.#actionTimeout })));
+      await this.#acting(page, () => element.click());
       return true;
     }
-    const hidden =z.array(z.string()).parse(await call(signal, () => page.locator("a[href]").evaluateAll((anchors, wanted) => {
-      const compact = (text: string | null) => (text ?? "").replace(/\s+/g, "");
-      return [...new Set(anchors.filter(a => compact(a.textContent) === compact(wanted) &&
-        (a.getClientRects().length === 0 || getComputedStyle(a).visibility === "hidden"))
-        .map(a => a instanceof HTMLAnchorElement ? a.href : ""))].slice(0, 2);
-    }, name)));
+    const hidden = await driver.hiddenLinkUrls(name, signal);
     if (hidden.length > 1) throw new AdapterError("AMBIGUOUS_TARGET");
     const [href] = hidden;
     if (href === undefined || href === "") return false;
@@ -914,49 +866,18 @@ export class PlaywrightExecutionAdapter {
     return true;
   }
 
-  async #resolve(page: Page, target: ActionTarget | undefined, signal: AbortSignal): Promise<Locator> {
+  async #resolve(driver: PageDriver, target: ActionTarget | undefined, signal: AbortSignal): Promise<ResolvedElement> {
     signal.throwIfAborted();
     if (target === undefined) throw new AdapterError("TARGET_NOT_FOUND");
-    if (target.ref !== undefined) return this.#resolveRef(page, target, signal);
-    let loc: Locator;
-    if (target.label !== undefined) loc = page.getByLabel(target.label, { exact: true });
-    else if (target.role !== undefined && target.name !== undefined) {
-      // Playwright parses this standard role selector at the browser boundary.
-      // Only letters enter the selector's role position; serialize the exact name.
-      if (!/^[a-z]+$/u.test(target.role)) throw new AdapterError("TARGET_NOT_FOUND");
-      loc = page.locator("role=" + target.role + "[name=" + JSON.stringify(target.name) + "s]");
-    } else if (target.testId !== undefined) loc = page.getByTestId(target.testId);
-    else if (target.fieldId !== undefined) {
-      const id = cssEscape(target.fieldId);
-      loc = page.locator('[id="' + id + '"], [data-cheongeum-id="' + id + '"]');
-    } else throw new AdapterError("TARGET_NOT_FOUND");
-    loc = loc.filter({ visible: true });
-    if (target.nth !== undefined) {
-      const nth = loc.nth(target.nth);
-      if (await call(signal, () => nth.count()) === 0) throw new AdapterError("TARGET_NOT_FOUND");
-      return nth;
-    }
-    let count = await call(signal, () => loc.count());
-    if (count === 0) {
-      await optional(signal, () => loc.first().waitFor({ state: "visible", timeout: 2000, signal }));
-      count = await call(signal, () => loc.count());
-    }
-    if (count === 0) throw new AdapterError("TARGET_NOT_FOUND");
-    if (count > 1) throw new AdapterError("AMBIGUOUS_TARGET");
-    return loc;
-  }
-
-  async #resolveRef(page: Page, target: { ref?: string; role?: string; name?: string }, signal: AbortSignal): Promise<Locator> {
-    const ref = target.ref ?? "";
-    const raw = ControlWindowSchema.parse(JSON.parse(z.string().parse(await call(signal, () => page.evaluate(controlsJson({ ref }))))));
-    const item = raw.items.find(it => it.ref === ref);
+    const ref = target.ref;
+    if (ref === undefined) return driver.resolve(target, signal);
+    const fresh = await call(signal, () => driver.controlWindow({ ref }));
+    const item = fresh.items.find(it => it.ref === ref);
     if (item === undefined) throw new AdapterError("TARGET_NOT_FOUND");
     if (item.role !== target.role || item.name !== target.name) {
       throw new AdapterError("VERIFY_FAILED", "누르려던 요소의 이름이나 역할이 바뀌었습니다.");
     }
-    const loc = page.locator('[data-cheongeum-ref="' + cssEscape(ref) + '"]').filter({ visible: true });
-    if (await call(signal, () => loc.count()) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
-    return loc;
+    return driver.resolve({ ref, role: item.role, name: item.name }, signal);
   }
 
   async #verifyInspectionControl(page: Page, binding: Extract<InspectionBinding, {kind: "control"}>, target: ActionTarget | undefined, signal: AbortSignal): Promise<void> {
@@ -987,11 +908,8 @@ export class PlaywrightExecutionAdapter {
     }
   }
 
-  async inspectionSearch(fieldId: string): Promise<z.infer<typeof InspectionSearchSchema> | undefined> {
-    const page = this.#requirePage();
-    return InspectionSearchSchema.safeParse(JSON.parse(z.string().parse(
-      await page.evaluate(controlsJson({ searchField: fieldId })),
-    ))).data;
+  async inspectionSearch(fieldId: string) {
+    return this.#driver(this.#requirePage()).inspectionSearch(fieldId);
   }
 
   /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
@@ -1004,7 +922,7 @@ export class PlaywrightExecutionAdapter {
     // notice: ref로 찾은 단추가 팝업 안에 있으면 그 팝업의 사실을 새로 읽어 함께 돌려준다(ref가 있을 때만).
     const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? refs?.length ?? 24 : 1,
       ref: ref ?? null, refs, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
-    const window = ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
+    const window = await this.#driver(page).controlWindow(query);
     // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
     for (const item of window.items) {
       if (item.planSignature !== undefined) {
@@ -1050,10 +968,8 @@ export class PlaywrightExecutionAdapter {
     if (spot.success) await optional(signal, () => page.evaluate(cursorScript(spot.data.x, spot.data.y, "move")));
   }
 
-  async #showCursor(page: Page, loc: Locator, mode: CursorMode, signal: AbortSignal): Promise<void> {
-    await optional(signal, () => loc.scrollIntoViewIfNeeded({ timeout: 2000, signal }));
-    if (mode === "click") await call(signal, () => loc.hover({ timeout: this.#actionTimeout, signal }));
-    const box = await optional(signal, () => loc.boundingBox({ signal }));
+  async #showCursor(page: Page, element: ResolvedElement, mode: CursorMode, signal: AbortSignal): Promise<void> {
+    const box = await element.cursorBox(mode === "click");
     if (box == null) return;
     const evenRound = (value: number) => value % 2 === 0.5 ? Math.floor(value) : Math.round(value);
     const x = evenRound(box.x + box.width / 2), y = evenRound(box.y + box.height / 2);
