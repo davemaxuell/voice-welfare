@@ -169,6 +169,7 @@ export function daysUntil(target: string, today = localDay()) {
 type SpeechCommand = { kind: "speech-read" | "speech-clear" } | { kind: "speech-set"; values: SpeechPatch };
 export type PersonalCommand = SpeechCommand | { kind: "action-log-read" | "site-allow-read" | "site-allow-clear" |
   "vault-read" | "app-status" } | { kind: "vault-clear" } | { kind: "vault-save"; values: Vault } |
+  { kind: "vault-guidance"; action: "save" | "clear"; reason: PrivateRequestReason } |
   { kind: "app-due"; service?: string; dueDate: string; note: string } | { kind: "app-done"; service?: string } |
   { kind: "app-record"; service: string; receiptNo?: string };
 
@@ -197,6 +198,53 @@ export function parseSpeechPref(text: string): SpeechCommand | undefined {
   }
   return undefined;
 }
+
+// 물음표가 붙어도 '해 주시겠어요?'는 부탁이다. '해도 돼요?'처럼 결과나 허용을 묻는 말은 그대로 둔다.
+export function privateCommandText(text: string): string {
+  return text.replace(patterns.spaces, " ").trim().replace(/[.!。！~]+$/u, "")
+    .replace(/(주실래요?|주시겠어요|주시겠습니까|줄래요?)[?？]$/u, "$1").trim();
+}
+export const PRIVATE_REQUEST_END = String.raw`(?:\s*(?:줘요?|주세요|줄래요?|주실래요?|주시겠어요|주시겠습니까|주십시오))?`;
+const clearVaultRequest = new RegExp(String.raw`^(?:(?:지금|그냥)\s*)?(?:저장(?:한|된|해\s*둔)\s*)?(?:(?:내|제|저의)\s*)?(?:개인\s*)?정보(?:를|는|부터)?\s*(?:(?:다|모두|전부|좀)\s*)*(?:지워|삭제\s*해|없애)${PRIVATE_REQUEST_END}$`, "u");
+const saveVaultEnding = new RegExp(String.raw`(?:저장|기억|등록)\s*(?:해(?:\s*(?:둬|놔))?${PRIVATE_REQUEST_END}|할래요?|하세요|해\s*(?:두세요|놓으세요))$`, "u");
+const privateField = String.raw`(?:개인\s*정보|정보|이름|성명|성함|주소|연락처|전화(?:\s*번호)?|휴대폰(?:\s*번호)?|이메일|메일|생년월일|생일)`;
+const fieldAtStart = new RegExp(String.raw`^(?:(?:내|제|저의)\s*)?${privateField}`, "u");
+const ownField = new RegExp(String.raw`(?:내|제|저의)\s*${privateField}`, "u");
+const fieldDeclaration = new RegExp(String.raw`(${privateField})\s*(?:은|는|이|가)\s*`, "gu");
+const clearWord = /지워|지우|삭제|없애/u;
+const saveWord = /저장|기억|등록/u;
+const refusal = /지\s*(?:는|도)?\s*(?:마|말|않)|(?:안|못)\s*(?:저장|기억|등록|삭제|지워|보내|연락)|금지|거절|취소/u;
+const qualifiedChange = /말고|아니(?:라|고|야)|대신|정정|(?:^|[\s,])(?:아니|안|못)(?:[\s,]|$)|(?:이|으|다|하|려)면(?:\s|$)|경우에만|때만|한다는|한다고|해달라고|[?？]/u;
+export type PrivateRequestReason = "question" | "refusal" | "clarify";
+export function privateRequestReason(text: string): PrivateRequestReason {
+  if (refusal.test(text)) return "refusal";
+  return patterns.asking.test(text) || /[?？]|어떻게|어디|무엇|무슨|어떤|뭐|궁금|방법|되죠|나요$/u.test(text) ? "question" : "clarify";
+}
+
+/** 개인 정보를 언급한 질문·금지·정정도 기기 안에서 소화한다. 쓰기는 전체 목적어와 마지막 요청 동사가 일치할 때만 한다. */
+function vaultCommand(text: string): PersonalCommand | undefined {
+  const phrasing = privateCommandText(text);
+  const mine = patterns.mine.test(phrasing) || /저의\s*(?:개인\s*)?정보/u.test(phrasing);
+  if (!mine && !fieldAtStart.test(phrasing) && !ownField.test(phrasing)) return undefined;
+  if (mine && clearWord.test(phrasing)) {
+    if (clearVaultRequest.test(phrasing)) return {kind: "vault-clear"};
+    return {kind: "vault-guidance", action: "clear", reason: privateRequestReason(text)};
+  }
+  if (saveWord.test(phrasing)) {
+    const ending = saveVaultEnding.exec(phrasing);
+    if (ending !== null && fieldAtStart.test(phrasing) && !qualifiedChange.test(phrasing) && !refusal.test(phrasing)) {
+      const fields = phrasing.slice(0, ending.index).trim();
+      const keys = Array.from(fields.matchAll(fieldDeclaration), match => vaultKeyForLabel(match[1] ?? "")).filter(key => key !== undefined);
+      if (new Set(keys).size === keys.length) return {kind: "vault-save", values: parseVaultValues(fields)};
+    }
+    if (!mine || !patterns.read.test(phrasing) || /(?:저장|등록|기억)(?:해|하|할)/u.test(phrasing)) {
+      return {kind: "vault-guidance", action: "save", reason: privateRequestReason(text)};
+    }
+  }
+  if (mine && patterns.read.test(phrasing) && !patterns.saveVerbs.test(phrasing)) return {kind: "vault-read"};
+  return undefined;
+}
+
 export function parsePersonalCommand(text: string, today = localDay()): PersonalCommand | undefined {
   const t = strip(text.replace(patterns.spaces, " "));
   const speech = parseSpeechPref(t);
@@ -204,11 +252,8 @@ export function parsePersonalCommand(text: string, today = localDay()): Personal
   if (patterns.logRead.test(t)) return { kind: "action-log-read" };
   if (patterns.siteRead.test(t) || patterns.whichSite.test(t)) return { kind: "site-allow-read" };
   if (patterns.siteClear.test(t)) return { kind: "site-allow-clear" };
-  if (patterns.mine.test(t)) {
-    if (patterns.clear.test(t)) return { kind: "vault-clear" };
-    if (patterns.read.test(t) && !patterns.saveVerbs.test(t)) return { kind: "vault-read" };
-  }
-  if (patterns.save.test(t) && patterns.fieldList.test(t)) return { kind: "vault-save", values: parseVaultValues(t) };
+  const vault = vaultCommand(t);
+  if (vault !== undefined) return vault;
   if (patterns.appStatus.test(t)) return { kind: "app-status" };
   if (patterns.asking.test(t)) return undefined;
   const dueDate = parseDate(t, today);

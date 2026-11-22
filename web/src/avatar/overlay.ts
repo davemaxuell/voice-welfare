@@ -16,7 +16,7 @@ const SnapshotSchema = z.object({
   choiceSetId: z.string().nullish(), choices: z.array(ChoiceSchema).default([]), pending: z.boolean().optional(),
 });
 type Snap = z.infer<typeof SnapshotSchema>;
-const PrefsSchema = z.object({ corner: z.string().optional(), still: z.boolean().optional(), maxWidth: z.number().optional(), maxHeight: z.number().optional() });
+const PrefsSchema = z.object({ corner: z.string().optional(), floating: z.boolean().optional(), still: z.boolean().optional(), maxWidth: z.number().optional(), maxHeight: z.number().optional() });
 type Prefs = z.infer<typeof PrefsSchema>;
 const VisibilitySchema = z.object({ visible: z.boolean(), id: z.unknown(), animate: z.boolean().optional() });
 
@@ -52,6 +52,12 @@ const chromeText = {
   zh: { connecting: "正在连接青音。", hideTitle: "隐藏助手", talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
   ja: { connecting: "チョンウムに接続しています。", hideTitle: "アシスタントを隠す", talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
 } satisfies Record<"ko" | "en" | "zh" | "ja", Record<ChromeKey, string>>;
+const moveHint = {
+  ko: "끌어서 위치를 옮겨요. 키보드로는 방향키를 누르세요.",
+  en: "Drag to move. Use the arrow keys when focused.",
+  zh: "拖动可移动位置。聚焦时也可使用方向键。",
+  ja: "ドラッグで移動します。フォーカス中は矢印キーでも移動できます。",
+};
 const choiceIcons = new Map([
   ["consent-yes", "yes"], ["approve", "yes"], ["auth-done", "yes"],
   ["consent-no", "no"], ["reject", "no"], ["auth-cancel", "no"],
@@ -223,6 +229,8 @@ function render() {
       $(id).setAttribute("aria-label", copy[id]);
       $(id).title = id === "hide" ? copy.hideTitle : copy[id];
     }
+    $("avatar").setAttribute("aria-description", moveHint[locale]);
+    $("avatar").title = copy.avatar + "\n" + moveHint[locale];
   }
   $("mic").dataset.capture = snap.capture;
   const micLabel = snap.captureLabel ?? (snap.capture === "on" ? copy.micOn : copy.micOff);
@@ -455,16 +463,17 @@ function reportSize() {
       width: Math.min(Math.ceil(box.width), left + el.offsetWidth + xPadding) - x,
       height: Math.min(Math.ceil(box.height), top + el.offsetHeight + yPadding) - y,
     });
+    return { x: left + el.offsetWidth / 2, y: top + el.offsetHeight / 2 };
   }
-  include($("avatar"), 5, 6);
+  const anchor = include($("avatar"), 5, 6)!;
   const panel = document.querySelector(".panel");
   include(panel instanceof HTMLElement ? panel : null, 5, 6);
   if ($("card").hidden === false) include($("card"), 6, 11);
   const width = Math.ceil(box.width), height = Math.ceil(box.height);
-  const signature = JSON.stringify([width, height, regions]);
+  const signature = JSON.stringify([width, height, regions, anchor]);
   if (lastGeometry === signature) return;
   lastGeometry = signature;
-  bridge.resize(width, height, regions);
+  bridge.resize(width, height, regions, anchor);
 }
 
 function focusFirst() {
@@ -474,7 +483,54 @@ function focusFirst() {
   target.focus({ preventScroll: true });
 }
 
-$("avatar").addEventListener("click", () => bridge.open());
+const avatar = button("avatar");
+let grab: { id: number; startX: number; startY: number; offsetX: number; offsetY: number; last?: { x: number; y: number } } | undefined;
+let suppressClick = false;
+avatar.addEventListener("pointerdown", e => {
+  if (!e.isPrimary || e.button !== 0 || grab !== undefined) return;
+  const rect = avatar.getBoundingClientRect();
+  grab = { id: e.pointerId, startX: e.screenX, startY: e.screenY,
+    offsetX: rect.left + rect.width / 2 - e.clientX, offsetY: rect.top + rect.height / 2 - e.clientY };
+  suppressClick = false;
+  avatar.setPointerCapture(e.pointerId);
+});
+avatar.addEventListener("pointermove", e => {
+  if (grab?.id !== e.pointerId) return;
+  if (grab.last === undefined && Math.hypot(e.screenX - grab.startX, e.screenY - grab.startY) < 6) return;
+  grab.last = { x: e.screenX + grab.offsetX, y: e.screenY + grab.offsetY };
+  avatar.dataset.dragging = "";
+  bridge.move("move", grab.last.x, grab.last.y);
+});
+function endGrab(e: PointerEvent) {
+  if (grab?.id !== e.pointerId) return;
+  if (grab.last !== undefined) {
+    suppressClick = true;
+    if (e.type === "pointerup") bridge.move("drop", e.screenX + grab.offsetX, e.screenY + grab.offsetY);
+    else if (e.type === "pointercancel") bridge.move("cancel");
+    // A native move can release capture outside our window. Its coordinates belong to the other surface.
+    else bridge.move("drop", grab.last.x, grab.last.y);
+  }
+  grab = undefined;
+  delete avatar.dataset.dragging;
+}
+avatar.addEventListener("pointerup", endGrab);
+avatar.addEventListener("pointercancel", endGrab);
+avatar.addEventListener("lostpointercapture", endGrab);
+avatar.addEventListener("click", e => {
+  if (e.detail === 0 || !suppressClick) bridge.open();
+  suppressClick = false;
+});
+avatar.addEventListener("keydown", e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const delta: Readonly<Partial<Record<string, readonly [number, number]>>> = {
+    ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24],
+  };
+  const step = delta[e.key];
+  if (step === undefined) return;
+  e.preventDefault();
+  const rect = avatar.getBoundingClientRect();
+  bridge.move("drop", window.screenX + rect.left + rect.width / 2 + step[0], window.screenY + rect.top + rect.height / 2 + step[1]);
+});
 $("talk").addEventListener("click", () => bridge.talk());
 $("stop").addEventListener("click", () => bridge.stop());
 $("hide").addEventListener("click", () => bridge.hide());
@@ -516,6 +572,7 @@ bridge.onPrefs((raw) => {
   const next = parsed.data;
   const root = $("overlay");
   root.dataset.corner = next.corner;
+  root.dataset.floating = String(next.floating === true);
   root.dataset.still = String(next.still === true);
   if (next.maxWidth !== undefined && next.maxWidth > 0) root.style.setProperty("--available-width", `${next.maxWidth}px`);
   if (next.maxHeight !== undefined && next.maxHeight > 0) root.style.setProperty("--available-height", `${next.maxHeight}px`);

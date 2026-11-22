@@ -1,4 +1,5 @@
 import { KNOWN_SITES, type KnownSite as ListedSite } from "../core/sites.ts";
+import type { Intent } from "../core/intents.ts";
 import { splitWhitespace, strip } from "../core/text.ts";
 import { tryUrl } from "../core/url.ts";
 
@@ -41,9 +42,43 @@ export const sitesPatterns = {
   explicitUrl: /https?:\/\/[A-Za-z0-9İı\-._~:/?#[\]@!$&'()*+,;=%]+/iu,
 };
 
+const destinationCommand = /^(.+?)\s*(?:좀\s*)?(?:열어|접속(?:해|해봐)?|들어가|이동해|가|띄워|켜)(?:\s*(?:줘요?|주세요|주어|줄래요?|주실래요?|봐요?))?[.!?。]*$/u;
+const searchCommand = /^(.+?)\s*(?:을|를)?\s*(?:좀\s*)?검색(?:해(?:봐)?|하자)?(?:\s*(?:줘요?|주세요|줄래요?|주실래요?|봐요?))?[.!?。]*$/u;
+const websiteSuffix = /\s*(?:(?:공식|대표|관련)\s*)?(?:홈페이지|누리집|웹\s*사이트|사이트)$/u;
+const demonstrative = /^(?:(?:그|이|저|어느|어떤|다른)\s*(?:거|것|곳|쪽|페이지|항목|화면|링크)?|거기|여기|저기|그럼|다시|다음|이전|\d+\s*번)$/u;
+const directionalOrCompound = /(?:에서|말고|하고|찾고|열고|읽고|듣고|보고|누르고|해서|가서|찾아서)\s|(?:^|\s)(?:그리고|그다음에?)\s/u;
+
+function destinationSubject(text: string): string | undefined {
+  const subject = destinationCommand.exec(strip(text))?.[1]?.trim();
+  if (subject === undefined || isSiteName(subject)) return subject;
+  return subject.replace(/(?:으로|을|를|로|에)$/u, "").trim();
+}
+
+function subjectName(subject: string): string | undefined {
+  const name = subject.replace(websiteSuffix, "").trim();
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .·&-]{1,79}$/u.test(name) || demonstrative.test(name) || directionalOrCompound.test(name)) return undefined;
+  return name;
+}
+
+/** 이름 뒤의 이동 명령만 떼어 낸다. '국가기록원'처럼 이름 안의 '가'는 보존한다. */
+export function requestedSiteName(text: string, {allowBare = false} = {}): string | undefined {
+  const subject = destinationSubject(text) ?? (allowBare ? strip(text) : undefined);
+  return subject === undefined ? undefined : subjectName(subject);
+}
+
+/** 단일 기관을 지목한 열기·검색 명령. 주소록에 없는 이름도 '누리집'을 명시하면 모델 없이 구분한다. */
+export function namedSiteCommand(text: string): Extract<Intent, {type: "OPEN_SITE" | "SEARCH"}> | undefined {
+  const query = searchCommand.exec(strip(text))?.[1]?.trim();
+  const subject = query ?? destinationSubject(text);
+  if (subject === undefined) return undefined;
+  const name = subjectName(subject);
+  if (name === undefined || (!isSiteName(name) && !websiteSuffix.test(subject))) return undefined;
+  return query === undefined ? {type: "OPEN_SITE", target: text} : {type: "SEARCH", query};
+}
+
 /** 사이트 이름만 남기기(검색어로 쓰려고): "우리동네복지관 사이트 열어줘" → "우리동네복지관" */
 export function siteNameFrom(text: string): string {
-  return strip(text.replace(sitesPatterns.siteNoun, " ")
+  return requestedSiteName(text) ?? strip(text.replace(sitesPatterns.siteNoun, " ")
     .replace(sitesPatterns.openCommand, " ").replace(sitesPatterns.spaces, " "));
 }
 
@@ -205,13 +240,17 @@ export function goalSiteRequest(goal: string, extra: readonly KnownSite[] = []):
 /** 이름이나 주소를 실제 URL로. 연습용 모의 사이트는 extra로 넘긴다. */
 export function resolveSite(target: string, extra: readonly KnownSite[] = []): SiteAddress | undefined {
   const normalized = normalizedName(target);
+  const requested = requestedSiteName(target);
+  const singleName = requested === undefined ? undefined : normalizedName(requested);
   let known: KnownSite | undefined;
   let knownLength = -1;
   for (const site of [...extra, ...KNOWN_SITES]) {
     for (const alias of site.names) {
       const name = normalizedName(alias);
       const length = codePoints(name);
-      if (length > knownLength && normalized.includes(name)) {
+      const matches = singleName === undefined ? normalized.includes(name)
+        : singleName === name || singleName === normalizedName(alias.replace(websiteSuffix, ""));
+      if (length > knownLength && matches) {
         known = site;
         knownLength = length;
       }
@@ -225,7 +264,9 @@ export function resolveSite(target: string, extra: readonly KnownSite[] = []): S
     return { ...site, label: label.length > 0 ? label : site.label };
   }
   if (known !== undefined) return { url: known.url, label: known.label };
-  const agency = publicServiceSite(target) ?? nearSite(target, extra);
+  const service = publicServiceSite(target);
+  const agency = service !== undefined && (singleName === undefined || singleName === "민원" || service.services.includes(singleName))
+    ? service : nearSite(requested ?? target, extra);
   if (agency !== undefined) return { url: agency.url, label: agency.label };
   const spoken = target.replace(sitesPatterns.dotCom, ".com").replace(sitesPatterns.dotKr, ".kr");
   const match = sitesPatterns.domain.exec(spoken)?.[1];

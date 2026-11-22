@@ -1,4 +1,4 @@
-import type { ObservedField } from "../../../core/actions.ts";
+import type { Action, ObservedField } from "../../../core/actions.ts";
 import type { DialogueState } from "../../../core/dialogue.ts";
 import { hasText, strip } from "../../../core/text.ts";
 import { draft, type Draft } from "../../../core/turn.ts";
@@ -6,10 +6,12 @@ import { tryUrl } from "../../../core/url.ts";
 import { josa, speakLabel } from "../../../speech/phrasing.ts";
 import type { Narrator } from "../../../speech/screen.ts";
 import { cleanValue, type RuleBasedIntentProvider } from "../../../understanding/rules.ts";
+import { isQuestionLike } from "../../../understanding/filters.ts";
 import { siteLabel } from "../../../understanding/sites.ts";
 import type { ExecContext, PageView, WebExecutionAgent } from "../agent.ts";
 import type { FieldProfile } from "../profile.ts";
 import { requestAssist } from "./form.ts";
+import { outcomeFailure } from "./common.ts";
 
 export const guidedPatterns = {
   stop: /^(그만|끝|됐어|중단)/u,
@@ -19,6 +21,8 @@ export const guidedPatterns = {
   yesPrefix: /^(응|네)[,\p{White_Space}]+/u,
   onlyYes: /^(응|네|예|맞아|그래|좋아)(?=\n?$)/u,
   start: /(하나씩|차례로|순서대로|전부|다)\p{White_Space}*(채워|입력|써)(?!했|었)|입력\p{White_Space}*(칸|란)\p{White_Space}*(을|를)?\p{White_Space}*(채워|입력해)/u,
+  request: /(?:채워|입력해|써)\s*(?:줘요?|주세요|주실래요?|주시겠어요?|줄래요?)?[.!?。！？~]*$/u,
+  excludes: /말고|빼고|제외|않|하지\s*마|건너뛰[고어]/u,
   secret: /(비밀\p{White_Space}*번호|password|인증\p{White_Space}*번호|otp|주민|계좌|카드|동의|약관)/iu,
 };
 interface VaultCallbacks {
@@ -38,6 +42,7 @@ export class GuidedFill {
   readonly narrator: Narrator;
   readonly #rules: RuleBasedIntentProvider;
   readonly #vault: VaultCallbacks;
+  #offered?: {guided: Guided; fieldId: string; document?: string; target?: Action};
 
   constructor(web: WebExecutionAgent, dialogue: DialogueState<FieldProfile>, narrator: Narrator, rules: RuleBasedIntentProvider, vault: VaultCallbacks) {
     this.web = web;
@@ -55,7 +60,7 @@ export class GuidedFill {
     return false;
   }
 
-  resumeAfterAuth(view: PageView): string {
+  async resumeAfterAuth(view: PageView, ctx: ExecContext): Promise<string> {
     const g = this.dialogue.guided;
     if (!g) return "";
     g.url = view.url;
@@ -73,17 +78,28 @@ export class GuidedFill {
       return "이 화면에는 이어서 채울 칸이 없어요. 필요하면 '칸 채워줘'라고 말씀해 주세요.";
     }
     g.index = Math.min(g.index, g.fieldIds.length - 1);
+    if (this.web.guard.directActions) await this.#rememberField(g, view, ctx);
     return this.#question(g, view);
   }
 
   async answer(text: string, ctx: ExecContext): Promise<Draft | undefined> {
     const g = this.dialogue.guided;
-    const view = this.web.currentView;
-    if (!g || !view || !this.active()) return;
+    if (!g) return;
+    const direct = this.web.guard.directActions;
+    const view = direct ? await this.web.observe(ctx) : this.web.currentView;
+    if (!view) return;
+    const offered = this.#offered;
+    if (direct && (view.url !== g.url || offered?.guided !== g || offered.fieldId !== g.fieldIds[g.index] ||
+        offered.document !== this.web.adapter.documentId?.())) {
+      this.dialogue.endGuided();
+      return draft("BROWSING", "clarify", "입력 화면이 바뀌었어요. 새 화면에서 채울 칸을 말씀해 주세요.", {view, privateHistory: true});
+    }
+    if (!this.active()) return;
     if (guidedPatterns.stop.test(text)) {
       this.dialogue.endGuided();
       return draft("BROWSING", "none", "칸 채우기를 멈췄어요. 제출 버튼은 직접 눌러 주세요.");
     }
+    if (direct && isQuestionLike(text)) return draft("BROWSING", "clarify", this.#question(g, view), {view});
     if (g.awaitSiteAllow === true) {
       const origin = g.origin ?? "";
       if (guidedPatterns.yes.test(text) && origin.length > 0) {
@@ -112,7 +128,14 @@ export class GuidedFill {
       ? g.suggestion : cleanValue(text.replace(guidedPatterns.yesPrefix, ""));
     if (value.length === 0 || guidedPatterns.onlyYes.test(value)) return draft("BROWSING", "clarify", `${speakLabel(field.label)}에 넣을 값을 말씀해 주세요.`);
     const action = this.web.buildAssistAction(field, value);
-    if (!await this.web.observedAction(action, ctx.signal)) return draft("BROWSING", "clarify", "입력 칸이 바뀌었어요. 채울 칸을 다시 말씀해 주세요.", {view});
+    if (!await this.web.observedAction(action, ctx.signal, direct ? offered?.target : undefined)) {
+      this.dialogue.endGuided();
+      return draft("BROWSING", "clarify", "입력 칸이 바뀌었어요. 채울 칸을 다시 말씀해 주세요.", {view, privateHistory: true});
+    }
+    if (this.web.guard.directActions) {
+      const out = await this.web.assistFill([action], ctx);
+      return out.status === "ok" ? this.#advance(g, "넣고 확인했어요.", ctx, out.actions) : outcomeFailure(out, "BROWSING");
+    }
     const siteName = siteLabel(view.url);
     const site = siteName.length > 0 ? siteName : tryUrl(view.url)?.host ?? view.url;
     const label = speakLabel(field.label);
@@ -121,12 +144,49 @@ export class GuidedFill {
   }
 
   async #advance(g: Guided, prefix: string, ctx: ExecContext, actions?: Draft["actions"]): Promise<Draft> {
-    const now = await this.web.observe(ctx);
     g.index += 1;
+    return this.#nextField(g, await this.web.observe(ctx), prefix, ctx, actions);
+  }
+
+  async #rememberField(g: Guided, view: PageView, ctx: ExecContext): Promise<void> {
+    this.#offered = undefined;
+    const field = view.fields.find(candidate => candidate.fieldId === g.fieldIds[g.index] && eligible(candidate));
+    if (!field || view.url !== g.url) return;
+    const document = this.web.adapter.documentId?.();
+    let target;
+    if (this.web.adapter.bindTarget !== undefined) {
+      target = {...this.web.buildAssistAction(field, ""), type: "focus" as const, value: undefined};
+      if (!await this.web.observedAction(target, ctx.signal)) return;
+    }
+    this.#offered = {guided: g, fieldId: field.fieldId, document, target};
+  }
+
+  async #nextField(g: Guided, now: PageView, prefix: string, ctx: ExecContext, actions: NonNullable<Draft["actions"]> = []): Promise<Draft> {
+    const origin = tryUrl(now.url)?.origin;
+    if (this.web.guard.directActions && origin !== undefined && this.#vault.siteAllowed?.(origin) === true && g.skipVault !== true) {
+      const known = [];
+      for (const id of g.fieldIds.slice(g.index)) {
+        const field = now.fields.find(f => f.fieldId === id && eligible(f));
+        const value = field && this.#vault.savedValue(field.label);
+        if (!field || field.filled === true || !hasText(value)) break;
+        const action = this.web.buildAssistAction(field, value);
+        if (!await this.web.observedAction(action, ctx.signal)) break;
+        known.push(action);
+      }
+      if (known.length > 0) {
+        const out = await this.web.assistFill(known, ctx);
+        actions = [...actions, ...out.actions];
+        if (out.status !== "ok" || !out.view) return {...outcomeFailure(out, "BROWSING"), actions};
+        now = out.view;
+        g.index += known.length;
+        prefix += ` 저장된 값으로 ${known.length}개 칸을 채웠어요.`;
+      }
+    }
     if (g.index >= g.fieldIds.length) {
       this.dialogue.endGuided();
-      return draft("BROWSING", "fill", `${prefix} ${together}`, {view: now, actions});
+      return draft("BROWSING", "fill", `${prefix} ${this.web.guard.directActions ? "입력할 칸을 모두 지나왔어요." : together}`, {view: now, actions});
     }
+    if (this.web.guard.directActions) await this.#rememberField(g, now, ctx);
     return draft("BROWSING", "fill", strip(`${prefix} ${this.#question(g, now)}`), {view: now, actions});
   }
 
@@ -137,7 +197,8 @@ export class GuidedFill {
   }
 
   wantsStart(text: string): boolean {
-    return this.web.currentView?.pageId === "external" && guidedPatterns.start.test(text);
+    return this.web.currentView?.pageId === "external" && guidedPatterns.start.test(text) &&
+      (!this.web.guard.directActions || (guidedPatterns.request.test(text.trim()) && !guidedPatterns.excludes.test(text)));
   }
 
   async start(ctx: ExecContext): Promise<Draft> {
@@ -148,14 +209,17 @@ export class GuidedFill {
     const g = this.dialogue.guided!;
     g.origin = tryUrl(view.url)?.origin ?? view.url;
     g.skipVault = false;
-    return draft("BROWSING", "fill", `입력 칸이 ${fields.length}개 있어요. 하나씩 여쭤볼게요. ${this.#question(g, view)}`, {view});
+    const intro = `입력 칸이 ${fields.length}개 있어요.`;
+    if (!this.web.guard.directActions) return draft("BROWSING", "fill", `${intro} 하나씩 여쭤볼게요. ${this.#question(g, view)}`, {view});
+    return this.#nextField(g, view, intro, ctx);
   }
 
   #question(g: Guided, view: PageView): string {
     const field = view.fields.find(f => f.fieldId === g.fieldIds[g.index] && eligible(f));
     if (!field) return "";
     const origin = tryUrl(view.url)?.origin ?? "";
-    const saved = g.skipVault === true ? undefined : this.#vault.savedValue(field.label);
+    const saved = g.skipVault === true || (this.web.guard.directActions && this.#vault.siteAllowed?.(origin) !== true)
+      ? undefined : this.#vault.savedValue(field.label);
     const first = this.narrator.once("guided", " 건너뛰려면 '건너뛰기', 그만하려면 '그만'.");
     if (hasText(saved) && origin.length > 0 && this.#vault.siteAllowed?.(origin) === false) {
       g.suggestion = undefined;

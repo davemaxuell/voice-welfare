@@ -36,8 +36,8 @@ it.each([
 
 it("test_delayed_independent_request_still_opens_its_named_destination", async () => {
   const { session, page, old } = await replaceOffer();
-  await session.handleTurn("하이코리아 홈페이지 열어줘", { fromVoice: true, linkOfferId: old });
-  expect([...new URL(page.url()).searchParams]).toEqual([["q", "하이코리아 홈페이지"]]);
+  await session.handleTurn("푸른마을자료관 홈페이지 열어줘", { fromVoice: true, linkOfferId: old });
+  expect([...new URL(page.url()).searchParams]).toEqual([["q", "푸른마을자료관 홈페이지"]]);
 });
 
 it("test_delayed_confirmation_does_not_reoffer_an_expired_list", async () => {

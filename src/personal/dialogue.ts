@@ -123,12 +123,23 @@ export class PersonalDialogue {
     return draft("IDLE", "none", "저장된 내 정보를 모두 지웠어요.");
   }
 
-  run(cmd: PersonalCommand, { lang = "ko" }: { lang?: Lang } = {}): Draft | undefined {
+  run(cmd: PersonalCommand, { lang = "ko", direct = false }: { lang?: Lang; direct?: boolean } = {}): Draft | undefined {
     const store = this.#store, state = this.dialogue.state;
     switch (cmd.kind) {
+      case "vault-guidance": {
+        const effect = cmd.action === "clear" ? "내 정보를 지우면 저장한 이름과 주소 같은 정보, 부르는 이름, 보호자 연락처와 기억한 이동 경로가 함께 지워져요."
+          : store.persistent ? "기억해 달라고 한 정보는 이 컴퓨터에 저장해요." : "기억해 달라고 한 정보는 이번 대화 동안만 보관해요.";
+        const speech = cmd.reason === "question" ? effect : cmd.reason === "refusal" ? "알겠어요."
+          : cmd.action === "save" ? "기억할 항목과 값을 다시 말씀해 주세요." : "어떤 정보를 지우려는지 말씀해 주세요.";
+        return draft(state, "none", speech, {privateHistory: true});
+      }
       case "vault-save": {
         const entries = listed(cmd.values, lang);
         if (entries.length === 0) return draft(state, "clarify", ASK_VAULT_FIELDS[lang], { lang });
+        if (direct) {
+          store.saveVault(cmd.values);
+          return draft(state, "none", store.persistent ? "이 컴퓨터에 저장했어요." : "이번 대화 동안 기억할게요.", {privateHistory: true});
+        }
         this.dialogue.askVaultConfirm(cmd);
         const question = store.persistent ? SAVE_ON_DEVICE : SAVE_IN_SESSION;
         return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", entries.join(", ") + ". " + question[lang], { lang });
@@ -143,6 +154,10 @@ export class PersonalDialogue {
       case "vault-clear":
         if (Object.keys(store.vault()).length === 0 && store.guardian() === undefined && store.callName() === undefined) {
           return draft(state, "none", "저장된 정보가 없어요.");
+        }
+        if (direct) {
+          store.clearVault();
+          return draft(state, "none", "저장된 내 정보를 모두 지웠어요.", {privateHistory: true});
         }
         this.dialogue.askVaultConfirm(cmd);
         return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", "저장된 내 정보를 모두 지울까요? 맞으면 '응'이라고 해 주세요.");

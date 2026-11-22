@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CDPSession, Frame, Locator, Page } from "playwright";
-import { InteractiveItemSchema, ScreenOutlineSchema } from "../../../core/actions.ts";
+import { InteractiveItemSchema, ObservedFieldSchema, ScreenOutlineSchema, type ObservedField } from "../../../core/actions.ts";
 import type { ControlQuery } from "./observe.ts";
 import type { ControlWindow } from "./driver.ts";
 
@@ -171,32 +171,38 @@ class FrameControls {
 
   async nested(read: (frame: Frame, query: ControlQuery) => Promise<ControlWindow>) {
     const items: ControlWindow["items"] = [];
+    const passwords: ObservedField[] = [];
     for (const frame of this.page.frames()) {
       if (frame === this.page.mainFrame()) continue;
       const id = this.#id(frame);
       try {
         if (!await this.#visible(frame)) continue;
-        const result = await read(frame, {embedded: true, limit: 700 - items.length});
+        const result = await read(frame, {embedded: true, passwordHandoff:true, limit: 700 - items.length});
         if (this.#ids.get(frame) !== id) continue;
         for (const item of result.items) items.push({...item, ref: id + item.ref});
+        for (const field of result.passwords ?? []) passwords.push({...field, fieldId:"password:" + id + field.fieldId});
       } catch { /* 이동하거나 읽을 수 없는 문서는 건너뛴다. */ }
       if (items.length >= 700) break;
     }
-    return items;
+    return {items, passwords};
   }
 
   async includeOutline<T extends Record<string, unknown>>(raw: T, topId: string, read: (frame: Frame, query: ControlQuery) => Promise<ControlWindow>) {
-    const nested = await this.nested(read);
+    const {items:nested, passwords} = await this.nested(read);
+    for (const field of ObservedFieldSchema.array().parse(raw.passwords ?? [])) {
+      passwords.push({...field, fieldId:"password:" + topId + field.fieldId});
+    }
+    const fields = passwords.length === 0 ? {} : {fields:[...ObservedFieldSchema.array().parse(raw.fields), ...passwords]};
     const data = raw.outline;
     const shadow = typeof data === "object" && data !== null && "items" in data && Array.isArray(data.items) &&
       data.items.some((i: unknown) => typeof i === "object" && i !== null && "ref" in i && typeof i.ref === "string" && i.ref.startsWith("s"));
-    if (nested.length === 0 && !shadow) return raw;
+    if (nested.length === 0 && !shadow) return {...raw, ...fields};
     const outline = ScreenOutlineSchema.parse(raw.outline);
     const items = InteractiveItemSchema.array().parse(nested);
     const links = items.filter(item => item.role === "link" || item.role === "scriptlink");
     const names = links.map(item => item.name);
     const top = (outline.items ?? []).map(i => i.ref.startsWith("s") ? {...i, ref:topId + i.ref} : i);
-    return {...raw, outline:{...outline, items:[...top, ...items],
+    return {...raw, ...fields, outline:{...outline, items:[...top, ...items],
       links:[...outline.links, ...names].slice(0, 300), linkCount:(outline.linkCount ?? outline.links.length) + links.length,
       mainLinks:[...outline.mainLinks ?? [], ...links.filter(i => i.region !== "menu").map(i => i.name)].slice(0, 80),
       menuLinks:[...outline.menuLinks ?? [], ...links.filter(i => i.region === "menu").map(i => i.name)].slice(0, 40),

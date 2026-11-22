@@ -8,24 +8,28 @@ const site = z.object({ names: z.array(z.string()), url: z.string(), label: z.st
 const fixture = z.object({
   public: z.array(site), known: z.array(site), agencies: z.record(z.string(), z.string()), origins: z.array(z.string()),
 }).parse(JSON.parse(readFileSync(new URL("../fixtures/core/sites.json", import.meta.url), "utf8")));
+const hiKorea = {
+  names: ["하이코리아", "Hi Korea"], label: "하이코리아", url: "https://www.hikorea.go.kr/Main.pt",
+  about: "외국인의 출입국 민원과 방문 예약을 안내하는 법무부 누리집", services: [],
+};
 
 function plain(entry: KnownSite) {
   return { names: [...entry.names], url: entry.url, label: entry.label, about: entry.about ?? null, services: [...entry.services] };
 }
 
-it("공공기관 사이트 표가 이름·주소·소개·대표 업무까지 Python과 같다", () => {
+it("기존 공공기관 표에 하이코리아의 공식 첫 화면을 추가한다", () => {
   expect(fixture.public).toHaveLength(18);
-  expect(PUBLIC_SITES.map(plain)).toEqual(fixture.public);
+  expect(PUBLIC_SITES.map(plain)).toEqual([...fixture.public, hiKorea]);
 });
 
 it("알려진 사이트 표는 공공기관 표 뒤에 일반 사이트가 이어진다", () => {
-  expect(KNOWN_SITES.map(plain)).toEqual(fixture.known);
+  expect(KNOWN_SITES.map(plain)).toEqual([...fixture.public, hiKorea, ...fixture.known.slice(fixture.public.length)]);
   expect(KNOWN_SITES.slice(0, PUBLIC_SITES.length)).toEqual([...PUBLIC_SITES]);
 });
 
-it("기관 이름으로 찾는 표와 공공기관 출처 목록이 Python과 같다", () => {
-  expect(Object.fromEntries([...PUBLIC_AGENCIES].map(([label, entry]) => [label, entry.url]))).toEqual(fixture.agencies);
-  expect([...PUBLIC_ORIGINS].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)).toEqual(fixture.origins);
+it("공식 첫 화면 주소에 경로가 있어도 출처 표는 기관의 원점을 사용한다", () => {
+  expect(Object.fromEntries([...PUBLIC_AGENCIES].map(([label, entry]) => [label, entry.url]))).toEqual({...fixture.agencies, 하이코리아: hiKorea.url});
+  expect(PUBLIC_ORIGINS).toEqual(new Set([...fixture.origins, "https://www.hikorea.go.kr"]));
   expect(PUBLIC_ORIGINS.has("https://www.gov.kr")).toBe(true);
   expect(PUBLIC_AGENCIES.get("constructor")).toBeUndefined();
 });

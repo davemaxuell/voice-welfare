@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { DialogueState, GuardianContact, GuardianPending, VaultCommand } from "../core/dialogue.ts";
 import { rstripChars, strip } from "../core/text.ts";
 import { draft, type Draft, type SessionState } from "../core/turn.ts";
+import { PRIVATE_REQUEST_END, privateCommandText, privateRequestReason, type PrivateRequestReason } from "./commands.ts";
 import { isMobile, type PersonalStore } from "./store.ts";
 
 export const MESSAGE = "청음 사용자가 도움을 요청하니 연락해 주세요.";
@@ -28,7 +29,13 @@ export const guardianPatterns = {
 
 export type GuardianCommand =
   | { kind: "guardian-send" | "guardian-clear" | "guardian-help" }
+  | { kind: "guardian-guidance"; action: "save" | "clear" | "send"; reason: PrivateRequestReason }
   | { kind: "guardian-save"; contact: GuardianContact };
+
+const guardianSubject = String.raw`^(?:(?:내|제)\s*)?보호자`;
+const directSend = new RegExp(guardianSubject + String.raw`\s*(?:한테|에게|께)?\s*(?:도움(?:을)?\s*요청\s*(?:해|보내)|연락(?:을)?\s*(?:해|보내|줘)|문자(?:\s*메시지)?(?:를)?\s*(?:보내|해))${PRIVATE_REQUEST_END}$`, "u");
+const directClear = new RegExp(guardianSubject + String.raw`(?:\s*(?:정보|연락처|전화\s*번호|번호))?(?:를|을)?\s*(?:삭제\s*해|지워|없애)${PRIVATE_REQUEST_END}$`, "u");
+const directRegister = new RegExp(String.raw`(?:등록|저장|기억)\s*해${PRIVATE_REQUEST_END}$`, "u");
 
 export function guardianCommand(text: string): GuardianCommand | undefined {
   const spoken = rstripChars(strip(text), ".!。");
@@ -44,6 +51,23 @@ export function guardianCommand(text: string): GuardianCommand | undefined {
     return { kind: "guardian-help" };
   }
   return undefined;
+}
+
+/** 확인 절차에서는 보호자와 번호만 말해도 후보를 제시한다. 직접 실행할 때는 발송·등록·삭제 동사까지 일치해야 한다. */
+export function guardianRequest(text: string, direct: boolean): GuardianCommand | undefined {
+  const spoken = privateCommandText(text).replace(/^(?:제|저의)\s*보호자/u, "내 보호자");
+  if (!spoken.includes("보호자")) return undefined;
+  if (!direct) {
+    const proposed = guardianCommand(spoken);
+    if (proposed !== undefined) return proposed;
+  }
+  if (directSend.test(spoken)) return {kind: "guardian-send"};
+  if (directClear.test(spoken)) return {kind: "guardian-clear"};
+  if (directRegister.test(spoken) && guardianPatterns.start.test(spoken)) return guardianCommand(spoken.replace(directRegister, "등록해줘"));
+  if (!/^(?:(?:내|제)\s*)?보호자|보호자(?:한테|에게|께)/u.test(spoken) ||
+      !/연락|문자|도움\s*요청|등록|저장|기억|이름|번호|삭제|지워|지우|없애/u.test(spoken)) return undefined;
+  const action = /삭제|지워|지우|없애/u.test(spoken) ? "clear" : /등록|저장|기억|이름|번호/u.test(spoken) ? "save" : "send";
+  return {kind: "guardian-guidance", action, reason: privateRequestReason(text)};
 }
 
 export type Delivery = "preview" | "accepted" | "failed" | "unknown";
@@ -139,7 +163,7 @@ export function screenDigest(view: Readonly<Record<string, unknown>> | undefined
   return createHash("sha256").update(JSON.stringify(relevant)).digest("hex");
 }
 
-type GuardianQuestion = { kind: "guardian-help" } | { kind: GuardianPending["kind"]; contact?: GuardianContact };
+type GuardianQuestion = Extract<GuardianCommand, {kind: "guardian-guidance"}> | { kind: "guardian-help" } | { kind: GuardianPending["kind"]; contact?: GuardianContact };
 
 function isGuardianPending(command: VaultCommand): command is GuardianPending {
   return command.kind === "guardian-save" || command.kind === "guardian-clear" || command.kind === "guardian-send";
@@ -170,6 +194,15 @@ export class GuardianDialogue {
 
   ask(cmd: GuardianQuestion, view: Readonly<Record<string, unknown>> | undefined, now: number, resume: SessionState): Draft {
     if (cmd.kind === "guardian-help") return draft(resume, "clarify", SETUP_HINT);
+    if (cmd.kind === "guardian-guidance") {
+      const guidance = cmd.action === "clear" ? "보호자 연락처를 지우면 새 번호를 등록할 때까지 도움 문자를 보낼 수 없어요."
+        : cmd.action === "save" ? SETUP_HINT
+        : this.#sender === undefined ? "보호자 문자 발송 설정이 필요해요."
+        : this.#sender.preview ? `지금은 모의 문자 설정이에요. 미리 볼 내용은 “${MESSAGE}”예요.` : `도움을 요청하면 저장된 보호자 번호로 “${MESSAGE}”라는 문자를 보내요.`;
+      const speech = cmd.reason === "question" ? guidance : cmd.reason === "refusal" ? "알겠어요."
+        : "보호자에게 도움 문자를 보낼지, 연락처를 변경할지 말씀해 주세요.";
+      return draft(resume, "none", speech, {privateHistory: true});
+    }
     const contact = cmd.contact ?? this.#store.guardian();
     if (contact === undefined) return draft(resume, "clarify", "저장한 보호자가 없어요. " + SETUP_HINT);
     const { name, phone } = contact;

@@ -30,6 +30,7 @@ export type Preferences = z.output<typeof Preferences>;
 
 export const SettingsInput = z.strictObject({
   ...preferenceFields,
+  soundSetupComplete: z.literal(true).optional(),
   apiKey: z.string().default("").transform((secret, ctx) => {
     const key = strip(secret);
     if (key !== "" && (key.length > 512 || !/^[\x21-\x7e]*$/.test(key))) {
@@ -41,8 +42,8 @@ export const SettingsInput = z.strictObject({
 });
 export type SettingsInput = z.output<typeof SettingsInput>;
 
-// 첫 실행 설정을 어디까지 했는지. stage2 = 키를 저장한 뒤 소리 확인부터, 그 뒤는 동의 뒤 음성 단계, done = 끝.
-export const FIRST_RUN_STEPS = ["stage2", "mic", "name", "stop", "intro", "practice", "done"] as const;
+// 소리와 속도를 다 정하면 대화를 열기 전에도 그 진행을 보관한다.
+export const FIRST_RUN_STEPS = ["stage2", "sound-complete", "mic", "name", "stop", "intro", "practice", "done"] as const;
 export type FirstRunStep = typeof FIRST_RUN_STEPS[number];
 function firstRunStep(value: unknown): FirstRunStep | undefined {
   return FIRST_RUN_STEPS.find(step => step === value);
@@ -138,7 +139,9 @@ export class SettingsStore {
     const key = values.apiKey !== "" ? values.apiKey : this.#key;
     const credential = key !== "" ? Buffer.from(this.#sealFactory().seal(Buffer.from(key, "ascii"))).toString("base64") : "";
     const lastService = prefs.rememberService ? this.#lastService : undefined;
-    this.#write(prefs, credential, lastService, this.#firstRun);
+    const firstRun = values.soundSetupComplete === true && this.#firstRun === "stage2" ? "sound-complete" : this.#firstRun;
+    this.#write(prefs, credential, lastService, firstRun);
+    this.#firstRun = firstRun;
     this.#preferences = prefs;
     this.#key = key;
     this.#completed = true;

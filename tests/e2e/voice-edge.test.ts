@@ -133,7 +133,7 @@ it("test_live_link_reply_belongs_to_the_offer_heard_before_speaking", async () =
   const gate = new Promise<void>(resolve => { release = resolve; });
   vi.spyOn(s.web, "openSite").mockImplementation(async (url, ctx) => { started = true; await gate; return await open(url, ctx); });
   try {
-    run.utter("하이코리아 홈페이지 열어줘", 100, 800, "search");
+    run.utter("푸른마을자료관 홈페이지 열어줘", 100, 800, "search");
     await expect.poll(() => started, { timeout: 5000 }).toBe(true);
     run.utter("네", 6000, 6100, "early");
     await expect.poll(() => run.sent).toContainEqual(expect.objectContaining({ type: "session.thinking.append", delegation_id: "early" }));

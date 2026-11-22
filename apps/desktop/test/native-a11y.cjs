@@ -2,19 +2,9 @@
 // UI Automation 트리(화면낭독기가 읽는 것), 카드가 떠도 크롬 입력 초점 유지, 실제 마우스 클릭, 실제 전역 단축키.
 // 마우스와 키보드를 실제로 움직인다. 누르기 전에 그 좌표·앞 창이 시험 창인지 확인하고, 아니면 멈춘다.
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
-const path = require('node:path');
-const { launch, until, windows } = require('./harness.cjs');
+const { launch, native, until, windows } = require('./harness.cjs');
 
-const PS = path.join(__dirname, 'native.ps1');
 const WORK_TITLE = '청음 포커스 시험';
-
-function native(...args) {
-  const out = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS, ...args.map(String)], { encoding: 'utf8' });
-  if (out.status !== 0) throw new Error(`native ${args[0]} failed: ${out.stderr}`);
-  const text = out.stdout.trim();
-  return text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : text;
-}
 
 async function physicalPoint(app, page, selector) {
   const box = await page.locator(selector).boundingBox();

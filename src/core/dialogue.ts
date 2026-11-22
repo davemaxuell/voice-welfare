@@ -81,6 +81,9 @@ export class AuthHandoff {
   browser: object | null;
   readonly expectedOrigin: string;
   readonly expectedPath: string;
+  readonly loginUrl?: string;
+  readonly loginDocument?: string;
+  loginSubmit?: Action;
   readonly kind: HumanAuthHandoff["kind"];
   readonly deadline: number;
   readonly site: string;
@@ -88,6 +91,7 @@ export class AuthHandoff {
 
   constructor(fields: {
     id: string; sessionId: string; taskId: string; browser: object | null; expectedOrigin: string; expectedPath: string;
+    loginUrl?: string; loginDocument?: string; loginSubmit?: Action;
     kind: HumanAuthHandoff["kind"]; deadline: number; site: string; status?: HumanAuthHandoff["status"];
   }) {
     this.id = fields.id;
@@ -96,6 +100,9 @@ export class AuthHandoff {
     this.browser = fields.browser;
     this.expectedOrigin = fields.expectedOrigin;
     this.expectedPath = fields.expectedPath;
+    this.loginUrl = fields.loginUrl;
+    this.loginDocument = fields.loginDocument;
+    this.loginSubmit = fields.loginSubmit;
     this.kind = fields.kind;
     this.deadline = fields.deadline;
     this.site = fields.site;
@@ -255,6 +262,7 @@ export class DialogueState<Candidate = { fieldId: string; label: string }> {
     if (this.#authHandoff !== undefined && this.authWaiting) {
       this.#authHandoff.status = status;
       this.#authHandoff.browser = null;
+      this.#authHandoff.loginSubmit = undefined;
     }
     this.#authResume = undefined;
   }

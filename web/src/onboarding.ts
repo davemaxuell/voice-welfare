@@ -24,7 +24,7 @@ export function saveLabel(lang: string, continuing: boolean) {
 
 export interface GuideVoice { stt: boolean; tts: boolean; edge?: string | undefined; llmRoles: Readonly<Record<string, string | null>> }
 
-export function fullGuide(lang: string, voice: GuideVoice, background: boolean, modifier: string) {
+export function fullGuide(lang: string, voice: GuideVoice, background: boolean, modifier: string, awaitingConsent = true) {
   const t = languages[lang];
   if (t?.guide === undefined || t.guide.length === 0) return "";
   const providers = [...new Set(["understand", "goal", "web"].map(role => voice.llmRoles[role])
@@ -32,6 +32,6 @@ export function fullGuide(lang: string, voice: GuideVoice, background: boolean, 
   return [t.guide, voice.llmRoles.vision !== "disabled" && t.image, t.files,
     voice.stt || voice.tts ? t.keyed : t.typed, voice.edge !== undefined && voice.edge.length > 0 && t.liveHistory,
     providers.length > 0 ? `${t.model ?? ""} (${providers.join(", ")}).` : t.local,
-    t.stop, background ? t.background?.replace("{key}", modifier) : t.keyboard]
+    t.stop, awaitingConsent && (background ? t.background?.replace("{key}", modifier) : t.keyboard)]
     .filter((part): part is string => typeof part === "string" && part.length > 0).join(" ");
 }

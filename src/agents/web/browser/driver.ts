@@ -1,6 +1,6 @@
 import type { Frame, Locator, Page } from "playwright";
 import { z } from "zod";
-import type { ActionTarget, ExecutionErrorCode } from "../../../core/actions.ts";
+import { ObservedFieldSchema, type ActionTarget, type ExecutionErrorCode } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
 import type { ClickEvidence } from "./stagehand_driver.ts";
 import { observePage, type ControlQuery } from "./observe.ts";
@@ -23,8 +23,9 @@ const ControlItemSchema = z.looseObject({
   context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
   notice: NoticeFactsSchema.optional(), planSignature: z.string().optional(),
   fieldId: z.string().optional(),
+  loginSubmit:z.object({rank:z.number(), signature:z.string(), filled:z.boolean()}).optional(),
 });
-const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
+const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean(), passwords:z.array(ObservedFieldSchema).optional() });
 const InspectionSearchSchema = z.object({
   url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string(), field: z.object({ ref: z.string(), name: z.string() }),
 });
@@ -83,6 +84,7 @@ export async function optional<T>(signal: AbortSignal, work: () => Promise<T>): 
 
 export const browserPatterns = { attributeQuotes: /["\\]/gu, spaces: /\p{White_Space}+/gu };
 export const cssEscape = (value: string) => value.replace(browserPatterns.attributeQuotes, ch => "\\" + ch);
+export const passwordSelector = 'input[type="password" i], [autocomplete~="current-password" i], [autocomplete~="new-password" i]';
 const observeFunction = observePage.toString();
 // 일부 포털은 브라우저 드라이버가 객체를 돌려받을 때 쓰는 내장 함수를 바꿔 둔다. 관찰은 글(JSON)로 받는다.
 const observeJson = `JSON.stringify((${observeFunction})())`;
@@ -90,7 +92,7 @@ const controlsJson = (query: ControlQuery) => `JSON.stringify((${observeFunction
 
 export function playwrightElement(loc: Locator, signal: AbortSignal, timeout: number): ResolvedElement {
   const opts = { timeout, signal };
-  const fieldType = () => call(signal, () => loc.getAttribute("type", { signal }));
+  const fieldType = () => call(signal, () => loc.evaluate((el, selector) => el.matches(selector) ? "password" : el.getAttribute("type"), passwordSelector, opts));
   const inputValue = () => call(signal, () => loc.inputValue(opts));
   const selectedLabel = async () => strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "");
   const isChecked = () => call(signal, () => loc.isChecked(opts));
@@ -125,6 +127,34 @@ export function playwrightElement(loc: Locator, signal: AbortSignal, timeout: nu
       return hasOptions && value.length > 0 ? selectedLabel() : value;
     },
   };
+}
+
+/** 안쪽 비밀번호는 현재 문서의 실제 입력 칸으로 초점을 옮기는 데만 쓴다. */
+export async function passwordHandoffElement(page: Page, target: ActionTarget, signal: AbortSignal, timeout: number) {
+  const id = target.fieldId;
+  if (id === undefined || !id.startsWith("password:f-")) return undefined;
+  const ref = id.slice("password:".length);
+  const registry = framesOf(page);
+  const owner = registry.owner(ref);
+  const located = await call(signal, () => registry.locator(ref));
+  if (owner === undefined || located === undefined ||
+    (target.label !== undefined && target.label !== "비밀번호") || (target.role !== undefined && target.role !== "password") ||
+    (target.name !== undefined && target.name !== "비밀번호") || (target.ref !== undefined && target.ref !== ref)) throw new AdapterError("VERIFY_FAILED");
+  const loc = located.and(owner.frame.locator(passwordSelector));
+  if (await call(signal, () => loc.count()) !== 1) throw new AdapterError("VERIFY_FAILED");
+  const refuse = async (): Promise<never> => { throw new AdapterError("NOT_SUPPORTED"); };
+  const empty = async () => "";
+  const element: ResolvedElement = {...playwrightElement(loc, signal, timeout), click:refuse, fill:refuse, select:refuse, check:refuse, press:refuse,
+    read:empty, inputValue:empty, selectedLabel:empty, fieldType:async () => "password",
+    async focus() {
+      const focused = await call(signal, () => loc.evaluate((el, {local, selector}) => {
+        if (!(el instanceof HTMLElement) || window.__cheongeumElementRefs?.get(el)?.ref !== local) return false;
+        el.focus();
+        return el.matches(selector) && (el.getRootNode() as Document | ShadowRoot).activeElement === el;
+      }, {local:owner.local, selector:passwordSelector}, {timeout, signal}));
+      if (!focused) throw new AdapterError("VERIFY_FAILED");
+    }};
+  return {target:{fieldId:id, role:"password", name:"비밀번호", label:"비밀번호"}, element};
 }
 
 export async function playwrightTarget(page: Page, target: ActionTarget, signal: AbortSignal): Promise<Locator> {
@@ -189,6 +219,8 @@ export function playwrightDriver(page: Page, timeout: number): PageDriver {
   return {
     ...observeWith(script => page.evaluate(script), page),
     async resolve(target, signal) {
+      const handoff = await passwordHandoffElement(page, target, signal, timeout);
+      if (handoff) return handoff.element;
       const host = playwrightElement(await playwrightTarget(page, target, signal), signal, timeout);
       return isEmbeddedRef(target.ref) ? embeddedElement(page, target, signal, timeout, host) : host;
     },

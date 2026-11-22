@@ -66,6 +66,15 @@ html, body { margin: 0; background: transparent; overflow: hidden; }
   min-height: calc(var(--headroom) + var(--dock-height) + 16px);
   justify-content: flex-end;
 }
+.overlay[data-floating='true'][data-corner^='top'] {
+  flex-direction: column-reverse;
+  min-height: 0;
+  --card-overlap: -8px;
+  --headroom: max(0px, calc(var(--available-height) - var(--dock-height) - 16px));
+  --bubble-origin: var(--tail-x) top;
+}
+.overlay[data-floating='true'][data-corner^='top'] .card { margin: 8px 0 0; }
+.overlay[data-floating='true'][data-corner^='top'] .bubble::after { top: -6px; bottom: auto; border-width: 1px 0 0 1px; }
 .overlay[data-pose='listening'] { --crown-inset: 28px; }
 .overlay[data-pose='sleeping'], .overlay[data-pose='stopped'] { --crown-inset: 45px; }
 .overlay:has(.figure[data-clip='complete'][data-pose='moving']) { --crown-inset: 7px; }
@@ -106,7 +115,10 @@ button:focus-visible, .bubble-body:focus-visible { outline: 3px solid var(--focu
   border-radius: 48%;
   color: var(--accent);
   background: transparent;
+  cursor: grab;
+  touch-action: none;
 }
+.avatar[data-dragging] { cursor: grabbing; }
 .figure { position: relative; display: block; width: var(--portrait-width); height: var(--portrait-height); transform: scaleX(-1); }
 .figure img, .figure canvas {
   position: absolute;

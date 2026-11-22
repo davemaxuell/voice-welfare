@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { browserDriver } from "../../src/agents/web/browser/stagehand_browser.ts";
 import { ExecContext } from "../../src/agents/web/agent.ts";
 import { FakeLlm } from "../helpers.ts";
 import { browserCases } from "./browser-cases.ts";
@@ -153,7 +154,7 @@ it("내부 문서의 일반 확인 단추는 음성으로 물은 뒤 한 번만 
   expect(await inner.title()).toBe("눌렀음");
 });
 
-it.skipIf(process.env.BROWSER_DRIVER !== "stagehand").each(["동네 소식", "지원 일정"])(
+it.skipIf(browserDriver() !== "stagehand").each(["동네 소식", "지원 일정"])(
   "의미로 찾은 내부 문서의 %s는 SDK 설명 대신 현재 관찰한 역할과 이름으로 실행한다", async name => {
     const {session, adapter} = await fixture();
     const observed = (await adapter.observe()).outline?.items?.find(item => item.name === name);
@@ -174,7 +175,7 @@ it.skipIf(process.env.BROWSER_DRIVER !== "stagehand").each(["동네 소식", "�
     expect(out.actions[0]?.result?.ok).toBe(true);
   });
 
-it.skipIf(process.env.BROWSER_DRIVER !== "stagehand")("모델이 고르는 동안 같은 이름으로 내부 문서를 다시 열면 제안을 버린다", async () => {
+it.skipIf(browserDriver() !== "stagehand")("모델이 고르는 동안 같은 이름으로 내부 문서를 다시 열면 제안을 버린다", async () => {
   const {page, session} = await fixture();
   const frame = page.frames().find(f => f.url() === other + "/b3-outside")!;
   const model = new FakeLlm(async ({schemaName, user}) => {

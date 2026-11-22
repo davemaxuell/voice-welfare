@@ -5,4 +5,5 @@ test_local_stop_signal_does_not_wait	local speech recognition dropped, owner dec
 test_local_transcribes_without_prompt_by_default	local speech recognition dropped, owner decision 2026-11-20
 test_routing_korean_local_others_openai	local speech recognition dropped, owner decision 2026-11-20
 test_routing_without_openai_keeps_every_language_local	local speech recognition dropped, owner decision 2026-11-20
+test_timed_out_low_risk_click_is_retried_once	Stagehand can time out after the site receives the click. The replacement test_timed_out_click_that_reached_the_site_is_not_dispatched_twice checks the actual resulting page and dispatch count.
 test_vision_role_is_read_like_the_other_roles	its assertions expect a dedicated ollama provider to build a model, dropped by owner decision 2026-11-20

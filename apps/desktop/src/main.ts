@@ -29,6 +29,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
+  type Point,
   type Rectangle,
   type UtilityProcess,
   type WebContents,
@@ -72,11 +73,13 @@ let visibilityTimeout: NodeJS.Timeout | undefined;
 let focusRequested = false;
 let lastSnapshot: Record<string, unknown> | null = null;
 let overlaySize = { width: 200, height: 220 };
+let avatarAnchor: Point = { x: 100, y: 90 };
+let dragging: { displayId: number; position: Point } | undefined;
 let overlayRegions: Rectangle[] = [];
 let appliedShape: string | undefined;
 let overlayInteractive: boolean | undefined;
 const shortcuts = { talk: false, choices: false };
-let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang; displayId?: number } = { corner: "bottom-right", still: false, hidden: false };
+let prefs: { corner: Corner; still: boolean; hidden: boolean; lang?: Lang; displayId?: number; position?: Point } = { corner: "bottom-right", still: false, hidden: false };
 
 const copy = () => desktopText[prefs.lang ?? "ko"];
 
@@ -114,10 +117,10 @@ function updateTray() {
           label: labels.position,
           submenu: Object.entries(labels.corners).map(([corner, label]): MenuItemConstructorOptions => ({
             label,
-            type: "radio",
-            checked: prefs.corner === corner,
+            type: prefs.position === undefined ? "radio" : "normal",
+            checked: prefs.position === undefined && prefs.corner === corner,
             click: () => {
-              if (isCorner(corner)) savePrefs({ corner });
+              if (isCorner(corner)) savePrefs({ corner, position: undefined });
             },
           })),
         },
@@ -224,6 +227,7 @@ function loadPrefs() {
       corner: isCorner(saved.corner) ? saved.corner : prefs.corner,
       still: saved.still === true,
       ...(typeof saved.displayId === "number" && Number.isSafeInteger(saved.displayId) ? { displayId: saved.displayId } : {}),
+      ...(isPoint(saved.position) && [saved.position.x, saved.position.y].every(value => value >= 0 && value <= 1) ? { position: saved.position } : {}),
       ...(isDesktopLanguage(saved.lang) ? { lang: saved.lang } : {}),
     };
   } catch {
@@ -235,11 +239,11 @@ function loadPrefs() {
 function savePrefs(patch: Partial<typeof prefs>) {
   prefs = { ...prefs, ...patch };
   try {
-    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang, displayId: prefs.displayId }));
+    writeFileSync(PREFS_FILE(), JSON.stringify({ corner: prefs.corner, still: prefs.still, lang: prefs.lang, displayId: prefs.displayId, position: prefs.position }));
   } catch {
     /* 저장하지 못하면 이번 실행에만 */
   }
-  if (patch.corner !== undefined || patch.still !== undefined || patch.displayId !== undefined) {
+  if (patch.corner !== undefined || patch.still !== undefined || patch.displayId !== undefined || "position" in patch) {
     placeOverlay();
     sendOverlayPrefs();
   }
@@ -248,15 +252,24 @@ function savePrefs(patch: Partial<typeof prefs>) {
 }
 
 function preferredDisplay(all = screen.getAllDisplays()) {
-  return pickDisplay({ all, primary: screen.getPrimaryDisplay() }, prefs.displayId);
+  return pickDisplay({ all, primary: screen.getPrimaryDisplay() }, dragging?.displayId ?? prefs.displayId);
+}
+
+function layoutCorner(position = dragging?.position ?? prefs.position): Corner {
+  if (position === undefined) return prefs.corner;
+  return `${position.y < .5 ? "top" : "bottom"}-${position.x < .5 ? "left" : "right"}`;
 }
 
 function sendOverlayPrefs() {
-  sendOverlay("overlay:prefs", { corner: prefs.corner, still: prefs.still, ...overlayLimits(preferredDisplay().workArea) });
+  const position = dragging?.position ?? prefs.position;
+  const limits = overlayLimits(preferredDisplay().workArea, position === undefined ? undefined : { position, anchor: avatarAnchor, size: overlaySize });
+  sendOverlay("overlay:prefs", { corner: layoutCorner(position), floating: position !== undefined, still: prefs.still, ...limits });
 }
 
 function preferredBounds() {
-  return overlayBounds(preferredDisplay().workArea, prefs.corner, overlaySize);
+  const position = dragging?.position ?? prefs.position;
+  return overlayBounds(preferredDisplay().workArea, layoutCorner(position), overlaySize,
+    position === undefined ? undefined : { position, anchor: avatarAnchor });
 }
 
 function placeOverlay() {
@@ -284,12 +297,38 @@ function placeOverlay() {
 }
 
 function setOverlayInteractive(active: boolean) {
+  if (dragging !== undefined) active = true;
   if (!overlay || active === overlayInteractive) return;
   overlay.setIgnoreMouseEvents(!active, { forward: true });
   overlayInteractive = active;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isPoint = (value: unknown): value is Point => isRecord(value) && finite(value.x) && finite(value.y);
+
+function moveAvatar(phase: unknown, point: unknown) {
+  if (phase === "cancel") {
+    if (dragging === undefined) return;
+    dragging = undefined;
+    sendOverlayPrefs();
+    placeOverlay();
+    return;
+  }
+  if ((phase !== "move" && phase !== "drop") || !isPoint(point)) return;
+  const display = screen.getDisplayNearestPoint({ x: Math.round(point.x), y: Math.round(point.y) });
+  const area = display.workArea;
+  const fraction = (offset: number, length: number) => Math.max(0, Math.min(1, offset / Math.max(1, length)));
+  const next = { displayId: display.id, position: { x: fraction(point.x - area.x, area.width), y: fraction(point.y - area.y, area.height) } };
+  if (phase === "drop") {
+    dragging = undefined;
+    savePrefs(next);
+  } else {
+    const changed = dragging?.displayId !== next.displayId || layoutCorner() !== layoutCorner(next.position);
+    dragging = next;
+    if (changed) sendOverlayPrefs();
+    placeOverlay();
+  }
+}
 
 // Native hit regions use whole device-independent pixels relative to the overlay.
 function hitRegions(regions: unknown, width: number, height: number): Rectangle[] {
@@ -352,6 +391,7 @@ function setOverlayHidden(hidden: boolean) {
   prefs.hidden = hidden;
   updateTray();
   if (hidden) {
+    moveAvatar("cancel", undefined);
     focusRequested = false;
     overlay.setFocusable(false);
     if (!overlayReady) overlay.hide();
@@ -422,6 +462,7 @@ function createOverlay() {
   const resetRenderer = () => {
     clearTimeout(visibilityTimeout);
     pendingVisibility = undefined;
+    dragging = undefined;
     overlayReady = false;
     if (window.isVisible()) window.hide();
   };
@@ -475,8 +516,13 @@ function bindBridge() {
     const height = Math.round(Number(size.height));
     if (!(width >= 120 && width <= 560 && height >= 120 && height <= 720)) return;
     overlaySize = { width, height };
+    if (isPoint(size.anchor) && size.anchor.x >= 0 && size.anchor.x <= width && size.anchor.y >= 0 && size.anchor.y <= height) avatarAnchor = size.anchor;
     overlayRegions = hitRegions(size.regions, width, height);
     placeOverlay();
+    if ((dragging?.position ?? prefs.position) !== undefined) sendOverlayPrefs();
+  });
+  ipcMain.on("overlay:move", (e, phase: unknown, point: unknown) => {
+    if (fromOverlay(e) && !prefs.hidden) moveAvatar(phase, point);
   });
   ipcMain.on("overlay:interactive", (e, active: unknown) => {
     if (process.platform === "darwin" && fromOverlay(e) && typeof active === "boolean") {

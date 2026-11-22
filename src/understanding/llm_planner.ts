@@ -6,6 +6,7 @@ import {
 } from "../core/llm.ts";
 import { strip } from "../core/text.ts";
 import { cleanValue, RuleBasedIntentProvider } from "./rules.ts";
+import { requestedSiteName, sitesPatterns } from "./sites.ts";
 
 export const LLM_INTENT_TYPES = INTENTS.filter(i => i.llm).map(i => i.type);
 export const INTENT_JSON_SCHEMA = {
@@ -67,9 +68,15 @@ export function flatToIntent(raw: unknown, utterance: string): Intent | undefine
         ? `${site}에서 ${goal}` : goal;
       break;
     }
-    case "OPEN_SITE":
-      candidate.target = supplied(flat.site) ? flat.site : supplied(flat.topic) ? flat.topic : utterance;
+    case "OPEN_SITE": {
+      const target = supplied(flat.site) ? flat.site : supplied(flat.topic) ? flat.topic : utterance;
+      // 직접 말한 주소와 기관 전체 이름을 기준으로 찾는다. 모델이 이름을 단축하거나 주소를 만들 수 있다.
+      if (typeof target === "string" && sitesPatterns.domain.test(target)) {
+        const addresses = Array.from(utterance.matchAll(new RegExp(sitesPatterns.domain, "giu")), match => match[1]);
+        candidate.target = addresses.includes(target) ? target : utterance;
+      } else candidate.target = requestedSiteName(utterance) === undefined ? target : utterance;
       break;
+    }
     case "FOLLOW_LINK": candidate.name = flat.topic; break;
     case "SEARCH":
       candidate.query = flat.topic;

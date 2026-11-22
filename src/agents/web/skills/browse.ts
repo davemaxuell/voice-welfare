@@ -19,17 +19,18 @@ import { REDACTED, redactText, redactPictureText } from "../../../safety/privacy
 import { PUBLIC_FACT_LABELS, checkGrounding, type PublicFact } from "../../../safety/verify.ts";
 import { chunkText, josa, speakLabel } from "../../../speech/phrasing.ts";
 import type { Narrator } from "../../../speech/screen.ts";
-import { KNOWN_SITES, goalSiteRequest, publicServiceSite, resolveSite, siteLabel, siteNameFrom, type KnownSite } from "../../../understanding/sites.ts";
+import { KNOWN_SITES, goalSiteRequest, publicServiceSite, requestedSiteName, resolveSite, siteLabel, type KnownSite, type SiteAddress } from "../../../understanding/sites.ts";
 import { ExecContext, type PageView, type WebAction, type WebExecutionAgent, type WebOutcome } from "../agent.ts";
 import { fingerprint } from "../approval.ts";
 import { accessBlocked, authPageKind, firstFillField, passwordFields, stillNeedsAuth, verificationApp } from "../auth_page.ts";
-import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint, type GoalContinuation } from "../autopilot.ts";
+import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint, type GoalContinuation, type PortalCandidate } from "../autopilot.ts";
 import { PAGE_KIND_LABEL, digestPage, pageTextForLlm } from "../digest.ts";
 import { DocumentLimit } from "../docs.ts";
 import { answerFile, readForUpload } from "../file_answer.ts";
 import { publicGuideUrl, resolveContact } from "../playbook.ts";
 import { downloadMode } from "../../../understanding/rules.ts";
 import { LinkChoices, resolveDescription, type LinkReference } from "../link_choices.ts";
+import { portalNameKey, uniquePortalHome } from "../portal_home.ts";
 import { PICTURE_SCHEMA, PICTURE_SCHEMA_NAME, PICTURE_SYSTEM } from "../../../core/picture.ts";
 import { HISTORY_NOT_DESCRIBED, MAX_NAMES, composePictureAnswer, pictureRequest } from "../../../speech/picture.ts";
 import { planShot, ShotRefusal } from "../shot.ts";
@@ -80,7 +81,7 @@ export function stepSentence(step: Pick<AutopilotStep, "action" | "ok" | "target
 export interface BrowseForm {
   next(ctx: ExecContext): Promise<Draft>;
   prev(ctx: ExecContext): Promise<Draft>;
-  prepareSubmit(ctx: ExecContext): Promise<Draft>;
+  prepareSubmit(ctx: ExecContext, submit?: boolean): Promise<Draft>;
   askNext(view: PageView): string;
 }
 export interface BrowseDeps {
@@ -162,11 +163,12 @@ export class BrowseSkill {
   readonly #learning = new WeakMap<GoalContinuation, RouteLearning>();
   readonly #routeApprovals = new WeakMap<Action, {before: PageView; learning: RouteLearning}>();
   readonly #officialText: Options["officialText"];
-  guidedResume?: (view: PageView) => string;
+  guidedResume?: (view: PageView, ctx: ExecContext) => Promise<string>;
   #readingText?: {url: string; text: string; official?: string};
   #reading = {url: "", main: 0, links: 0};
   linkChoices?: LinkChoices;
   #searched?: {query: string; origin: string; results: string};
+  readonly #portalHomes = new Map<string, string>();
   readonly #sourcesSpoken = new Set<string>();
   readonly #pausedGoals = new WeakMap<object, {
     goal: string; options: GoalOptions & {checkpoint: BrowseCheckpoint};
@@ -229,30 +231,82 @@ export class BrowseSkill {
         site = {url: direct.url, label: hasText(direct.label) ? direct.label : hasText(label) ? label : target};
       }
     }
-    if (!site) {
-      const name = siteNameFrom(target);
-      if (name.length === 0) return draft(this.dialogue.state, "open-site", "어느 사이트를 열지 알려 주세요. 예: '정부24 열어줘', 'gov.kr 열어줘'.");
-      const out = await this.web.openSite(this.searchUrl(`${name} 홈페이지`), ctx);
-      if (out.status !== "ok" || !out.view) {
-        return {...outcomeFailure(out, this.dialogue.state), semanticAction: "open-site",
-          speech: `'${name}'의 주소를 몰라서 검색해 보려 했지만 열 수 없었어요. 주소를 직접 말씀해 주세요.`};
-      }
-      this.afterNavigation(out.view);
-      const choices = LinkChoices.search(out.view);
-      this.linkChoices = choices;
-      const first = choices.options[0];
-      if (first) choices.proposed = 1;
-      const question = first ? `첫 번째 검색 결과는 '${redactPictureText(first.name)}'예요. 이 링크를 열까요?`
-        : "검색 결과 링크를 아직 확인하지 못했어요. 화면에 표시된 링크 이름을 말씀해 주세요.";
-      return draft(browseState(out.view), "open-site", `'${name}'의 주소를 추측해서 열지 않고 검색했어요. ${question}`,
-        {actions: out.actions, view: out.view, summary: `'${name}'를 검색했어요.`, offersLinks: true});
+    if (site) return this.#visitSite(site, ctx);
+    const name = requestedSiteName(target, {allowBare: true});
+    if (name === undefined) return draft(this.dialogue.state, "open-site", "어느 사이트를 열지 알려 주세요. 예: '정부24 열어줘', 'gov.kr 열어줘'.");
+    const key = portalNameKey(name);
+    const query = `${name} 홈페이지`;
+    const remembered = this.#portalHomes.get(key);
+    if (remembered !== undefined) return this.#visitSite({url: remembered, label: name}, ctx, key);
+    let candidates: readonly PortalCandidate[] = [];
+    const discover = this.deps.findPortal;
+    if (discover) {
+      try { candidates = await raceAbort(signal => discover(query, signal), ctx.signal); }
+      catch { ctx.signal.throwIfAborted(); }
     }
-    const out = await this.web.openSite(site.url, ctx);
-    if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.state);
+    const url = uniquePortalHome(name, candidates);
+    if (url !== undefined) return this.#visitSite({url, label: name}, ctx, key);
+    const out = await this.web.openSite(this.searchUrl(query), ctx);
+    if (out.status !== "ok" || !out.view) {
+      return {...outcomeFailure(out, this.dialogue.state), semanticAction: "open-site",
+        speech: `'${name}'의 주소를 몰라서 검색해 보려 했지만 열 수 없었어요. 주소를 직접 말씀해 주세요.`};
+    }
     this.afterNavigation(out.view);
+    const choices = LinkChoices.search(out.view);
+    const observed = await this.#portalResults(name, out.view.url, ctx);
+    const homepage = uniquePortalHome(name, [...candidates, ...observed]);
+    if (homepage !== undefined) return this.#visitSite({url: homepage, label: name}, ctx, key, out.actions);
+    this.linkChoices = choices;
+    const first = choices.options[0];
+    if (first) choices.proposed = 1;
+    const question = first ? `첫 번째 검색 결과는 '${redactPictureText(first.name)}'예요. 이 링크를 열까요?`
+      : "검색 결과 링크를 아직 확인하지 못했어요. 화면에 표시된 링크 이름을 말씀해 주세요.";
+    return draft(browseState(out.view), "open-site", `'${name}'의 주소를 추측해서 열지 않고 검색했어요. ${question}`,
+      {actions: out.actions, view: out.view, summary: `'${name}'를 검색했어요.`, offersLinks: true});
+  }
+
+  async #portalResults(name: string, searchUrl: string, ctx: ExecContext): Promise<PortalCandidate[]> {
+    if (!this.web.adapter.controlWindow) return [];
+    const candidates: PortalCandidate[] = [];
+    try {
+      // 검색 결과는 제목 요소일 수도, 일반 링크일 수도 있다. 실제 이름으로 찾고 같은 화면에서 읽은 href만 비교한다.
+      for (let offset = 0; offset < 120;) {
+        ctx.signal.throwIfAborted();
+        const window = await this.web.adapter.controlWindow(name, offset, {spokenName: true, linksOnly: true, inspection: true});
+        if (window.url !== searchUrl) return [];
+        for (const item of window.items) {
+          if (!item.disabled && item.region !== "menu" && item.inspection?.kind === "navigation" && hasText(item.inspection.href)) {
+            candidates.push({url: item.inspection.href, title: item.name});
+          }
+        }
+        if (!window.more) return candidates;
+        if (window.items.length === 0) break;
+        offset += window.items.length;
+      }
+    } catch {
+      ctx.signal.throwIfAborted();
+    }
+    return [];
+  }
+
+  async #visitSite(site: SiteAddress, ctx: ExecContext, remember?: string, previous: WebAction[] = []): Promise<Draft> {
+    const out = await this.web.openSite(site.url, ctx);
+    const actions = [...previous, ...out.actions];
+    if (out.status !== "ok" || !out.view) {
+      if (remember !== undefined) this.#portalHomes.delete(remember);
+      return outcomeFailure({...out, actions}, this.dialogue.state);
+    }
+    this.afterNavigation(out.view);
+    if (remember !== undefined) {
+      if (URL.parse(out.view.url)?.origin !== new URL(site.url).origin) {
+        this.#portalHomes.delete(remember);
+        return draft(browseState(out.view), "open-site", `다른 사이트로 이동해서 '${site.label}'의 첫 화면을 확인하지 못했어요.`, {actions, view: out.view});
+      }
+      this.#portalHomes.set(remember, site.url);
+    }
     const summary = `${josa(site.label, "을", "를")} 열었어요.`;
     return draft(browseState(out.view), "open-site", `${summary} ${await this.narrator.pageIntro(out.view, ctx)}`,
-      {actions: out.actions, view: out.view, summary});
+      {actions, view: out.view, summary});
   }
 
   async chooseLink(request: LinkReference, text: string, ctx: ExecContext, {redact}: {redact(text: string): string}): Promise<Draft> {
@@ -306,7 +360,7 @@ export class BrowseSkill {
     if (!expected && isFormOpen(current)) {
       if (browsePatterns.next.test(name)) return this.form.next(ctx);
       if (browsePatterns.prev.test(name)) return this.form.prev(ctx);
-      if (browsePatterns.submit.test(name)) return this.form.prepareSubmit(ctx);
+      if (browsePatterns.submit.test(name)) return this.form.prepareSubmit(ctx, true);
     }
     const home = strip(name.replace(browsePatterns.sitePrefix, ""));
     if (!expected && current?.pageId === "external" && browsePatterns.homePage.exec(home)?.[0] === home) {
@@ -319,6 +373,7 @@ export class BrowseSkill {
     if (out.status === "needs-approval" && out.pending && out.native !== undefined) return this.askNative(out.pending, out.native, out.view ?? now, "", out.actions);
     if (out.status === "needs-approval" && out.pending) return this.askClick(out.pending, out.view ?? now, "", out.actions);
     if (out.status === "policy-denied" && now?.pageId === "external") {
+      if (this.web.guard.directActions) return outcomeFailure(out, this.dialogue.state);
       const target = out.actions.at(-1)?.action.target?.name;
       const found = hasText(target) && target !== name ? `'${redactPictureText(target)}' 항목을 찾았어요. ` : "";
       return draft(this.dialogue.state, "follow-link",
@@ -465,13 +520,18 @@ export class BrowseSkill {
   }
 
   async #beginAuthHandoff(view: PageView, actions: WebAction[], ctx: ExecContext, speech: string, resume?: DialogueState["authResume"], expectedUrl?: string): Promise<Draft> {
-    const kind = authPageKind(view);
+    const kind = authPageKind(view, !this.web.guard.directActions || ctx.browsingScope === "personal-inspection");
     if (kind === "other") return draft(browseState(view), "auth-handoff", speech, {actions, view});
     const here = tryUrl(view.url);
     const expected = (hasText(expectedUrl) ? tryUrl(expectedUrl) : undefined) ?? (resume?.kind === "form" ? tryUrl(this.web.profile.urls.apply) : undefined);
+    const credentials = passwordFields(view);
+    const passwordLogin = kind === "login" && this.web.guard.directActions && ctx.browsingScope !== "personal-inspection" && credentials.length > 0;
+    const loginDocument = passwordLogin ? this.web.adapter.documentId?.() : undefined;
+    const loginSubmit = passwordLogin ? await this.web.prepareLoginSubmit(view, ctx) : undefined;
     this.dialogue.holdAuth(resume, new AuthHandoff({id: randomUUID(), sessionId: ctx.sessionId, taskId: ctx.taskId,
       browser: this.web.adapter.page ?? null, expectedOrigin: expected?.origin ?? here?.origin ?? "",
-      expectedPath: expected?.pathname ?? "/", kind, deadline: (this.deps.clock?.() ?? this.web.clock() / 1000) + 600, site: here?.host ?? ""}));
+      expectedPath: expected?.pathname ?? "/", loginUrl:passwordLogin ? view.url : undefined, loginDocument, loginSubmit,
+      kind, deadline: (this.deps.clock?.() ?? this.web.clock() / 1000) + 600, site: here?.host ?? ""}));
     await this.web.showBrowser();
     const app = kind === "verification" ? verificationApp(view) : undefined;
     const lang = this.#personalAuthLang(ctx);
@@ -484,7 +544,7 @@ export class BrowseSkill {
     } else if (app !== undefined) {
       speech = strip(`${app} 인증 화면으로 보여요. 휴대폰에서 ${app} 앱으로 인증을 마친 뒤 '인증 끝났어' 또는 '다 했어'라고 말씀해 주세요. 인증번호는 제가 듣지도 입력하지도 않아요. ${speech}`);
     }
-    const first = firstFillField(view);
+    const first = passwordLogin ? credentials.find(field => field.filled !== true) ?? credentials[0] : firstFillField(view);
     if (first && app === undefined && kind === "login") actions = (await this.web.focusField(first, ctx, actions)).actions;
     if (this.deps.sharedBrowser === true) {
       const notice = lang === undefined
@@ -518,10 +578,12 @@ export class BrowseSkill {
       const speech = await raceAbort(() => store.readLatest({more: browsePatterns.readMore.test(question)}), ctx.signal);
       return draft(state, "read", fallback + speech, {view, privateHistory: true});
     }
-    let digest;
-    try { [, digest] = await readForUpload(record); }
+    let upload;
+    try { upload = await readForUpload(record); }
     catch (error) { if (error instanceof DocumentLimit) return draft(state, "read", error.message, {view}); throw error; }
     if (ctx.signal.aborted || store.latest?.() !== record) return draft(state, "read", "파일 확인을 중단했어요. 다시 말씀해 주세요.");
+    const [, digest] = upload;
+    if (this.web.guard.directActions) return this.#analyzeFile(record, digest, question, recipient, ctx, this.#replyLanguage(), upload);
     const contents = extname(record.name).toLowerCase() === ".hwpx" ? "본문" : "파일 전체";
     const prompt = `'${record.name}'의 ${contents}를 ${recipient}에 보내면 개인 정보가 포함될 수 있어요. 보내도 될까요? '네' 또는 '아니요'라고 말씀해 주세요.`;
     this.dialogue.askApproval({kind: "file", record, digest, question, confirmation: {actionId: `file:${randomUUID()}`, kind: "file-transfer",
@@ -531,23 +593,27 @@ export class BrowseSkill {
 
   async analyzeApproved(approval: Extract<Approval, {kind: "file"}>, ctx: ExecContext, lang: Lang): Promise<Draft> {
     this.dialogue.clearApproval();
+    return this.#analyzeFile(approval.record, approval.digest, approval.question, approval.confirmation.site, ctx, lang);
+  }
+
+  async #analyzeFile(selected: Extract<Approval, {kind: "file"}>["record"], digest: string, question: string, recipient: string, ctx: ExecContext, lang: Lang, checkedUpload?: Awaited<ReturnType<typeof readForUpload>>): Promise<Draft> {
     const view = this.web.currentView;
     const state = view ? browseState(view) : "IDLE";
     const store = this.deps.downloads;
     const record = store?.latest?.();
     const model = this.deps.fileLlm;
     const changed = "받은 파일이 바뀌어서 보내지 않았어요. 새 파일에 대해 다시 말씀해 주세요.";
-    if (!record || record !== approval.record) return draft(state, "read", changed, {view});
-    if (!model || model.fileRecipient !== approval.confirmation.site) return draft(state, "read", "파일 분석 설정이 바뀌어서 보내지 않았어요. 다시 말씀해 주세요.", {view});
+    if (!record || record !== selected) return draft(state, "read", changed, {view});
+    if (!model || model.fileRecipient !== recipient) return draft(state, "read", "파일 분석 설정이 바뀌어서 보내지 않았어요. 다시 말씀해 주세요.", {view});
     let upload;
-    try { upload = await readForUpload(record); }
+    try { upload = checkedUpload ?? await readForUpload(record); }
     catch (error) { if (error instanceof DocumentLimit) return draft(state, "read", error.message, {view}); throw error; }
-    if (upload[1] !== approval.digest || store?.latest?.() !== record) return draft(state, "read", changed, {view});
+    if (upload[1] !== digest || store?.latest?.() !== record) return draft(state, "read", changed, {view});
     if (ctx.signal.aborted) return draft(state, "read", "파일 읽기를 멈췄어요.", {view});
     this.progress.start();
-    this.progress.add("승인한 파일을 읽는 중이에요.");
+    this.progress.add("요청하신 파일을 읽는 중이에요.");
     try {
-      const [speech, answerLang] = await answerFile(model, record, upload[0], redactText(approval.question), ctx.signal, lang);
+      const [speech, answerLang] = await answerFile(model, record, upload[0], redactText(question), ctx.signal, lang);
       return draft(state, "read", speech, {view, privateHistory: true, lang: answerLang === lang ? lang : "ko"});
     } finally { this.progress.finish(); }
   }
@@ -555,6 +621,10 @@ export class BrowseSkill {
   async #loginPageGuide(view: PageView, actions: WebAction[], ctx: ExecContext, expectedUrl: string): Promise<Draft> {
     const boxes = view.fields.filter(f => f.visible && ["text", "email", "tel", "password"].includes(f.type) && f.label.length > 0).map(f => speakLabel(f.label));
     const listed = boxes.length > 0 ? `${boxes.join(", ")} 칸이 있어요. ` : "";
+    if (this.web.guard.directActions) {
+      const how = passwordFields(view).length > 0 ? "비밀번호는 사이트에 직접 입력해 주세요. 다 입력하시면 '다 입력했어'라고 알려 주세요." : "";
+      return this.#beginAuthHandoff(view, actions, ctx, strip(`로그인 화면을 열었어요. ${listed}${how}`), this.#authPending(), expectedUrl);
+    }
     const how = passwordFields(view).length > 0
       ? "아이디와 비밀번호는 키보드로 직접 입력해 주세요. 비밀번호는 소리 내어 말하지 마세요. 다 입력하시면 '다 입력했어'라고 말씀해 주세요. 로그인 버튼은 확인받고 제가 눌러 드릴게요."
       : "아이디·비밀번호 입력과 인증은 직접 해 주세요. 간편인증과 인증서 로그인은 아직 제가 도와드리지 못해요.";
@@ -788,7 +858,7 @@ export class BrowseSkill {
     const visual = imageOnly || result?.decision === "visual" || (result === undefined && screenPatterns.visual.test(text));
     if (visual) {
       if (allowPicture && previousInputs !== undefined && this.deps.visionLlm && ctx.browsingScope !== "personal-inspection" && this.web.guard.config.publicLookupOnly !== true) {
-        if (!confirmPicture) return this.picture(text, ctx, {previousInputs, expectedView: view});
+        if (!confirmPicture || this.web.guard.directActions) return this.picture(text, ctx, {previousInputs, expectedView: view});
         const site = siteLabel(view.url, this.mockSites());
         const prompt = `${site} 화면의 글만으로는 설명하기 어려워요. 입력란을 가린 화면 사진 한 장을 OpenAI로 보내 확인할까요?`;
         const key = {};
@@ -869,9 +939,12 @@ export class BrowseSkill {
 
   async resumeVisual(approval: Extract<Approval, {kind: "visual"}>, ctx: ExecContext): Promise<Draft> {
     this.dialogue.clearApproval();
+    return this.#continueVisual(approval.goal, approval.checkpoint, ctx);
+  }
+
+  async #continueVisual(goal: string, key: unknown, ctx: ExecContext): Promise<Draft> {
     const model = this.deps.visionLlm;
     if (!model) return draft("BROWSING", "none", "화면 사진을 확인할 모델 설정이 필요해요.");
-    const key = approval.checkpoint;
     if (typeof key !== "object" || key === null) return draft("BROWSING", "none", SCREEN_CHANGED);
     const screen = this.#screenRequests.get(key);
     if (screen !== undefined) {
@@ -879,7 +952,7 @@ export class BrowseSkill {
       const view = await this.#visiblePage(ctx);
       if (!view || this.web.adapter.page !== screen.page || screen.page?.isClosed?.() === true || descriptionKey(view) !== screen.fingerprint ||
           ctx.browsingScope === "personal-inspection" || planShot(view) instanceof ShotRefusal) return draft("BROWSING", "none", SCREEN_CHANGED, {view});
-      const result = await this.picture(approval.goal, ctx, {previousInputs: screen.previousInputs, expectedView: view});
+      const result = await this.picture(goal, ctx, {previousInputs: screen.previousInputs, expectedView: view});
       return {...result, state: ctx.signal.aborted || ctx.isStopped() ? "STOPPED" : browseState(view),
         semanticAction: !hasText(result.pictureHistory) || result.pictureHistory === HISTORY_NOT_DESCRIBED ? "none" : result.semanticAction};
     }
@@ -1074,6 +1147,10 @@ export class BrowseSkill {
       const site = siteLabel(view.url, sites);
       const prompt = `${site}에서 ${result.speech}`;
       this.#pausedGoals.set(paused, saved);
+      if (this.web.guard.directActions) {
+        const resumed = await this.#continueVisual(goal, paused, ctx);
+        return {...resumed, actions: [...result.actions, ...resumed.actions ?? []], browserIterations: (review.browserIterations ?? 0) + (resumed.browserIterations ?? 0)};
+      }
       this.#askVisual(goal, paused, site, prompt, paused.kind === "orient" ? "화면 사진으로 메뉴 찾기" : "화면 사진으로 안내 링크 찾기");
       return draft("WAITING_FOR_USER_CONFIRMATION", "clarify", prompt, {actions: result.actions, view, ...review});
     }
@@ -1120,14 +1197,44 @@ export class BrowseSkill {
       if (ended) return ended;
       current = await this.web.observe(ctx);
       const fields = passwordFields(current);
+      const handoff = this.dialogue.authHandoff;
+      if (handoff?.loginUrl !== undefined) {
+        if (fields.length === 0) return this.authDone(ctx);
+        if (current.url !== handoff.loginUrl || handoff.loginDocument !== this.web.adapter.documentId?.()) return this.finishAuth("interrupted", "비밀번호를 입력하던 화면이 바뀌었어요. 새 화면에서 다시 로그인해 주세요.", current);
+      } else if (this.web.guard.directActions && !stillNeedsAuth(current)) return this.authDone(ctx);
       const first = firstFillField(current);
-      if (fields.length === 0 || !fields.every(field => field.filled === true) || (first && first.filled !== true)) {
-        return this.authWait("아이디와 비밀번호를 사이트에 직접 입력하신 뒤 '다 입력했어'라고 말씀해 주세요.");
+      if (fields.length === 0 || !fields.every(field => field.filled === true) || (!this.web.guard.directActions && first && first.filled !== true)) {
+        return this.authWait(this.web.guard.directActions ? "비밀번호를 사이트에 직접 입력한 뒤 '다 입력했어'라고 말씀해 주세요." :
+          "아이디와 비밀번호를 사이트에 직접 입력하신 뒤 '다 입력했어'라고 말씀해 주세요.");
+      }
+      if (this.web.guard.directActions) {
+        const submit = handoff?.loginSubmit;
+        if (!handoff || !submit) return this.authWait("사이트에서 로그인 버튼을 누르고 마치면 '다 했어'라고 알려 주세요.");
+        handoff.loginSubmit = undefined;
+        const out = await this.web.clickApproved(submit, ctx);
+        if (out.actions.some(a => a.policy.code === "DENIED_TARGET_CHANGED" || a.result?.errorCode === "VERIFY_FAILED" || a.result?.errorCode === "TARGET_NOT_FOUND")) {
+          return {...this.finishAuth("interrupted", "비밀번호를 입력하던 양식이 바뀌었어요. 새 화면에서 다시 로그인해 주세요.", current), actions:out.actions};
+        }
+        if (out.status !== "ok" || !out.view) return outcomeFailure(out, "AUTH_HANDOFF");
+        return {...await this.authDone(ctx, undefined, true), actions:out.actions};
       }
       onLoginForm = true;
     }
     if (current && (onLoginForm || current.pageId === "external")) {
-      const out = await this.web.pointAt("로그인", ctx, onLoginForm);
+      if (this.web.guard.directActions && onLoginForm && !this.dialogue.authWaiting && passwordFields(current).some(field => field.filled !== true)) {
+        return this.#loginPageGuide(current, [], ctx, current.url);
+      }
+      let out;
+      if (this.web.guard.directActions && onLoginForm) {
+        const submit = await this.web.prepareLoginSubmit(current, ctx);
+        if (!submit) return this.#loginPageGuide(current, [], ctx, current.url);
+        out = await this.web.clickApproved(submit, ctx);
+      } else out = await this.web.pointAt("로그인", ctx, onLoginForm);
+      if (this.web.guard.directActions) {
+        if (out.status !== "ok" || !out.view) return outcomeFailure(out, this.dialogue.authWaiting ? "AUTH_HANDOFF" : this.dialogue.state);
+        this.afterNavigation(out.view);
+        return this.#loginPageGuide(out.view, out.actions, ctx, current.url);
+      }
       if (out.status !== "needs-approval" || !out.pending) return draft("AUTH_HANDOFF", "auth-handoff",
         "이 화면에서 로그인 버튼이나 링크를 찾지 못했어요. '링크 목록 알려줘'라고 하시면 누를 수 있는 것을 읽어 드려요.", {actions: out.actions, view: out.view});
       const target = out.pending.target;
@@ -1173,7 +1280,7 @@ export class BrowseSkill {
   async recognizeAuthPage(result: Draft, before: Pick<PageView, "url"> | undefined, ctx: ExecContext): Promise<Draft> {
     if (!result.view || this.dialogue.authWaiting || result.state === "STOPPED" || ctx.signal.aborted) return result;
     const view = {...result.view, pageId: this.web.profile.classify(result.view.url)};
-    if (!stillNeedsAuth(view)) return accessBlocked(view) ? this.blockedAuth(view, result.actions) : result;
+    if (!stillNeedsAuth(view, !this.web.guard.directActions || ctx.browsingScope === "personal-inspection")) return accessBlocked(view) ? this.blockedAuth(view, result.actions) : result;
     const expected = before?.url !== view.url && before?.url !== "about:blank" ? before?.url : undefined;
     return this.#beginAuthHandoff(view, result.actions ?? [], ctx, "사이트에서 로그인이나 본인확인을 직접 마쳐 주세요. 마친 뒤 '다 했어'라고 알려 주세요.", this.#authPending(), expected);
   }
@@ -1183,7 +1290,7 @@ export class BrowseSkill {
     return {...this.finishAuth("blocked", `${blockedSpeech(view.url, this.narrator.once)} 공식 문의는 ${name} ${number}입니다.`, view), actions};
   }
 
-  async authDone(ctx: ExecContext, journey?: BrowserJourney): Promise<Draft> {
+  async authDone(ctx: ExecContext, journey?: BrowserJourney, submittedLogin = false): Promise<Draft> {
     const ended = this.authEndIfUnavailable(ctx);
     const handoff = this.dialogue.authHandoff;
     if (ended || !handoff) return ended ?? this.authWait();
@@ -1193,10 +1300,10 @@ export class BrowseSkill {
     catch { return this.finishAuth("interrupted", PERSONAL_BROWSE_TEXT.authInterrupted[lang ?? "ko"], undefined, lang); }
     const interrupted = this.authEndIfUnavailable(ctx);
     if (interrupted) return interrupted;
-    if (stillNeedsAuth(view)) return this.authWait(PERSONAL_BROWSE_TEXT.authWaiting[lang ?? "ko"], lang);
+    if (stillNeedsAuth(view, handoff.loginUrl === undefined)) return this.authWait(PERSONAL_BROWSE_TEXT.authWaiting[lang ?? "ko"], lang);
     if (accessBlocked(view)) return lang === undefined ? this.blockedAuth(view) : this.finishAuth("blocked", PERSONAL_BROWSE_TEXT.authBlocked[lang], view, lang);
     const url = tryUrl(view.url);
-    const portalReturn = journey?.returnOrigin === handoff.expectedOrigin && view.loading !== true && view.pageId !== "blank";
+    const portalReturn = (submittedLogin || handoff.loginUrl !== undefined || journey?.returnOrigin === handoff.expectedOrigin) && view.loading !== true && view.pageId !== "blank";
     if (!url || url.origin !== handoff.expectedOrigin || (!portalReturn && url.pathname !== handoff.expectedPath)) {
       return this.authWait(PERSONAL_BROWSE_TEXT.authWrongPage[lang ?? "ko"], lang);
     }
@@ -1207,7 +1314,7 @@ export class BrowseSkill {
     const title = strip(view.title);
     const head = `'${title.length > 0 ? title : "제목 없음"}' 화면으로 바뀌었어요.`;
     if (pending?.kind === "form" && isFormOpen(view)) return draft("APPLICATION_OPEN", "auth-handoff", strip(`${head} ${this.form.askNext(view)}`), {view});
-    if (pending?.kind === "guided") return draft(browseState(view), "auth-handoff", strip(`${head} ${this.guidedResume?.(view) ?? ""}`), {view});
+    if (pending?.kind === "guided") return draft(browseState(view), "auth-handoff", strip(`${head} ${await this.guidedResume?.(view, ctx) ?? ""}`), {view});
     return draft(browseState(view), "auth-handoff", head, {view});
   }
 }

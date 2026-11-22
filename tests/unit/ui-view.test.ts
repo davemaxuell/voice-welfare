@@ -130,12 +130,13 @@ it("녹음 파일 받아쓰기와 자료 조사 칸은 동의하고 쓸 수 있�
 
 it("동의 안내는 화면 사진·외부 인공지능·키 입력 방법을 설정대로 말한다", () => {
   const roles = { understand: "gpt-5.5", goal: "rules", web: "mock-rule", vision: "disabled" };
-  const text = consentText(ui({ voiceMode: { known: true, stt: false, tts: false, label: "", llmRoles: roles } }), env);
+  const text = consentText(ui({ consent: "ask", voiceMode: { known: true, stt: false, tts: false, label: "", llmRoles: roles } }), env);
   expect(text).toContain("이 설정에서는 웹페이지를 글로 읽어 드립니다.");
   expect(text).toContain("글 이해에 쓰는 인공지능은 역할마다 다를 수 있어요. 말씀 이해은 gpt-5.5.");
   expect(text.endsWith("동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.")).toBe(true);
-  expect(consentText(ui(), { background: true, mac: true })).toContain("커맨드, 시프트, 스페이스 키를 함께 눌러 주세요.");
-  expect(consentText(ui({ lang: "en" }), env)).toMatch(/^With your consent, Cheongeum opens websites/);
+  expect(consentText(ui({consent: "intro"}), { background: true, mac: true })).toContain("커맨드, 시프트, 스페이스 키를 함께 눌러 주세요.");
+  expect(consentText(ui(), env)).not.toContain("동의하시면 Enter");
+  expect(consentText(ui({ lang: "en" }), env)).toMatch(/^Cheongeum opens the website you request/);
 });
 
 it("activity line shows the phase and speaks only a finished step", () => {

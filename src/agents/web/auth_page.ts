@@ -69,7 +69,7 @@ export function verificationApp(view: WebObservation) {
   return apps.find(([, pattern]) => pattern.test(text))?.[0];
 }
 
-export function authPageKind(view: WebObservation): AuthPageKind {
+export function authPageKind(view: WebObservation, loginFromTitle = true): AuthPageKind {
   const title = view.title ?? "";
   const outline = view.outline;
   const visible = (view.fields ?? []).filter(field => field.visible === true);
@@ -77,7 +77,7 @@ export function authPageKind(view: WebObservation): AuthPageKind {
   if (authPatterns.captcha.test(controls) ||
     (!accessBlocked(view) && authPatterns.captcha.test(`${title} ${head(outline?.mainText ?? "", 600)}`))) return "captcha";
   if (view.pageId === "mock-login" || passwordFields(view).length > 0) return "login";
-  if (authPatterns.login.test(title)) return "login";
+  if (loginFromTitle && authPatterns.login.test(title)) return "login";
   const names = [...visible.map(field => field.label ?? ""), ...authItems(outline)];
   const told = instructions(outline?.mainText ?? "");
   if (authPatterns.verification.test(title) || names.some(name => authPatterns.verifyControl.test(name)) ||
@@ -87,8 +87,8 @@ export function authPageKind(view: WebObservation): AuthPageKind {
   return "other";
 }
 
-export function stillNeedsAuth(view: WebObservation): boolean {
-  return authPageKind(view) !== "other";
+export function stillNeedsAuth(view: WebObservation, loginFromTitle = true): boolean {
+  return authPageKind(view, loginFromTitle) !== "other";
 }
 
 export function firstFillField(view: WebObservation) {

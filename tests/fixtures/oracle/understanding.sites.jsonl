@@ -792,7 +792,7 @@
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"우리동네복지관 사이트 열어줘"},"fn":"understanding.sites.resolve_site","result":null}
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"정부24 열어줘"},"fn":"understanding.sites.resolve_site","result":{"label":"정부24","url":"https://www.gov.kr"}}
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"정부24"},"fn":"understanding.sites.resolve_site","result":{"label":"정부24","url":"https://www.gov.kr"}}
-{"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.resolve_site","result":null}
+{"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.resolve_site","result":{"label":"하이코리아","url":"https://www.hikorea.go.kr/Main.pt"}}
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"target":"한국장학재단"},"fn":"understanding.sites.resolve_site","result":{"label":"한국장학재단","url":"https://www.kosaf.go.kr"}}
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"text":"127.0.0.1:50375/home 열어줘"},"fn":"understanding.sites.near_site","result":null}
 {"args":{"extra":[{"about":null,"label":"모의 복지 신청 사이트","names":["모의 사이트","모의 복지","연습 사이트","연습용 사이트"],"services":[],"url":"http://localhost:5174/"}],"text":"127.0.0.1:5174/external.html 열어줘"},"fn":"understanding.sites.near_site","result":null}
@@ -1361,7 +1361,7 @@
 {"args":{"fuzzy":false,"text":"하나씩 채워 주오"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":false,"text":"하나씩 채워줘"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":false,"text":"하드 뻔 후 123456789013456"},"fn":"understanding.sites.mentions_known_site","result":false}
-{"args":{"fuzzy":false,"text":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.mentions_known_site","result":false}
+{"args":{"fuzzy":false,"text":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.mentions_known_site","result":true}
 {"args":{"fuzzy":false,"text":"학원 수는 3명 이하"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":false,"text":"한글 이름 수정해줘"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":false,"text":"핸드번호 1234567890123456"},"fn":"understanding.sites.mentions_known_site","result":false}
@@ -1866,7 +1866,7 @@
 {"args":{"fuzzy":true,"text":"하나씩 채워줘"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":true,"text":"하나씩 채워줘."},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":true,"text":"하드 뻔 후 123456789013456"},"fn":"understanding.sites.mentions_known_site","result":false}
-{"args":{"fuzzy":true,"text":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.mentions_known_site","result":false}
+{"args":{"fuzzy":true,"text":"하이코리아 홈페이지 열어줘"},"fn":"understanding.sites.mentions_known_site","result":true}
 {"args":{"fuzzy":true,"text":"학원 수는 3명 이하"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":true,"text":"한글 이름 수정해줘"},"fn":"understanding.sites.mentions_known_site","result":false}
 {"args":{"fuzzy":true,"text":"핸드번호 1234567890123456"},"fn":"understanding.sites.mentions_known_site","result":false}

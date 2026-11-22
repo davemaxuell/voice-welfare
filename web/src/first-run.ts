@@ -312,6 +312,7 @@ export function createFirstRun(deps: FirstRunDeps) {
       await deps.saveSettings({
         apiKey: state.key, language: langOf(state.lang), region: state.prefs.region ?? "", speed: state.speed,
         deviceUse: state.deviceUse, browser: state.browser,
+        ...(current === "speed" ? { soundSetupComplete: true } : {}),
         rememberService: state.deviceUse === "personal" && state.prefs.rememberService === true,
       });
       state.key = "";

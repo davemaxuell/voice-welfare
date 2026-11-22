@@ -1,10 +1,11 @@
 import { expect, it } from "vitest";
 import { z } from "zod";
+import { browserDriver } from "../../src/agents/web/browser/stagehand_browser.ts";
 import { FakeLlm, PORTAL, PORTAL2 } from "../helpers.ts";
 import { browserCases } from "./browser-cases.ts";
 
 const open = browserCases();
-const stagehand = process.env.BROWSER_DRIVER === "stagehand";
+const stagehand = browserDriver() === "stagehand";
 const picker = stagehand ? "stagehand_pick" : "control_pick";
 const pickCalls = (model: FakeLlm) => model.calls.map(call => call.schemaName).filter(name => ["control_pick", "stagehand_pick"].includes(name));
 async function portal(term: string, name: string, address = PORTAL2) {

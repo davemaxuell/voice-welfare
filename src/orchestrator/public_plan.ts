@@ -13,7 +13,7 @@ import { FIXED } from "../language/i18n.ts";
 import { REDACTED, detectSensitive, redactText } from "../safety/privacy.ts";
 import { isExactCommand, pictureCommandParts } from "../understanding/fastpath.ts";
 import { isPictureRequest } from "../understanding/rules.ts";
-import { mentionsKnownSite, publicServiceSite, siteLabel } from "../understanding/sites.ts";
+import { mentionsKnownSite, namedSiteCommand, publicServiceSite, siteLabel } from "../understanding/sites.ts";
 import { publicPatterns } from "./patterns.ts";
 import { ASK_SERVICE, FOREGROUND_BROWSER_INTENTS, LOOKUP_UNAVAILABLE, PublicTask, REJECTED, decide, publicDestinations, reviewCompletion, singleBrowserIntent, type PublicDecision } from "./public_task.ts";
 import { LIVE_DIFFICULTY, ReviewedTask } from "./review_loop.ts";
@@ -63,6 +63,7 @@ export class PublicPlanner {
     return s.deps.publicPlanning !== false && s.deps.llm !== undefined && s.consentStatus === "granted" &&
       PLAN_STATES.has(s.state) && !s.dialogue.hasPendingInteraction &&
       sensitive.kinds.length === 0 && !text.includes(REDACTED) && s.speakable(text) &&
+      (s.publicTask.question.length > 0 || namedSiteCommand(text) === undefined) &&
       (!isExactCommand(text) || FOREGROUND_BROWSER_INTENTS.has(s.rules.parseSync(text, {state: s.state}).type)) &&
       !isPictureRequest(rstripChars(text, ".!。")) && pictureCommandParts(text, s.rules).length === 0 &&
       (s.publicTask.question.length > 0 || ackKind(text) === undefined);
@@ -245,6 +246,10 @@ export class PublicPlanner {
       turn.intentType = "CLARIFY";
       if (s.deps.delegateResearch === undefined) return s.finish(turn, draft(s.state, "clarify", "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요."));
       const question = decision.goal ?? "";
+      if (s.web.guard.directActions) {
+        const saved = await s.deps.delegateResearch(turn.id, question);
+        return s.finish(turn, draft("IDLE", "none", saved ? "조사를 맡겼어요. 자료 조사에서 결과를 확인할 수 있어요." : "조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요."));
+      }
       const prompt = {
         ko: `‘${question}’ 질문과 결과를 저장하고 공개 자료를 조사할까요? 앱을 다시 열면 이어서 조사해요.`,
         en: `Save the question “${question}” and its results, and research public sources? Research resumes when you reopen the app.`,

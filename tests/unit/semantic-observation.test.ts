@@ -16,7 +16,7 @@ it("SDK에 본문이나 값이 섞여도 승인된 항목의 가린 이름과 �
   const tree = "instruction: 고치려는 지시\n[0-77] button: " + label + "\n[1-11] button: 사적인 글\n[1-12] textbox: 개인 입력";
   const model = new FakeLlm({stagehand_pick:{ref:"c1"}});
   const request: SemanticObservation = {term:"연락처 알려 줘", controls:[item(label)], picker:{model}};
-  expect(await selectObservedControl(tree, request, signal)).toBe("0-77");
+  expect(await selectObservedControl(tree, request, signal)).toEqual(["0-77"]);
   expect(request.selected).toEqual(item(label));
   expect(JSON.parse(model.calls[0]!.user)).toMatchObject({options:{c1:"연락 [비공개]"}});
   expect(JSON.stringify(model.calls)).not.toMatch(/사적인|개인 입력|고치려는 지시|로컬-식별자|010-|0-77/u);

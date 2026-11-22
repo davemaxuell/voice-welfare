@@ -1,9 +1,9 @@
 // 아바타 창 E2E: node apps/desktop/test/avatar.e2e.cjs [시나리오 이름…]
 // 실제 Electron 앱을 띄워 아바타 창과 대화 창이 세션 하나를 함께 쓰는지 확인한다(창이 잠깐 화면에 뜬다).
 const assert = require('node:assert/strict');
-const { mkdir, writeFile } = require('node:fs/promises');
+const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
-const { launch, windows, until } = require('./harness.cjs');
+const { launch, native, windows, until } = require('./harness.cjs');
 
 const isController = (w) => w.url.includes('desktop=1');
 const isOverlay = (w) => w.url.includes('/avatar/');
@@ -79,6 +79,84 @@ async function recordPoses(overlay) {
 }
 
 const scenarios = {
+  async drag({ app, controller, overlay, errors }) {
+    await overlay.getByRole('button', { name: '동의하고 음성 대화 시작' }).waitFor();
+    await until(async () => (await windows(app)).find(isOverlay).visible, { what: 'native mascot is visible' });
+    await overlay.waitForFunction(() => {
+      const root = document.getElementById('overlay');
+      return !root.inert && !root.hasAttribute('data-presenting');
+    });
+    const avatar = overlay.getByRole('button', { name: '청음 대화 열기' });
+    const center = async () => {
+      const { x, y, width, height } = await figureOnScreen(app, overlay);
+      return { x: x + width / 2, y: y + height / 2 };
+    };
+    const before = await center();
+    // Both endpoints fit within the initial portrait so physical input can be confined to this test window.
+    const target = { x: before.x - 52, y: before.y - 32 };
+    const near = async (point) => {
+      const actual = await center();
+      return Math.abs(actual.x - point.x) <= 2.5 && Math.abs(actual.y - point.y) <= 2.5;
+    };
+    if (process.platform === 'win32') {
+      // Reshaping a Windows overlay refreshes the OS mouse state. CDP's synthetic button-down does not set it.
+      const { hwnd, start, end } = await app.evaluate(({ BrowserWindow, screen }, { url, before, target }) => {
+        const window = BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url);
+        const handle = window.getNativeWindowHandle();
+        const physical = p => screen.dipToScreenPoint({ x: Math.round(p.x), y: Math.round(p.y) });
+        return { hwnd: String(handle.length === 8 ? handle.readBigUInt64LE() : handle.readUInt32LE()), start: physical(before), end: physical(target) };
+      }, { url: overlay.url(), before, target });
+      const held = native('drag', `${start.x},${start.y}`, `${end.x},${end.y}`, hwnd);
+      assert.ok(held.dx < -4 && held.dy < -4, `native window moves while held: ${JSON.stringify(held)}`);
+    } else {
+      const box = await avatar.boundingBox();
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await overlay.mouse.move(x, y);
+      await overlay.mouse.down();
+      try {
+        await overlay.mouse.move(x + target.x - before.x, y + target.y - before.y);
+        await until(() => near(target), { what: 'drag moves the native mascot window' });
+        // Playwright dispatches viewport coordinates; the window has moved under the pointer.
+        const moved = await avatar.boundingBox();
+        await overlay.mouse.move(moved.x + moved.width / 2, moved.y + moved.height / 2);
+      } finally { await overlay.mouse.up(); }
+    }
+    await until(() => near(target), { what: 'release leaves the mascot at the drop point' });
+    const dropped = await center();
+    assert.equal((await windows(app)).find(isController).visible, false, 'drag keeps the chat closed');
+
+    await consentByOverlay(overlay);
+    await until(() => near(dropped), { what: 'closing the consent card preserves the drop point' });
+    await until(async () => await liveTracks(controller) > 0, { what: 'consent still starts the microphone' });
+    const keyStart = await center();
+    await avatar.press('ArrowLeft');
+    await until(() => near({ ...keyStart, x: keyStart.x - 24 }), { what: 'keyboard repositions the focused mascot' });
+    const profile = await app.evaluate(({ app }) => app.getPath('userData'));
+    const saved = JSON.parse(await readFile(path.join(profile, 'avatar.json'), 'utf8'));
+    const displays = await app.evaluate(({ screen }) => screen.getAllDisplays().map(d => ({ id: d.id, area: d.workArea })));
+    const display = displays.find(d => d.id === saved.displayId);
+    assert.ok(display, 'the dropped monitor is persisted');
+    assert.ok(await near({ x: display.area.x + saved.position.x * display.area.width, y: display.area.y + saved.position.y * display.area.height }));
+    await avatar.press('Enter');
+    await until(async () => (await windows(app)).find(isController).visible, { what: 'keyboard activation still opens chat' });
+    assert.deepEqual(errors, []);
+    return { before, dropped };
+  },
+  async 'saved-position'({ app, overlay, errors }) {
+    await overlay.getByRole('button', { name: '동의하고 음성 대화 시작' }).waitFor();
+    const area = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+    const anchored = async () => {
+      const rect = await figureOnScreen(app, overlay);
+      return Math.abs(rect.x + rect.width / 2 - (area.x + .33 * area.width)) <= 2 &&
+        Math.abs(rect.y + rect.height / 2 - (area.y + .27 * area.height)) <= 2;
+    };
+    await until(anchored, { what: 'saved mascot position restored on the primary display' });
+    const figure = await overlay.locator('#figure').boundingBox(), card = await overlay.locator('#card').boundingBox();
+    assert.ok(card.y >= figure.y + figure.height, 'bubble opens below a mascot in the upper half of the screen');
+    await consentByOverlay(overlay);
+    await until(anchored, { what: 'upper mascot keeps its position when the card closes' });
+    assert.deepEqual(errors, []);
+  },
   async soak({ app, controller, overlay, errors }) {
     const dir = path.resolve(__dirname, '../../../reports/ux');
     await mkdir(dir, { recursive: true });
@@ -304,7 +382,9 @@ const scenarios = {
   async approvals({ controller, overlay, voice, server, session, requests, errors }) {
     await consentByOverlay(overlay);
     await type(controller, '127.0.0.1:5174/external.html 열어줘');
+    const writerRequest = controller.waitForRequest(r => r.method() === 'POST' && new URL(r.url()).pathname === '/api/turn');
     await type(controller, '이름 칸에 김하늘 써줘');
+    const writer = (await writerRequest).headers()['x-cheongeum-writer'] ?? '';
     const approve = overlay.getByRole('button', { name: '입력 승인' });
     await approve.waitFor();
     const shown = await overlayState(overlay);
@@ -324,14 +404,34 @@ const scenarios = {
     });
     voice.said.push('응');
     const spoken = controller.evaluate(
-      async ([id, actionId]) => {
-        const { api } = await import('/api.js');
-        const recording = api.liveAudio(id);
-        recording.append(new ArrayBuffer(6000));
-        return api.audioTurn(id, recording, actionId).then((r) => r.speech, (e) => 'error ' + e.message);
+      async ([id, actionId, writer]) => {
+        const url = new URL(`/api/session/${id}/audio/live`, location.href);
+        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(url);
+        try {
+          const receipt = await new Promise((resolve, reject) => {
+            socket.onopen = () => {
+              socket.send(JSON.stringify({ writer }));
+              socket.send(new ArrayBuffer(6000));
+              socket.send('commit');
+            };
+            socket.onerror = () => reject(new Error('audio connection failed'));
+            socket.onmessage = ({ data }) => {
+              const result = JSON.parse(data);
+              if (result.receipt) resolve(result.receipt);
+              else reject(new Error(result.error ?? 'missing voice receipt'));
+            };
+          });
+          const response = await fetch(`/api/audio/turn?sessionId=${id}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Cheongeum-Writer': writer, 'X-Cheongeum-Action': actionId },
+            body: JSON.stringify({ receipt }),
+          });
+          const result = await response.json();
+          return result.speech ?? result.error;
+        } finally { socket.close(); }
       },
-      [sid, pendingConfirmation.actionId],
-    );
+      [sid, pendingConfirmation.actionId, writer],
+    ).catch(error => 'error ' + error.message);
     const confirmsBefore = requests.filter((r) => r.path.endsWith('/confirm')).length;
     let windowClick;
     try {
@@ -554,6 +654,7 @@ const scenarios = {
 };
 
 const OPTIONS = {
+  'saved-position': { avatarPrefs: { still: true, position: { x: .33, y: .27 } } },
   soak: { mic: { burstAt: null } },
   approvals: { mic: { burstAt: null } },
   'login-handoff': { mic: { burstAt: null } },

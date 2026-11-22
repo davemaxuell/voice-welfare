@@ -7,6 +7,7 @@ export const workflowCopy = {
   title: ["자료 조사와 저장한 메모", "Research and saved notes", "资料调查和已存笔记", "資料調査と保存したメモ"],
   statusLabel: ["자료 조사", "Research", "资料调查", "資料調査"],
   researchLabel: ["공개 자료에서 확인할 질문", "Question for public sources", "要查阅公开资料的问题", "公開資料で調べる質問"],
+  researchStorage: ["질문과 결과가 저장되며 앱을 다시 열면 조사가 이어집니다.", "Your question and results are saved so research can continue when you reopen the app.", "问题和结果会保存，重新打开应用后将继续调查。", "質問と結果は保存され、アプリを再度開くと調査を続けられます。"],
   researchConsent: [
     "이 질문과 결과를 저장하고 앱을 다시 열어도 조사를 이어가는 데 동의해요.",
     "Save this question and its results, and continue the research when I reopen the app.",
@@ -15,6 +16,7 @@ export const workflowCopy = {
   ],
   researchAdd: ["조사 맡기기", "Start research", "开始调查", "調査を依頼"],
   noteLabel: ["기억할 선호 사항이나 찾을 내용", "Preference to remember or terms to find", "要记住的偏好或要搜索的词", "覚えておく希望や検索語"],
+  noteStorage: ["저장한 메모는 대화 중 관련 질문과 함께 OpenAI에서 검색합니다.", "Saved notes are matched with relevant questions through OpenAI.", "保存的笔记会通过 OpenAI 与相关问题匹配。", "保存したメモは OpenAI を通じて関連する質問と照合します。"],
   noteConsent: [
     "이 메모를 저장하고 관련 질문과 함께 OpenAI에서 검색해 대화에 활용하는 데 동의해요.",
     "Save this note and use OpenAI to match it with relevant questions during conversations.",

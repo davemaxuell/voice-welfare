@@ -8,7 +8,7 @@ window.cheongeumOverlay = {
     call('ready')();
     handlers.visibility?.({visible:true, id:0, animate:false});
   },
-  resize: call('resize'), talk: call('talk'), stop: call('stop'), open: call('open'),
+  resize: call('resize'), move: call('move'), talk: call('talk'), stop: call('stop'), open: call('open'),
   hide: call('hide'), release: call('release'), choose: call('choose'), visibilityDone: call('visibilityDone'),
   onSnapshot: (cb) => { handlers.snapshot = cb; },
   onPrefs: (cb) => { handlers.prefs = cb; },

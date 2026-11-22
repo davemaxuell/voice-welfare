@@ -5,7 +5,8 @@ import { WelfareInformationAgent } from "../../src/agents/welfare/agent.ts";
 import { FixtureWelfareDataProvider } from "../../src/agents/welfare/data/index.ts";
 import { OpenData } from "../../src/agents/welfare/open_data/index.ts";
 import { WebExecutionAgent } from "../../src/agents/web/agent.ts";
-import { launchBrowser, PlaywrightExecutionAdapter } from "../../src/agents/web/browser/index.ts";
+import { closeLaunchedBrowser, launchBrowser, PlaywrightExecutionAdapter } from "../../src/agents/web/browser/index.ts";
+import type { BrowserDriver } from "../../src/agents/web/browser/stagehand_browser.ts";
 import { DownloadStore } from "../../src/agents/web/downloads.ts";
 import { createMockWelfareProfile, fieldVocabulary } from "../../src/agents/web/profile.ts";
 import { InMemoryEventLog } from "../../src/core/events.ts";
@@ -34,13 +35,13 @@ export interface SessionOptions extends Pick<OrchestratorDeps, "firstRunStep" | 
   clock?: () => number;
 }
 
-export function createTestRuntime(defaults: SessionOptions = {}) {
+export function createTestRuntime(defaults: SessionOptions & {browserDriver?: BrowserDriver} = {}) {
   const data = OpenData.load(fileURLToPath(new URL("../fixtures/open_data/", import.meta.url)));
   let browser: Promise<Browser> | undefined;
   const sessions = new Set<SessionOrchestrator>();
   async function createBrowserSession(overrides: SessionOptions = {}) {
     const opts = { ...defaults, ...overrides };
-    browser ??= launchBrowser(process.env.HEADED !== "1", process.env.HEADED === "1" ? 200 : 0);
+    browser ??= launchBrowser(process.env.HEADED !== "1", process.env.HEADED === "1" ? 200 : 0, defaults.browserDriver);
     const profile = createMockWelfareProfile(opts.mockSiteUrl ?? "http://localhost:5174");
     const allowedOrigins = [profile.origin];
     const readOnlyWeb = opts.readOnlyWeb ?? true;
@@ -80,7 +81,7 @@ export function createTestRuntime(defaults: SessionOptions = {}) {
     for (const session of sessions) { sessions.delete(session); await session.close(); }
   }
   async function close() {
-    try { await closeSessions(); } finally { await (await browser)?.close(); browser = undefined; }
+    try { await closeSessions(); } finally { await browser?.then(closeLaunchedBrowser); browser = undefined; }
   }
   return { createBrowserSession, closeSessions, close };
 }

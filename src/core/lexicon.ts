@@ -92,6 +92,21 @@ export function commandKey(text: string): string {
 
 export type Approval = "approve" | "reject";
 
+const permissionEnding = String.raw`도\s*(?:돼요?|됩니다|괜찮(?:아요?|습니다))[.!。！~]*$`;
+const grantedEnding = new RegExp(permissionEnding, "u");
+const offeredPermission = new RegExp(
+  String.raw`^(?:(?:네|예|응|그래요?|좋아요?)[\s,!.]*)?(?:(?:그거|그걸|그것|그|이)\s*(?:버튼|링크|항목)?(?:은|는|을|를)?\s*)?(?:(?:그대로|그렇게|바로|그냥|계속)\s*)?(?:눌러|누르셔|열어|여셔|(?:클릭|선택|진행|계속)?(?:해|하셔))` + permissionEnding, "u",
+);
+
+export function permitsOfferedAction(text: string): boolean {
+  return offeredPermission.test(text.trim());
+}
+
+export function asksActionPermission(text: string): boolean {
+  const permission = /(?:눌러|누르셔|열어|여셔|(?:클릭|선택|입력|제출|저장|삭제|진행)(?:해|하셔))도\s*(?:돼|되|될|됩|괜찮)/u;
+  return permission.test(text) && !grantedEnding.test(text.trim());
+}
+
 export function approval(text: string, lang = "ko"): Approval | undefined {
   let t = strip(text);
   if (lang === "ko") {

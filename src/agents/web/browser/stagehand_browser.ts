@@ -10,11 +10,11 @@ import type { StructuredLlm } from "../../../core/llm.ts";
 import { redactPictureText } from "../../../safety/privacy.ts";
 import { selectObservedControl, type SemanticObservation } from "./semantic_observation.ts";
 import { framesOf } from "./frame_controls.ts";
-import { AdapterError, observeWith } from "./driver.ts";
+import { AdapterError, observeWith, passwordSelector } from "./driver.ts";
 
 export type BrowserDriver = "playwright" | "stagehand";
 export function browserDriver(value = process.env.BROWSER_DRIVER): BrowserDriver {
-  return value === "stagehand" ? "stagehand" : "playwright";
+  return value === "playwright" ? "playwright" : "stagehand";
 }
 
 const unavailable = () => new AdapterError("NOT_SUPPORTED", "이 탭에서 브라우저 조작 도구에 연결하지 못했어요.");
@@ -53,10 +53,10 @@ function clientModel(pending: Map<string, Inference>): ClientLLM {
     if (request === undefined) throw unavailable();
     request.signal.throwIfAborted();
     if (request.semantic !== undefined) {
-      const id = await selectObservedControl(text, request.semantic, request.signal);
+      const ids = await selectObservedControl(text, request.semantic, request.signal);
       request.signal.throwIfAborted();
-      return {role:"assistant", content:[], outputFormat:"json_schema", structuredContent:{elements:id === undefined ? [] :
-        [{elementId:id, method:"click", arguments:[], description:"고른 항목"}]}};
+      return {role:"assistant", content:[], outputFormat:"json_schema", structuredContent:{elements:
+        (ids ?? []).map(elementId => ({elementId, method:"click", arguments:[], description:"고른 항목"}))}};
     }
     const labels = text.split("\n").flatMap(line => {
       const item = /^\s*\[(\d+-\d+)\] (button|link|tab|menuitem|menuitemcheckbox|menuitemradio): (.{1,512})$/u.exec(line);
@@ -71,9 +71,14 @@ function clientModel(pending: Map<string, Inference>): ClientLLM {
   } };
 }
 
-interface Connection { sdk: Stagehand; pending: Map<string, Inference> }
+interface Connection { sdk: Stagehand; pending: Map<string, Inference>; disconnecting?: Promise<void> }
 const connections = new WeakMap<Browser, Connection>();
 const tabs = new WeakMap<Page, Promise<{ connection: Connection; tab: StagehandPage }>>();
+
+export function attachedDriver(page: Page): BrowserDriver {
+  const browser = page.context().browser();
+  return browser !== null && connections.has(browser) ? "stagehand" : "playwright";
+}
 
 // Playwright의 파이프가 먼저 준비될 수 있다. 이 크롬의 프로필에 포트와 브라우저 식별자가 모두 기록될 때까지 기다린다.
 async function localEndpoint(browser: Browser, profile: string): Promise<string> {
@@ -106,16 +111,19 @@ export async function attachStagehand(browser: Browser, isolatedContexts: boolea
     const sdk = await Stagehand.create({ browser: handle, model: clientModel(pending), selfHeal: false, cache: false,
       logging: { level: "off" } });
     connections.set(browser, { sdk, pending });
-    const attached = handle;
-    browser.once("disconnected", () => {
-      pending.clear();
-      connections.delete(browser);
-      void attached.disconnect().catch(() => {});
-    });
+    browser.once("disconnected", () => { void detachStagehand(browser).catch(() => {}); });
   } catch (error) {
     await handle?.disconnect().catch(() => {});
     throw error;
   } finally { await cdp.detach().catch(() => {}); }
+}
+
+// 크롬이 아직 응답할 때 확장의 세션을 닫고 SDK의 CDP 웹소켓도 해제한다.
+export function detachStagehand(browser: Browser): Promise<void> {
+  const connection = connections.get(browser);
+  if (connection === undefined) return Promise.resolve();
+  connection.pending.clear();
+  return connection.disconnecting ??= connection.sdk.browser.disconnect().finally(() => connections.delete(browser));
 }
 
 export function stagehandTab(page: Page) {
@@ -155,7 +163,7 @@ export async function observedSelectors(page: Page, instruction: string, llm: St
   try {
     const mask = 'input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=searchbox], object, embed';
     const excluded = semantic === undefined ? [mask + ', iframe, frame'] :
-      await framesOf(page).ignoredSelectors(mask + ', [inert], [hidden], [aria-hidden="true"], form:has(input[type=password])');
+      await framesOf(page).ignoredSelectors(mask + ', [inert], [hidden], [aria-hidden="true"], form:has(' + passwordSelector + ')');
     signal.throwIfAborted();
     const { data } = await connection.sdk.observe(token, { page: tab, timeout: 10_000,
       ignoreLocators: excluded.map(selector => tab.locator(selector)) });

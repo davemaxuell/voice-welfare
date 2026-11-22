@@ -65,6 +65,17 @@ it("재시도는 승인 없는 저위험 시간 초과에 한 번만 한다", as
   expect(execute).toHaveBeenCalledTimes(3);
 });
 
+it("단추가 동작한 직후 응답 시간이 지나도 같은 클릭을 반복하지 않는다", async () => {
+  let clicks = 0;
+  const web = new WebExecutionAgent({observe:async () => observation(), async close() {},
+    execute:async a => { clicks++; return timeout(a); }}, guard, profile);
+  const ctx = context();
+  await web.observe(ctx);
+  const result = await web.run({...read, type:"click", target:{role:"link", name:"안내"}}, ctx, []);
+  expect(result?.errorCode).toBe("TIMEOUT");
+  expect(clicks).toBe(1);
+});
+
 it("test_approved_low_risk_timeout_is_not_retried", async () => {
   const readOnly = new PolicyGuard({ allowedOrigins: [profile.origin], allowedActionTypes: ACTION_TYPES, allowedFieldIds: [],
     secretFieldIds: [], maxActionsPerTurn: 12, readOnlyWeb: true });
