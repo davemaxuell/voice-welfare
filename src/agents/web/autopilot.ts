@@ -21,7 +21,7 @@ import { guideSection } from "./playbook.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import { screenKey, type Orientation } from "./orient.ts";
 import { choices, controlNames, type VisualChoice } from "./visual_step.ts";
-import type { WebObservation } from "./view.ts";
+import { approvedClickKey, type WebObservation } from "./view.ts";
 import { BrowserJourney, personalScrubber, webOrigin } from "./journey.ts";
 import { describeActivity, fixedActivity, type ActivityFact } from "../../speech/activity.ts";
 
@@ -44,10 +44,10 @@ export interface ReviewPage {
 }
 export interface PageSource { url: string; title: string }
 
-/** 사용자가 승인한 사진 한 단계를 이어 가기 위한 메모리 속 상태. 사진은 담지 않는다. */
+/** 사용자가 직접 진행하거나 승인한 뒤 남은 탐색을 이어 가는 상태. 사진은 담지 않는다. */
 export interface BrowseCheckpoint {
-  /** link는 확인한 링크를 누르고, orient는 사진으로 메뉴를 찾고, manual은 사용자가 연 화면을 새로 읽는다. */
-  kind?: "link" | "orient" | "manual";
+  /** link는 확인한 링크를 누른다. orient는 사진으로 메뉴를 찾고, manual과 goal은 사용자가 진행한 뒤 화면을 새로 읽는다. */
+  kind?: "link" | "orient" | "manual" | "goal";
   choice: VisualChoice;
   /** 이번 목표에서 화면 사진을 보내도 된다고 한 누리집(출처). */
   visualOrigins?: readonly string[];
@@ -92,6 +92,17 @@ export interface AutopilotResult {
   quoteSources: Map<string, string[]>;
 }
 
+/** 일반 목표가 승인·인증을 기다리는 동안 같은 탐색 기록과 남은 한도를 보관한다. */
+export interface GoalContinuation {
+  checkpoint?: BrowseCheckpoint;
+  pendingClickId?: string;
+  pendingClickKey?: string;
+  approvedRefs: Set<string>;
+  request: Redacted;
+  publicLookup: boolean;
+  actionLimit: number;
+}
+
 /** 검색으로 찾은 공공 누리집 후보. 제목은 검색 결과의 글이라 신뢰할 수 없는 데이터다. */
 export interface PortalCandidate { readonly url: string; readonly title: string }
 
@@ -122,6 +133,7 @@ export interface RunOptions {
   conversation?: Record<string, unknown>;
   requestedFacts?: readonly PublicFact[];
   checkpoint?: BrowseCheckpoint;
+  continuation?: GoalContinuation;
   visualControl?: string;
   allowedUrls?: readonly string[];
   journey?: BrowserJourney;
@@ -490,6 +502,7 @@ export class Autopilot {
     const steps: AutopilotStep[] = checkpoint?.steps ?? [];
     const actions: WebAction[] = [];
     let lastView: PageView | undefined;
+    let lastReadableUrl: string | undefined;
     let mainOffset = 0, iterations = 0, controlQuery = "", controlOffset = 0;
     let controlWindow: ControlWindow | undefined;
     let offered = new Map<string, { ref: string; role: string; name: string; context?: string; url: string }>();
@@ -601,7 +614,13 @@ export class Autopilot {
     };
     const done = (status: AutopilotResult["status"], speech: string, more: Pick<AutopilotResult, "pending" | "native" | "question" | "manual"> & { sources?: PageSource[]; quotes?: readonly string[] } = {}): AutopilotResult => {
       let { sources, quotes = [] } = more;
-      if (status !== "stopped") remember(view);
+      if (status !== "stopped" && !(options.continuation && view && stillNeedsAuth(view))) remember(view);
+      if (options.continuation && view && (status === "needs-approval" || stillNeedsAuth(view))) {
+        const url = stillNeedsAuth(view) ? lastReadableUrl ?? view.url : view.url;
+        options.continuation.checkpoint = snapshot({url, controls: new Map()}, Math.max(0, maxSteps - iterations), {kind: "goal"});
+        options.continuation.pendingClickId = more.pending?.id;
+        options.continuation.pendingClickKey = more.pending?.target?.ref === undefined ? undefined : approvedClickKey(view, more.pending.target.ref);
+      }
       if (evidence !== undefined && (status === "failed" || status === "limit") && evidence.passages.size > 0) {
         [speech, sources] = evidence.result(seenTitle);
         status = "partial";
@@ -691,6 +710,7 @@ export class Autopilot {
         }
         if (i >= maxSteps || (journey?.remaining ?? 1) === 0 || performance.now() > deadline) break;
         const readable = view !== undefined && !stillNeedsAuth(view) && !accessBlocked(view) && (!personal || onRequestedSite(view.url));
+        if (readable && view !== undefined && view.pageId !== "blank") lastReadableUrl = view.url;
         const screen = readable && here !== undefined && view !== undefined && view.pageId !== "blank" ? screenKey(view) : undefined;
         const currentOrientation = screen !== undefined && orientation?.screen === screen &&
           orientation.page === this.web.adapter.page ? orientation.found : undefined;
@@ -804,7 +824,7 @@ export class Autopilot {
         // 작은 모델은 가끔 형식이 깨진 응답을 낸다. 한 번은 다시 묻는다.
         const recoveringEvidence = inspectAfterRejection;
         const orientStep = i === 0 && checkpoint?.kind === "orient";
-        const visualStep = i === 0 && checkpoint !== undefined && !orientStep && checkpoint.kind !== "manual";
+        const visualStep = i === 0 && checkpoint !== undefined && (checkpoint.kind === undefined || checkpoint.kind === "link");
         let raw: Decision | undefined;
         if (visualStep) {
           if (visualControl === undefined || !checkpoint.choice.controls.has(visualControl)) return done("failed", "사진에서 해당 항목을 확인하지 못했어요.");

@@ -1,6 +1,8 @@
 // 여러 단계를 거치는 요청을 끝까지 하고, 답하기 전에 원래 요청과 대조하는 고리(task_review.ts가 판정한다).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BrowserJourney } from "../agents/web/journey.ts";
+import type { ExecContext } from "../agents/web/agent.ts";
+import type { GoalContinuation } from "../agents/web/autopilot.ts";
 import { accessBlocked, stillNeedsAuth } from "../agents/web/auth_page.ts";
 import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
@@ -46,6 +48,7 @@ interface ReviewedFields {
   background?: boolean;
   inspection?: "answer" | "arrival";
   publicArrival?: boolean;
+  continuation?: GoalContinuation;
 }
 
 /** 이 조회가 실제로 쓰는 검색 방식. 길이 브라우저이면 quiet으로 정했을 때만 빼고 보이는 창을 쓴다. 결정이 방식을 비워 둬도 같다. */
@@ -75,6 +78,7 @@ export class ReviewedTask {
   readonly retries = new Set<string>();
   readonly background: boolean;
   readonly journey?: BrowserJourney;
+  readonly continuation?: GoalContinuation;
   readonly inspection?: "answer" | "arrival";
   readonly publicArrival: boolean;
   readonly entryOrigin?: string;
@@ -98,7 +102,14 @@ export class ReviewedTask {
       const supplied = publicDestinations(fields.request).urls;
       if (supplied.size === 1) this.entryOrigin = [...supplied.keys()][0];
     }
-    if (!this.background) this.journey = new BrowserJourney(REVIEW_LIMITS[this.difficulty][1]);
+    this.continuation = fields.continuation;
+    if (!this.background && !this.continuation) this.journey = new BrowserJourney(REVIEW_LIMITS[this.difficulty][1]);
+  }
+
+  context(ctx: ExecContext): ExecContext {
+    return withContext(ctx, {counter: this.counter, actionLimit: this.continuation?.actionLimit ?? REVIEW_LIMITS[this.difficulty][2],
+      publicLookup: ctx.publicLookup || this.continuation?.publicLookup === true,
+      ...(this.inspection !== undefined ? {browsingScope: "personal-inspection"} : {})});
   }
 
   addSteps(steps: readonly Step[]): void {
@@ -124,6 +135,19 @@ const evidenceKey = (e: ReviewEvidence) => JSON.stringify([e.kind, e.text, e.rec
 export class ReviewLoop {
   private readonly session: SessionOrchestrator;
   constructor(session: SessionOrchestrator) { this.session = session; }
+
+  async goal(goal: string, turn: Turn, exclusions: readonly string[] = []): Promise<Draft> {
+    const request = turn.original ?? turn.text;
+    const difficulty = LIVE_DIFFICULTY.getStore() ?? "medium";
+    const policy = this.session.web.guard.config;
+    const actionLimit = Math.min(REVIEW_LIMITS[difficulty][2], turn.ctx.actionLimit ?? policy.defaultActionsPerTurn ?? policy.maxActionsPerTurn);
+    const result = await this.run(new ReviewedTask({request, task: new PublicTask({goal, exclusions}), requirements: [request], difficulty,
+      route: "existing", counter: turn.ctx.counter, continuation: {request, approvedRefs: new Set(), actionLimit,
+        publicLookup: turn.ctx.publicLookup || exclusions.some(item => LIMITED_READS.includes(item))}}), turn);
+    // 단일 목표의 첫 응답에서는 검토 요약을 생략한다.
+    const {review: _review, ...first} = result;
+    return first;
+  }
 
   static intentAllowed(kind: string, exclusions: readonly string[]): boolean {
     return ALLOWED.has(kind) && !exclusions.some(item => EXCLUDED.get(item)?.includes(kind) === true);
@@ -164,11 +188,10 @@ export class ReviewLoop {
 
   async #review(run: ReviewedTask, turn: Turn, resumed: Draft | undefined): Promise<Draft> {
     const s = this.session;
-    const [rounds, , actions] = REVIEW_LIMITS[run.difficulty];
+    const [rounds, steps] = REVIEW_LIMITS[run.difficulty];
     const personal = run.inspection !== undefined;
     const privateValues = personal ? [...new Set([...run.privateValues, ...s.privateValuesForRedaction()])] : run.privateValues;
-    turn.ctx = withContext(turn.ctx, { counter: run.counter, actionLimit: actions,
-      ...(personal ? { browsingScope: "personal-inspection" } : {}) });
+    turn.ctx = run.context(turn.ctx);
     const logs: DraftAction[] = [];
     let last = resumed;
     let missing: readonly string[] = run.requirements;
@@ -214,11 +237,57 @@ export class ReviewLoop {
       else if (result.state !== "AUTH_HANDOFF" && result.state !== "STOPPED" && !run.background) {
         const speech = personal
           ? strip(`${(result.lang ?? "ko") === s.lang ? result.speech : ""} ${PERSONAL_BROWSE_TEXT.incomplete[s.lang]}`)
-          : result.speech + " 전체 요청은 아직 완료하지 못했어요.";
+          : run.continuation ? result.speech : result.speech + " 전체 요청은 아직 완료하지 못했어요.";
         return { ...result, actions: logs, review: summary("incomplete"), speech, lang: personal ? s.lang : result.lang };
       }
       return { ...result, actions: logs, review: summary("needs_input") };
     };
+
+    // 단일 목표의 답과 근거는 자율 탐색이 대조한다. 승인·인증을 거친 뒤에도 같은 목표와 남은 탐색 기록을 쓴다.
+    const continuation = run.continuation;
+    if (continuation) {
+      const finish = (result: Draft): Draft => {
+        if (result.state === "STOPPED") return {...result, actions: logs};
+        // 모의접수는 이 목표의 마지막 조작이다. 전용 승인 흐름이 접수번호까지 직접 확인한다.
+        if (result.semanticAction === "prepare-submit") return {...result, actions: logs, review: summary("needs_input")};
+        if (needsInput(result)) return pause(result);
+        const verified = result.semanticAction === "goal" && hasText(result.summary) ||
+          result.state === "MOCK_SUBMITTED" && hasText(result.verification?.receipt);
+        return {...result, actions: logs, review: summary(verified ? "completed" : "incomplete")};
+      };
+      if (resumed) {
+        const clicked = resumed.semanticAction === "confirm-click" && !needsInput(resumed) ? resumed.actions?.find(({action, result, policy}) =>
+          action.type === "click" && action.id === continuation.pendingClickId &&
+          policy.allowed && result?.ok === true && "verified" in result && result.verified && result.actionId === action.id) : undefined;
+        if (clicked?.action.target?.ref !== undefined) {
+          continuation.approvedRefs.add(continuation.pendingClickKey ?? clicked.action.target.ref);
+          const step = continuation.checkpoint?.steps.at(-1);
+          if (step?.action === "click") Object.assign(step, {ok: true, note: "사용자가 승인해 누른 뒤 화면에서 확인함"});
+        }
+        const awaitingSameClick = needsInput(resumed) && s.dialogue.approval?.kind === "click" &&
+          s.dialogue.approval.action.id === continuation.pendingClickId;
+        if (!awaitingSameClick) {
+          continuation.pendingClickId = undefined;
+          continuation.pendingClickKey = undefined;
+        }
+        if (clicked || resumed.semanticAction === "goal") {
+          resumed = {...resumed, ...await s.browse.recognizeAuthPage(resumed, continuation.checkpoint?.choice, turn.ctx)};
+        }
+        await record(resumed);
+        const authDone = resumed.semanticAction === "auth-handoff" && s.dialogue.authHandoff?.status === "completed";
+        if (needsInput(resumed) || (!clicked && !authDone) || !continuation.checkpoint) return finish(resumed);
+      }
+      if (turn.ctx.signal.aborted || s.superseded(turn)) return this.#stopped();
+      const refused = s.gate(["GOAL"]);
+      if (refused) return finish(refused);
+      const before = s.web.currentView;
+      let work = await s.browse.runGoal(run.task.goal, turn.ctx, {continuation, checkpoint: continuation.checkpoint,
+        continuePage: resumed !== undefined, maxSteps: Math.min(10, steps), exclusions: run.task.exclusions});
+      const auth = await s.browse.recognizeAuthPage(work, continuation.checkpoint?.choice ?? before, turn.ctx);
+      work = {...work, ...auth};
+      await record(work);
+      return finish(work);
+    }
 
     const settled = await s.progress.review(async (): Promise<Draft | undefined> => {
       if (resumed !== undefined) {
