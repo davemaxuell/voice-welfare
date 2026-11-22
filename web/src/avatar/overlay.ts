@@ -1,15 +1,17 @@
 // 아바타 창: 대화 창이 보낸 표시 상태를 그리고, 누른 버튼을 이름으로만 돌려보낸다(세션·마이크·재생은 대화 창이 맡는다).
 // 데스크톱 앱의 시험(apps/desktop/test)이 이 창의 id로 확인하므로 React 없이 이 문서의 요소를 그대로 고친다.
 import { z } from "zod";
+import { timing } from "../perf.ts";
 import type { Character } from "./character.ts";
 import "./overlay.css";
 
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
-  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
-  mode: z.string().optional(), capture: z.string().default("off"), speaking: z.boolean().default(false), busy: z.boolean().default(false),
+  micDiagnostic: z.string().optional(), contrast: z.boolean().optional(),
+  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(), reconnectLabel: z.string().optional(),
+  mode: z.string().optional(), capture: z.string().default("off"), captureLabel: z.string().optional(), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
-  state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(),
+  state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(), task: z.string().optional(), taskLabel: z.string().optional(),
   message: z.object({ id: z.string(), text: z.string() }).nullish(), prompt: z.string().nullish(), site: z.string().nullish(),
   choiceSetId: z.string().nullish(), choices: z.array(ChoiceSchema).default([]), pending: z.boolean().optional(),
 });
@@ -21,6 +23,7 @@ const VisibilitySchema = z.object({ visible: z.boolean(), id: z.unknown(), anima
 const maybeBridge = window.cheongeumOverlay;
 if (maybeBridge === undefined) throw new Error("아바타 창 연결이 없습니다.");
 const bridge = maybeBridge;
+let loaded = timing?.mark("overlay-loaded");
 
 function element<T extends Element>(id: string, type: new () => T): T {
   const el = document.getElementById(id);
@@ -42,14 +45,13 @@ let readTimer: ReturnType<typeof setTimeout> | undefined;
 let readUntil = 0;
 let readingTime = 0;
 let lang: string | undefined;
-type ChromeKey = "talk" | "stop" | "hide" | "avatar" | "micOn" | "micOff" | "on" | "off" | "site" | "offline" | "title";
-const chromeText: Readonly<Record<string, Readonly<Record<ChromeKey, string>>>> = {
-  ko: { talk: "말하기", stop: "멈춰", hide: "숨기기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
-  en: { talk: "Talk", stop: "Stop", hide: "Hide", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
-  zh: { talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
-  ja: { talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
-};
-const KO_TEXT = chromeText.ko ?? { talk: "", stop: "", hide: "", avatar: "", micOn: "", micOff: "", on: "", off: "", site: "", offline: "", title: "" };
+type ChromeKey = "talk" | "stop" | "hide" | "avatar" | "micOn" | "micOff" | "on" | "off" | "site" | "offline" | "title" | "connecting" | "hideTitle";
+const chromeText = {
+  ko: { connecting: "청음과 연결하는 중이에요.", hideTitle: "도우미 숨기기", talk: "말하기", stop: "멈춰", hide: "숨기기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
+  en: { connecting: "Connecting to Cheongeum.", hideTitle: "Hide assistant", talk: "Talk", stop: "Stop", hide: "Hide", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
+  zh: { connecting: "正在连接青音。", hideTitle: "隐藏助手", talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
+  ja: { connecting: "チョンウムに接続しています。", hideTitle: "アシスタントを隠す", talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
+} satisfies Record<"ko" | "en" | "zh" | "ja", Record<ChromeKey, string>>;
 const choiceIcons = new Map([
   ["consent-yes", "yes"], ["approve", "yes"], ["auth-done", "yes"],
   ["consent-no", "no"], ["reject", "no"], ["auth-cancel", "no"],
@@ -99,6 +101,32 @@ function showSurface(available: boolean) {
   $("character").hidden = !available;
   $("still").hidden = available;
   $("sleeping-still").hidden = available;
+  measureVisibleFigure();
+}
+
+function measureVisibleFigure() {
+  if (loaded === undefined || $("overlay").inert || document.hidden) return;
+  const start = loaded;
+  requestAnimationFrame(() => {
+    if (loaded !== start || $("overlay").inert || document.hidden) return;
+    const figure = $("figure");
+    const visible = { opacityProperty: true, visibilityProperty: true };
+    if (figure.dataset.renderer === "webgl") {
+      if (character?.hasDrawnFrame !== true || !$("character").checkVisibility(visible)) {
+        measureVisibleFigure();
+        return;
+      }
+    } else {
+      const poster = element(figure.dataset.sleeping === "true" ? "sleeping-still" : "still", HTMLImageElement);
+      if (!poster.complete || poster.naturalWidth === 0) return;
+      if (!poster.checkVisibility(visible)) {
+        if ($("overlay").hasAttribute("data-presenting")) measureVisibleFigure();
+        return;
+      }
+    }
+    loaded = undefined;
+    requestAnimationFrame(() => timing?.measure(start, "figure-visible"));
+  });
 }
 
 function animate(prev: Snap, next: Snap) {
@@ -165,7 +193,7 @@ async function setupFigure() {
 function accept(raw: unknown): Snap | null {
   const parsed = SnapshotSchema.safeParse(raw);
   const next = parsed.success ? parsed.data : undefined;
-  if (next === undefined || next.connected === false) {
+  if (next === undefined || (next.connected === false && next.reconnectLabel === undefined)) {
     order = { instance: undefined, revision: -1 };
     return OFFLINE;
   }
@@ -185,28 +213,29 @@ function render() {
   root.classList.toggle("resting", resting);
   root.classList.toggle("stopped", sleeping(snap));
   const language = (snap.lang !== undefined && snap.lang.length > 0 ? snap.lang : lang ?? "ko").toLowerCase().split("-")[0] ?? "ko";
-  const copy = chromeText[language] ?? KO_TEXT;
+  const locale = language === "en" || language === "zh" || language === "ja" ? language : "ko";
+  const copy = chromeText[locale];
   if (lang !== language) {
     lang = language;
-    document.documentElement.lang = chromeText[lang] !== undefined ? lang : "ko";
+    document.documentElement.lang = locale;
     document.title = copy.title;
     for (const id of ["talk", "stop", "hide", "avatar"] as const) {
       $(id).setAttribute("aria-label", copy[id]);
-      $(id).title = copy[id];
+      $(id).title = id === "hide" ? copy.hideTitle : copy[id];
     }
   }
   $("mic").dataset.capture = snap.capture;
-  const micLabel = snap.capture === "on" ? copy.micOn : copy.micOff;
+  const micLabel = snap.captureLabel ?? (snap.capture === "on" ? copy.micOn : copy.micOff);
   setText($("mic-text"), micLabel);
-  setText($("mic-short"), snap.capture === "on" ? copy.on : copy.off);
+  setText($("mic-short"), snap.capture === "on" ? copy.on : snap.capture === "off" ? copy.off : micLabel);
   $("mic").title = micLabel;
-  const status = live ? snap.status ?? "" : copy.offline;
+  const status = live || snap.reconnectLabel !== undefined ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
   // 동의는 카드의 '동의하고 음성 대화 시작'으로만(말하기 버튼이 동의가 되지 않게)
   button("talk").disabled = !live || ["ended", "starting", "consent", "auth-handoff"].includes(snap.mode ?? "");
-  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture === "on");
+  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture !== "off");
   root.classList.toggle("has-stop", $("stop").hidden === false);
   renderCard(status, copy);
-  setText($("status"), bubble !== null ? $("card-prompt").textContent ?? "" : status);
+  setText($("status"), live && snap.taskLabel !== undefined ? status : bubble !== null ? $("card-prompt").textContent ?? "" : status);
   if (focused !== null && (!focused.isConnected || (focused instanceof HTMLButtonElement && focused.disabled) || focused.closest("[hidden], [inert]") !== null)) focusFirst();
   queueGeometry();
 }
@@ -327,6 +356,17 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
   if (choices.length > 0) {
     if (message != null) seenMessages.add(message.id);
     showBubble("choices", JSON.stringify([snap.instance, snap.choiceSetId, lang]), snap.prompt ?? "");
+    let label = document.getElementById("card-task");
+    if (snap.taskLabel !== undefined && snap.reconnectLabel === undefined) {
+      if (label === null) {
+        label = document.createElement("p");
+        label.id = "card-task";
+        label.className = "card-site";
+        $("card-prompt").after(label);
+      }
+      label.hidden = false;
+      setText(label, snap.taskLabel);
+    } else if (label !== null) label.hidden = true;
     if (shownSet !== snap.choiceSetId) {
       shownSet = snap.choiceSetId;
       const setId = snap.choiceSetId ?? "";
@@ -338,9 +378,13 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
     for (const b of $("choices").querySelectorAll("button")) b.disabled = b.dataset.open === undefined && (snap.pending === true || snap.busy);
     return;
   }
-  if ((receivedSnapshot && snap.connected !== true) || ["problem", "auth-handoff", "ended"].includes(snap.mode ?? "")) {
+  const taskLabel = document.getElementById("card-task");
+  if (taskLabel !== null) taskLabel.hidden = true;
+  if ((receivedSnapshot && snap.connected !== true) || ["problem", "auth-handoff", "ended"].includes(snap.mode ?? "") ||
+      snap.task === "stopping" || snap.capture === "requesting") {
     if (message != null) seenMessages.add(message.id);
-    showBubble("status", status, status);
+    const detail = snap.connected === true && snap.mode === "problem" ? snap.micDiagnostic ?? status : status;
+    showBubble("status", detail, detail);
     return;
   }
   if (message != null && message.id.length > 0 && message.text.length > 0 && !sleeping(snap)) {
@@ -372,6 +416,7 @@ function choiceButton(choiceSetId: string, choice: z.infer<typeof ChoiceSchema>)
   if (choice.open !== undefined) b.dataset.open = choice.open;
   b.addEventListener("click", () => {
     if ($("card").inert || !b.isConnected || b.disabled || shownSet !== choiceSetId) return;
+    if (choice.key === "reconnect" && snap.reconnectLabel !== undefined) { bridge.talk(); return; }
     if (choice.open !== undefined) { bridge.open(choice.open); return; }
     bridge.choose(choiceSetId, choice.key);
     bridge.release();
@@ -461,6 +506,7 @@ bridge.onSnapshot((next) => {
   receivedSnapshot = true;
   const prev = snap;
   snap = accepted;
+  if (snap.contrast !== undefined) overlay.classList.toggle("high-contrast", snap.contrast);
   animate(prev, snap);
   render();
 });
@@ -503,6 +549,7 @@ if (bridge.onVisibility !== undefined) {
       if (!visible) bridge.visibilityDone(id);
     });
     if (visible) {
+      measureVisibleFigure();
       reportSize();
       bridge.visibilityDone(id);
     }
@@ -510,6 +557,10 @@ if (bridge.onVisibility !== undefined) {
 }
 
 bridge.onFocus(focusFirst);
+if (timing !== undefined) {
+  document.addEventListener("visibilitychange", measureVisibleFigure);
+  $("figure").addEventListener("load", measureVisibleFigure, true);
+}
 const sizeObserver = new ResizeObserver(reportSize);
 sizeObserver.observe(overlay);
 sizeObserver.observe($("card"));

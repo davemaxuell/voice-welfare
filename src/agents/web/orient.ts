@@ -1,14 +1,15 @@
 // 화면 사진 한 장으로 지금 어느 화면인지, 어떤 메뉴가 보이는지 알아본다. 실행은 웹 에이전트와 Autopilot이 맡는다.
 // 사진 속 글과 모델의 답은 모두 비신뢰 자료다. 정해진 틀의 짧은 이름만 받고, 화면 글에서 읽은 조작과 맞는 것만 누를 수 있다고 본다.
-import { createHash } from "node:crypto";
 import { redactedJson } from "../../core/llm.ts";
 import { strip } from "../../core/text.ts";
 import { REDACTED, redactPictureText } from "../../safety/privacy.ts";
 import { clickTier, guardPatterns, isActionName } from "../../safety/guard.ts";
 import { ExecContext, type ControlWindow, type WebAction, type WebExecutionAgent } from "./agent.ts";
 import { controlNames, safeVisualControl, type VisionModel } from "./visual_step.ts";
-import type { WebObservation } from "./view.ts";
+import { screenKey } from "./view.ts";
 import { planShot, ShotRefusal } from "./shot.ts";
+
+export { screenKey };
 
 type OrientationBinding = Pick<ControlWindow["items"][number], "ref" | "role" | "context"> & {url: string};
 
@@ -20,13 +21,6 @@ export interface Orientation {
   readonly imageOnly: readonly string[];
   readonly positions?: ReadonlyMap<string, string>;
   readonly bindings?: ReadonlyMap<string, OrientationBinding>;
-}
-
-/** 같은 주소에서 메뉴나 본문만 바뀌어도 이전 화면의 관찰과 구별한다. */
-export function screenKey(view: WebObservation): string {
-  const outline = view.outline;
-  return createHash("sha256").update(JSON.stringify([view.url, view.title, outline?.mainText, outline?.headings,
-    outline?.items?.map(item => [item.name, item.role, item.expanded, item.selected, item.disabled])])).digest("hex");
 }
 
 const KNOWN_LIMIT = 40;
@@ -99,12 +93,13 @@ export function readOrientation(raw: unknown, url: string, known: readonly strin
 export async function orientScreen(
   web: WebExecutionAgent, model: VisionModel, goal: string, expectedUrl: string, ctx: ExecContext, log: WebAction[],
 ): Promise<[Orientation | undefined, string]> {
+  const tab = web.adapter.page;
   const observed = await web.observe(ctx);
-  if (ctx.signal.aborted || ctx.isStopped() || observed.url !== expectedUrl) return [undefined, CHANGED];
+  if (ctx.signal.aborted || ctx.isStopped() || web.adapter.page !== tab || observed.url !== expectedUrl) return [undefined, CHANGED];
   const known = controlNames(observed, KNOWN_LIMIT);
   const [picture, error, view] = await web.capturePicture(observed, new ExecContext({ ...ctx, publicLookup: false }), log);
   if (picture === undefined) return [undefined, error];
-  if (ctx.signal.aborted || ctx.isStopped() || view.url !== expectedUrl) return [undefined, CHANGED];
+  if (ctx.signal.aborted || ctx.isStopped() || web.adapter.page !== tab || view.url !== expectedUrl) return [undefined, CHANGED];
   const raw = await model.see({
     system: SYSTEM, user: redactedJson({ goal: redactPictureText(goal), knownControls: known.map(name => redactPictureText(name)) }),
     picture, schemaName: "screen_orientation", schema: SCHEMA, signal: ctx.signal,
@@ -113,7 +108,7 @@ export async function orientScreen(
   const found = readOrientation(raw, expectedUrl, known);
   if (found === undefined) return [undefined, "사진에서 알아볼 수 있는 메뉴를 찾지 못했어요."];
   const fresh = await web.observe(ctx);
-  if (screenKey(fresh) !== screenKey(view) || planShot(fresh) instanceof ShotRefusal) return [undefined, CHANGED];
+  if (web.adapter.page !== tab || screenKey(fresh) !== screenKey(view) || planShot(fresh) instanceof ShotRefusal) return [undefined, CHANGED];
   const clickable: string[] = [], imageOnly: string[] = [];
   const bindings = new Map<string, OrientationBinding>();
   const lookup = web.adapter.controlWindow?.bind(web.adapter);
@@ -125,7 +120,7 @@ export async function orientScreen(
       continue;
     }
     const matches = await lookup(name, 0, {exact: true});
-    if (matches.url !== expectedUrl) return [undefined, CHANGED];
+    if (web.adapter.page !== tab || matches.url !== expectedUrl) return [undefined, CHANGED];
     const [item] = matches.items;
     if (!matches.more && item === undefined && clickTier("button", name) === "free") imageOnly.push(name);
     else if (!matches.more && matches.items.length === 1 && item?.name === name && safeVisualControl(item)) {
