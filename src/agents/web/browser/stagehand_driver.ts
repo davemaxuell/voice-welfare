@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ElementHandle, Page } from "playwright";
+import type { ElementHandle, JSHandle, Page } from "playwright";
 import type { ActionTarget, ExecuteGrants } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
 import { stampDocument, type DocumentStamp } from "./document_stamp.ts";
@@ -52,16 +52,15 @@ function armFill(el: Element, { value, token, ref, read, safeSelector }: { value
 }
 
 // SDK가 이미 찾은 요소에도 뒤늦게 선택을 보낼 수 있다. 같은 칸의 같은 옵션에만 한 번 선택을 허용한다.
-function armSelect({read, selector, token, label, choices, approved}: {
-  read: ReadBound; selector: string; token: string; label: string; choices: ObservedOptions; approved: string;
+function armSelect(el: Element, {read, safeSelector, token, label, choices, approved}: {
+  read: ReadBound; safeSelector: string; token: string; label: string; choices: ObservedOptions; approved: string;
 }) {
-  const el = document.querySelector(selector);
   if (!(el instanceof HTMLSelectElement)) return;
   let applied = false;
   const select = () => {
     const item = read();
     const option = choices.selected(el, label, approved);
-    if (!item || !option || !el.matches(selector) || window.__cheongeumElementRefs?.get(el)?.ref !== item.ref) return;
+    if (!item || !option || !el.isConnected || !el.matches(safeSelector) || window.__cheongeumElementRefs?.get(el)?.ref !== item.ref) return;
     el.selectedIndex = option.index;
     applied = true;
     el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -183,6 +182,11 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       const inputValue = () => call(signal, () => tab.locator(safeSelector).inputValue(opts));
       const selectedLabel = () => call(signal, async () => strip(await tab.locator(selector + " option:checked").textContent(opts)));
       const isChecked = () => call(signal, () => locator.isChecked(opts));
+      async function evalHandle<T>(work: () => Promise<JSHandle<T>>): Promise<JSHandle<T>> {
+        const promise = work();
+        try { return await call(signal, () => promise); }
+        catch (error) { void promise.then(handle => handle.dispose()).catch(() => {}); throw error; }
+      }
       async function trusted(work: (node: ElementHandle<HTMLElement | SVGElement>) => Promise<void>, evidence: ClickEvidence = {}, keyboard = false) {
         signal.throwIfAborted();
         const script = "(" + installInputCheck.toString() + ")(" + readBound + "," + JSON.stringify(ref) + "," +
@@ -190,7 +194,7 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
         // 기다리다 문서가 바뀌어도 같은 셀렉터로 새 문서의 요소를 다시 잡지 않는다.
         const node = await call(signal, () => hostLocator.elementHandle({ timeout, signal }));
         try {
-          const check = await page.evaluateHandle<ReturnType<typeof installInputCheck>>(script);
+          const check = await evalHandle(() => page.evaluateHandle<ReturnType<typeof installInputCheck>>(script));
           try {
             if (!await call(signal, () => check.evaluate(armed => typeof armed === "function"))) throw new AdapterError("VERIFY_FAILED");
             await call(signal, () => work(node));
@@ -233,8 +237,8 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
         async fill(value) {
           if (await call(signal, () => tab.locator(safeSelector).count(opts)) !== 1) throw new AdapterError("NOT_SUPPORTED");
           const token = "cheongeum-" + randomUUID();
-          const read = await page.evaluateHandle<ReadBound>(readBound);
-          const handle = await hostLocator.evaluateHandle(armFill, { token, value, ref, read, safeSelector }, { timeout, signal })
+          const read = await evalHandle(() => page.evaluateHandle<ReadBound>(readBound));
+          const handle = await evalHandle(() => hostLocator.evaluateHandle(armFill, { token, value, ref, read, safeSelector }, { timeout, signal }))
             .finally(() => read.dispose().catch(() => {}));
           const cancel = () => { void handle.evaluate(revoke => revoke()).catch(() => {}); };
           signal.addEventListener("abort", cancel, { once: true });
@@ -254,8 +258,9 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
           signal.throwIfAborted();
           const token = "cheongeum-" + randomUUID();
           const option = await bindOption(target, expected, label, signal);
-          const read = await page.evaluateHandle<ReadBound>(readBound);
-          const handle = await page.evaluateHandle(armSelect, {read, selector:safeSelector, token, label, choices:option.reader, approved:option.token})
+          const read = await evalHandle(() => page.evaluateHandle<ReadBound>(readBound));
+          const handle = await evalHandle(() => hostLocator.evaluateHandle(armSelect,
+            {read, safeSelector, token, label, choices: option.reader, approved: option.token}, { timeout, signal }))
             .finally(() => read.dispose().catch(() => {}));
           const revoke = () => handle.evaluate(clear => clear?.() ?? false).catch(() => false);
           const cancel = () => { void revoke(); };
