@@ -1,8 +1,16 @@
+import { z } from "zod";
 import { tryUrl } from "./url.ts";
 import type { Action } from "./actions.ts";
 
 /** 화면에서 관찰한 누르기 순서. ref와 주소의 검색값은 기억한 경로에 넣지 않는다. */
 export interface PlanStep { page: string; kind: "click"; role: string; name: string }
+const digest = z.string().regex(/^[0-9a-f]{64}$/u);
+export const RememberedRouteSchema = z.object({
+  goalKey: digest, site: z.string(), endPage: z.string(),
+  steps: z.array(z.object({page: z.string(), kind: z.literal("click"), role: z.string(), name: z.string()})).min(1).max(10),
+  evidence: z.array(digest).min(1).max(4),
+});
+export type RememberedRoute = z.infer<typeof RememberedRouteSchema>;
 export interface PlanGrant { id: string; goal: string; steps: readonly PlanStep[]; cursor: number }
 
 export function planPage(value: string | undefined): string | undefined {
