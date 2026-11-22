@@ -181,13 +181,19 @@ it.each(examples)("%s 승인의 네 언어 문구는 원래 승인과 실행값�
 it("숫자가 들어간 다국어 입력 요청은 관찰된 입력란으로 직접 맞추고 일반 문자열은 기존 번역을 유지한다", () => {
   const fields = ["이름", "연락처 (선택)", "주민등록 주소"];
   expect(parseForeignFieldFill("Enter Sample 42 555-0100 in the name field", "en", fields))
-    .toEqual({ fieldMention: "이름", value: "Sample 42 555-0100" });
+    .toEqual([{ fieldMention: "이름", value: "Sample 42 555-0100" }]);
   expect(parseForeignFieldFill("Fill phone with 010-5555-0100", "en", fields))
-    .toEqual({ fieldMention: "연락처 (선택)", value: "010-5555-0100" });
+    .toEqual([{ fieldMention: "연락처 (선택)", value: "010-5555-0100" }]);
+  expect(parseForeignFieldFill("Fill the name field with Sample 42 and fill the phone field with 010-5555-0100", "en", fields))
+    .toEqual([
+      { fieldMention: "이름", value: "Sample 42" },
+      { fieldMention: "연락처 (선택)", value: "010-5555-0100" },
+    ]);
+  expect(parseForeignFieldFill("Fill the name field with Sample 42 and click submit", "en", fields)).toBeUndefined();
   expect(parseForeignFieldFill("把示例 42 555-0100 填到姓名栏", "zh", fields))
-    .toEqual({ fieldMention: "이름", value: "示例 42 555-0100" });
+    .toEqual([{ fieldMention: "이름", value: "示例 42 555-0100" }]);
   expect(parseForeignFieldFill("氏名欄にサンプル42を入力してください", "ja", fields))
-    .toEqual({ fieldMention: "이름", value: "サンプル42" });
+    .toEqual([{ fieldMention: "이름", value: "サンプル42" }]);
   expect(parseForeignFieldFill("Put Kim Haneul in the name field", "en", fields)).toBeUndefined();
   expect(parseForeignFieldFill("Enter Sample 42 in the unknown field", "en", fields)).toBeUndefined();
   expect(parseForeignFieldFill("이름 칸에 42 써줘", "ko", fields)).toBeUndefined();
