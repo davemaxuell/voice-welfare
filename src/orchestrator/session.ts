@@ -17,7 +17,7 @@ import { PROFILE_ORDER, parseProfileAnswer, profileQuestion, type ProfileSlot, t
 import { OpenData, type PlaceFinder } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
 import { CHOICE_TURNS, choiceLabel, type ChoiceKey } from "../core/choices.ts";
-import { DialogueState, type Approval } from "../core/dialogue.ts";
+import { APPROVAL_TTL_S, DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
@@ -52,6 +52,7 @@ import { Understanding, type Understood } from "../understanding/understand.ts";
 import { ApplicationCommands } from "./application.ts";
 import { fullMatch, sessionPatterns } from "./patterns.ts";
 import { FirstRunGuide } from "./first_run.ts";
+import { spokenPlanNames } from "../agents/web/skills/known_plan.ts";
 import { PublicPlanner, type QuietAnswer } from "./public_plan.ts";
 import { PublicTask } from "./public_task.ts";
 import { SessionReplies } from "./replies.ts";
@@ -142,7 +143,7 @@ export const QUESTION_TYPES: ReadonlySet<string> = new Set(["POLICY_QUESTION", "
 // 이 상태가 되면 여러 명령 실행을 멈추고 사용자에게 묻는다.
 export const PLAN_STOP_STATES: ReadonlySet<SessionState> = new Set(["NEEDS_CLARIFICATION", "VALIDATION_ERROR", "WAITING_FOR_USER_CONFIRMATION", "AUTH_HANDOFF", "STOPPED", "RECOVERING"]);
 // 승인을 물은 뒤 이만큼 지나 받은 승인은 실행하지 않고 요약을 다시 읽어 묻는다(주인 결정 2026-11-18)
-export const APPROVAL_TTL_S = 120;
+export { APPROVAL_TTL_S };
 export const NO_SECRET: Detection = { kinds: [], hasSecretValue: false };
 const READ_ONLY_QUESTIONS: ReadonlySet<string> = new Set(["UNKNOWN", "ABOUT_SITE", "CURRENT_STEP", "DESCRIBE_SCREEN", "READ_MAIN"]);
 const NAVIGATION: ReadonlySet<string> = new Set(["OPEN_SITE", "OPEN_OFFICIAL", "FOLLOW_LINK", "NEXT", "PREV", "GOAL", "SEARCH"]);
@@ -1040,7 +1041,7 @@ export class SessionOrchestrator {
         }
       }
       const waitingKind = d.approval?.kind;
-      if (forced === undefined && (waitingKind === "file" || waitingKind === "visual" || waitingKind === "research")) {
+      if (forced === undefined && (waitingKind === "file" || waitingKind === "visual" || waitingKind === "research" || waitingKind === "plan")) {
         if (approval(text) === "approve" && (original === undefined || foreignApproval(original, this.lang) === "approve")) forced = { type: "APPROVE" };
         else if (fullMatch(sessionPatterns.declineSending, text) !== null) forced = { type: "REJECT" };
         else {
@@ -1115,6 +1116,17 @@ export class SessionOrchestrator {
         }
         const free = guess === undefined && sensitive.kinds.length === 0;
         if (free && !d.hasPendingInteraction && this.publicTask.question.length === 0) {
+          if (original === undefined && this.#consent === "granted" && (this.state === "BROWSING" || this.state === "APPLICATION_OPEN") && this.lang === "ko" &&
+              !turn.staleLinkOffer && turn.text === text) {
+            const names = spokenPlanNames(this.rules.splitCommands(text));
+            if (names !== undefined) {
+              const plan = await this.browse.knownPlans.spoken(text, names, turn.ctx);
+              if (plan !== undefined) {
+                turn.intentType = "PLAN(FOLLOW_LINK)";
+                return this.finish(turn, plan);
+              }
+            }
+          }
           const reference = linkReference(text, this.browse.linkChoices);
           if (reference !== undefined) {
             if (turn.staleLinkOffer) return this.finish(turn, this.changedLinkReply());
@@ -1325,7 +1337,7 @@ export class SessionOrchestrator {
     const privateHistory = localApproval || turn.intentType.startsWith("GUARDIAN_") || out.privateHistory === true || turn.ctx.browsingScope === "personal-inspection";
     // 금고 값(저장 대기 포함)은 사용자에게는 읽어 주되, LLM에 가는 기록에는 넣지 않는다.
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
-    let localSpeechOnly = privateHistory || recorded !== speech;
+    let localSpeechOnly = privateHistory || recorded !== speech || d.approval?.kind === "plan";
     if (!localSpeechOnly && d.confirmation === undefined && turn.intentType !== "READ_START_GUIDE" &&
         (out.pictureHistory === undefined || out.pictureHistory.length === 0) && out.answerCard === undefined && out.review === undefined) {
       speech = recorded = this.#trimSpeech(speech);

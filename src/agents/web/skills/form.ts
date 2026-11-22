@@ -245,6 +245,7 @@ export class FormSkill {
     const approval = this.dialogue.approval;
     if (!approval) return draft(this.dialogue.state, "reject", "거절할 승인 요청이 없어요.");
     this.dialogue.clearApproval();
+    if (approval.kind === "plan") return draft("BROWSING", "reject", "말씀하신 순서로 누르는 일을 취소했어요.");
     if (approval.kind === "research") return draft("IDLE", "reject", "자료 조사 요청을 취소했어요.");
     if (approval.kind === "visual") return draft("BROWSING", "reject", "화면 사진을 보내지 않았어요.");
     if (approval.kind === "file") return draft(this.web.currentView ? browseState(this.web.currentView) : "IDLE", "reject", "파일을 보내지 않았어요.");

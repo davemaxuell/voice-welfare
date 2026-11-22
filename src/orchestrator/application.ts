@@ -169,6 +169,7 @@ export class ApplicationCommands {
       if (ended !== undefined) return ended;
     }
     const expired = () => d.approvalAge >= APPROVAL_TTL_S;
+    if (approval.kind === "plan") return s.browse.knownPlans.approve(approval.grant, turn.ctx);
     if (approval.kind === "research") {
       const late = expired();
       d.clearApproval();

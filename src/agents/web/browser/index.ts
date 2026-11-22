@@ -12,9 +12,10 @@ import {
 import { browserAsset } from "../../../core/assets.ts";
 import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
+import { boundPlanClick, revokePlanClick } from "../../../core/plan.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
 import { strip } from "../../../core/text.ts";
-import { isInspectionUrl, isNotice, nativeMessageRisk, type InspectionBinding } from "../../../safety/guard.ts";
+import { isInspectionUrl, isNotice, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
 import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts";
@@ -92,7 +93,7 @@ const NoticeFactsSchema = z.object({
 const ControlItemSchema = z.looseObject({
   ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
   context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
-  notice: NoticeFactsSchema.optional(),
+  notice: NoticeFactsSchema.optional(), planSignature: z.string().optional(),
 });
 const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
 const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
@@ -526,7 +527,7 @@ export class PlaywrightExecutionAdapter {
     this.#nativeSeen.set(action.id, seen);
     trimmed(this.#nativeSeen);
     const [only] = seen.cancelled;
-    if (grants === undefined && inspection === undefined && action.type === "click" && action.target?.ref !== undefined &&
+    if ((grants === undefined || grants.plan !== undefined) && inspection === undefined && action.type === "click" && action.target?.ref !== undefined &&
       seen.cancelled.length === 1 && only !== undefined && only.risk === "routine") {
       this.#nativePending.set(action.id, { record: only, target: structuredClone(action.target), until: performance.now() + NATIVE_PENDING_MS });
       trimmed(this.#nativePending);
@@ -729,7 +730,7 @@ export class PlaywrightExecutionAdapter {
     }
     // 허가는 ref로 가리킨 요소를 누르는 조작에만, 하나씩만 붙는다. 화면 확인 범위와는 함께 쓰지 않는다.
     if (grants !== undefined && (type !== "click" || target?.ref === undefined || inspection !== undefined ||
-      (grants.notice !== undefined && grants.native !== undefined))) throw new AdapterError("VERIFY_FAILED");
+      [grants.notice, grants.native, grants.plan].filter(grant => grant !== undefined).length !== 1)) throw new AdapterError("VERIFY_FAILED");
     if (inspection?.kind === "search") {
       const fresh = await call(signal, () => this.inspectionSearch(inspection.fieldId));
       if (this.page !== page || fresh?.signature !== inspection.signature || fresh.url !== inspection.url ||
@@ -818,6 +819,16 @@ export class PlaywrightExecutionAdapter {
     }
     // 안내 팝업을 묻지 않고 닫는 누르기: 기다림과 커서 움직임이 모두 끝난 지금, 누르기 직전에 팝업을 새로 읽어 증명과 같을 때만 누른다.
     // confirm() 질문에 답하는 누르기도 같은 자리에서 허가가 아직 살아 있는지 다시 확인한다.
+    if (grants?.plan !== undefined) {
+      const proof = grants.plan;
+      const fresh = await call(signal, () => this.controlWindow(proof.step.name, 0, { exact: true, inspection: true }));
+      const [item] = fresh.items;
+      if (this.page !== page || !boundPlanClick(proof, action, page.url()) || fresh.url !== proof.url || fresh.more || fresh.items.length !== 1 ||
+          item?.ref !== proof.ref || item.disabled || item.role !== proof.step.role || item.name !== proof.step.name ||
+          !planControlAllowed(item.role, item.name) || (item.inspection?.href !== undefined && !isInspectionUrl(item.inspection.href)) ||
+          item.planSignature !== proof.signature) throw new AdapterError("VERIFY_FAILED");
+      revokePlanClick(proof);
+    }
     if (grants?.notice !== undefined) await this.#verifyNotice(page, grants.notice, target, signal);
     if (grants?.native !== undefined) this.#armHolds(page, this.#flights.get(page));
     switch (type) {
@@ -996,6 +1007,10 @@ export class PlaywrightExecutionAdapter {
     const window = ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
     // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
     for (const item of window.items) {
+      if (item.planSignature !== undefined) {
+        item.planSignature = load !== undefined && this.page === page && page.url() === window.url && load.docSeq === document
+          ? JSON.stringify([load.tab, document, item.planSignature]) : undefined;
+      }
       if (item.notice !== undefined) {
         const shadows = await this.#shadowRoots(page, item.notice.root);
         const current = this.page === page && load !== undefined && load.docSeq === document && page.url() === window.url;
