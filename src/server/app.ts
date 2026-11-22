@@ -14,6 +14,7 @@ import { strip } from "../core/text.ts";
 import { LangSchema } from "../core/turn.ts";
 import { CTPV } from "../core/region.ts";
 import { OPENAI_BASE_URL } from "../core/llm.ts";
+import type { BackendStatus, Progress } from "../core/progress.ts";
 import { isMobile } from "../personal/store.ts";
 import { SettingsInput } from "./settings.ts";
 import { checkOpenaiKey } from "./key_check.ts";
@@ -35,6 +36,39 @@ export { JSON_LIMIT, AUDIO_LIMIT };
 export const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: data:; connect-src 'self'";
 export const AVATAR_CSP = CSP.replace("img-src 'self' data:", "img-src 'self' data: blob:").replace("connect-src 'self'", "connect-src 'self' blob:");
+
+function backendStatusStream(progress: Progress, signal: AbortSignal) {
+  let detach = () => {};
+  let pending: BackendStatus | undefined;
+  const encoder = new TextEncoder();
+  const flush = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (pending !== undefined && (controller.desiredSize ?? 0) > 0) {
+      const frame = pending;
+      pending = undefined;
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+    }
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (signal.aborted) { controller.close(); return; }
+      const close = () => { detach(); controller.close(); };
+      const unsubscribe = progress.watchBackend(status => {
+        if (status === null) { close(); return; }
+        pending = status;
+        flush(controller);
+      });
+      detach = () => {
+        unsubscribe();
+        signal.removeEventListener("abort", close);
+        pending = undefined;
+      };
+      signal.addEventListener("abort", close, {once: true});
+    },
+    pull: flush,
+    cancel() { detach(); },
+  });
+  return new Response(body, {headers: {"Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no"}});
+}
 
 function incoming(c: Context): IncomingMessage | undefined {
   const env: unknown = c.env;
@@ -513,6 +547,10 @@ export function makeApp<S extends HttpSession>(
     return s instanceof Response ? s : Response.json({ text: s.consentStatus === "granted" ? s.reminders() ?? null : null });
   });
   app.get("/api/session/:sid/progress", c => { const s = byId(c); return s instanceof Response ? s : Response.json(s.progress.snapshot()); });
+  app.get("/api/session/:sid/progress/stream", c => {
+    const s = byId(c);
+    return s instanceof Response ? s : backendStatusStream(s.progress, c.req.raw.signal);
+  });
   app.post("/api/session/:sid/language", async c => {
     const lang = LangSchema.safeParse((await jsonBody(c.req.raw))?.lang).data;
     if (lang === undefined) return error(400, "BAD_REQUEST", "lang은 ko, en, zh, ja 중 하나입니다.");
@@ -556,7 +594,7 @@ export function makeApp<S extends HttpSession>(
     const payload = Buffer.concat([Buffer.from(JSON.stringify(["audio", mimeType, supplied ?? null])), Buffer.of(0), bytes]);
     return await once(s, c, payload, async () => {
       let text: string;
-      try { text = turnTranscript(await transcribe(req, s.lang, bytes, sid)); }
+      try { text = turnTranscript(await s.progress.transcribing(s.lang, () => transcribe(req, s.lang, bytes, sid))); }
       catch (e) { return voiceError(e); }
       if (sessions.ledgers.get(sid) !== ledger) return writerRequired();
       if (text === "") return error(422, "EMPTY_TRANSCRIPT", s.missedSpeechHint());
@@ -590,7 +628,7 @@ export function makeApp<S extends HttpSession>(
     if (bytes === undefined) return error(413, "BODY_TOO_LARGE", "10 MiB 이하인 녹음 파일을 선택해 주세요.");
     if (!current()) return cancelled();
     try {
-      const text = await transcribe(c.req.raw, s.lang, bytes, "");
+      const text = await s.progress.transcribing(s.lang, () => transcribe(c.req.raw, s.lang, bytes, ""));
       if (!current()) return cancelled();
       if (text === "") return error(422, "EMPTY_TRANSCRIPT", s.missedSpeechHint());
       const spans = (await runtime.scanner?.scan([text]))?.[0];

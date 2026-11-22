@@ -1,15 +1,7 @@
 // 대화 창 상태 → 보일 것(view.ts). Python app.js render()가 하던 판단을 화면 없이 확인한다.
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { TurnSchema } from "../../web/src/api.ts";
-import { StatusPanel } from "../../web/src/App.tsx";
-import { consentText, progressUpdate, viewOf, type UiState } from "../../web/src/view.ts";
-
-vi.hoisted(() => {
-  Object.defineProperty(globalThis, "location", { value: { search: "" }, configurable: true });
-  Object.defineProperty(globalThis, "window", { value: {}, configurable: true });
-});
+import { consentText, viewOf, type UiState } from "../../web/src/view.ts";
 
 const env = { background: false, mac: false };
 function ui(patch: Partial<UiState> = {}): UiState {
@@ -139,24 +131,8 @@ it("동의 안내는 화면 사진·외부 인공지능·키 입력 방법을 �
   expect(consentText(ui({ lang: "en" }), env)).toMatch(/^Cheongeum opens the website you request/);
 });
 
-it("activity line shows the phase and speaks only a finished step", () => {
-  const shown = viewOf(ui({ activity: "내용을 가져오는 중이에요." }), env);
-  const hidden = viewOf(ui(), env);
-  expect(shown.status.activity).toBe("내용을 가져오는 중이에요.");
-  expect(hidden.status.activity).toBeNull();
-  const markup = (activity: string | null) => renderToStaticMarkup(createElement(StatusPanel, {
-    view: viewOf(ui({ ...(activity === null ? {} : { activity }) }), env), t: (text: string) => text,
-  }));
-  expect(markup("내용을 가져오는 중이에요.")).toContain('id="st-activity"');
-  expect(markup("내용을 가져오는 중이에요.")).toContain("내용을 가져오는 중이에요.");
-  expect(markup(null)).toContain('hidden=""');
-  const quiet = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: false }, 0);
-  expect(quiet).toEqual({ activity: "요청한 일을 실행하는 중이에요.", speak: undefined, seq: 2 });
-  const said = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 0);
-  expect(said.speak).toBe("요청한 일을 실행하는 중이에요.");
-  expect(said.speak).not.toBe("이전 문장");
-  const held = progressUpdate({ running: true, seq: 3, spoken: false, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 0);
-  expect(held.speak).toBeUndefined();
-  const again = progressUpdate({ running: true, seq: 2, spoken: true, latest: "이전 문장", activity: "요청한 일을 실행하는 중이에요.", activitySpoken: true }, 2);
-  expect(again.speak).toBeUndefined();
+it("shows the session's localized backend status in the conversation, including during Live listening", () => {
+  expect(viewOf(ui(), env).conversation.backendStatus).toBe("");
+  const backendStatus = "公式サイトの案内を確認しています。";
+  expect(viewOf(ui({ lang: "ja", phase: "listening", edge: true, backendStatus }), env).conversation.backendStatus).toBe(backendStatus);
 });

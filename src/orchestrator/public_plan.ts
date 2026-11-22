@@ -6,6 +6,7 @@ import { raceAbort } from "../core/abort.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree } from "../core/lexicon.ts";
 import { ModelTransportError, type Redacted } from "../core/llm.ts";
+import { backendActivity } from "../core/progress.ts";
 import { ResearchFinding, ResearchPlan, researchSummary, type ResearchOutcome, type ResearchProgress, type ResearchSource } from "../core/research.ts";
 import type { z } from "zod";
 import { rstripChars, stripChars } from "../core/text.ts";
@@ -187,6 +188,7 @@ export class PublicPlanner {
     const scanner = s.deps.scanner;
     const decision = await decide(llm, text, lang, task, {
       voice: turn.fromVoice, recent, signal: turn.ctx.signal, ...(research ? { research: true } : {}),
+      dialogue: research || personalContext ? [] : s.plannerDialogue([], turn.plannerDialogue),
       currentInspectionScreen: onInspectedPage,
       need: research || personalContext ? undefined : s.need.context(),
       ...(notes.length > 0 ? { savedNotes: notes } : {}),
@@ -340,6 +342,7 @@ export class PublicPlanner {
       return mode === "quiet" && found.semanticAction === "find-place" && (found.sources ?? []).length === 0 ? this.quietLookup(task, turn, bounds) : found;
     }
     if (kind === "POLICY_QUESTION") {
+      backendActivity("welfare");
       const answer = await s.deps.welfare.publicFacts(task.subject, task.goal, task.facts, turn.ctx.signal);
       if (answer !== undefined) return s.replies.welfareDraft(answer, "welfare-retrieval");
       if (mode === "quiet" && task.goal.length > 0) return this.quietLookup(task, turn, bounds);
@@ -385,6 +388,7 @@ export class PublicPlanner {
     const permitted = s.consentStatus === "granted" && !signal.aborted &&
       [task.goal, task.subject].every(term => s.speakable(term) && detectSensitive(term).kinds.length === 0);
     if (search !== undefined && permitted && task.destination === undefined && !task.facts.includes("page_title")) {
+      backendActivity("searching");
       try {
         answer = await raceAbort(within => (requestedSteps?.length ?? 0) > 0
           ? search(task, lang, within, requestedSteps) : search(task, lang, within), signal);

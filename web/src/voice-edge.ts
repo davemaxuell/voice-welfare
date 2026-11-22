@@ -41,7 +41,7 @@ const ChannelEventSchema = z.object({
 const SocketMessageSchema = z.object({
   error: z.string().optional(), message: z.string().optional(), sdp: z.string().optional(),
   status: z.number().optional(), retryAfterMs: z.number().nonnegative().optional(),
-  result: z.unknown().optional(), exact: z.boolean().optional(), activity: z.string().optional(),
+  result: z.unknown().optional(), exact: z.boolean().optional(),
 });
 
 export interface LiveCallbacks {
@@ -52,7 +52,6 @@ export interface LiveCallbacks {
   result(result: unknown, exact: boolean | undefined): Promise<void>;
   failure(error: VoiceFault): void;
   recovered?(): void;
-  activity?(text: string): void;
   captureChanged?(): void;
 }
 
@@ -201,7 +200,6 @@ export class LiveConversation {
             await peer.setRemoteDescription({ type: "answer", sdp: msg.sdp });
           }
           if (signal.aborted) return;
-          if (msg.activity !== undefined && msg.activity.length > 0) this.callbacks.activity?.(msg.activity);
           if (msg.result != null && !this.closed) {
             if (msg.exact !== true && !this.audio.muted) {
               // The sideband will ask Live to say this answer. Its first caption may arrive later.

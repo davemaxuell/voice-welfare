@@ -168,7 +168,6 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <LiveText sequence={ui.errorSeq} text={view.error?.text ?? ""}/>
       {view.error?.actions.map(action => <button key={action.key} type="button" onClick={() => void actOnIssue(action.key)}>{action.label}</button>)}
     </div>
-    <div className="typing" id="typing" aria-hidden="true" hidden={!view.command.typing}><span className="typing-avatar"></span><span className="typing-dots"><i></i><i></i><i></i></span></div>
   </>;
 }
 
@@ -232,7 +231,6 @@ export function StatusPanel({ view, t, researchStatus = "" }: { view: WorkspaceV
     <h2 id="status-title"><span className="panel-icon status-icon" aria-hidden="true"></span>{t("현재 작업")}</h2>
     <progress id="step-progress" aria-label={t("신청 진행률")} hidden={s.progress === undefined} max={s.progress?.max} value={s.progress?.value} ref={progress}></progress>
     <dl className="status work-status">
-      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)}>{s.activity}</dd></div>
       <div className="st-research-row" hidden={researchStatus.length === 0}><dt>{workflowText("statusLabel", view.lang)}</dt><dd id="st-research" aria-live="polite">{researchStatus}</dd></div>
       <div className="st-state-row"><dt>{t("진행 상태")}</dt><dd><span id="st-state" data-state={s.state}>{s.stateLabel}</span></dd></div>
       <div className="st-step-row" hidden={s.step === undefined}><dt>{t("신청 단계")}</dt><dd id="st-step" lang={sourceLanguage(s.step)}>{s.step ?? t("없음")}</dd></div>
@@ -428,7 +426,6 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
-              <span className="sr-only" role="status" aria-atomic="true">{view.conversation.phase === "thinking" ? t("생각 중") : ""}</span>
               <p className={`phase phase-${view.conversation.phase}`} id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
@@ -440,6 +437,9 @@ export function App() {
                 {workspaceText("새 메시지 보기 ({count})", lang, { count: unread })}
               </button>
             </div>
+            <section id="backend-status" aria-label={t("진행 상태")} aria-live="off" hidden={view.conversation.backendStatus.length === 0}>
+              <span lang={sourceLanguage(view.conversation.backendStatus)}>{view.conversation.backendStatus}</span>
+            </section>
             <CommandForm view={view} ui={ui} t={t}/>
             <details className="examples-disclosure"><summary>{t("예시 명령 보기")}</summary><ul className="examples" id="examples">
               {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={e => void send(t(ex), { keyboard: e.detail === 0 })}>{t(ex)}</button></li>)}

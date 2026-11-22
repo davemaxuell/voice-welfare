@@ -55,7 +55,7 @@ it("test_speech_dialogue_applies", () => {
   expect(out?.semanticAction).toBe("none");
   expect(out?.speech).toContain("천천히");
   expect(onSpeech).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.9, progressSpoken: false }));
-  expect(d.run({ kind: "speech-read" })?.speech).toContain("진행 상황 알림은 끕니다");
+  expect(d.run({ kind: "speech-read" })?.speech).toContain("진행 상황은 대화 화면에 표시");
   d.run({ kind: "speech-clear" });
   expect(onSpeech).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 1.25, progressSpoken: true }));
 });

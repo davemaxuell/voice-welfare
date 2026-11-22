@@ -173,6 +173,8 @@ async function post(origin: string, path: string, body?: unknown) {
 
 async function serviceOrigin(app: ElectronApplication) {
   const page = await until(() => app.windows().find((w) => w.url().includes("desktop=1")), "the conversation window");
+  await page.locator("#backend-status").waitFor({state: "attached"});
+  assert.equal(await page.locator("#backend-status").getAttribute("aria-live"), "off");
   return new URL(page.url()).origin;
 }
 
@@ -208,13 +210,16 @@ async function redactionModel(watch: ProcessWatch, shell: number) {
 function nativeModulesLoad(env: Record<string, string>) {
   const modules = ["@napi-rs/keyring", "playwright", "onnxruntime-node"].filter((name) => existsSync(join(RUNTIME, "node_modules", name)));
   const from = JSON.stringify(join(RUNTIME, "src", "desktop", "service.mjs"));
-  const script = `const r = require("node:module").createRequire(${from}); for (const m of ${JSON.stringify(modules)}) r(m); console.log("loaded " + ${JSON.stringify(modules.join(", "))});`;
-  const out = execFileSync(EXE, ["-e", script], { env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, encoding: "utf8" });
+  const script = `import { createRequire } from "node:module"; import { Stagehand } from "@browserbasehq/stagehand";
+    const r = createRequire(${from}); for (const m of ${JSON.stringify(modules)}) r(m);
+    if (typeof Stagehand !== "function") throw new Error("Missing Stagehand browser driver");
+    console.log("loaded " + ${JSON.stringify([...modules, "@browserbasehq/stagehand"].join(", "))});`;
+  const out = execFileSync(EXE, ["--input-type=module", "-e", script], { cwd: RUNTIME, env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, encoding: "utf8" });
   assert.match(out, /loaded @napi-rs\/keyring, playwright/);
   return out.trim();
 }
 
-async function scenario(name: string, options: { occupyPreferred: boolean }) {
+async function scenario(name: string, options: { occupyPreferred: boolean; requireConsent?: boolean }) {
   const dir = mkdtempSync(join(tmpdir(), "cheongeum-packaged-"));
   const home = join(dir, "home");
   const profile = join(dir, "profile");
@@ -222,7 +227,7 @@ async function scenario(name: string, options: { occupyPreferred: boolean }) {
   for (const folder of [profile, bin]) mkdirSync(folder, { recursive: true });
   const tripwireLog = tripwires(bin);
   rmSync(tripwireLog, { force: true });
-  const env = scrubbedEnv(home, bin);
+  const env = { ...scrubbedEnv(home, bin), REQUIRE_CONSENT: String(options.requireConsent === true) };
   const preferred = await freePort();
   writeFileSync(join(profile, "service-port"), String(preferred));
   const busy = createServer((socket) => socket.destroy());
@@ -240,6 +245,8 @@ async function scenario(name: string, options: { occupyPreferred: boolean }) {
     assert.ok(root !== undefined);
     const shell = root;
     assert.equal(await app.evaluate(({ app: electron }) => electron.isPackaged), true);
+    assert.equal(await app.evaluate(({ app: electron }) => electron.getVersion()),
+      JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")).version);
     assert.equal(await app.evaluate(({ app: electron }) => electron.getName()), "cheongeum-desktop", "keeps the %APPDATA% folder name that existing installs use");
 
     const origin = await serviceOrigin(app);
@@ -262,8 +269,18 @@ async function scenario(name: string, options: { occupyPreferred: boolean }) {
     assert.equal(z.object({ error: z.string() }).parse(await initial.json()).error, "SETUP_REQUIRED");
     await post(origin, "/api/settings", { deviceUse: "shared" });
     const session = Session.parse(await post(origin, "/api/session"));
-    assert.equal(session.consentRequired, true);
-    await post(origin, `/api/session/${session.sessionId}/consent`, { granted: true });
+    assert.equal(session.consentRequired, options.requireConsent === true);
+    if (session.consentRequired) await post(origin, `/api/session/${session.sessionId}/consent`, { granted: true });
+    const statusUrl = origin + `/api/session/${session.sessionId}/progress`;
+    const status = await fetch(statusUrl);
+    assert.equal(status.status, 200);
+    assert.equal((await status.json()).backend_status, "");
+    const stream = await fetch(statusUrl + "/stream", {signal: AbortSignal.timeout(10_000)});
+    assert.equal(stream.headers.get("content-type"), "text/event-stream");
+    const reader = stream.body!.getReader();
+    try {
+      assert.match(new TextDecoder().decode((await reader.read()).value), /"backend_status":""/u);
+    } finally { await reader.cancel(); }
     const answer = Turn.parse(await post(origin, "/api/turn", { sessionId: session.sessionId, text: "장애인연금 지원 대상이 누구야?" }));
     assert.match(answer.speech, /18세|십팔\s*세|열여덟/, "answers from the packaged welfare data");
     const practice = Turn.parse(await post(origin, "/api/turn", { sessionId: session.sessionId, text: "장애인연금 신청 도와줘" }));
@@ -322,4 +339,4 @@ assert.ok(existsSync(EXE), `Build the unpacked app first: npm run build:desktop 
 const shipped = readdirSync(UNPACKED, { recursive: true, encoding: "utf8" }).filter((file) => FORBIDDEN.test(basename(file)));
 assert.deepEqual(shipped, [], "the package contains no Python, uv or Node executable");
 await scenario("fresh profile", { occupyPreferred: false });
-await scenario("preferred port occupied", { occupyPreferred: true });
+await scenario("explicit consent and preferred port occupied", { occupyPreferred: true, requireConsent: true });

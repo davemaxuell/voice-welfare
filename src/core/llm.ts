@@ -6,6 +6,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { raceAbort } from "./abort.ts";
+import { prepareModelStatus, type ResponseFormat } from "./model_status.ts";
 import { Picture } from "./picture.ts";
 import type { SessionState } from "./turn.ts";
 
@@ -128,14 +129,18 @@ export class ModelConnections {
   }
 
   async post(url: string, headers: Record<string, string>, body: string, signal?: AbortSignal): Promise<Response> {
+    return this.read(url, headers, body, signal, async response =>
+      new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers: response.headers }));
+  }
+
+  async read<T>(url: string, headers: Record<string, string>, body: string, signal: AbortSignal | undefined,
+    receive: (response: Response, active: AbortSignal) => Promise<T>): Promise<T> {
     const own = new AbortController();
+    const active = signal === undefined ? own.signal : AbortSignal.any([signal, own.signal]);
     this.#inFlight.add(own);
     try {
-      const response = await this.#fetch(url, {
-        method: "POST", headers, body, signal: signal === undefined ? own.signal : AbortSignal.any([signal, own.signal]),
-      });
-      // httpx처럼 본문까지 다 받은 뒤에 돌려준다. close가 본문을 받는 중에도 끊을 수 있게 이 안에서 읽는다.
-      return new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers: response.headers });
+      const response = await this.#fetch(url, { method: "POST", headers, body, signal: active });
+      return await receive(response, active);
     } finally {
       this.#inFlight.delete(own);
     }
@@ -161,19 +166,23 @@ export class ModelTransportError extends Error {
 export async function postJson(
   url: string, headers: Record<string, string>, body: unknown, timeoutS: number, signal?: AbortSignal, pool?: ModelConnections,
   throwOnTransportError = false,
+  read: (response: Response, active: AbortSignal) => Promise<unknown> = response => response.json(),
 ): Promise<unknown> {
   try {
     const timeout = AbortSignal.timeout(timeoutS * 1000);
     const combined = signal === undefined ? timeout : AbortSignal.any([timeout, signal]);
-    return await raceAbort(async (active) => {
-      const response = await (pool ?? new ModelConnections()).post(url, headers, JSON.stringify(body), active);
-      if (!response.ok) throw new ModelTransportError(response.status);
-      try { return await response.json(); }
-      catch (error) {
-        if (error instanceof SyntaxError) return undefined;
-        throw error;
-      }
-    }, combined);
+    return await raceAbort(active => (pool ?? new ModelConnections()).read(url, headers, JSON.stringify(body), active,
+      async (response, within) => {
+        if (!response.ok) {
+          await response.body?.cancel();
+          throw new ModelTransportError(response.status);
+        }
+        try { return await read(response, within); }
+        catch (error) {
+          if (error instanceof SyntaxError) return undefined;
+          throw error;
+        }
+      }), combined);
   } catch (error) {
     if (!throwOnTransportError) return undefined;
     if (signal?.aborted === true || error instanceof ModelTransportError) throw error;
@@ -215,13 +224,13 @@ export interface ChatEndpoint {
   pool?: ModelConnections;
 }
 
-type ResponseFormat = { type: "json_schema"; json_schema: { name: string; strict: true; schema: object } } | { type: "json_object" };
 interface ChatRequest {
   system: string;
   user: ChatContent;
   format: ResponseFormat;
   signal?: AbortSignal;
   throwOnTransportError?: boolean;
+  input?: "file" | "screen";
 }
 
 function effortFor(endpoint: ChatEndpoint, format: ResponseFormat): string | undefined {
@@ -232,26 +241,67 @@ function effortFor(endpoint: ChatEndpoint, format: ResponseFormat): string | und
   return configured(effort) ? effort : undefined;
 }
 
-/** 채팅 한 번의 응답 본문 그대로(실패하면 undefined). 글 호출·사진 호출·의도 분류가 같은 요청과 같은 실패 처리를 쓴다. */
-async function requestChat(endpoint: ChatEndpoint, request: ChatRequest): Promise<unknown> {
+async function readStreamedChat(response: Response, active: AbortSignal, readPrefix: (content: string) => void): Promise<unknown> {
+  if (response.headers.get("content-type")?.startsWith("text/event-stream") !== true) return response.json();
+  if (response.body === null) return undefined;
+  const reader = response.body.pipeThrough(new TextDecoderStream(), { signal: active }).getReader();
+  let remainder = "", content = "", refusal = false, usage: unknown;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done || active.aborted) return undefined;
+      const lines = (remainder + chunk.value).split("\n");
+      remainder = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return { choices: [{ message: { content, refusal } }], usage };
+        const part: unknown = JSON.parse(data);
+        if (!isRecord(part) || !Array.isArray(part.choices)) return undefined;
+        if (isRecord(part.usage)) usage = part.usage;
+        const choice: unknown = part.choices[0];
+        if (!isRecord(choice) || !isRecord(choice.delta)) continue;
+        if (Boolean(choice.delta.refusal)) refusal = true;
+        if (typeof choice.delta.content === "string") {
+          content += choice.delta.content;
+          if (!refusal && !active.aborted) readPrefix(content);
+        }
+      }
+    }
+  } finally {
+    // Returning at [DONE] must also release streams from providers which keep the connection open.
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+async function requestChat(endpoint: ChatEndpoint, request: ChatRequest): Promise<{ answer: unknown; usage: unknown }> {
+  const pass = prepareModelStatus(request.format, request.input ?? (typeof request.user === "string" ? "text" : "screen"), request.signal);
+  const baseUrl = endpoint.baseUrl.replace(/\/+$/u, "");
+  const stream = pass !== undefined && baseUrl === OPENAI_BASE_URL && (endpoint.provider ?? "openai").toLowerCase() === "openai";
+  const system = pass === undefined || pass.instruction.length === 0 ? request.system : request.system + "\n\n" + pass.instruction;
   const body = {
     model: endpoint.model,
-    response_format: request.format,
+    response_format: pass?.format ?? request.format,
     reasoning_effort: effortFor(endpoint, request.format),
     temperature: request.format.type === "json_object" ? 0 : undefined,
-    messages: [{ role: "system", content: request.system }, { role: "user", content: request.user }],
+    messages: [{ role: "system", content: system }, { role: "user", content: request.user }],
+    ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
   };
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (configured(endpoint.apiKey)) headers.Authorization = `Bearer ${endpoint.apiKey}`;
   const timeoutMs = endpoint.timeoutMs === undefined || endpoint.timeoutMs === 0 ? 30_000 : endpoint.timeoutMs;
-  return postJson(`${endpoint.baseUrl.replace(/\/+$/u, "")}/chat/completions`, headers, body, timeoutMs / 1000, request.signal, endpoint.pool, request.throwOnTransportError);
+  const raw = await postJson(`${baseUrl}/chat/completions`, headers, body, timeoutMs / 1000, request.signal, endpoint.pool, request.throwOnTransportError,
+    stream ? (response, active) => readStreamedChat(response, active, pass.readPrefix) : undefined);
+  const content = messageContent(raw);
+  const answer = content === undefined ? undefined : parseContent(content);
+  return { answer: pass === undefined ? answer : pass.take(answer), usage: isRecord(raw) ? raw.usage : undefined };
 }
 
 export async function chatCompletion(
   endpoint: ChatEndpoint, request: ChatRequest, fetchImpl: typeof fetch = fetch,
 ): Promise<unknown> {
-  const content = messageContent(await requestChat({ ...endpoint, pool: endpoint.pool ?? new ModelConnections(fetchImpl) }, request));
-  return content === undefined ? undefined : parseContent(content);
+  return (await requestChat({ ...endpoint, pool: endpoint.pool ?? new ModelConnections(fetchImpl) }, request)).answer;
 }
 
 /** Python urllib.parse.urlsplit(url).hostname: 주소 모양이 아니면 undefined, 있으면 소문자. */
@@ -296,24 +346,22 @@ class OpenAIChat {
   }
 
   protected async ask(
-    request: { system: string; content: ChatContent; schemaName: string; schema: object; signal?: AbortSignal; throwOnTransportError?: boolean },
+    request: { system: string; content: ChatContent; schemaName: string; schema: object; signal?: AbortSignal; throwOnTransportError?: boolean; input?: "file" | "screen" },
   ): Promise<unknown> {
     this.usage.calls++;
-    const raw = await requestChat({
+    const { answer, usage } = await requestChat({
       baseUrl: this.baseUrl, model: this.model, apiKey: this.#apiKey, reasoningEffort: this.reasoningEffort,
       timeoutMs: this.timeoutMs, provider: this.provider, pool: this.pool,
     }, {
-      system: request.system, user: request.content, signal: request.signal, throwOnTransportError: request.throwOnTransportError,
+      system: request.system, user: request.content, signal: request.signal, input: request.input, throwOnTransportError: request.throwOnTransportError,
       format: { type: "json_schema", json_schema: { name: request.schemaName, strict: true, schema: request.schema } },
     });
-    const usage = isRecord(raw) ? raw.usage : undefined;
     if (isRecord(usage)) {
       const input = usage.prompt_tokens, output = usage.completion_tokens;
       if (typeof input === "number" && Number.isInteger(input)) this.usage.inputTokens += input;
       if (typeof output === "number" && Number.isInteger(output)) this.usage.outputTokens += output;
     }
-    const content = messageContent(raw);
-    return content === undefined ? undefined : parseContent(content);
+    return answer;
   }
 }
 
@@ -321,7 +369,7 @@ export class OpenAIStructuredLlm extends OpenAIChat implements StructuredLlm {
   generate({ system, user, schemaName, schema, signal, attachment, throwOnTransportError }: LlmRequest): Promise<unknown> {
     if (attachment !== undefined && this.provider !== "openai") return Promise.resolve(undefined);
     const content: ChatContent = attachment === undefined ? user : [{ type: "text", text: user }, attachment.contentPart()];
-    return this.ask({ system, content, schemaName, schema, signal, throwOnTransportError });
+    return this.ask({ system, content, schemaName, schema, signal, throwOnTransportError, input: attachment === undefined ? undefined : "file" });
   }
 }
 

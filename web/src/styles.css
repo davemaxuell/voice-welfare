@@ -399,10 +399,7 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .msg details p { margin: .2rem 0 .6rem; padding: .8rem 1rem; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); line-height: 1.75; }
 .msg details button { margin-bottom: .6rem; min-height: 44px; border-radius: var(--radius-pill); font-size: .88rem; }
 
-.typing { display: flex; align-items: flex-end; gap: .6rem; padding: .7rem var(--pad) .6rem; }
-.typing-avatar { flex: none; width: 2rem; height: 2rem; border-radius: 50%; background: var(--soft) url("/avatar/still.png") center 30% / 130% no-repeat; transform: scaleX(-1); }
-.typing-dots { display: inline-flex; align-items: center; gap: 5px; height: 2.6rem; padding: 0 1.05rem; border-radius: 1.2rem; border-bottom-left-radius: .35rem; background: var(--bubble-bot); }
-.typing-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .55; }
+#backend-status { padding: .5rem var(--pad); color: var(--ink); background: var(--surface); font-size: var(--type-small); line-height: 1.5; overflow-wrap: anywhere; }
 .jump-latest {
   position: sticky; bottom: .6rem; z-index: 3; align-self: center;
   margin-top: .35rem; min-height: 44px; padding: .45rem 1.05rem;
@@ -723,10 +720,6 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .msg.user + .msg.assistant { animation-delay: 90ms; }
   .msg.assistant::before { animation: fade-in 260ms var(--ease-out) backwards, pop-in var(--spring-pop) backwards; animation-delay: inherit; }
   .msg details[open] > :not(summary) { animation: drop-in var(--spring-fast) backwards; }
-  .typing:not([hidden]) { animation: fade-in 220ms var(--ease-out) 180ms backwards, msg-rise var(--spring) 180ms backwards; }
-  .typing-dots i { animation: typing-dot 1.8s ease-in-out infinite; }
-  .typing-dots i:nth-child(2) { animation-delay: .15s; }
-  .typing-dots i:nth-child(3) { animation-delay: .3s; }
 
   .decision:not([hidden]), #error:not([hidden]), .answer:not([hidden]) {
     animation: fade-in 220ms var(--ease-out) backwards, card-rise var(--spring) backwards;
@@ -937,10 +930,10 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
   .portrait::after { border: 2px solid Highlight; forced-color-adjust: none; }
 
   .brand-mark, .panel-icon, .phase, .voice-switch::before, #st-state, .msg, .decision, .composer { border: 1px solid CanvasText; }
-  :is(.brand-eq i, .phase-eq i, .stop::before, .voice-switch::after, .typing-dots i, #st-state::before, .mode-dot) { background: CanvasText; forced-color-adjust: none; }
+  :is(.brand-eq i, .phase-eq i, .stop::before, .voice-switch::after, #st-state::before, .mode-dot) { background: CanvasText; forced-color-adjust: none; }
   :is(.header-button, .voice-actions button, .audio-tools button, .panel-icon, .decision h3, .answer h3, #command-help, #dictation-hint, #conv-hint, .send,
     .fields li, .actions li, #st-access, #confirm-site, .st-title-row, .answer > .status dd)::before,
   summary::before { background: ButtonText; forced-color-adjust: none; }
   .voice-switch[aria-pressed="true"]::before { background: Highlight; forced-color-adjust: none; }
-  .msg.assistant::before, .typing-avatar { forced-color-adjust: none; }
+  .msg.assistant::before { forced-color-adjust: none; }
 }

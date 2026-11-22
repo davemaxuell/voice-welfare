@@ -1,5 +1,54 @@
 import { expect, it } from "vitest";
 import { Progress } from "../../src/core/progress.ts";
+import { MODEL_STATUS } from "../../src/core/model_status.ts";
+
+it("keeps the active agent visible during transcription and drops interrupted recordings", async () => {
+  const progress = new Progress();
+  let release!: () => void;
+  const recording = progress.transcribing("en", () => new Promise<void>(resolve => { release = resolve; }));
+  expect(progress.backendStatus).toBe("Transcribing your recording.");
+  await progress.trackBackend(() => "en", () => true, async () => {
+    MODEL_STATUS.getStore()!.begin("search", "Reading the guide");
+    expect(progress.backendStatus).toBe("Reading the guide");
+  });
+  expect(progress.backendStatus).toBe("Transcribing your recording.");
+  progress.interrupt();
+  release();
+  await recording;
+  expect(progress.backendStatus).toBe("");
+});
+
+it("keeps only the newest pass and clears it on Stop, errors and completion", async () => {
+  const progress = new Progress();
+  const seen: string[] = [];
+  progress.watchBackend(state => seen.push(state?.backend_status ?? "closed"));
+  let release!: (allowed: boolean) => void;
+  const check = new Promise<boolean>(resolve => { release = resolve; });
+  await progress.trackBackend(() => "en", line => line === "stale" ? check : line !== "private", async () => {
+    const scope = MODEL_STATUS.getStore()!;
+    const first = scope.begin("planner", "Planning");
+    first("stale");
+    const next = scope.begin("search", "Searching");
+    release(true);
+    next("private");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(progress.backendStatus).toBe("Searching");
+    next("Checking official deadlines");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(progress.backendStatus).toBe("Checking official deadlines");
+    progress.interrupt();
+    first("late first");
+    next("late second");
+    scope.begin("late pass", "Should stay cleared");
+    expect(progress.backendStatus).toBe("");
+  });
+  await expect(progress.trackBackend(() => "en", () => true, async () => {
+    MODEL_STATUS.getStore()!.begin("file", "Reading");
+    throw Error("aborted");
+  })).rejects.toThrow("aborted");
+  progress.close();
+  expect(seen).toEqual(["", "Planning", "Searching", "Checking official deadlines", "", "Reading", "", "closed"]);
+});
 
 it("검토 중에 확인한 단계만 한 번씩 읽고 음성 설정을 존중한다", async () => {
   const progress = new Progress();
@@ -24,10 +73,10 @@ it("검토하는 동안에는 자동 음성 안내만 멈추고 최신 단계는
   const progress = new Progress();
   progress.start();
   progress.add("복지로를 열었어요.");
-  expect(progress.snapshot()).toEqual({ running: true, seq: 1, latest: "복지로를 열었어요.", spoken: true, activity: null, activitySpoken: false });
+  expect(progress.snapshot()).toEqual({ running: true, seq: 1, backend_status: "", latest: "복지로를 열었어요.", spoken: true, activity: null, activitySpoken: false });
   let during: ReturnType<Progress["snapshot"]> | undefined;
   await progress.review(() => { during = progress.snapshot(); });
-  expect(during).toEqual({ running: true, seq: 1, latest: "복지로를 열었어요.", spoken: false, activity: null, activitySpoken: false });
+  expect(during).toEqual({ running: true, seq: 1, backend_status: "", latest: "복지로를 열었어요.", spoken: false, activity: null, activitySpoken: false });
   expect(progress.snapshot().spoken).toBe(true);
 });
 

@@ -1,10 +1,11 @@
 // WebRTC media belongs to GPT-Live. Only authenticated sideband events can start local work.
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
 import type { UpgradeWebSocket } from "hono/ws";
 import { REASONING_EFFORT_OVERRIDE } from "../core/llm.ts";
 import { STACK } from "../core/model_stack.ts";
 import { casefold, hasText, splitWhitespace, strip } from "../core/text.ts";
+import { PLANNER_EXCHANGES, type DialogueExchange } from "../orchestrator/planner_dialogue.ts";
 import { isProgressQuestion, isStopUtterance } from "../understanding/rules.ts";
 import { VoiceProviderError } from "../voice/errors.ts";
 import { connectSocket, withDeadline, type SocketConnect, type UpstreamSocket } from "../voice/live.ts";
@@ -25,8 +26,6 @@ export const WAIT_WHILE_TALKING_S = 10;
 export const QUIET_S = 0.7;
 // 이미 쓴 말 바로 뒤에 온 넘김은 그 말을 한 번 더 넘긴 것이다.
 export const ABSORBED_MS = 1200;
-// 화면의 progressVoice와 같은 간격: 처음 15초는 말하지 않고, 그 뒤로 15초에 한 단계까지.
-export const PROGRESS_GAP_S = 15;
 export const MAX_WAITING_TURNS = 12;
 export const EFFORT_WAIT_S = 1.0;
 export const EFFORT_QUESTION = "sol_effort";
@@ -75,6 +74,51 @@ export interface LiveSessionProvider {
   attach(liveId: string): Promise<UpstreamSocket>;
 }
 
+// 모델별 위임 표현과 정책 제목: https://developers.openai.com/api/docs/guides/live-prompting
+function liveInstructions(model: string, session: OfferSession, speed: number, voiceInstructions: string): string {
+  const [delegate, replyDirectly] = model === "gpt-live-1"
+    ? ["Generate <|SpawnThinking|>", "Do not generate <|SpawnThinking|>"]
+    : ["Delegate to the backend", "Do not delegate"];
+
+  return `You are Cheongeum (청음), the AI voice assistant in the Cheongeum desktop app, powered by OpenAI's ${model}.
+Help people use Korean public services by listening. The app supports speech and typing in Korean, English, Chinese, and Japanese.
+Use the selected reply language (${session.lang}) until the app changes it. Keep official Korean names when languages are mixed.
+${voiceInstructions} Speak at about ${formatG(speed)} times normal speed. Use short, plain sentences and name each item so the listener can follow without seeing it.
+Use polite conversational Korean. Acknowledge frustration briefly in your answer when it helps.
+The app state at the start of this call is ${session.state}.
+
+Backchannel policy:
+Listen silently and give the caller time to finish, including pauses to remember a name, give a choice, or correct a selection.
+
+Interruption policy:
+When the caller interrupts, stop speaking immediately and listen through the end of their turn.
+Respond to their latest request. If they ask to stop or change an app task, pass that request to the app before reporting its outcome.
+
+Delegation policy:
+The backend is the Cheongeum app. It can inspect the connected Chrome tab, read pages aloud, follow links, operate controls, and guide users through forms and practice applications.
+It can look up public services and benefits, check official sources, work with documents and profiles, report progress, handle permissions, change the reply language and other settings, and read the full startup guide.
+
+${delegate} once the caller finishes a turn that needs any of the following:
+- Any app capability above, including questions about the current page or an item's position, requests to open or show a site, and politely phrased actions.
+- A current or user-specific fact, official dates, schedules, eligibility, requirements, or a question that needs careful research or reasoning.
+- A progress check, a question about what the app did, or a correction or cancellation of work in progress.
+- An answer to an app question or proposal, including a selection, confirmation, or refusal. Each such reply needs a fresh handoff. Send natural assent in the caller's own words.
+Pass the whole goal with its targets, conditions, exclusions, and latest corrections. Use earlier dialogue to resolve references and carry forward relevant constraints.
+Assume callers may be using the service for the first time. When they describe a need or ask where to start, hand it to the app in their own words. The app identifies the services, compares official sources and finds a practical first step. Include any source the caller specified.
+A site name or result position can identify a selection. Let the app resolve ambiguous targets and distinguish a lookup now from research to save for later.
+Delegate the user's request to act in Chrome immediately after they finish speaking. The app alone checks permission for each action and decides when to ask for approval. Earlier dialogue or app state cannot authorize an action.
+Users handle sign-in, identity verification, and final submission on official sites. Never ask for or repeat passwords or identity numbers.
+
+${replyDirectly} for greetings, ordinary questions you can answer, general questions about app capabilities and how to use them, or a simple repeat of a still-current result you already relayed.
+If the caller alone can resolve a choice that changes the outcome, ask one plain question and briefly explain why it matters. If the app can check an uncertain answer, hand it off. Otherwise say what is uncertain.
+
+Make the handoff silently. While the app works, listen for the caller. Omit acknowledgments, waiting messages, and unsolicited progress updates.
+When the caller asks for progress, relay the app's status answer once. Relay a final answer, a failure, or a question or approval the caller must answer as soon as the app provides it.
+Report that a page opened or a task finished only after the app confirms it. Preserve names, dates, numbers, conditions, and caveats in the result.
+Relay the app's verified guidance, including its recommended first step. End a completed answer there. When the app needs an answer from the caller, relay its question and choices. When the app reads its own response, stay silent and let it finish.
+Hand off the caller's follow-up if it refers to a response the app read itself.`;
+}
+
 export class LiveProvider implements LiveSessionProvider {
   readonly url: string;
   readonly headers: Record<string, string>;
@@ -118,57 +162,7 @@ export class LiveProvider implements LiveSessionProvider {
         },
       },
       store: false,
-      instructions:
-        "Role and app capabilities\n"
-        + `You are Cheongeum (청음), the AI voice assistant in the Cheongeum desktop app, powered by OpenAI's ${this.model}. `
-        + "Help people in Korea find and use public services with guidance they can follow by listening. "
-        + "Cheongeum can inspect its connected Chrome tab, click controls for the user, navigate websites, read pages aloud, look up public services and welfare benefits, "
-        + "and guide users through online forms and practice applications. It accepts speech and typing "
-        + "and supports Korean, English, Chinese, and Japanese. "
-        + "A user's request is enough to delegate the action immediately. Users enter passwords and complete personal authentication directly on the site. "
-        + "Never ask for or repeat passwords or identity numbers in the voice conversation.\n\n"
-        + "Voice and language\n"
-        + `Start quietly and let the user finish speaking. Use the app's selected reply language (${session.lang}) `
-        + "until the app changes it. Keep official Korean names when the speaker mixes languages. "
-        + `${this.instructions} Speak at ${formatG(speed)} times normal speed. `
-        + "Use short, natural sentences and plain words. In Korean, use polite conversational speech. "
-        + "Name the item you mean so the user can follow without seeing the screen. "
-        + `The application state at the start of this call is ${session.state}.\n\n`
-        + "Decide how to respond\n"
-        + "Delegate whenever any part of the request needs an app action, a progress check, a current or "
-        + "user-specific fact, or official verification. Official dates, schedules, eligibility, and public-service "
-        + "requirements need verification even when they sound familiar. Explain general capabilities and how to use them directly. "
-        + "Delegate questions that need evidence from the current tab so the app can inspect and explain it. "
-        + "When the user asks you to carry out an action in Chrome, including a request phrased as a polite question, delegate the whole task. "
-        + "Send natural assent to the current proposal in the speaker's own words. Let the app report when it needs information from the user. Delegate website navigation, page contents "
-        + "and item positions, documents and profiles, permissions, app controls, reply language changes, "
-        + "and the full startup guide when requested. Delegate follow-ups about the app's last action and "
-        + "replies to its questions or proposals, including confirmation, refusal, selection, and correction. "
-        + "Otherwise, answer ordinary questions and general questions about the app directly when you know "
-        + "the answer. Respond naturally to social conversation. If unsure of an answer, delegate when the app "
-        + "can check. If it cannot, say what you are unsure about. "
-        + "Ask one short, specific question if the speech is too unclear to identify a request. "
-        + "Delegate an identifiable app request with an ambiguous target so the app can resolve it.\n\n"
-        + "Hand off the current turn\n"
-        + "Make a fresh routing decision on each user turn. When the turn needs the app, generate <|SpawnThinking|> "
-        + "once the user finishes that turn. If the speaker is still identifying or correcting a target, listen "
-        + "through the end of the selection. Confirming an offered item needs a new handoff even when the app "
-        + "handled the preceding request. A site name or a result's position is enough for the app to start. "
-        + "Keep the current actions, targets, conditions, exclusions, and corrections together. Use earlier dialogue to resolve references and "
-        + "carry forward relevant constraints. Follow the user's latest correction. "
-        + "Only the app decides whether the current reply authorizes a pending action. "
-        + "Earlier dialogue and session state confer no permission. "
-        + "An information lookup can be answered in conversation. Preserve requests to show or open a site, "
-        + "and distinguish immediate lookups from research the user wants saved for later.\n\n"
-        + "Speak during delegated work\n"
-        + "During a multi-step task, listen quietly until the app sends its reviewed result or needs user input. "
-        + "Relay each app commentary message once. Use only what the app has confirmed for that request. "
-        + "Describe progress as the latest confirmed step. Finding a result or link does not establish that "
-        + "the site or requested page opened. Report arrival and completion only when the app confirms them. "
-        + "Keep relevant names, dates, numbers, conditions, and caveats when relaying an answer. "
-        + "If the app asks a question, relay it with the named site, link, and choices it supplies. "
-        + "When the app indicates it is reading its own response, stay silent and wait for the user. "
-        + "Delegate the user's next reply if it refers to that response.",
+      instructions: liveInstructions(this.model, session, speed, this.instructions),
     };
     const history = session.recentVoiceDialogue();
     if (history.length > 0) {
@@ -213,11 +207,17 @@ export const loopClock: Clock = () => performance.now() / 1000;
 export interface Fragment {
   readonly start: number; readonly end: number; readonly text: string; readonly approval: string;
   readonly linkOffer: string | undefined; readonly receivedAt: number; readonly deliveredTurn: number;
+  readonly sequence: number;
 }
-export interface OutputFragment { readonly start: number; readonly end: number; readonly ackPart: string | undefined; readonly deliveredTurn: number }
+export interface OutputFragment {
+  readonly start: number; readonly end: number; readonly ackPart: string | undefined; readonly deliveredTurn: number;
+  readonly text: string | undefined; readonly sequence: number;
+}
 export interface SpeechMatch { readonly first: Fragment; readonly end: number; readonly text: string; readonly receivedAt: number }
 
 const FRAGMENT_LIMIT = 400, OUTPUT_LIMIT = 80;
+interface TimedExchange { readonly sequence: number; readonly exchange: DialogueExchange }
+interface LiveExchange { readonly sequence: number; readonly exchange?: DialogueExchange }
 const byStartEnd = (a: { start: number; end: number }, b: { start: number; end: number }) => a.start === b.start ? a.end - b.end : a.start - b.start;
 const isInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
 
@@ -227,29 +227,46 @@ export class Transcript {
   droppedThrough = -1;
   through = -1;
   output: OutputFragment[] = [];
+  #droppedOutputThrough = -1;
+  readonly #appSpeech = new Set<string>();
   deliveredTurns = 0;
+  sequence = 0;
   incompleteLinkEnd = -1;
   updated = 0;
   readonly #clock: Clock;
 
   constructor(clock: Clock = loopClock) { this.#clock = clock; }
 
+  #speechDigest(text: string): string {
+    return createHash("sha256").update(splitWhitespace(casefold(text)).join("")).digest("base64");
+  }
+
+  rememberAppSpeech(text: string): void {
+    const digest = this.#speechDigest(text);
+    this.#appSpeech.delete(digest);
+    this.#appSpeech.add(digest);
+    if (this.#appSpeech.size > OUTPUT_LIMIT) this.#appSpeech.delete(this.#appSpeech.values().next().value!);
+  }
+
   add(event: Record<string, unknown>, approval: string, linkOffer?: string): void {
     const start = event.start_ms, end = event.end_ms, delta = event.delta;
     if (!isInteger(start) || !isInteger(end) || end < start || typeof delta !== "string") return;
     if (end <= this.through || delta === "") return;
     if (event.type === "session.output_transcript.delta") {
+      if (this.output.some(o => o.start === start && o.end === end && o.text === delta)) return;
       const key = splitWhitespace(casefold(delta)).join("").replace(ACK_PUNCTUATION, "");
       const part = [...LIVE_ACKS].some(ack => ack.includes(key)) ? key : undefined;
-      this.output.push({ start, end, ackPart: part, deliveredTurn: this.deliveredTurns });
-      if (this.output.length > OUTPUT_LIMIT) this.output.shift();
+      const text = delta.length <= 6400 && event.delegation_id == null ? delta : undefined;
+      this.output.push({ start, end, text, ackPart: part, deliveredTurn: this.deliveredTurns, sequence: this.sequence });
+      if (this.output.length > OUTPUT_LIMIT) this.#droppedOutputThrough = Math.max(this.#droppedOutputThrough, this.output.shift()!.end);
       return;
     }
+    if (this.fragments.some(f => f.start === start && f.end === end && f.text === delta)) return;
     if (this.fragments.length === FRAGMENT_LIMIT) this.droppedThrough = Math.max(this.droppedThrough, this.fragments[0]?.end ?? -1);
     // Keep one character past the limit so the complete group is rejected if a suffix was omitted.
     this.updated = this.#clock();
     this.fragments.push({ start, end, text: Array.from(delta).slice(0, TURN_TEXT_LIMIT + 1).join(""), approval, linkOffer,
-      receivedAt: this.updated, deliveredTurn: this.deliveredTurns });
+      receivedAt: this.updated, deliveredTurn: this.deliveredTurns, sequence: this.sequence });
     if (this.fragments.length > FRAGMENT_LIMIT) this.fragments.shift();
   }
 
@@ -264,6 +281,37 @@ export class Transcript {
     this.through = match.end;
     this.fragments = this.fragments.filter(fragment => fragment.end > this.through);
     this.incompleteLinkEnd = incompleteLink ? match.end : -1;
+  }
+
+  /** Recover independent Live replies completed before this caller began speaking. */
+  exchangesBefore(first: Fragment): LiveExchange[] {
+    const inputs = this.fragments.filter(f => f.start < first.start).sort(byStartEnd);
+    const output = [...this.output].sort(byStartEnd);
+    const exchanges: LiveExchange[] = [];
+    let group: Fragment[] = [];
+    for (const next of [...inputs, first]) {
+      const start = group[0], tail = group.at(-1);
+      if (start !== undefined && tail !== undefined) {
+        const reply = output.filter(o => o.end > tail.start && o.start < next.start && o.end >= tail.end);
+        if (reply.length > 0 || next.start - tail.end > PAUSE_SPLIT_MS || next.deliveredTurn !== tail.deliveredTurn) {
+          // A missing prefix, interleaved delivery or interruption makes list positions unreliable.
+          if (reply.length > 0 && start.start > Math.max(this.droppedThrough, this.#droppedOutputThrough)
+            && group.every(f => f.deliveredTurn === start.deliveredTurn && f.sequence === start.sequence && Array.from(f.text).length <= TURN_TEXT_LIMIT)
+            && reply.every(o => o.text !== undefined && o.start >= tail.end && o.end <= next.start
+              && o.deliveredTurn === start.deliveredTurn && o.sequence === start.sequence)) {
+            const user = strip(group.map(f => f.text).join("")), assistant = strip(reply.map(o => o.text).join(""));
+            if (user !== "" && assistant !== "" && !this.#appSpeech.has(this.#speechDigest(assistant)) && !this.#appSpeech.has(this.#speechDigest(user))) {
+              exchanges.push({ sequence: start.sequence, exchange: { user, assistant } });
+            }
+          } else if (reply.length > 0 || start.start <= this.#droppedOutputThrough) {
+            exchanges.push({ sequence: start.sequence });
+          }
+          group = [];
+        }
+      }
+      group.push(next);
+    }
+    return exchanges;
   }
 
   match(offset: number, { pauseMs = PAUSE_SPLIT_MS, boundFirst, delegated = false }: { pauseMs?: number; boundFirst?: Fragment | undefined; delegated?: boolean } = {}): SpeechMatch | undefined {
@@ -294,7 +342,8 @@ export class Transcript {
           interrupted ||= !acknowledgment || output.some(o => o.start < previous.end)
             || this.output.some(o => o.start < fragment.start && fragment.start <= o.end);
         } else {
-          split = output.length > 0;
+          split = output.length > 0 || (delegated && !hasText(previous.linkOffer) && !hasText(previous.approval)
+            && this.output.some(o => previous.end <= o.start && o.start < fragment.start && fragment.start <= o.end));
         }
       }
       if (split) groups.push([]);
@@ -327,8 +376,10 @@ export interface EdgeSession extends OfferSession {
   readonly consentStatus: string;
   readonly dialogue: { readonly authWaiting: boolean; readonly confirmation?: { readonly actionId?: string } | null | undefined };
   readonly linkOfferId?: string | null | undefined;
-  readonly progress: Pick<import("../core/progress.ts").Progress, "snapshot" | "shiftSpoken" | "hasSpoken">;
-  handleTurn(text: string, options: { approvalId: string; fromVoice: true; linkOfferId?: string; difficulty?: string }): Promise<TurnResultLike>;
+  readonly plannerTurns?: readonly { readonly id: string; readonly exchange: DialogueExchange }[] | undefined;
+  readonly plannerDialogueGeneration?: number | undefined;
+  plannerDialogue?: ((live?: readonly DialogueExchange[], preceding?: readonly DialogueExchange[]) => DialogueExchange[]) | undefined;
+  handleTurn(text: string, options: { approvalId: string; fromVoice: true; linkOfferId?: string; difficulty?: string; plannerDialogue?: readonly DialogueExchange[] }): Promise<TurnResultLike>;
 }
 /** The browser side: it can only close the call. */
 export interface EdgeSocket {
@@ -338,7 +389,7 @@ export interface EdgeSocket {
 export interface Sideband extends AsyncIterable<string> { send(text: string): Promise<void> }
 
 export interface EdgeTiming {
-  waitForTextS: number; waitWhileTalkingS: number; quietS: number; progressGapS: number; maxWaitingTurns: number; effortWaitS: number;
+  waitForTextS: number; waitWhileTalkingS: number; quietS: number; maxWaitingTurns: number; effortWaitS: number;
 }
 export type Sleep = (seconds: number, signal: AbortSignal) => Promise<void>;
 export const realSleep: Sleep = (seconds, signal) => new Promise((resolve, reject) => {
@@ -401,8 +452,9 @@ class Rating {
 }
 
 type Delegate = string | number;
-type Job = readonly [delegate: Delegate, offset: number, rating: Rating | undefined];
-type WaitingTurn = readonly [delegate: Delegate, text: string, action: string, linkOffer: string | undefined, rating: Rating | undefined];
+type Job = readonly [delegate: Delegate, offset: number, rating: Rating | undefined, sequence: number];
+interface DialogueSnapshot { readonly sequence: number; readonly exchanges: readonly DialogueExchange[] }
+type WaitingTurn = readonly [delegate: Delegate, text: string, action: string, linkOffer: string | undefined, rating: Rating | undefined, dialogue: DialogueSnapshot | undefined];
 
 export interface ConversationDeps<S extends EdgeSession> {
   readonly audio: { readonly stt: SttProvider; readonly tts: TtsProvider };
@@ -426,19 +478,22 @@ export class VoiceEdge {
     this.provider = provider;
     this.#clock = clock;
     this.#sleep = sleep;
-    this.#timing = { waitForTextS: WAIT_FOR_TEXT_S, waitWhileTalkingS: WAIT_WHILE_TALKING_S, quietS: QUIET_S, progressGapS: PROGRESS_GAP_S,
+    this.#timing = { waitForTextS: WAIT_FOR_TEXT_S, waitWhileTalkingS: WAIT_WHILE_TALKING_S, quietS: QUIET_S,
       maxWaitingTurns: MAX_WAITING_TURNS, effortWaitS: EFFORT_WAIT_S, ...timing };
   }
 
   /** Once handed off, a task belongs to the orchestrator even if audio disconnects. */
-  turn(session: EdgeSession, text: string, action: string, current: () => void, { effort, linkOffer }: { effort?: string | undefined; linkOffer?: string | undefined } = {}): Promise<TurnResultLike> {
+  turn(session: EdgeSession, text: string, action: string, current: () => void, { effort, linkOffer, dialogue }: {
+    effort?: string | undefined; linkOffer?: string | undefined; dialogue?: readonly DialogueExchange[] | undefined;
+  } = {}): Promise<TurnResultLike> {
     const dispatch = async () => {
       current();
       return await REASONING_EFFORT_OVERRIDE.run(effort !== undefined && effort !== "" ? [STACK.agent, effort] : null, async () => {
-        const options: { approvalId: string; fromVoice: true; linkOfferId?: string; difficulty?: string } = { approvalId: action, fromVoice: true };
+        const options: Parameters<EdgeSession["handleTurn"]>[1] = { approvalId: action, fromVoice: true };
         if (linkOffer !== undefined) options.linkOfferId = linkOffer;
         const difficulty = effort === undefined ? undefined : TASK_DIFFICULTY[effort];
         if (difficulty !== undefined) options.difficulty = difficulty;
+        if (dialogue !== undefined) options.plannerDialogue = dialogue;
         return await session.handleTurn(text, options);
       });
     };
@@ -521,11 +576,56 @@ export class VoiceEdge {
     const delegations = new Set<Delegate>();
     const pendingEfforts = new Map<Delegate, Rating>();
     const eventIds: unknown[] = [];
+    let appIds = new Set(session.plannerTurns?.map(row => row.id));
+    let appGeneration = session.plannerDialogueGeneration;
+    let history: TimedExchange[] = (session.plannerDialogue?.() ?? []).map(exchange => ({ sequence: 0, exchange }));
+    let privateBoundary = 0;
+    const keepRecent = () => {
+      history.sort((a, b) => a.sequence - b.sequence);
+      history = history.slice(-(timing.maxWaitingTurns + PLANNER_EXCHANGES));
+    };
+    const observeApp = (delivery?: TurnResultLike) => {
+      if (session.plannerDialogue === undefined) return;
+      const generation = session.plannerDialogueGeneration;
+      if (generation !== appGeneration || delivery?.localSpeechOnly === true) {
+        privateBoundary = ++transcript.sequence;
+        history = [];
+        appIds.clear();
+        appGeneration = generation;
+      }
+      const rows = session.plannerTurns;
+      const fresh = rows === undefined
+        ? (delivery !== undefined && delivery.localSpeechOnly !== true ? session.plannerDialogue().slice(-1) : [])
+        : rows.filter(row => !appIds.has(row.id)).map(row => row.exchange);
+      if (fresh.length > 0) {
+        const sequence = ++transcript.sequence;
+        history.push(...fresh.map(exchange => ({ sequence, exchange })));
+        keepRecent();
+      }
+      if (rows !== undefined) appIds = new Set(rows.map(row => row.id));
+    };
+    const heardBefore = (match: SpeechMatch, sequence: number): DialogueSnapshot | undefined => {
+      if (session.plannerDialogue === undefined) return undefined;
+      const through = Math.min(match.first.sequence, sequence);
+      for (const row of transcript.exchangesBefore(match.first).slice(-PLANNER_EXCHANGES)) {
+        if (row.sequence < privateBoundary || row.sequence > through) continue;
+        const exchange = row.exchange === undefined ? undefined : session.plannerDialogue([row.exchange], [])[0];
+        // Older lists cannot stand in for a more recent exchange that could not be included.
+        if (exchange === undefined) history = history.filter(item => item.sequence > row.sequence);
+        else history.push({ sequence: row.sequence, exchange });
+      }
+      keepRecent();
+      return { sequence: through, exchanges: session.plannerDialogue([], history.filter(row => row.sequence <= through).map(row => row.exchange)) };
+    };
     let replyLanguage = session.lang;
     let deliveredLinks = session.linkOfferId ?? undefined;
     const alive = () => { if (signal.aborted) throw new Stopped(); };
     const append = async (kind: string, delegate: Delegate | null, content: string) => {
       alive();
+      if (kind === "commentary") {
+        transcript.sequence++;
+        transcript.rememberAppSpeech(content);
+      }
       await upstream.send(JSON.stringify({ type: `session.${kind}.append`, event_id: hex(12), delegation_id: delegate, content }));
     };
 
@@ -538,6 +638,7 @@ export class VoiceEdge {
       }
       current();
       transcript.deliveredTurns += 1;
+      observeApp(result);
       const language = "lang" in result ? result.lang : replyLanguage;
       if ((language === "ko" || language === "en" || language === "zh" || language === "ja") && language !== replyLanguage) {
         await append("instructions", null, `The application selected ${language}. Use it for subsequent speech.`);
@@ -547,7 +648,10 @@ export class VoiceEdge {
       const exact = result.researchDelivery === "outcome" || Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
         || Boolean(result.pendingConfirmation) || Buffer.byteLength(result.speech, "utf8") > 1100;
       await socket.sendJson({ result, exact });
-      if (exact) await append("thinking", delegate, "The application is reading its response. Wait for the user.");
+      if (exact) {
+        transcript.rememberAppSpeech(result.speech);
+        await append("thinking", delegate, "The application is reading its response. Wait for the user.");
+      }
       else await append("commentary", delegate, result.speech);
       deliveredLinks = session.linkOfferId ?? undefined;
       return false;
@@ -567,6 +671,7 @@ export class VoiceEdge {
           if (eventIds.length > 512) eventIds.shift();
         }
         if (kind === "session.input_transcript.delta" || kind === "session.output_transcript.delta") {
+          observeApp();
           transcript.add(event, action, deliveredLinks);
         } else if (kind === "session.delegation.created") {
           const row = event.delegation;
@@ -580,7 +685,8 @@ export class VoiceEdge {
             if (rating !== undefined) pendingEfforts.set(delegate, rating);
             const offset = event.offset_ms;
             if (typeof offset !== "number") throw new TypeError("offset_ms");
-            jobs.put([delegate, offset, rating]); // 위의 넘김 512개가 한도
+            observeApp();
+            jobs.put([delegate, offset, rating, transcript.sequence]); // 위의 넘김 512개가 한도
             await append("thinking", delegate, "");
           }
         } else if (kind === "decision.event") {
@@ -604,7 +710,7 @@ export class VoiceEdge {
       // 넘김은 도착하는 대로 차례로 말에 맞춘다. 긴 턴이 도는 동안에도 멈춤과 진행 물음이 그 뒤에서 기다리지 않게.
       let matchedAction = action, linkOffer: string | undefined;
       for (;;) {
-        const [delegate, offset, rating] = await jobs.get(signal);
+        const [delegate, offset, rating, sequence] = await jobs.get(signal);
         const started = clock();
         let boundFirst: Fragment | undefined;
         let match: SpeechMatch | undefined, text: string, urgent: boolean, quiet: boolean;
@@ -628,6 +734,7 @@ export class VoiceEdge {
         }
         current();
         const consumed = transcript.through;
+        const dialogue = match === undefined ? undefined : heardBefore(match, sequence);
         if (match !== undefined) {
           matchedAction = match.first.approval;
           linkOffer = match.first.linkOffer;
@@ -643,51 +750,16 @@ export class VoiceEdge {
         } else if (turns.full) {
           await append("commentary", delegate, BUSY);
         } else {
-          turns.put([delegate, text, matchedAction, linkOffer, rating]);
+          turns.put([delegate, text, matchedAction, linkOffer, rating, dialogue]);
           continue;
         }
         pendingEfforts.delete(delegate);
       }
     };
 
-    const narrate = async (delegate: Delegate, turn: Promise<TurnResultLike>) => {
-      let settled = false;
-      const done = turn.then(() => { settled = true; }, () => { settled = true; });
-      let seenActivity: string | null = null;
-      const show = async () => {
-        const activity = session.progress.snapshot().activity;
-        if (activity !== null && activity !== seenActivity) {
-          seenActivity = activity;
-          await socket.sendJson({ activity });
-        }
-      };
-      const speakQueued = async () => {
-        if (clock() - transcript.updated < 1.5) return;
-        for (;;) {
-          const line = session.progress.shiftSpoken();
-          if (line === undefined) return;
-          await append("commentary", delegate, line);
-          await show();
-        }
-      };
-      for (;;) {
-        const pause = new AbortController();
-        await Promise.race([done, this.#sleep(0.25, AbortSignal.any([signal, pause.signal])).catch(() => {})]);
-        pause.abort();
-        alive();
-        await show();
-        if (settled) {
-          // 결과가 준비되면 지난 진행 안내가 음성 결과보다 늦게 재생되지 않도록 비운다.
-          while (session.progress.shiftSpoken() !== undefined) { /* 방금 끝난 작업의 안내 */ }
-          return;
-        }
-        await speakQueued();
-      }
-    };
-
     const worker = async () => {
       for (;;) {
-        const [delegate, text, turnAction, linkOffer, rating] = await turns.get(signal);
+        const [delegate, text, turnAction, linkOffer, rating, dialogue] = await turns.get(signal);
         let effort: string | undefined;
         if (rating !== undefined) {
           try {
@@ -696,10 +768,10 @@ export class VoiceEdge {
             pendingEfforts.delete(delegate);
           }
         }
-        // Snapshot progress before the first synchronous step of this turn, like asyncio.ensure_future.
-        const turn = Promise.resolve().then(() => this.turn(session, text, turnAction, current, { effort, linkOffer }));
-        await narrate(delegate, turn);
-        if (await deliver(delegate, await turn)) return;
+        observeApp();
+        const exchanges = dialogue === undefined || dialogue.sequence >= privateBoundary ? dialogue?.exchanges : [];
+        const result = await this.turn(session, text, turnAction, current, { effort, linkOffer, dialogue: exchanges });
+        if (await deliver(delegate, result)) return;
       }
     };
 

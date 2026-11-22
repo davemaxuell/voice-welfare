@@ -35,7 +35,7 @@ it("두 브라우저 프로필에서도 한 대화만 열고 주 창을 닫으�
   } finally { await first.close(); await second.close(); await ui.reset(); }
 });
 
-it("작업 동안 한 상태 안내와 세 점만 움직이고 동작 줄이기에서는 멈춘다", async () => {
+it("작업 중에는 단계 표시의 세 점만 움직이고 동작 줄이기에서는 멈춘다", async () => {
   const page = await browser.newPage();
   const release = latch();
   try {
@@ -46,8 +46,9 @@ it("작업 동안 한 상태 안내와 세 점만 움직이고 동작 줄이기�
     const command = page.getByLabel("명령 입력 (말하듯이 입력하세요)");
     await command.fill("지금까지의 내용을 들려주세요");
     await command.press("Enter");
-    await visible(page.getByRole("status").filter({hasText: "생각 중"})).toHaveCount(1);
-    const dots = page.locator(".typing-dots i");
+    await visible(page.getByRole("status").filter({hasText: "생각 중"})).toHaveCount(0);
+    await visible(page.locator("#phase")).toHaveClass(/phase-thinking/);
+    const dots = page.locator("#phase .phase-eq i");
     await visible(dots).toHaveCount(3);
     const frames = await dots.first().evaluate(dot => dot.getAnimations().flatMap(a =>
       a.effect instanceof KeyframeEffect ? a.effect.getKeyframes() : []));
@@ -56,11 +57,11 @@ it("작업 동안 한 상태 안내와 세 점만 움직이고 동작 줄이기�
       ["offset", "computedOffset", "easing", "composite", "opacity", "transform"].includes(key)))).toBe(true);
     await page.emulateMedia({reducedMotion: "reduce"});
     await expect.poll(() => dots.first().evaluate(dot => dot.getAnimations().length)).toBe(0);
-    await visible(page.getByRole("status").filter({hasText: "생각 중"})).toHaveCount(1);
+    await visible(page.getByRole("status").filter({hasText: "생각 중"})).toHaveCount(0);
     const settled = page.waitForResponse(response => new URL(response.url()).pathname === "/api/turn");
     release.resolve();
     await (await settled).finished();
-    await visible(page.locator("#typing")).toBeHidden();
+    await visible(page.locator("#phase")).not.toHaveClass(/phase-thinking/);
   } finally { release.resolve(); await page.unrouteAll({behavior: "wait"}); await page.close(); await ui.reset(); }
 });
 

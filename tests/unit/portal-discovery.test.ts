@@ -28,7 +28,7 @@ it("find_portal은 걸러 낸 공공 누리집만 후보로 두고 그 host를 o
   const { auto, requests, opened, executed } = pilot({ [HIKOREA]: page(HIKOREA, "하이코리아") }, [
     { action: "find_portal", target: discoveryQuery },
     { action: "open_url", target: "www.hikorea.go.kr" },
-    { action: "ask_user", answer: "어느 절차를 볼까요?" },
+    { action: "ask_user", target: "user_choice", answer: "지금 어떤 비자로 체류하고 계세요?" },
   ], { discoverPortal: async query => { requestsToProvider.push(query); return MIXED; } });
   const result = await auto.run("비자 연장 절차 알려줘", context());
   expect(result.status).toBe("asked");
@@ -52,7 +52,7 @@ it("찾지 않은 host는 열지 않고 주소를 추측하지 않는다", async
 
 it("후보가 없거나 검색이 실패해도 다음 행동으로 이어진다", async () => {
   for (const discover of [async () => [], async (): Promise<PortalCandidate[]> => { throw new Error("네트워크"); }]) {
-    const { auto, requests } = pilot({}, [{ action: "find_portal", target: "비자" }, { action: "ask_user", answer: "더 알려 주세요." }], { discoverPortal: discover });
+    const { auto, requests } = pilot({}, [{ action: "find_portal", target: "비자" }, { action: "ask_user", target: "user_choice", answer: "지금 어떤 비자로 체류하고 계세요?" }], { discoverPortal: discover });
     const result = await auto.run("비자 연장", context());
     expect(result.steps[0]).toMatchObject({ action: "find_portal", ok: false });
     expect(matches(requests[1]!)).toBeUndefined();

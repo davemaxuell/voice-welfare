@@ -123,9 +123,19 @@ it("asks which service to apply for without opening the browser when the convers
   const navigate = vi.spyOn(web,"openSite");
   const practice = vi.spyOn(web,"openApplication");
   const result = await commands.start({...turn,text:redactText("신청 도와줘")});
-  expect(result).toMatchObject({semanticAction:"clarify",speech:"어떤 제도를 신청하시려고요? 제도 이름을 말씀해 주세요."});
+  expect(result).toMatchObject({semanticAction:"clarify",speech:"어떤 도움을 신청하고 싶으세요? ‘월세를 지원받고 싶어요’처럼 말씀해 주세요."});
   expect(navigate).not.toHaveBeenCalled();
   expect(practice).not.toHaveBeenCalled();
+});
+
+it("looks up a known benefit's official guide when its direct address is missing", async () => {
+  const {session, commands, turn} = scenario();
+  session.deps.practiceMode = false;
+  session.grounded = {servNm: "보조기기 지원", sources: []};
+  const browse = vi.spyOn(session.browse, "runGoal").mockResolvedValue(draft("BROWSING", "agent-handoff", "안내 페이지를 열었어요."));
+  const result = await commands.openOfficial(undefined, turn);
+  expect(browse).toHaveBeenCalledWith(expect.stringContaining("보조기기 지원"), expect.objectContaining({publicLookup: true}), {agency: "복지로"});
+  expect(result.semanticAction).toBe("agent-handoff");
 });
 
 it("executes the checked action snapshot even if another reference changes while the executor is running", async () => {
