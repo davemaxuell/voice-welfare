@@ -69,3 +69,13 @@ it("장치·재생·작업 상태를 조합해도 창과 아바타는 같은 문
   expect(states.size).toBe(8);
 });
 
+it("phase가 없는 최소 상태에서도 표시 모델과 고대비 플래그를 안전하게 만든다", () => {
+  const display = presentationOf({ sessionId: "s", state: "IDLE", consent: "granted", lang: "ko", contrast: true });
+  expect(display.task).toBe("idle");
+  expect(display.mode).toBe("ready");
+  const avatar = desktopView({ sessionId: "s", state: "IDLE", consent: "granted", lang: "ko", contrast: true }, live);
+  expect(avatar.contrast).toBe(true);
+  expect(avatar.mode).toBe("ready");
+});
+
+
