@@ -370,6 +370,8 @@ const scenarios = {
     assert.match(handoff.prompt, /에서 직접 로그인해 주세요\.$/);
     assert.deepEqual(handoff.choices.map((c) => c.label), ['로그인했어요', '인증 취소']);
     assert.equal(handoff.mic, '마이크 꺼짐');
+    assert.equal(await controller.locator('#capture-label').innerText(), handoff.mic);
+    assert.equal(await controller.locator('#task-label').innerText(), '사이트에서 직접 진행해 주세요.');
     assert.equal(await liveTracks(controller), 0, `mic tracks released at the handoff (${await trackReport(controller)})`);
     assert.equal((await windows(app)).find(isController).visible, false, 'conversation stays collapsed');
 
@@ -385,7 +387,8 @@ const scenarios = {
     }, { what: 'new card after an unchanged gate' });
     const waiting = await server(`/api/session/${sid}/state`);
     assert.equal(waiting.state, 'AUTH_HANDOFF', 'unchanged login page keeps waiting');
-    assert.ok((await logLines(controller)).some((l) => l.startsWith('나: 로그인했어요')), 'the choice is in the transcript as said');
+    const userChoice = controller.locator('#log li.user').filter({ hasText: /^나:\s+로그인했어요$/u });
+    assert.equal(await userChoice.count(), 1, '선택한 사용자의 말이 기록에 한 번 표시된다');
 
     const choicesBefore = requests.filter((r) => r.path.endsWith('/choice')).length;
     await overlay.evaluate((id) => window.cheongeumOverlay.choose(id, 'auth-done'), firstSet);

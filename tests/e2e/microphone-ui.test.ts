@@ -179,3 +179,43 @@ it("test_private_speech_mutes_existing_and_new_uploading_microphones", async () 
   })()`);
   expect(result).toEqual({"muted": true, "restored": true});
 });
+
+it("마이크 권한 대기 중 설정을 열면 거절이나 늦은 허가가 오류로 남지 않는다", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
+  try {
+    await page.goto(voice.url);
+    await screen(page.locator("#mic-btn")).toBeEnabled();
+    await page.evaluate(`(() => {
+      window.__mic = {};
+      navigator.mediaDevices.getUserMedia = () => new Promise((resolve, reject) => {
+        window.__mic.resolve = resolve;
+        window.__mic.reject = reject;
+        window.__mic.requested = true;
+      });
+    })()`);
+    await page.locator("#mic-btn").click();
+    await page.waitForFunction("window.__mic?.requested === true");
+    await screen(page.locator("#capture-label")).toHaveText("마이크 준비 중");
+    await page.evaluate("import('/src/conversation.ts').then(m => m.openSettings())");
+    await page.evaluate("window.__mic.reject(new DOMException('dismissed', 'NotAllowedError'))");
+    await page.evaluate("import('/src/conversation.ts').then(m => m.closeSettings())");
+    await screen(page.locator("#capture-label")).toHaveText("마이크 꺼짐");
+    await screen(page.locator("#error")).toBeHidden();
+
+    await page.evaluate("window.__mic.requested = false");
+    await page.locator("#mic-btn").click();
+    await page.waitForFunction("window.__mic?.requested === true");
+    await page.evaluate("import('/src/conversation.ts').then(m => m.openSettings())");
+    const readyState = await page.evaluate(`(async () => {
+      const { audioContext } = await import('/src/audio.ts');
+      const stream = audioContext().createMediaStreamDestination().stream;
+      window.__mic.resolve(stream);
+      await new Promise(r => setTimeout(r, 50));
+      return stream.getAudioTracks()[0].readyState;
+    })()`);
+    expect(readyState).toBe("ended");
+    await page.evaluate("import('/src/conversation.ts').then(m => m.closeSettings())");
+    await screen(page.locator("#capture-label")).toHaveText("마이크 꺼짐");
+    await screen(page.locator("#error")).toBeHidden();
+  } finally { await page.close(); await voice.close(); }
+});

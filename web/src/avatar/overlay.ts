@@ -8,9 +8,9 @@ import "./overlay.css";
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
   contrast: z.boolean().optional(), connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
-  mode: z.string().optional(), capture: z.string().default("off"), speaking: z.boolean().default(false), busy: z.boolean().default(false),
+  mode: z.string().optional(), capture: z.string().default("off"), captureLabel: z.string().optional(), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
-  state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(),
+  state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(), task: z.string().optional(), taskLabel: z.string().optional(),
   message: z.object({ id: z.string(), text: z.string() }).nullish(), prompt: z.string().nullish(), site: z.string().nullish(),
   choiceSetId: z.string().nullish(), choices: z.array(ChoiceSchema).default([]), pending: z.boolean().optional(),
 });
@@ -224,17 +224,17 @@ function render() {
     }
   }
   $("mic").dataset.capture = snap.capture;
-  const micLabel = snap.capture === "on" ? copy.micOn : copy.micOff;
+  const micLabel = snap.captureLabel ?? (snap.capture === "on" ? copy.micOn : copy.micOff);
   setText($("mic-text"), micLabel);
-  setText($("mic-short"), snap.capture === "on" ? copy.on : copy.off);
+  setText($("mic-short"), snap.capture === "on" ? copy.on : snap.capture === "off" ? copy.off : micLabel);
   $("mic").title = micLabel;
   const status = live ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
   // 동의는 카드의 '동의하고 음성 대화 시작'으로만(말하기 버튼이 동의가 되지 않게)
   button("talk").disabled = !live || ["ended", "starting", "consent", "auth-handoff"].includes(snap.mode ?? "");
-  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture === "on");
+  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture !== "off");
   root.classList.toggle("has-stop", $("stop").hidden === false);
   renderCard(status, copy);
-  setText($("status"), bubble !== null ? $("card-prompt").textContent ?? "" : status);
+  setText($("status"), live && snap.taskLabel !== undefined ? status : bubble !== null ? $("card-prompt").textContent ?? "" : status);
   if (focused !== null && (!focused.isConnected || (focused instanceof HTMLButtonElement && focused.disabled) || focused.closest("[hidden], [inert]") !== null)) focusFirst();
   queueGeometry();
 }
@@ -355,6 +355,17 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
   if (choices.length > 0) {
     if (message != null) seenMessages.add(message.id);
     showBubble("choices", JSON.stringify([snap.instance, snap.choiceSetId, lang]), snap.prompt ?? "");
+    if (snap.taskLabel !== undefined) {
+      let label = document.getElementById("card-task");
+      if (label === null) {
+        label = document.createElement("p");
+        label.id = "card-task";
+        label.className = "card-site";
+        $("card-prompt").after(label);
+      }
+      label.hidden = false;
+      setText(label, snap.taskLabel);
+    }
     if (shownSet !== snap.choiceSetId) {
       shownSet = snap.choiceSetId;
       const setId = snap.choiceSetId ?? "";
@@ -366,7 +377,10 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
     for (const b of $("choices").querySelectorAll("button")) b.disabled = b.dataset.open === undefined && (snap.pending === true || snap.busy);
     return;
   }
-  if ((receivedSnapshot && snap.connected !== true) || ["problem", "auth-handoff", "ended"].includes(snap.mode ?? "")) {
+  const taskLabel = document.getElementById("card-task");
+  if (taskLabel !== null) taskLabel.hidden = true;
+  if ((receivedSnapshot && snap.connected !== true) || ["problem", "auth-handoff", "ended"].includes(snap.mode ?? "") ||
+      snap.task === "stopping" || snap.capture === "requesting") {
     if (message != null) seenMessages.add(message.id);
     showBubble("status", status, status);
     return;

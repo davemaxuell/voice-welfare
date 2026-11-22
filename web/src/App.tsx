@@ -151,6 +151,8 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
         <button type="button" id="auth-cancel" key={`cancel-${auth?.cardId ?? ""}`} disabled={view.decisionDisabled} onClick={() => { if (auth !== undefined) void authChoice(auth.cardId, "auth-cancel", auth.viaCard); }}>{t("인증 취소")}</button>
       </div>
     </div>
+    {view.readMain !== undefined && <button type="button" id="read-main" disabled={view.decisionDisabled}
+      onClick={() => { if (view.readMain !== undefined) void choose(view.readMain.id, "read-main"); }}>{view.readMain.label}</button>}
     <div className="decision result" id="result-panel" role="region" aria-labelledby="result-title" hidden={view.receipt === undefined}>
       <h3 id="result-title">{t("모의접수 결과")}</h3>
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
@@ -348,7 +350,7 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
-              <p className={`phase phase-${view.conversation.phase}`} aria-live="polite" id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label">{view.conversation.phaseLabel}</span></p>
+              <p className={`phase phase-${view.conversation.phase}`} aria-live="polite" id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
             <div className="thread" id="thread" ref={thread}>
