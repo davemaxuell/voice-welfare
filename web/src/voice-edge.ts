@@ -1,8 +1,10 @@
+import { workspaceText } from "./workspace-language.ts";
 // WebRTC carries native microphone and speaker audio. The loopback websocket
 // authenticates the offer and delivers results from the application's worker.
 import { z } from "zod";
 import { api } from "./api.ts";
-import { audioContext } from "./audio.ts";
+import { timing } from "./perf.ts";
+import { getSpeechLang, audioContext } from "./audio.ts";
 import { isSpeaking, serverTts } from "./speaker.ts";
 import type { Phase } from "./view.ts";
 
@@ -48,6 +50,7 @@ export interface LiveCallbacks {
   result(result: unknown, exact: boolean | undefined): Promise<void>;
   failure(message: string): void;
   activity?(text: string): void;
+  captureChanged?(): void;
 }
 
 const LIVE_LANGS = ["ko", "en", "ja", "zh"];
@@ -79,28 +82,31 @@ export class LiveConversation {
   async start(deviceId?: string) {
     const peer = this.peer = new RTCPeerConnection();
     const signal = (this.abort = new AbortController()).signal;
+    const request = timing?.mark("microphone-requested");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: {
       echoCancellation: true, noiseSuppression: true, ...(deviceId !== undefined && deviceId.length > 0 && { deviceId: { exact: deviceId } }),
     } });
     if (this.closed) {
       stream.getTracks().forEach(track => track.stop());
-      throw new Error("대화가 종료됐어요.");
+      throw new Error(workspaceText("대화가 종료됐어요.", getSpeechLang()));
     }
     this.stream = stream;
+    if (request !== undefined && stream.getAudioTracks().some(track => track.readyState === "live")) timing?.measure(request, "track-live");
     for (const track of stream.getAudioTracks()) {
       peer.addTrack(track, stream);
-      track.onended = () => this.fail("마이크 연결이 끊겼어요.");
+      track.onended = () => this.fail(workspaceText("마이크 연결이 끊겼어요.", getSpeechLang()));
+      track.onmute = track.onunmute = () => this.callbacks.captureChanged?.();
     }
     this.updateAudio();
     this.watchBargeIn(stream);
     peer.ontrack = ({ track }) => {
       this.audio.srcObject = new MediaStream([track]);
       this.audio.play().catch(() => {
-        if (!this.closed) this.callbacks.notice("실시간 음성을 재생하려면 대화 시작을 다시 선택해 주세요.");
+        if (!this.closed) this.callbacks.notice(workspaceText("실시간 음성을 재생하려면 대화 시작을 다시 선택해 주세요.", getSpeechLang()));
       });
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "failed") this.fail("실시간 음성 연결에 실패했어요. 다시 시작하거나 한 번씩 받아쓸 수 있어요.");
+      if (peer.connectionState === "failed") this.fail(workspaceText("실시간 음성 연결에 실패했어요. 다시 시작하거나 한 번씩 받아쓸 수 있어요.", getSpeechLang()));
     };
     const channel = this.channel = peer.createDataChannel("oai-events");
     channel.onmessage = ({ data }: MessageEvent<unknown>) => {
@@ -122,7 +128,7 @@ export class LiveConversation {
           clearTimeout(timer);
           peer.removeEventListener("icegatheringstatechange", check);
           signal.removeEventListener("abort", done);
-          if (signal.aborted) reject(new Error("대화가 종료됐어요."));
+          if (signal.aborted) reject(new Error(workspaceText("대화가 종료됐어요.", getSpeechLang())));
           else resolve();
         };
         const check = () => { if (peer.iceGatheringState === "complete") done(); };
@@ -135,20 +141,20 @@ export class LiveConversation {
     if (this.closed) return;
     const socket = this.socket = api.conversationSocket(this.sessionId);
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => fail("실시간 음성 연결 시간이 초과됐어요."), 25000);
+      const timer = setTimeout(() => fail(workspaceText("실시간 음성 연결 시간이 초과됐어요.", getSpeechLang())), 25000);
       let ready = false;
       const fail = (message: string) => {
         clearTimeout(timer);
         if (!ready) reject(new Error(message)); else this.fail(message);
       };
-      signal.addEventListener("abort", () => fail("대화가 종료됐어요."), { once: true });
+      signal.addEventListener("abort", () => fail(workspaceText("대화가 종료됐어요.", getSpeechLang())), { once: true });
       socket.onopen = () => this.callbacks.offer(socket, peer.localDescription?.sdp ?? "");
       channel.onopen = () => {
         clearTimeout(timer);
         ready = true;
         resolve();
       };
-      channel.onclose = () => fail("실시간 음성 대화가 종료됐어요.");
+      channel.onclose = () => fail(workspaceText("실시간 음성 대화가 종료됐어요.", getSpeechLang()));
       socket.onmessage = async ({ data }: MessageEvent<unknown>) => {
         try {
           const msg = SocketMessageSchema.parse(JSON.parse(String(data)));
@@ -158,8 +164,8 @@ export class LiveConversation {
           if (msg.result != null && !this.closed) await this.callbacks.result(msg.result, msg.exact);
         } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
       };
-      socket.onerror = () => fail("실시간 음성 서비스에 연결할 수 없어요.");
-      socket.onclose = () => fail("실시간 음성 대화가 종료됐어요.");
+      socket.onerror = () => fail(workspaceText("실시간 음성 서비스에 연결할 수 없어요.", getSpeechLang()));
+      socket.onclose = () => fail(workspaceText("실시간 음성 대화가 종료됐어요.", getSpeechLang()));
     });
   }
 
@@ -197,6 +203,7 @@ export class LiveConversation {
   updateAudio() {
     this.audio.muted = !this.enabled || this.paused || this.interrupted || this.localSpeech;
     for (const track of this.stream?.getAudioTracks() ?? []) track.enabled = !this.paused && !this.localSpeech;
+    this.callbacks.captureChanged?.();
   }
 
   setLanguage(lang: string) {

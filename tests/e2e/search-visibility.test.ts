@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import * as browser from "../../src/agents/web/browser/index.ts";
+import { ModelTransportError } from "../../src/core/llm.ts";
+import { LOOKUP_UNAVAILABLE } from "../../src/orchestrator/public_task.ts";
 import type { OrchestratorDeps } from "../../src/orchestrator/session.ts";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { latch } from "./browser-cases.ts";
@@ -56,6 +58,23 @@ it.each([true, false])("test_quiet_search_unavailable_stays_in_conversation", as
   session.deps.quietSearch = configured ? async () => {throw new Error("timeout");} : undefined;
   const reply = await session.handleTurn(question); expect(reply.speech).toBeTruthy(); expect(reply.sources).toEqual([]); expect(reply.actions).toEqual([]);
   expect(reply.pendingConfirmation).toBeUndefined(); expect(launches).not.toHaveBeenCalled();
+});
+it("test_browser_fallback_failure_stays_in_conversation", async () => {
+  const {session, launches} = await desktop();
+  withLlm(session, new FakeLlm({public_service_decision: lookup("quiet")}));
+  session.deps.quietSearch = undefined;
+  session.deps.browsePublicSources = async () => {throw new Error("worker browser failed");};
+  const reply = await session.handleTurn(question);
+  expect(reply.speech).toBe(LOOKUP_UNAVAILABLE.ko); expect(reply.state).not.toBe("RECOVERING");
+  expect(reply.sources).toEqual([]); expect(launches).not.toHaveBeenCalled();
+});
+it("test_browser_fallback_model_outage_is_reported", async () => {
+  const {session} = await desktop();
+  withLlm(session, new FakeLlm({public_service_decision: lookup("quiet")}));
+  session.deps.quietSearch = undefined;
+  session.deps.browsePublicSources = async () => {throw new ModelTransportError(503);};
+  const reply = await session.handleTurn(question);
+  expect(reply.state).toBe("RECOVERING"); expect(reply.speech).toContain("AI 서비스"); expect(reply.sources).toEqual([]);
 });
 it("test_stop_discards_late_silent_search_answer", async () => {
   const {session, launches} = await desktop(), started = latch(), aborted = latch();

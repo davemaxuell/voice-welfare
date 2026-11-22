@@ -1,5 +1,7 @@
 // Metadata checks run on startup and daily. Both downloading and restarting require a choice.
 import type { MessageBoxOptions } from "electron";
+import type { Lang } from "../../../src/core/turn.ts";
+import { desktopText } from "./text.ts";
 import electronUpdater from "electron-updater";
 
 export const { NsisUpdater } = electronUpdater;
@@ -39,7 +41,11 @@ export interface Updates {
   menuItem(): UpdateMenuItem;
 }
 
-export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: () => void, quitting: () => boolean): Updates {
+export function createUpdates(
+  updater: Updater, dialog: Prompter, refreshTray: () => void, quitting: () => boolean,
+  language: () => Lang = () => "ko",
+): Updates {
+  const copy = () => desktopText[language()];
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
   updater.allowPrerelease = false;
@@ -54,12 +60,12 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
     refreshTray();
   }
 
-  const message = (options: MessageBoxOptions) => dialog.showMessageBox({ title: "청음 업데이트", ...options });
+  const message = (options: MessageBoxOptions) => dialog.showMessageBox({ title: copy().updateTitle, ...options });
   const reportFailure = () =>
     message({
       type: "error",
-      message: "업데이트를 완료할 수 없어요.",
-      detail: "현재 버전은 계속 사용할 수 있어요. 인터넷 연결을 확인하고 트레이에서 다시 시도해 주세요.",
+      message: copy().updateFailed,
+      detail: copy().updateRetry,
     });
   updater.on("error", () => {
     // Check/download errors reject the awaited operation. Install errors arrive as events.
@@ -80,9 +86,9 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
     setPhase("prompt");
     const { response } = await message({
       type: "question",
-      message: `청음 ${readyVersion} 설치 준비가 끝났어요.`,
-      detail: "지금 설치하면 열린 청음 작업을 종료하고 앱을 다시 시작합니다.",
-      buttons: ["나중에", "지금 설치하고 다시 시작"],
+      message: copy().installReady(readyVersion),
+      detail: copy().installDetail,
+      buttons: [copy().later, copy().installNow],
       defaultId: 0,
       cancelId: 0,
     });
@@ -106,7 +112,7 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
       const result = await updater.checkForUpdates();
       if (quitting()) return;
       if (result?.isUpdateAvailable !== true) {
-        if (manual) await message({ message: "사용할 수 있는 새 버전이 없어요." });
+        if (manual) await message({ message: copy().upToDate });
         return;
       }
       const { version, files } = result.updateInfo;
@@ -115,9 +121,9 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
       const size = files?.[0]?.size;
       const { response } = await message({
         type: "question",
-        message: `새 버전 청음 ${version}을 다운로드할까요?`,
-        detail: `GitHub Releases에서 받습니다${size !== undefined && Boolean(size) ? ` (약 ${Math.ceil(size / 1_000_000)} MB)` : ""}. 받은 뒤 설치 시점을 선택할 수 있어요.`,
-        buttons: ["나중에", "다운로드"],
+        message: copy().downloadQuestion(version),
+        detail: copy().downloadDetail(size !== undefined && size > 0 ? copy().size(Math.ceil(size / 1_000_000)) : ""),
+        buttons: [copy().later, copy().download],
         defaultId: 0,
         cancelId: 0,
       });
@@ -135,7 +141,7 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
       if (phase === "installing") setPhase("idle");
       if (!quitting() && visible) {
         if (error instanceof Error && "code" in error && error.code === "ERR_UPDATER_NO_PUBLISHED_VERSIONS") {
-          await message({ message: "아직 공개된 릴리스가 없어요." });
+          await message({ message: copy().noReleases });
         } else await reportFailure();
       }
     } finally {
@@ -145,12 +151,12 @@ export function createUpdates(updater: Updater, dialog: Prompter, refreshTray: (
 
   function menuItem(): UpdateMenuItem {
     const status: Partial<Record<Phase, string>> = {
-      checking: "업데이트 확인 중…",
-      downloading: `업데이트 다운로드 중 (${progress}%)`,
-      installing: "업데이트 설치 중…",
+      checking: copy().checking,
+      downloading: copy().downloading(progress),
+      installing: copy().installing,
     };
     return {
-      label: status[phase] ?? (readyVersion !== "" ? `청음 ${readyVersion} 설치…` : "업데이트 확인…"),
+      label: status[phase] ?? (readyVersion !== "" ? copy().installVersion(readyVersion) : copy().checkUpdates),
       enabled: phase === "idle",
       click: () => check(),
     };

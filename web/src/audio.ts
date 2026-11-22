@@ -1,3 +1,4 @@
+import { workspaceText } from "./workspace-language.ts";
 // 마이크(mic.ts)와 스피커(speaker.ts)가 함께 쓰는 것: 대화 언어와 AudioContext 하나.
 // 끼어들기 감시가 같은 채널에서 나오는 안내 소리를 기준으로 재므로 AudioContext는 하나만 둔다.
 import { LangSchema, type Lang } from "../../src/core/turn.ts";
@@ -13,7 +14,7 @@ export function setSpeechLang(lang: unknown) {
 export function getSpeechLang() { return speechLang; }
 export function audioContext() {
   const Context = window.AudioContext ?? window.webkitAudioContext;
-  if (Context === undefined) throw new Error("이 브라우저는 웹 오디오를 지원하지 않습니다.");
+  if (Context === undefined) throw new Error(workspaceText("이 브라우저는 웹 오디오를 지원하지 않습니다.", getSpeechLang()));
   return context ??= new Context();
 }
 /**

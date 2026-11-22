@@ -90,8 +90,8 @@ npm run start:desktop
 | `REQUIRE_CONSENT` | `true` | 동의 전에는 화면·음성을 쓰지 않음 |
 | `BROWSER_MODE`, `CHROME_PROFILE_DIR` | `chromium`, `~/.cheongeum/chrome-profile` | `chrome` = 설치된 크롬 + 영구 프로필 |
 | `HEADLESS`, `VISUAL_CURSOR`, `BROWSER_SLOWMO_MS` | 창 보임, 창이 보이면 켬, `0` | 시연용 |
-| `READ_ONLY_WEB`, `WEB_SEARCH_URL` | `true`, 네이버 | 지원 사이트 밖은 읽기 전용, 검색 주소 틀(`{q}`) |
-| `TAVILY_API_KEY` | 선택 | 공개 검색어로 공식 자료를 찾습니다. 키가 없거나 근거가 부족하면 AI 모델과 읽기 전용 웹 탐색이 설정된 경우 별도의 브라우저에서 공식 사이트를 확인합니다. 검색 화면을 보여 달라고 하면 현재 브라우저에서 진행합니다. |
+| `READ_ONLY_WEB`, `WEB_SEARCH_URL` | `true`, 네이버 | 지원 사이트 밖은 읽기 전용. `{q}`가 브라우저 검색 서비스에 보낼 짧은 공개 검색어로 바뀝니다. |
+| `TAVILY_API_KEY` | 선택 | 개인정보 검사를 통과한 공개 조회 목표와 후속 검색어를 Tavily에 보냅니다. 키가 없거나 근거가 부족하면 AI 모델과 읽기 전용 웹 탐색이 설정된 경우 별도의 브라우저에서 공식 사이트를 확인합니다. 검색 화면을 보여 달라고 하면 현재 브라우저에서 진행합니다. |
 | `READ_ONLY_CLICKS` | `safe` | 읽기 전용 사이트에서는 링크, 동작 이름이 아닌 탭, 위험한 이름이 없는 버튼만 허용합니다. `any`는 합성 환경에서 정책을 비교할 때 선택할 수 있습니다. |
 | `PILOT_PROFILE` | `unidentified` | 확인된 개인 OS 프로필은 `personal`로 실행하고 시작 화면에서 같은 탭 복구를 선택할 수 있습니다. `shared`와 미확인 프로필은 세션별 임시 금고와 격리된 브라우저를 사용합니다. |
 | `PORT`, `DESKTOP_PORT` | 개발 서버 `8787`, 개발 앱 `8790` | 설치본은 이전 로컬 포트를 다시 쓰고, 사용 중이면 빈 포트를 선택합니다. |
