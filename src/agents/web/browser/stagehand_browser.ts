@@ -8,8 +8,6 @@ import { z } from "zod";
 import type { Browser, LaunchOptions, Page } from "playwright";
 import type { StructuredLlm } from "../../../core/llm.ts";
 import { redactPictureText } from "../../../safety/privacy.ts";
-import { selectObservedControl, type SemanticObservation } from "./semantic_observation.ts";
-import { framesOf } from "./frame_controls.ts";
 import { AdapterError, observeWith } from "./driver.ts";
 
 export type BrowserDriver = "playwright" | "stagehand";
@@ -36,7 +34,6 @@ interface Inference {
   labels: Set<string>;
   llm: StructuredLlm;
   signal: AbortSignal;
-  semantic?: SemanticObservation;
 }
 
 // 한 브라우저에서 여러 세션이 동시에 관찰해도, 추론은 해당 요청의 모델과 중단 신호만 쓴다.
@@ -52,12 +49,6 @@ function clientModel(pending: Map<string, Inference>): ClientLLM {
     const request = token === undefined ? undefined : pending.get(token);
     if (request === undefined) throw unavailable();
     request.signal.throwIfAborted();
-    if (request.semantic !== undefined) {
-      const id = await selectObservedControl(text, request.semantic, request.signal);
-      request.signal.throwIfAborted();
-      return {role:"assistant", content:[], outputFormat:"json_schema", structuredContent:{elements:id === undefined ? [] :
-        [{elementId:id, method:"click", arguments:[], description:"고른 항목"}]}};
-    }
     const labels = text.split("\n").flatMap(line => {
       const item = /^\s*\[(\d+-\d+)\] (button|link|tab|menuitem|menuitemcheckbox|menuitemradio): (.{1,512})$/u.exec(line);
       return item === null || !request.labels.has(item[3]!) ? [] : ["[" + item[1] + "] " + item[2] + ": " + redactPictureText(item[3]!)];
@@ -75,6 +66,21 @@ interface Connection { sdk: Stagehand; pending: Map<string, Inference> }
 const connections = new WeakMap<Browser, Connection>();
 const tabs = new WeakMap<Page, Promise<{ connection: Connection; tab: StagehandPage }>>();
 
+// Playwright의 파이프가 먼저 준비될 수 있다. 이 크롬의 프로필에 포트와 브라우저 식별자가 모두 기록될 때까지 기다린다.
+async function localEndpoint(browser: Browser, profile: string): Promise<string> {
+  const marker = join(profile, "DevToolsActivePort");
+  const deadline = performance.now() + 5000;
+  do {
+    let record = "";
+    try { record = await readFile(marker, "utf8"); }
+    catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
+    const match = /^([1-9]\d{0,4})\r?\n(\/devtools\/browser\/[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12})(?:\r?\n)?$/iu.exec(record);
+    if (match !== null && Number(match[1]) <= 65535) return "ws://127.0.0.1:" + match[1] + match[2];
+    if (!browser.isConnected() || performance.now() >= deadline) throw unavailable();
+    await delay(50);
+  } while (true);
+}
+
 export async function attachStagehand(browser: Browser, isolatedContexts: boolean): Promise<void> {
   const cdp = await browser.newBrowserCDPSession();
   let handle: Awaited<ReturnType<typeof localBrowser.connect>> | undefined;
@@ -82,12 +88,11 @@ export async function attachStagehand(browser: Browser, isolatedContexts: boolea
     const { arguments: args } = await cdp.send("Browser.getBrowserCommandLine");
     const profile = args.find(arg => arg.startsWith("--user-data-dir="))?.slice("--user-data-dir=".length);
     if (profile === undefined || !args.includes("--remote-debugging-address=127.0.0.1") || !args.includes("--remote-debugging-port=0")) throw unavailable();
-    const port = Number((await readFile(join(profile, "DevToolsActivePort"), "utf8")).split(/\r?\n/u)[0]);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw unavailable();
+    const cdpUrl = await localEndpoint(browser, profile);
     const path = await extension();
     const installed = await cdp.send("Extensions.loadUnpacked", { path: path + sep, enableInIncognito: isolatedContexts });
     if (installed.id !== originId(path)) throw unavailable();
-    handle = await localBrowser.connect({ cdpUrl: "http://127.0.0.1:" + port });
+    handle = await localBrowser.connect({ cdpUrl });
     const pending = new Map<string, Inference>();
     const sdk = await Stagehand.create({ browser: handle, model: clientModel(pending), selfHeal: false, cache: false,
       logging: { level: "off" } });
@@ -130,21 +135,17 @@ export function stagehandTab(page: Page) {
 }
 
 // 셀렉터만 돌려준다. 모델이 붙인 이름·설명은 승인이나 정책에 쓰지 않는다.
-export async function observedSelectors(page: Page, instruction: string, llm: StructuredLlm, signal: AbortSignal, semantic?: SemanticObservation): Promise<string[]> {
+export async function observedSelectors(page: Page, instruction: string, llm: StructuredLlm, signal: AbortSignal): Promise<string[]> {
   const { connection, tab } = await stagehandTab(page);
   signal.throwIfAborted();
   const token = "청음-" + randomUUID();
-  const controls = semantic?.controls ?? (await observeWith(script => tab.evaluate(script)).controlWindow({ limit: 600 })).items;
+  const controls = await observeWith(script => tab.evaluate(script)).controlWindow({ limit: 600 });
   signal.throwIfAborted();
-  const labels = new Set(controls.filter(item => !item.disabled && item.pictureMasked !== true).map(item => item.name));
-  connection.pending.set(token, { instruction, llm, signal, labels, semantic });
+  const labels = new Set(controls.items.filter(item => !item.disabled && item.pictureMasked !== true).map(item => item.name));
+  connection.pending.set(token, { instruction, llm, signal, labels });
   try {
-    const mask = 'input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=searchbox], object, embed';
-    const excluded = semantic === undefined ? [mask + ', iframe, frame'] :
-      await framesOf(page).ignoredSelectors(mask + ', [inert], [hidden], [aria-hidden="true"], form:has(input[type=password])');
-    signal.throwIfAborted();
     const { data } = await connection.sdk.observe(token, { page: tab, timeout: 10_000,
-      ignoreLocators: excluded.map(selector => tab.locator(selector)) });
+      ignoreLocators: [tab.locator('input, textarea, select, [contenteditable], [role=textbox], [role=combobox], iframe, frame, object, embed')] });
     signal.throwIfAborted();
     return data.map(action => action.selector);
   } finally { connection.pending.delete(token); }

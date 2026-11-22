@@ -72,17 +72,9 @@ it("test_ambiguous_link_asks_then_number", async () => {
   expect((await session.handleTurn("2번")).observation?.url).toContain("topic=basic");
 });
 
-it("test_duplicate_link_name_driver_behavior", async () => {
-  const { session, page } = await openPortal();
-  const url = page.url();
-  const result = await session.handleTurn("자세히 보기 눌러줘");
-  if (process.env.BROWSER_DRIVER === "stagehand") {
-    expect(result.actions).toEqual([]);
-    expect(result.speech).toContain("같은 이름");
-    expect(page.url()).toBe(url);
-  } else {
-    expect(result.observation?.url).toContain("n=1");
-  }
+it("test_duplicate_link_name_opens_first", async () => {
+  const { session } = await openPortal();
+  expect((await session.handleTurn("자세히 보기 눌러줘")).observation?.url).toContain("n=1");
 });
 
 it("test_follows_new_tab", async () => {

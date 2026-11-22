@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ACTION_TYPES, type InteractiveItem, type Observation } from "../../src/core/actions.ts";
 import { ExecContext, WebExecutionAgent, type ControlWindow, type WebAdapter } from "../../src/agents/web/agent.ts";
-import { createMockWelfareProfile, normalizeTerm } from "../../src/agents/web/profile.ts";
+import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { PolicyGuard } from "../../src/safety/guard.ts";
 import { FakeLlm } from "../helpers.ts";
 
@@ -16,11 +16,6 @@ function setup(items: InteractiveItem[], scope: "general" | "public" | "personal
   const execute = vi.fn<WebAdapter["execute"]>();
   const web = new WebExecutionAgent({observe: async () => obs, async close() {}, execute,
     async controlWindow(text, _offset, options) {
-      if (options?.spokenName === true) {
-        const term = normalizeTerm(text ?? "");
-        return {...window, items: window.items.filter(item => (options.linksOnly !== true || item.role === "link") &&
-          (options.exact === true ? normalizeTerm(item.name) === term : !item.disabled && normalizeTerm(item.name).includes(term)))};
-      }
       return {...window, items: window.items.filter(item => options?.refs ? options.refs.includes(item.ref) :
         options?.ref !== undefined ? item.ref === options.ref : item.name === text)};
     },
@@ -82,62 +77,9 @@ it.each(["name", "role", "ref", "context", "url", "disabled"] as const)("모델�
 
 it.each(["public", "personal", "background"] as const)("%s 조사 범위에서는 의미로 항목을 고르지 않는다", async scope => {
   const {web, ctx} = setup([button("검색 조건 변경")], scope);
-  const find = web.adapter.findByMeaning = vi.fn(async () => undefined);
   const model = new FakeLlm({control_pick: {ref: "c1"}});
   expect((await web.followLink("범위 설정", ctx, false, {picker: {model}})).status).toBe("needs-clarification");
-  expect(find).not.toHaveBeenCalled();
   expect(model.calls).toEqual([]);
-});
-
-it("의미 관찰이 가능한 탭에서는 정확한 이름으로 찾고 중복이나 비활성 항목을 다른 대상으로 돌리지 않는다", async () => {
-  const {web, ctx, window, execute} = setup([button("검색 조건 변경"), {...button("검색 조건 변경 안내"), role: "link"},
-    button("기타 설정", "첫 번째"), button("기타 설정", "두 번째"), {...button("알림 관리"), disabled: true},
-    {...button("알림 관리 안내"), role: "link"}, button("지역 소식", "요약에 든 항목")]);
-  window.items.push(button("지역 소식", "요약 범위 밖의 동명 항목"));
-  const find = web.adapter.findByMeaning = vi.fn(async () => undefined);
-  const model = new FakeLlm();
-  const exact = await web.followLink("검색 조건 변경", ctx, false, {picker: {model}});
-  expect(exact.pending?.target).toEqual({ref: "검색 조건 변경", role: "button", name: "검색 조건 변경"});
-  for (const name of ["기타 설정", "알림 관리", "지역 소식"]) {
-    expect(await web.followLink(name, ctx, false, {picker: {model}})).toMatchObject({status: "needs-clarification", actions: []});
-  }
-  expect(find).not.toHaveBeenCalled();
-  expect(model.calls).toEqual([]);
-  expect(execute).not.toHaveBeenCalled();
-});
-
-it("요약에는 한 항목만 보여도 전체 문서의 정확한 이름이 우선이고, 부분 일치는 하나일 때만 고른다", async () => {
-  const {web, ctx, window, execute} = setup([button("지역 설정 변경 안내")]);
-  const find = web.adapter.findByMeaning = vi.fn(async () => undefined);
-  window.items.push(button("지역 설정 변경 도움말"));
-  const partial = await web.followLink("지역 설정 변경", ctx);
-  expect(partial.actions).toEqual([]);
-  expect(partial.message).toContain("지역 설정 변경 도움말");
-  window.items.push(button("지역 설정 변경"));
-  const exact = await web.followLink("지역 설정 변경", ctx);
-  expect(exact.pending?.target?.name).toBe("지역 설정 변경");
-  window.more = true;
-  const truncated = await web.followLink("지역 설정 변경", ctx);
-  expect(truncated).toMatchObject({status: "needs-clarification", actions: []});
-  expect(truncated.message).toContain("많아요");
-  expect(find).not.toHaveBeenCalled();
-  expect(execute).not.toHaveBeenCalled();
-});
-
-it.each(["선택 없음", "항목 교체", "가린 항목"])("의미 관찰 결과가 %s이면 같은 요청을 다른 모델로 실행하지 않는다", async change => {
-  const {web, ctx, window, execute} = setup([button("검색 조건 변경", "원래 항목")]);
-  const find = web.adapter.findByMeaning = vi.fn(async () => {
-    const original = window.items[0]!;
-    if (change === "선택 없음") return undefined;
-    window.items = [change === "항목 교체" ? {...original, ref: "새 항목"} : {...original, pictureMasked: true}];
-    return original;
-  });
-  const model = new FakeLlm({control_pick: {ref: "c1"}});
-  const out = await web.followLink("범위를 정하는 곳", ctx, false, {picker: {model}});
-  expect(out).toMatchObject({status: "needs-clarification", actions: []});
-  expect(find).toHaveBeenCalledTimes(1);
-  expect(model.calls).toEqual([]);
-  expect(execute).not.toHaveBeenCalled();
 });
 
 it("이미 이름이 맞거나 여러 개가 맞거나 후보가 없으면 모델을 부르지 않는다", async () => {

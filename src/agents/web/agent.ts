@@ -14,7 +14,7 @@ import {
   type InspectionSearchEvidence, type PolicyContext,
 } from "../../safety/guard.ts";
 import { AdapterError } from "./browser/index.ts";
-import { redactPictureText, redactText } from "../../safety/privacy.ts";
+import { redactText } from "../../safety/privacy.ts";
 import { speakLabel } from "../../speech/phrasing.ts";
 import type { Picture } from "../../core/picture.ts";
 import { normalizeTerm, type FieldProfile, type PageId, type SiteProfile } from "./profile.ts";
@@ -98,16 +98,11 @@ export interface WebAdapter {
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
   controlWindow?(text?: string, offset?: number, options?: {
-    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean; semanticOnly?: boolean;
-    spokenName?: boolean; linksOnly?: boolean;
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   }): Promise<ControlWindow>;
   /** 이 조작 중에 취소하거나 받아 준 사이트의 confirm() 창(한 번만 가져간다). */
   takeNative?(actionId: string): NativeSeen | undefined;
   peekNative?(actionId: string): NativeSeen | undefined;
-  frameOrigins?(ref: string): readonly string[] | undefined;
-  hasOpaqueContent?(): Promise<boolean>;
-  /** 현재 드라이버의 의미 관찰. 지원하는 드라이버가 항목을 확정하지 못하면 다른 모델에 다시 고르게 하지 않는다. */
-  findByMeaning?(name: string, linksOnly: boolean, url: string, picker: ControlPicker, signal: AbortSignal): Promise<ControlWindow["items"][number] | undefined>;
   /** 대신 답할 수 있는 confirm() 기록을 모두 버린다. */
   dropNative?(): void;
   inspectionSearch?(fieldId: string): Promise<InspectionSearchEvidence | undefined>;
@@ -270,38 +265,12 @@ export class WebExecutionAgent {
       const exact = pool.filter(item => normalizeTerm(item.name) === term);
       const matches = exact.length > 0 ? exact : pool.filter(item => [...term].length >= 2 && normalizeTerm(item.name).includes(term));
       const hits = [...new Set(matches.map(item => item.name))];
-      const same = hits.length === 1 ? all.filter(i => i.name === hits[0] && (!linksOnly || i.role === "link")) : [];
-      const repeatedFrameName = same.length > 1 && same.some(i => /^(?:f-|s\d+-)/u.test(i.ref));
-      if (hits.length > 0) return { item: hits.length === 1 && !repeatedFrameName ? matches[0] : undefined, hits };
+      if (hits.length > 0) return { item: hits.length === 1 ? matches[0] : undefined, hits };
     }
     return { item: undefined, hits: [] };
   }
 
-  private async locateSpokenName(view: PageView, name: string, linksOnly: boolean) {
-    const term = normalizeTerm(name);
-    if (term.length === 0 || term.length > 60 || !this.adapter.controlWindow) return {hits: []};
-    for (const exact of [true, false]) {
-      if (!exact && [...term].length < 2) break;
-      const window = await this.adapter.controlWindow(term, 0, {spokenName: true, linksOnly, exact});
-      if (window.url !== view.url) return {hits: [], message: "화면이 바뀌었어요. 지금 화면에서 다시 골라 주세요."};
-      if (window.more) return {hits: [], message: "맞는 항목이 많아요. 원하는 항목의 이름을 조금 더 말씀해 주세요."};
-      if (window.items.length === 0) continue;
-      const matches = window.items.filter(item => !item.disabled);
-      if (matches.length === 0) return {hits: [], message: "그 항목은 지금 누를 수 없어요. 다른 항목을 말씀해 주세요."};
-      const hits = [...new Set(matches.map(item => item.name))];
-      if (hits.length > 1 && (hits.length !== matches.length || matches.some(match => view.outline?.items?.some(item => item.ref === match.ref) !== true))) {
-        // 요약에 없는 후보는 번호 선택지로 묶을 수 없으므로 화면에서 읽은 이름으로 묻는다.
-        const labels = hits.slice(0, 2).map(label => "'" + redactPictureText(label) + "'").join(", ");
-        return {hits: [], message: labels + " 같은 항목이 있어요. 원하는 이름을 말씀해 주세요."};
-      }
-      return {item: matches.length === 1 ? matches[0] : undefined, hits};
-    }
-    return {hits: []};
-  }
-
   private notLocated(view: PageView, name: string, hits: string[]): WebOutcome {
-    if (hits.length === 1) return {status: "needs-clarification", actions: [], view,
-      message: "같은 이름의 항목이 여러 개예요. 화면에서 원하는 항목을 직접 선택해 주세요."};
     const message = hits.length === 0 ? `'${name}' 링크를 이 화면에서 찾지 못했습니다.` : `'${name}'에 맞는 링크가 ${hits.length}개입니다.`;
     return { status: "needs-clarification", actions: [], view, message, candidates: hits.slice(0, 5) };
   }
@@ -325,9 +294,9 @@ export class WebExecutionAgent {
     }
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
     if (matchedControl !== undefined) {
-      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref, semanticOnly:matchedControl.requireUnmasked });
+      const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref });
       const requireUnmasked = visual || matchedControl.requireUnmasked === true;
-      item = fresh?.items.find(it => !it.disabled && (!linksOnly || it.role === "link") && (!requireUnmasked || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
+      item = fresh?.items.find(it => !it.disabled && (!requireUnmasked || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
         it.context === matchedControl.context);
       if (item === undefined || fresh?.url !== matchedControl.url || fresh.url !== view.url) {
         return { status: "needs-clarification", actions: log, view, message: "고른 항목이 바뀌었어요. 현재 화면에서 다시 찾아 주세요." };
@@ -340,34 +309,19 @@ export class WebExecutionAgent {
       }
       item = only;
     } else {
-      const find = this.adapter.findByMeaning;
-      const located = find === undefined ? this.locate(view, name, false, linksOnly) : await this.locateSpokenName(view, name, linksOnly);
-      if ("message" in located && located.message !== undefined) return {status: "needs-clarification", actions: log, view, message: located.message};
+      const located = this.locate(view, name, false, linksOnly);
       item = located.item;
-      if (item === undefined && located.hits.length === 0 && normalizeTerm(name).length > 0 && this.adapter.controlWindow !== undefined) {
-        if (find === undefined) {
-          const window = await this.adapter.controlWindow(name, 0, {exact: true});
-          const candidates = window.items.filter(it => !it.disabled && (!linksOnly || it.role === "link"));
-          if (window.url !== view.url || window.more || candidates.length > 1) return this.notLocated(view, name, []);
-          item = candidates[0];
-        }
-        if (item === undefined && picker && !visual &&
+      if (item === undefined && located.hits.length === 0 && strip(name).length > 0 && this.adapter.controlWindow !== undefined) {
+        const window = await this.adapter.controlWindow(name, 0, { exact: true });
+        const candidates = window.items.filter(it => !it.disabled && (!linksOnly || it.role === "link"));
+        if (window.url === view.url && candidates.length === 1 && !window.more) item = candidates[0];
+        if (picker && candidates.length === 0 && !window.more && window.url === view.url && !visual &&
           !ctx.publicLookup && this.guard.config.publicLookupOnly !== true && ctx.browsingScope === undefined && !ctx.isStopped()) {
-          const picked = find === undefined
-            ? await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal)
-            : await find.call(this.adapter, name, linksOnly, view.url, picker, ctx.signal);
+          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal);
           if (picked) return this.followLink(picked.name, ctx, linksOnly, { matchedControl: { ...picked, url: view.url, requireUnmasked: true } });
         }
       }
-      if (item === undefined) {
-        if (located.hits.length === 0 && await this.adapter.hasOpaqueContent?.() === true) return {
-          status:"needs-clarification", actions:log, view,
-          message:"읽을 수 없는 영역이 있어요. 다른 항목 이름을 말씀하시거나 화면에서 직접 선택해 주세요.",
-        };
-        if (located.hits.length === 0 && find !== undefined) return {status: "needs-clarification", actions: log, view,
-          message: "어느 항목인지 고르기 어려워요. '링크 목록 알려줘'라고 말씀해 주세요."};
-        return this.notLocated(view, name, located.hits);
-      }
+      if (item === undefined) return this.notLocated(view, name, located.hits);
     }
     if (plan) {
       const target = plan.action.target;
@@ -388,8 +342,7 @@ export class WebExecutionAgent {
       const plain = this.action({ type: "click", target: { ...target }, reason: `'${item.name}' 누르기(${item.role})` });
       const checked = await this.observedAction(plain, ctx.signal, click);
       if (checked === undefined) return this.failed(log, result, view);
-      const policy = this.guard.check(checked, { ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted),
-        frameOrigins: checked.target?.ref === undefined ? undefined : this.adapter.frameOrigins?.(checked.target.ref) });
+      const policy = this.guard.check(checked, this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted));
       if (policy.code === "NEEDS_CONFIRMATION") {
         log.push({ agent: this.id, action: plain, policy });
         return this.failed(log, undefined, view);
@@ -408,9 +361,7 @@ export class WebExecutionAgent {
   async pointAt(name: string, ctx: ExecContext, preferButton = false): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
-    const located = this.adapter.findByMeaning === undefined ? this.locate(view, name, preferButton) : await this.locateSpokenName(view, name, false);
-    if ("message" in located && located.message !== undefined) return {status: "needs-clarification", actions: log, view, message: located.message};
-    const {item, hits} = located;
+    const { item, hits } = this.locate(view, name, preferButton);
     if (item === undefined) return this.notLocated(view, name, hits);
     const target = { ref: item.ref, role: item.role, name: item.name };
     const focus = this.action({ type: "focus", target, reason: `'${item.name}'(으)로 이동` });
@@ -780,7 +731,6 @@ export class WebExecutionAgent {
       ? { allowed: false, code: "DENIED_INSPECTION_CHANGED", reason: "여쭤본 뒤에 항목이나 화면이 바뀌어서 누르지 않았어요." }
       : this.guard.check(checked, {
         ...this.policyContext(ctx, ctx.isStopped() || ctx.signal.aborted), inspection, inspectionApproved: approved && matches,
-        frameOrigins: checked.target?.ref === undefined ? undefined : this.adapter.frameOrigins?.(checked.target.ref),
         notice: grants?.notice, native: grants?.native, plan: grants?.plan,
       }));
     if (policy.code === "NEEDS_CONFIRMATION" && inspection !== undefined) {

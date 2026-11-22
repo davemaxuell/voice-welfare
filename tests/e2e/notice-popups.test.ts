@@ -127,13 +127,7 @@ it("직접 '확인'을 누르라고 하면 안내 팝업은 묻지 않고 누른
 it("같은 이름의 단추가 화면에 또 있으면 어느 것인지 모호해 묻는다", async () => {
   const { page, agent } = await open({ "/page": html(popup(), "<button type=\"button\" id=\"other\">확인</button>") });
   const out = await agent.followLink("확인", context());
-  if (process.env.BROWSER_DRIVER === "stagehand") {
-    expect(out.status).toBe("needs-clarification");
-    expect(out.pending).toBeUndefined();
-    expect(out.actions).toHaveLength(0);
-  } else {
-    expect(out.status).toBe("needs-approval");
-  }
+  expect(out.status).toBe("needs-approval");
   expect(await clicks(page)).toBe(0);
 });
 
