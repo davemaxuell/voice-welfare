@@ -53,12 +53,23 @@ export type ObservedField = z.infer<typeof ObservedFieldSchema>;
 
 export const StepInfoSchema = z.object({ index: integer.positive(), total: integer.positive(), name: z.string() });
 export type StepInfo = z.infer<typeof StepInfoSchema>;
-export const DialogInfoSchema = z.object({ title: z.string(), text: z.string(), buttons: z.array(z.string()) });
+export const DIALOG_KINDS = ["dialog", "layer"] as const;
+// 팝업 사실(선택): 생략은 '모른다'이고 false는 '확인했고 없다'이다. 생략을 false로 읽지 않는다.
+// kind: ARIA 대화상자·<dialog>는 "dialog", 화면 위에 뜬 레이어 팝업은 "layer".
+// hasInputs: 팝업 안에 입력 칸·양식·안을 볼 수 없는 iframe·shadow root가 있거나 팝업 단추가 어떤 양식에(밖의 양식을 가리키는 button[form] 포함) 속하면 true. 모르면 true 쪽으로 기울인다.
+// buttons: 보이는 단추(button·[role=button]·입력 단추)를 하나씩 담는다. 이름이 없으면 빈 문자열, 이름이 같으면 그대로 여럿이고 6개까지만 남는다.
+export const DialogInfoSchema = z.object({
+  title: z.string(), text: z.string(), buttons: z.array(z.string()),
+  hasInputs: optional(z.boolean()), kind: optional(z.enum(DIALOG_KINDS)),
+}).transform(omitAbsent);
 export type DialogInfo = z.infer<typeof DialogInfoSchema>;
+export type DialogKind = (typeof DIALOG_KINDS)[number];
+// dialog: 이 요소가 들어 있는 팝업의 자리(같은 관찰의 dialogs 배열 번호). 팝업 밖이거나 모르면 생략.
 export const InteractiveItemSchema = z.object({
   ref: z.string(), role: z.enum([...LINK_ROLES, "button", "tab", "menuitem", "generic"]), name: z.string(),
   region: z.enum(["main", "menu", "other"]), disabled: z.boolean(), searchResult: optional(z.boolean()),
   selected: optional(z.boolean()), expanded: optional(z.boolean()), pictureMasked: optional(z.boolean()),
+  dialog: optional(natural),
 }).transform(omitAbsent);
 export type InteractiveItem = z.infer<typeof InteractiveItemSchema>;
 export type ItemRole = InteractiveItem["role"];
