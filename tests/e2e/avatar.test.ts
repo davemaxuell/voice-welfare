@@ -1,4 +1,5 @@
 import { chromium, expect as check, type Browser, type Page } from "@playwright/test";
+import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { z } from "zod";
 import { REPO_ROOT, axeScript } from "../../src/core/assets.ts";
@@ -43,8 +44,41 @@ window.cheongeumDesktop = {
   onAction: cb => { window.__act = cb; },
 };`;
 const snapshot = z.object({ mode: z.string(), choices: z.array(z.object({ label: z.string() })), choiceSetId: z.string().nullish(),
-  prompt: z.string().nullish(), revision: z.number(), sleeping: z.boolean(), message: z.unknown() });
+  prompt: z.string().nullish(), revision: z.number(), sleeping: z.boolean(), message: z.unknown(), micDiagnostic: z.string().optional() });
 async function latest() { return snapshot.parse(await page.evaluate("window.__published.at(-1)")); }
+
+it("배경 창에서 마이크를 열 수 없으면 아바타에 복구 방법을 표시하고 음성 설정을 따른다", async () => {
+  const background = await startUi(true, { REQUIRE_CONSENT: "false", PRACTICE_MODE: "false" });
+  try {
+    await page.addInitScript(fakeDesktop);
+    await page.route(url => url.pathname === "/src/mic.ts" && !url.searchParams.has("original"), route => route.fulfill({
+      contentType: "text/javascript",
+      body: `export * from "/src/mic.ts?original";
+        export class VoiceLoop { async start() { throw Error("연습 장치"); } stop() {} }`,
+    }));
+    const speech: string[] = [];
+    await page.route("**/api/audio/speak", async route => {
+      const request = z.object({ text: z.string() }).parse(route.request().postDataJSON());
+      speech.push(request.text);
+      await route.fulfill({ path: join(REPO_ROOT, "web", "public", "cues", "done.ogg"), contentType: "audio/ogg" });
+    });
+    await page.goto(background.url + "?background=1");
+    await check(page.locator("#send")).toBeEnabled();
+    await page.locator("#conv-start").click();
+    await check.poll(() => speech.some(text => text.includes("마이크 연결"))).toBe(true);
+    await check(page.locator("#error")).not.toHaveAttribute("role", "alert");
+    await check.poll(latest).toMatchObject({ micDiagnostic: expect.stringContaining("마이크 선택") });
+    await check.poll(() => speech.some(text => text.includes("마이크 선택"))).toBe(true);
+    await page.locator("#tts-toggle").click();
+    const before = speech.length;
+    await page.locator("#conv-start").click();
+    await check(page.locator("#error")).toHaveAttribute("role", "alert");
+    await check.poll(latest).toMatchObject({ micDiagnostic: expect.stringContaining("마이크 선택") });
+    expect(speech).toHaveLength(before);
+  } finally {
+    await background.close();
+  }
+});
 const choose = (id: string | null | undefined, key: string, times = 1) => page.evaluate(
   "for (let i=0; i<" + times + "; ++i) window.__act(" + JSON.stringify({ type: "choose", choiceSetId: id, key }) + ")"
 );
@@ -68,6 +102,30 @@ async function pixels(element: Element) {
   }
   return { src: element.src, width, height, w: element.naturalWidth, h: element.naturalHeight, foot, head: top + head };
 }
+
+it("아바타의 작업 상태가 바뀔 때만 한 번 알린다", async () => {
+  await overlay();
+  await snap(1, { taskLabel: "연습 준비", status: "연습 준비" });
+  const status = page.locator("#status");
+  await check(status).toHaveText("연습 준비");
+  const changes = await status.evaluateHandle(el => {
+    const messages: string[] = [];
+    new MutationObserver(rows => { messages.push(...rows.map(() => el.textContent ?? "")); })
+      .observe(el, { childList: true, characterData: true, subtree: true });
+    return messages;
+  });
+  const labels = ["화면 확인", "입력 확인", "승인 대기", "연습 진행", "안내 완료", "다음 요청 대기"];
+  for (const [index, label] of labels.entries()) {
+    await snap(2 * index + 2, { taskLabel: label, status: label });
+    await check(status).toHaveText(label);
+    await snap(2 * index + 3, { taskLabel: label, status: label, captureLabel: "마이크 꺼짐" });
+  }
+  expect(await changes.jsonValue()).toEqual(labels);
+  await snap(20, { mode: "problem", status: "문제가 생겼어요.", taskLabel: "문제가 생겼어요.",
+    micDiagnostic: "마이크 선택에서 장치를 확인해 주세요." });
+  await check(page.locator("#card-prompt")).toHaveText("마이크 선택에서 장치를 확인해 주세요.");
+  await check(status).toHaveText("문제가 생겼어요.");
+});
 
 it("test_all_animation_frames_fit_the_desktop_portrait", async () => {
   await overlay(false); await send("prefs", { corner: "top-right", still: true });
@@ -328,4 +386,15 @@ it("test_voice_approval_binds_to_the_decision_shown_when_listening_began", async
   await check(page.locator("#fields")).not.toContainText("입력됨: 김하늘");
   await page.waitForFunction("window.__listening === true");
   await page.evaluate("window.__say('응')"); await check(page.locator("#fields")).toContainText("입력됨: 김하늘", { timeout:20000 });
+});
+
+it("마이크 권한 대기·일시중지·오류 상태에서도 아바타 멈춰 버튼을 보여 준다", async () => {
+  await overlay();
+  await send("prefs", { corner: "bottom-right", still: true });
+  await snap(1, { capture: "off", busy: false, speaking: false });
+  await check(page.locator("#stop")).toBeHidden();
+  for (const [i, capture] of (["requesting", "paused", "error"] as const).entries()) {
+    await snap(i + 2, { capture, busy: false, speaking: false });
+    await check(page.locator("#stop")).toBeVisible();
+  }
 });

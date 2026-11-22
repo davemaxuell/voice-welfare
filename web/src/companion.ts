@@ -1,6 +1,7 @@
 // 화면 위 아바타에는 현재 선택지와 짧은 안내만 표시한다.
 // 입력값·파일 이름·받아쓴 글·화면 원문은 넣지 않는다. 승인 내용은 대화 창의 검토 화면에서 본다.
 import type { SessionState } from "../../src/core/turn.ts";
+import { presentationOf, type Capture, type PresentationInput } from "./presentation.ts";
 import type { ApprovalKind, Turn } from "./api.ts";
 import { workspaceText } from "./workspace-language.ts";
 
@@ -125,16 +126,10 @@ export function turnNotice(turn: Turn): string | null {
   return t("답변이 도착했어요. 저를 누르면 읽을 수 있어요.");
 }
 
-export interface ViewInput extends DecisionInput {
-  contrast?: boolean;
-  busy: boolean;
-  phase: string;
-  listening: boolean;
-  error?: string | undefined;
-}
+export type ViewInput = PresentationInput;
 /** 대화 창 밖(ui 밖)에서 대화 창이 알고 있는 것 */
 export interface LiveView {
-  capture: "on" | "off";
+  capture: Capture;
   speaking: boolean;
   recording: boolean;
   message: { id: string; text: string } | null;
@@ -144,39 +139,30 @@ export interface LiveView {
   pending: boolean;
 }
 
-const hasError = (ui: ViewInput) => ui.error !== undefined && ui.error.length > 0;
-type Mode = "starting" | "ended" | "consent" | "auth-handoff" | "choice" | "problem" | "ready" | "working" | "speaking" | "listening";
-/** 한 줄 상태와 모드. 모드 순서가 곧 우선순위다. */
-const MODES: readonly [Mode, (ui: ViewInput, live: LiveView) => boolean, (ui: ViewInput, live: LiveView) => string][] = [
-  ["starting", (ui) => ui.sessionId === undefined && ui.consent === "loading" && !hasError(ui), () => "청음을 준비하는 중이에요."],
-  ["ended", (ui) => ui.sessionId === undefined && !hasError(ui), () => "이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요."],
-  ["consent", (ui) => ui.consent === "intro" || ui.consent === "ask", () => "시작 전에 동의가 필요해요."],
-  ["auth-handoff", (ui) => ui.last?.authHandoff?.status === "waiting", () => "사이트에서 직접 진행해 주세요."],
-  ["choice", (_ui, live) => live.card !== undefined, () => "선택을 기다리고 있어요."],
-  ["problem", (ui) => hasError(ui), (ui) => String(ui.error).slice(0, 120)],
-  ["ready", (_ui, live) => live.sleeping, () => "멈췄어요."],
-  ["working", (ui) => ui.busy || ui.phase === "thinking" || ui.phase === "starting", () => "처리하는 중이에요."],
-  ["speaking", (ui, live) => live.speaking || ui.phase === "speaking", () => "말하는 중이에요."],
-  ["listening", (ui, live) => ui.phase === "listening" || ui.phase === "hearing" || ui.listening || live.recording, () => "듣는 중이에요. 말씀하세요."],
-  ["ready", () => true, (ui, live) => {
-    if (ui.consent === "declined") return "음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.";
-    if (live.capture === "on") return "대화 중이에요.";
-    return "기다리고 있어요.";
-  }],
-];
 
 /** 아바타 창에 보내는 표시 상태. */
 export function desktopView(ui: ViewInput, live: LiveView) {
-  const [mode, , status] = MODES.find(([, when]) => when(ui, live)) ?? MODES[MODES.length - 1] ?? ["ready", () => true, () => ""];
-  const card = live.card;
-  const busy = ui.busy || ui.phase === "thinking";
+  const display = presentationOf({ ...ui, capture: ui.capture ?? live.capture, speaking: ui.speaking ?? live.speaking,
+    sleeping: ui.sleeping ?? live.sleeping, listening: ui.listening === true || live.recording, card: live.card });
+  const { mode } = display;
+  const t = (key: string) => workspaceText(key, ui.lang);
+  const status = mode === "starting" ? t("청음을 준비하는 중이에요.") : mode === "ended" ? t("이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요.")
+    : mode === "consent" ? t("시작 전에 동의가 필요해요.")
+    : mode === "ready" && display.task === "idle" && ui.consent === "declined"
+      ? t("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.") : t(display.taskKey);
+  const offline = ui.offline === true, unconfirmed = ui.cancelUnconfirmed === true;
+  const card = offline || unconfirmed ? undefined : live.card;
+  const busy = !offline && !unconfirmed && (ui.busy === true || ui.phase === "thinking");
   const sleeping = live.sleeping && mode === "ready";
   return {
-    connected: true,
+    connected: !offline,
     contrast: ui.contrast === true,
     mode,
-    capture: live.capture,
-    speaking: live.speaking || ui.phase === "speaking",
+    capture: display.capture,
+    captureLabel: t(display.captureKey),
+    playback: display.playback,
+    task: display.task,
+    speaking: display.playback === "speaking",
     busy,
     sleeping,
     // 청음 소개 중이면 줄마다 정한 동작(말하는 동안에도 이 동작을 보인다)
@@ -185,12 +171,14 @@ export function desktopView(ui: ViewInput, live: LiveView) {
     lang: ui.lang,
     state: ui.state,
     reading: ui.state === "BROWSING" && ui.last?.semanticAction === "read-main",
-    status: workspaceText(status(ui, live), ui.lang),
-    message: card !== undefined || ui.sessionId === undefined || mode === "problem" || sleeping ? null : live.message,
-    prompt: card?.prompt ?? null,
+    status,
+    reconnectLabel: offline ? t("다시 연결") : undefined,
+    taskLabel: t(display.taskKey),
+    message: offline || unconfirmed || card !== undefined || ui.sessionId === undefined || mode === "problem" || sleeping ? null : live.message,
+    prompt: offline ? t("연결이 끊겼어요") : card?.prompt ?? null,
     site: card?.site ?? null,
-    choiceSetId: card?.id ?? null,
-    choices: card !== undefined ? card.choices.map(({ key, label, open }) => (open !== undefined ? { key, label, open } : { key, label })) : [],
+    choiceSetId: offline ? "reconnect" : card?.id ?? null,
+    choices: offline ? [{ key: "reconnect", label: t("다시 연결") }] : card !== undefined ? card.choices.map(({ key, label, open }) => (open !== undefined ? { key, label, open } : { key, label })) : [],
     pending: card !== undefined && live.pending,
   };
 }

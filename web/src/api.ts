@@ -1,4 +1,4 @@
-import { workspaceText } from "./workspace-language.ts";
+import { issueText, workspaceText } from "./workspace-language.ts";
 import { getSpeechLang } from "./audio.ts";
 // 서버와 주고받는 모든 요청. 응답은 여기서 zod로 검증해 화면이 쓰는 모양으로만 넘긴다(Python server/app.py의 계약).
 import { z } from "zod";
@@ -110,19 +110,22 @@ export type Note = z.infer<typeof NoteSchema>;
 export const WorkspaceSchema = z.object({ jobs: z.array(JobSchema), notes: z.array(NoteSchema) });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
-/** 서버가 돌려준 오류: code는 서버의 오류 이름(error), status는 HTTP 상태. */
+export type ErrorKind = "network" | "timeout" | "server" | "expired";
+const errors = { network: issueText.offline, timeout: issueText.timeout, server: issueText.turnFailed, expired: issueText.expired } as const;
+
 export class ApiError extends Error {
-  code: string | undefined;
-  status: number | undefined;
-  constructor(message: string, code?: string, status?: number) {
-    super(message);
-    this.code = code;
-    this.status = status;
+  readonly kind: ErrorKind;
+  readonly code: string | undefined;
+  readonly status: number | undefined;
+  constructor(kind: ErrorKind, code?: string, status?: number) {
+    super(workspaceText(errors[kind], getSpeechLang()));
+    this.kind = kind; this.code = code; this.status = status;
   }
 }
 export const errorCode = (error: unknown) => error instanceof ApiError ? error.code : undefined;
 export const errorStatus = (error: unknown) => error instanceof ApiError ? error.status : undefined;
-export const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+export const errorMessage = (error: unknown) => workspaceText(errors[error instanceof ApiError ? error.kind : "server"], getSpeechLang());
+let report: ((path: string, error?: ApiError, sessionId?: string) => void) | undefined;
 
 let writer: string | undefined;
 let requestSeq = 0;
@@ -131,27 +134,39 @@ function headers(values: Record<string, string> = {}): Record<string, string> {
   return { ...(writer !== undefined && writer.length > 0 ? { "X-Cheongeum-Writer": writer } : {}), ...values };
 }
 
-async function fetchOnceRetried(path: string, init: RequestInit) {
-  try {
-    return await fetch(path, init);
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    return fetch(path, init);
-  }
+async function failure(res: Response): Promise<never> {
+  const body = z.object({ error: z.string().optional() })
+    .catch({}).parse(await res.json().catch(() => ({})));
+  const expired = res.status === 410 || body.error === "CHOICE_EXPIRED" || body.error === "NO_SESSION";
+  throw new ApiError(expired ? "expired" : "server", body.error, res.status);
 }
 
-async function failure(res: Response): Promise<never> {
-  const body = z.object({ message: z.string().optional(), error: z.string().optional() })
-    .catch({}).parse(await res.json().catch(() => ({})));
-  throw new ApiError(body.message ?? workspaceText("요청 실패 ({status})", getSpeechLang(), { status: res.status }), body.error, res.status);
+// 응답 본문까지 같은 기한을 적용한다. 사용자가 직접 취소한 파일 작업은 연결 장애로 표시하지 않는다.
+async function request<T>(path: string, init: RequestInit, read: (response: Response) => Promise<T>, sessionId?: string): Promise<T> {
+  const deadline = new AbortController();
+  const longRequest = path.includes("/turn") || path.includes("/recording") || path.includes("/confirm") || path.includes("/choice") || path.includes("/audio/stop");
+  const timer = setTimeout(() => deadline.abort(), longRequest ? 90_000 : 12_000);
+  const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
+  try {
+    const res = await fetch(path, { ...init, signal });
+    if (!res.ok) await failure(res);
+    const data = await read(res);
+    report?.(path, undefined, sessionId);
+    return data;
+  } catch (cause) {
+    if (init.signal?.aborted === true) throw cause;
+    const error = deadline.signal.aborted ? new ApiError("timeout") : cause instanceof ApiError ? cause
+      : new ApiError(cause instanceof TypeError ? "network" : "server");
+    report?.(path, error, sessionId);
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 
 interface CallInit { method?: string; body?: BodyInit | undefined; headers?: Record<string, string>; signal?: AbortSignal }
-async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, retry = false): Promise<T> {
+async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, numbered = false, sessionId?: string): Promise<T> {
   const opts = { ...init, headers: headers({ ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}), ...init.headers }) };
-  if (retry && path !== "/api/session/recover") opts.headers["X-Cheongeum-Request"] = String(++requestSeq);
-  const res = await (retry ? fetchOnceRetried(path, opts) : fetch(path, opts));
-  return res.ok ? schema.parse(await res.json()) : failure(res);
+  if (numbered && path !== "/api/session/recover") opts.headers["X-Cheongeum-Request"] = String(++requestSeq);
+  return request(path, opts, async res => schema.parse(await res.json()), sessionId);
 }
 const post = (body?: unknown): CallInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -165,11 +180,12 @@ function liveAudio(sessionId: string): LiveAudio {
   const pending: ArrayBuffer[] = [];
   let committed = false;
   let cancelled = false;
+  let receiptTimer: ReturnType<typeof setTimeout> | undefined;
   let resolve: (receipt: string) => void = () => {};
   let reject: (error: Error) => void = () => {};
   const receipt = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
-  receipt.catch(() => {}); // The recording may be cancelled before anyone requests its result.
-  const lost = () => reject(new Error(workspaceText("실시간 받아쓰기 연결이 끊겼어요. 다시 말씀해 주세요.", getSpeechLang())));
+  void receipt.finally(() => clearTimeout(receiptTimer)).catch(() => {});
+  const lost = () => reject(new ApiError("network"));
   socket.onopen = () => {
     if (cancelled) { socket.close(); return; }
     socket.send(JSON.stringify({ writer: writer ?? "" }));
@@ -181,7 +197,7 @@ function liveAudio(sessionId: string): LiveAudio {
     try {
       const msg = ReceiptSchema.parse(JSON.parse(String(data)));
       if (msg.receipt !== undefined && msg.receipt.length > 0) resolve(msg.receipt);
-      else reject(new ApiError(msg.message ?? "", msg.error));
+      else reject(new ApiError("server", msg.error));
     } catch { lost(); }
   };
   socket.onerror = lost;
@@ -193,6 +209,7 @@ function liveAudio(sessionId: string): LiveAudio {
       else if (socket.readyState === WebSocket.CONNECTING) pending.push(frame);
     },
     commit() {
+      if (!committed && !cancelled) receiptTimer = setTimeout(() => { reject(new ApiError("timeout")); socket.close(); }, 30_000);
       if (!committed && !cancelled && socket.readyState === WebSocket.OPEN) socket.send("commit");
       committed = true;
       return receipt;
@@ -214,12 +231,13 @@ const ok = z.object({ ok: z.boolean() });
 const saved = z.object({ saved: z.boolean() });
 
 export const api = {
+  onConnection: (listener: NonNullable<typeof report>) => { report = listener; },
   parseTurn: (raw: unknown) => TurnSchema.parse(raw),
   workspace: (id: string, path = "", method = "GET", data?: unknown) => call(z.unknown(), `/api/session/${sid(id)}/workspace${path}`,
     { method, body: data !== undefined ? JSON.stringify(data) : undefined }),
   recording: (id: string, file: Blob, type: string, signal: AbortSignal) => call(z.object({ text: z.string() }), `/api/audio/recording?sessionId=${sid(id)}`, {
     method: "POST", headers: { "Content-Type": type }, body: file, signal,
-  }),
+  }, false, id),
   liveAudio,
   /** 실시간 음성 대화(WebRTC)의 제안·결과를 주고받는 연결. */
   conversationSocket: (id: string) => {
@@ -238,48 +256,53 @@ export const api = {
   resume: (id: string) => call(CheckpointSchema, `/api/session/${id}/resume`, post(), true),
   wake: (id: string, stopGeneration: number) => call(z.object({ state: SessionStateSchema }), `/api/session/${id}/wake`, post({ stopGeneration }), true),
   heartbeat: (id: string) => call(ok, `/api/session/${id}/heartbeat`),
+  sessionState: (id: string) => call(z.object({ state: SessionStateSchema, stopGeneration: opt(z.number()),
+    pendingConfirmation: opt(PendingSchema), authHandoff: opt(AuthHandoffSchema), turnId: opt(text),
+    offeredChoices: opt(z.array(z.object({ key: text, label: text }))) }), `/api/session/${sid(id)}/state`),
   end: (id: string) => call(z.unknown(), `/api/session/${id}`, { method: "DELETE" }),
   detach: (id: string) => {
-    void fetch(`/api/session/${id}/detach`, { method: "POST", headers: headers(), keepalive: true }).catch(() => undefined);
+    void request(`/api/session/${id}/detach`, { method: "POST", headers: headers(), keepalive: true }, async () => undefined).catch(() => undefined);
   },
   /** 녹음을 보내 받아쓰기+턴 처리를 한 번에. 받아쓴 원문은 돌아오지 않는다. */
   async audioTurn(sessionId: string, audio: LiveAudio, actionId = "") {
     const clip = await audioBody(audio);
-    const res = await fetchOnceRetried(`/api/audio/turn?sessionId=${sid(sessionId)}`, {
+    return request(`/api/audio/turn?sessionId=${sid(sessionId)}`, {
       method: "POST",
       headers: headers({ "Content-Type": clip.type, "X-Cheongeum-Action": actionId,
         "X-Cheongeum-Request": String(++requestSeq) }),
       body: clip.body,
-    });
-    return res.ok ? TurnSchema.parse(await res.json()) : failure(res);
+    }, async res => TurnSchema.parse(await res.json()), sessionId);
   },
   /** 일하는 동안 들은 말을 보낸다. 멈춤 말이면 멈추고, 진행 상황 물음이면 바로 답하고(result), 그 밖의 말은 버린다. */
   async audioStop(sessionId: string, audio: LiveAudio) {
     const clip = await audioBody(audio);
-    const res = await fetch(`/api/audio/stop?sessionId=${sid(sessionId)}`, {
+    return request(`/api/audio/stop?sessionId=${sid(sessionId)}`, {
       method: "POST",
       headers: headers({ "Content-Type": clip.type }),
       body: clip.body,
-    });
-    return res.ok ? z.object({ stopped: z.boolean(), result: opt(TurnSchema) }).parse(await res.json()) : failure(res);
+    }, async res => z.object({ stopped: z.boolean(), result: opt(TurnSchema) }).parse(await res.json()), sessionId);
   },
   /** rate: 말 빠르기 설정(speechPrefs.rate). 서버 음성도 이 빠르기로 합성한다. */
   async speak(chunk: string, lang: Lang, rate: number) {
-    const res = await fetch("/api/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: chunk, lang, rate }) });
-    return res.ok ? res.blob() : failure(res);
+    return request("/api/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: chunk, lang, rate }) }, res => res.blob());
   },
   createSession: (recoverable = false) => call(SessionSchema, "/api/session", post(recoverable ? { recovery: true } : { attached: true })),
-  turn: (sessionId: string, message: string, actionId = "") => call(TurnSchema, "/api/turn", post({ sessionId, text: message, actionId, clientPlatform: "pc" }), true),
+  turn: (sessionId: string, message: string, actionId = "") => call(TurnSchema, "/api/turn", post({ sessionId, text: message, actionId, clientPlatform: "pc" }), true, sessionId),
   confirm: (sessionId: string, approve: boolean, actionId: string | undefined) => call(TurnSchema, `/api/session/${sessionId}/confirm`, post({ approve, actionId }), true),
   /** 서버가 제안한 선택지 고르기: { turnId, key, handoffId? }. 지난 제안이면 409 CHOICE_EXPIRED. */
   choice: (sessionId: string, body: { turnId: string; key: string; handoffId?: string }) => call(TurnSchema, `/api/session/${sessionId}/choice`, post(body), true),
   reminders: (sessionId: string) => call(z.object({ text: z.string().nullish() }), `/api/session/${sessionId}/reminders`),
   progress: (sessionId: string) => call(ProgressSchema, `/api/session/${sessionId}/progress`),
   language: (sessionId: string, lang: Lang) => call(TurnSchema, `/api/session/${sessionId}/language`, post({ lang })),
-  cancel: (sessionId: string) => call(TurnSchema, `/api/session/${sessionId}/cancel`, post()),
+  async cancel(sessionId: string) {
+    const send = () => call(TurnSchema, `/api/session/${sid(sessionId)}/cancel`, post());
+    try { return await send(); }
+    catch (error) { if (!(error instanceof ApiError) || error.kind === "expired" || (error.status !== undefined && error.status < 500)) throw error; }
+    return send();
+  },
   /** 페이지를 떠날 때 호출. keepalive라서 탭이 닫혀도 요청이 전송된다. */
   close: (sessionId: string) => {
-    void fetch(`/api/session/${sessionId}`, { method: "DELETE", keepalive: true }).catch(() => undefined);
+    void request(`/api/session/${sessionId}`, { method: "DELETE", keepalive: true }, async () => undefined).catch(() => undefined);
   },
   consent: (sessionId: string, granted: boolean) => call(TurnSchema, `/api/session/${sessionId}/consent`, post({ granted })),
 };
