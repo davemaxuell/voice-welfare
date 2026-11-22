@@ -258,3 +258,83 @@ it("개인 조회에서 누르기 전 불확실성과 승인·거절 방법을 �
     expect(visited).not.toContain(layout.accountPath);
   } finally { await inspection.close(); }
 });
+
+it("숫자가 들어간 외국어 입력 요청은 승인 전에 어떤 모델로도 값을 보내지 않는다", async () => {
+  const { session, page } = await runtime.createBrowserSession();
+  const model = withTranslator(session, {});
+  await session.handleTurn(PORTAL + " 열어줘");
+  await session.setLanguage("en");
+  model.calls.length = 0;
+  const asked = await session.handleTurn("Enter Sample 42 555-0100 in the name field");
+  expect(model.calls).toEqual([]);
+  expect(asked.lang).toBe("en");
+  expect(asked.localSpeechOnly).toBe(true);
+  expect(asked.pendingConfirmation?.values).toContainEqual({ label: "Name", value: "Sample 42 555-0100" });
+  expect(asked.speech).toContain("Sample 42 555-0100");
+  await session.confirm(true, asked.pendingConfirmation?.actionId);
+  expect(await page.locator("#opinionName").inputValue()).toBe("Sample 42 555-0100");
+  for (const call of model.calls) {
+    expect(call.user).not.toContain("Sample 42 555-0100");
+    expect(call.user).not.toContain("555-0100");
+  }
+});
+
+it("외국어 승인이 2분 지나 만료되면 빈 실행 결과여도 만료 안내와 새 카드를 현지화한다", async () => {
+  let now = 1000;
+  const session = await newSession();
+  session.deps.clock = () => now;
+  withTranslator(session, {});
+  await session.handleTurn(PORTAL + " 열어줘");
+  await session.setLanguage("en");
+  const asked = await session.handleTurn("Enter Sample 42 in the name field");
+  const firstId = asked.pendingConfirmation?.actionId;
+  expect(firstId).toBeDefined();
+  now += 125;
+  const expired = await session.confirm(true, firstId);
+  expect(expired.state).toBe("WAITING_FOR_USER_CONFIRMATION");
+  expect(expired.lang).toBe("en");
+  expect(expired.speech).toContain("Two minutes have passed");
+  expect(expired.pendingConfirmation?.actionId).not.toBe(firstId);
+  expect(expired.pendingConfirmation?.purpose).toBe("Fill in fields without submitting");
+});
+
+it("개인 조회에서 첫 승인을 실행한 뒤 이어지는 새 승인도 외국어로 현지화한다", async () => {
+  const inspection = createTestRuntime({ practiceMode: false });
+  try {
+    const { session, page } = await inspection.createBrowserSession();
+    const layout = { ...layouts[1]!, ask: "Check whether my sample request has a result." };
+    await mountPortal(page, layout);
+    await page.route(portalOrigin + layout.accountPath, route => route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: "<!doctype html><html><head><title>Second step</title></head><body><button id=\"confirm-step\" type=\"button\">Check status</button></body></html>",
+    }));
+    await page.goto(portalOrigin + layout.home);
+    await page.getByRole("link", { name: layout.account }).evaluate(link => {
+      const button = document.createElement("button");
+      button.textContent = link.textContent;
+      button.onclick = () => location.assign((link as HTMLAnchorElement).href);
+      link.replaceWith(button);
+    });
+    const model = new FakeLlm(({ schemaName, user }) => {
+      if (schemaName === "public_service_decision") return { kind: "inspect_personal", source: null, agency: null, subject: null,
+        goal: layout.ask, requestedFacts: [], exclusions: [], continuation: false, question: null, choices: [],
+        reply: null, skill: null, difficulty: "medium", requirements: [layout.ask] };
+      if (schemaName === "browse_step") {
+        if (user.includes("Check status")) return { ...step("click", "Check status"), assessment: "progress", expected: "Open status" };
+        return { ...step("click", layout.account), assessment: "progress", expected: "Open first page" };
+      }
+      return undefined;
+    });
+    withLlm(session, model);
+    session.deps.webLlm = session.deps.goalLlm = model;
+    await session.setLanguage("en");
+    const first = await session.handleTurn(layout.ask, { fromVoice: true });
+    expect(first.pendingConfirmation?.kind, `${first.state}: ${first.speech}`).toBe("click");
+    const second = await session.confirm(true, first.pendingConfirmation?.actionId);
+    expect(second.state).toBe("WAITING_FOR_USER_CONFIRMATION");
+    expect(second.lang).toBe("en");
+    expect(second.pendingConfirmation?.actionId).not.toBe(first.pendingConfirmation?.actionId);
+    expect(second.speech).toContain("Check status");
+    expect(second.speech).not.toMatch(/[가-힣]/u);
+  } finally { await inspection.close(); }
+});

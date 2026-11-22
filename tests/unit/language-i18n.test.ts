@@ -4,7 +4,7 @@ import type { Approval, VaultCommand } from "../../src/core/dialogue.ts";
 import type { Action } from "../../src/core/actions.ts";
 import { LANGS, type PendingConfirmation } from "../../src/core/turn.ts";
 import { foreignApproval } from "../../src/core/lexicon.ts";
-import { approvalPresentation, detectLangSwitch, detectScriptLang, languagePatterns, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
+import { approvalPresentation, detectLangSwitch, detectScriptLang, languagePatterns, parseForeignFieldFill, translateIn, translateOut, untranslatedKorean } from "../../src/language/i18n.ts";
 import { unsupportedNumbers } from "../../src/safety/verify.ts";
 import { FakeLlm } from "../helpers.ts";
 import { codePointSpans } from "./python-spans.ts";
@@ -176,4 +176,19 @@ it.each(examples)("%s 승인의 네 언어 문구는 원래 승인과 실행값�
     if (waiting.kind === "vault-save") expect(shown?.card.values).toEqual([]);
   }
   expect(waiting).toEqual(before);
+});
+
+it("숫자가 들어간 다국어 입력 요청은 관찰된 입력란으로 직접 맞추고 일반 문자열은 기존 번역을 유지한다", () => {
+  const fields = ["이름", "연락처 (선택)", "주민등록 주소"];
+  expect(parseForeignFieldFill("Enter Sample 42 555-0100 in the name field", "en", fields))
+    .toEqual({ fieldMention: "이름", value: "Sample 42 555-0100" });
+  expect(parseForeignFieldFill("Fill phone with 010-5555-0100", "en", fields))
+    .toEqual({ fieldMention: "연락처 (선택)", value: "010-5555-0100" });
+  expect(parseForeignFieldFill("把示例 42 555-0100 填到姓名栏", "zh", fields))
+    .toEqual({ fieldMention: "이름", value: "示例 42 555-0100" });
+  expect(parseForeignFieldFill("氏名欄にサンプル42を入力してください", "ja", fields))
+    .toEqual({ fieldMention: "이름", value: "サンプル42" });
+  expect(parseForeignFieldFill("Put Kim Haneul in the name field", "en", fields)).toBeUndefined();
+  expect(parseForeignFieldFill("Enter Sample 42 in the unknown field", "en", fields)).toBeUndefined();
+  expect(parseForeignFieldFill("이름 칸에 42 써줘", "ko", fields)).toBeUndefined();
 });

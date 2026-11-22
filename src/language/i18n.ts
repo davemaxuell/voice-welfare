@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { inspectionClickQuestion } from "../speech/browse_phrases.ts";
 import { SIMPLE_TEXT_SCHEMA, redactedJson, type Redacted, type StructuredLlm } from "../core/llm.ts";
 import type { Approval, VaultCommand } from "../core/dialogue.ts";
 import { PUBLIC_SITES } from "../core/sites.ts";
@@ -346,6 +345,74 @@ export async function translateOut(
 
 export interface ClickPresentation { title: string; inspection: boolean }
 
+function inspectionClickText(lang: Lang, site: string, title: string, name: string): string {
+  const questions: Record<Lang, string> = {
+    ko: `${site}의 ‘${title}’ 화면에서 ‘${name}’ 항목을 찾았어요. 누르면 어떤 일이 일어날지 확인하기 어려워요. 누르려면 ‘눌러’, 그만두려면 ‘거절’이라고 말씀해 주세요.`,
+    en: `I found “${name}” on the “${title}” page at ${site}. I can't verify what pressing it will do. Say “approve” to press it once or “no” to stop.`,
+    zh: `我在 ${site} 的“${title}”页面找到了“${name}”。我无法核实点击后会发生什么。要点击一次，请说“确认”，要停止请说“取消”。`,
+    ja: `${site}の「${title}」画面に「${name}」があります。押すと何が起きるか確認できません。一度押すには「承認します」、中止するには「いいえ」と言ってください。`,
+  };
+  return questions[lang];
+}
+
+const fieldAliases: readonly [readonly string[], readonly string[]][] = [
+  [["name", "full name", "applicant name", "姓名", "名字", "氏名", "名前"], ["이름", "성명"]],
+  [["phone", "phone number", "telephone", "contact", "电话", "电话号码", "联系方式", "電話番号", "連絡先"], ["연락처", "전화번호", "연락처 (선택)"]],
+  [["address", "地址", "住所"], ["주소", "주민등록 주소", "실거주지 주소"]],
+  [["registered address", "登记地址", "住民登録住所"], ["주민등록 주소", "주소"]],
+  [["current address", "residence address", "实际居住地址", "現住所"], ["실거주지 주소", "주소"]],
+  [["email", "email address", "电子邮箱", "邮箱", "メールアドレス", "メール"], ["이메일"]],
+  [["birth", "date of birth", "birthday", "出生日期", "生日", "生年月日"], ["생년월일"]],
+  [["household", "household size", "家庭人数", "世帯人数"], ["가구원 수", "가구원 수 (선택)"]],
+  [["search", "query", "搜索", "検索"], ["검색어"]],
+];
+
+function stripQuotes(value: string): string {
+  const trimmed = strip(value);
+  if (trimmed.length >= 2) {
+    const pairs: readonly [string, string][] = [['"', '"'], ["'", "'"], ["“", "”"], ["‘", "’"], ["「", "」"]];
+    for (const [open, close] of pairs) {
+      if (trimmed.startsWith(open) && trimmed.endsWith(close)) return strip(trimmed.slice(open.length, -close.length));
+    }
+  }
+  return trimmed;
+}
+
+/** 숫자를 포함한 다국어 입력란 채우기 요청은 모델에 값을 보내지 않고 관찰된 입력란과 직접 맞춘다. */
+export function parseForeignFieldFill(
+  text: string,
+  lang: Lang,
+  observedLabels: readonly string[],
+): { fieldMention: string; value: string } | undefined {
+  if (lang === "ko" || observedLabels.length === 0) return undefined;
+  const trimmed = strip(text);
+  let rawField: string | undefined;
+  let rawValue: string | undefined;
+  const enPut = /^(?:please\s+)?(?:put|enter|type|write|input|fill\s+in)\s+(.+?)\s+(?:in|into)\s+(?:the\s+)?(.+?)(?:\s+(?:field|box|input))?[.!?]*$/iu.exec(trimmed);
+  const enFill = /^(?:please\s+)?fill(?:\s+in)?\s+(?:the\s+)?(.+?)(?:\s+(?:field|box|input))?\s+with\s+(.+?)[.!?]*$/iu.exec(trimmed);
+  const zhPut = /^(?:请)?把\s*(.+?)\s*(?:填写|输入|填入|填|写)(?:到|进|在)\s*(.+?)(?:栏|框|输入框)?[。！？.!]*$/u.exec(trimmed);
+  const zhIn = /^(?:请)?(?:在|往)?\s*(.+?)(?:栏|框|输入框)(?:里|中)?(?:填写|输入|填入|写上|填)\s*(.+?)[。！？.!]*$/u.exec(trimmed);
+  const jaIn = /^(.+?)(?:欄|枠|フィールド|項目)に\s*(.+?)\s*(?:を|と)?(?:入力|記入|入れて)(?:して)?(?:ください|下さい)?[。！？.!]*$/u.exec(trimmed);
+  if (enPut !== null) { rawValue = enPut[1]; rawField = enPut[2]; }
+  else if (enFill !== null) { rawField = enFill[1]; rawValue = enFill[2]; }
+  else if (zhPut !== null) { rawValue = zhPut[1]; rawField = zhPut[2]; }
+  else if (zhIn !== null) { rawField = zhIn[1]; rawValue = zhIn[2]; }
+  else if (jaIn !== null) { rawField = jaIn[1]; rawValue = jaIn[2]; }
+  if (rawField === undefined || rawValue === undefined) return undefined;
+  const value = stripQuotes(rawValue);
+  if (value.length === 0 || value.length > 200 || !/\p{Nd}/u.test(value)) return undefined;
+  const fieldKey = casefold(stripQuotes(rawField));
+  const exact = observedLabels.find(label => casefold(label) === fieldKey);
+  if (exact !== undefined) return { fieldMention: exact, value };
+  for (const [aliases, targets] of fieldAliases) {
+    if (aliases.includes(fieldKey)) {
+      const matched = targets.find(target => observedLabels.includes(target));
+      if (matched !== undefined) return { fieldMention: matched, value };
+    }
+  }
+  return undefined;
+}
+
 type Waiting = Approval | VaultCommand;
 type CopyKey = keyof typeof FIXED;
 type Row = PendingConfirmation["values"][number];
@@ -362,7 +429,7 @@ export function approvalPresentation(waiting: Waiting | undefined, lang: Lang, p
   const original = waiting?.confirmation;
   if (waiting === undefined || original === undefined) return undefined;
   const inspection = waiting.kind === "click" && page?.inspection === true
-    ? inspectionClickQuestion(lang, original.site, page.title, waiting.action.target?.name ?? "") : undefined;
+    ? inspectionClickText(lang, original.site, page.title, waiting.action.target?.name ?? "") : undefined;
   if (lang === "ko") return inspection === undefined ? undefined : { card: { ...original, description: inspection }, speech: inspection };
   const t = (key: CopyKey) => FIXED[key][lang];
   let purpose: CopyKey, question: CopyKey;
