@@ -156,7 +156,7 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
     },
     async findByMeaning(term, linksOnly, url, picker, signal) {
       try {
-        const before = await call(signal, () => observations.controlWindow({limit:600, semanticOnly:true}));
+        const before = await call(signal, () => observations.controlWindow({limit:600, semanticOnly:true, linksOnly}));
         if (before.more || before.url !== url || page.url() !== url) return undefined;
         const semantic: SemanticObservation = {term, picker, controls:before.items.filter(i => !linksOnly || i.role === "link")};
         if (semantic.controls.length === 0) return undefined;
@@ -164,7 +164,7 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
         const original = semantic.selected;
         if (original === undefined || paths.length !== 1 || page.url() !== url ||
             await framesOf(page).path(original.ref) !== paths[0]) return undefined;
-        const fresh = await call(signal, () => observations.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true}));
+        const fresh = await call(signal, () => observations.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true, linksOnly}));
         const [item] = fresh.items;
         return fresh.url === url && !fresh.more && fresh.items.length === 1 && item?.ref === original.ref && item.role === original.role &&
           item.name === original.name && item.context === original.context && !item.disabled && item.pictureMasked !== true ? item : undefined;

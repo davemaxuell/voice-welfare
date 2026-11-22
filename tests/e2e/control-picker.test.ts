@@ -119,3 +119,26 @@ it.each([false, true])("찾은 검색 조건 변경은 같은 단추에 대한 �
   expect(approved.actions.filter(action => action.policy.code === "APPROVED").map(action => action.action.id)).toEqual(changed ? [] : [pending.action.id]);
   expect(session.dialogue.approval).toBeUndefined();
 });
+
+it.skipIf(!stagehand)("linksOnly 의미 검색은 같은 이름의 버튼이 함께 있어도 해당 링크를 확정한다", async () => {
+  const {page, adapter} = await open();
+  await page.goto("http://" + PORTAL);
+  await page.evaluate(() => {
+    const dup = document.createElement("button");
+    dup.type = "button";
+    dup.textContent = "기초연금 안내";
+    document.body.prepend(dup);
+  });
+  const link = (await adapter.observe()).outline?.items?.find(item => item.role === "link" && item.name === "기초연금 안내");
+  expect(link).toBeDefined();
+  const model = new FakeLlm(({schemaName, user}) => {
+    if (schemaName !== "stagehand_pick") return undefined;
+    const data = z.object({term: z.string(), options: z.record(z.string(), z.string())}).parse(JSON.parse(user));
+    const ref = Object.keys(data.options).find(key => data.options[key] === "기초연금 안내");
+    expect(ref).toBeDefined();
+    return {ref};
+  });
+  const picked = await adapter.findByMeaning!("어르신께 드리는 연금 설명", true, page.url(), {model}, new AbortController().signal);
+  expect(picked).toMatchObject({ref: link!.ref, role: "link", name: "기초연금 안내"});
+  expect(pickCalls(model)).toEqual(["stagehand_pick"]);
+});

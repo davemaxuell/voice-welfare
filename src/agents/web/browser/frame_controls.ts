@@ -59,25 +59,38 @@ class FrameControls {
     return [...origins];
   }
 
-  async #visible(frame: Frame): Promise<boolean> {
-    if (frame === this.page.mainFrame()) return true;
+  async #state(frame: Frame): Promise<"readable" | "hidden" | "opaque"> {
+    if (frame === this.page.mainFrame()) return "readable";
     const parent = frame.parentFrame();
-    if (parent === null || !await this.#visible(parent)) return false;
-    if (!/^(?:https?:\/\/|about:(?:blank|srcdoc)$)/u.test(frame.url())) return false;
+    if (parent === null) return "opaque";
+    const parentState = await this.#state(parent);
+    if (parentState !== "readable") return parentState;
     const owner = await frame.frameElement();
+    let dom: "readable" | "hidden" | "opaque";
     try {
-      return await owner.evaluate(el => {
-        if (!(el instanceof Element) || el.hasAttribute("sandbox") || el.getClientRects().length === 0) return false;
+      dom = await owner.evaluate((el): "readable" | "hidden" | "opaque" => {
+        if (!(el instanceof Element)) return "opaque";
+        let opaque = el.hasAttribute("sandbox");
+        if (el.getClientRects().length === 0) return "hidden";
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return "hidden";
         for (let node: Element | null = el; node !== null;) {
-          if (node.matches('[hidden], [aria-hidden="true"], [inert], [contenteditable], [role="textbox"], [role="combobox"]') ||
-              getComputedStyle(node).visibility === "hidden" || getComputedStyle(node).display === "none") return false;
+          if (node.matches('[hidden], [aria-hidden="true"], [inert]') ||
+              getComputedStyle(node).visibility === "hidden" || getComputedStyle(node).display === "none") return "hidden";
+          if (node.matches('[contenteditable], [role="textbox"], [role="combobox"]')) opaque = true;
           const root = node.getRootNode();
-          if (root instanceof ShadowRoot && root.mode !== "open") return false;
+          if (root instanceof ShadowRoot && root.mode !== "open") opaque = true;
           node = node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
         }
-        return true;
+        return opaque ? "opaque" : "readable";
       });
     } finally { await owner.dispose(); }
+    if (dom !== "readable") return dom;
+    return /^(?:https?:\/\/|about:(?:blank|srcdoc)$)/u.test(frame.url()) ? "readable" : "opaque";
+  }
+
+  async #visible(frame: Frame): Promise<boolean> {
+    return (await this.#state(frame)) === "readable";
   }
 
   async locator(ref: string): Promise<Locator | undefined> {
@@ -192,9 +205,11 @@ class FrameControls {
   }
 
   async hasOpaqueContent() {
-    // 못 찾았을 때만 닫힌 섀도의 존재를 확인한다. 그 안의 글·속성·입력값은 쓰지 않는다.
+    // 못 찾았을 때만 닫힌 섀도나 보이는 불투명 프레임의 존재를 확인한다. 숨은 유틸리티 프레임은 건너뛴다.
     for (const frame of this.page.frames()) {
-      if (!await this.#visible(frame).catch(() => false)) return true;
+      const state = await this.#state(frame).catch(() => "opaque" as const);
+      if (state === "hidden") continue;
+      if (state === "opaque") return true;
       if (frame === this.page.mainFrame() || URL.parse(frame.url())?.origin !== URL.parse(this.page.url())?.origin) {
         if (await this.#closedRoots(frame)) return true;
       }

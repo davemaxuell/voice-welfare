@@ -190,3 +190,30 @@ it.skipIf(process.env.BROWSER_DRIVER !== "stagehand")("모델이 고르는 동�
   expect(result.actions).toEqual([]);
   expect(await frame.locator("[aria-expanded]").getAttribute("aria-expanded")).toBe("false");
 });
+
+it("숨겨진 유틸리티 iframe은 불투명 영역으로 오인하지 않고 보이는 sandbox iframe만 불투명으로 판정한다", async () => {
+  const {page, adapter, session} = await open({practiceMode: false});
+  await page.route("**/b3-opaque", route => route.fulfill({contentType: "text/html; charset=utf-8", body:
+    `<main><h1>안내</h1><button>화면 도움말</button>
+      <iframe style="display:none" srcdoc="<button>숨김1</button>"></iframe>
+      <iframe aria-hidden="true" srcdoc="<button>숨김2</button>"></iframe>
+      <iframe hidden sandbox srcdoc="<button>숨김3</button>"></iframe>
+      <iframe style="width:0;height:0;border:0" srcdoc="<button>숨김4</button>"></iframe>
+    </main>`}));
+  await page.goto(same + "/b3-opaque");
+  expect(await adapter.hasOpaqueContent!()).toBe(false);
+  const plainMissing = await session.deps.web.followLink("없는 항목", ctx());
+  expect(plainMissing.status).toBe("needs-clarification");
+  expect(plainMissing.message).not.toContain("읽을 수 없는 영역");
+
+  await page.evaluate(() => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "");
+    frame.srcdoc = "<button>샌드박스 단추</button>";
+    document.querySelector("main")!.append(frame);
+  });
+  expect(await adapter.hasOpaqueContent!()).toBe(true);
+  const opaqueMissing = await session.deps.web.followLink("없는 항목", ctx());
+  expect(opaqueMissing.status).toBe("needs-clarification");
+  expect(opaqueMissing.message).toContain("읽을 수 없는 영역");
+});
