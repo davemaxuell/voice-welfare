@@ -1,7 +1,7 @@
 import tseslint from "typescript-eslint";
 
 export default [
-  { ignores: ["**/node_modules/**", "**/dist/**", ".audit/**", "**/.venv/**", "models/**", "test-results/**", "reports/**", "scripts/vendor/**", "apps/desktop/out/**", "eval/**"] },
+  { ignores: ["**/node_modules/**", "**/dist/**", ".audit/**", "**/.venv/**", "models/**", "test-results/**", "reports/**", "scripts/vendor/**", "apps/desktop/out/**"] },
   {
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
