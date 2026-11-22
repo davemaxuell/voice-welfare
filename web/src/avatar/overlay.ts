@@ -7,7 +7,8 @@ import "./overlay.css";
 
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
-  contrast: z.boolean().optional(), connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(), reconnectLabel: z.string().optional(),
+  micDiagnostic: z.string().optional(), contrast: z.boolean().optional(),
+  connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(), reconnectLabel: z.string().optional(),
   mode: z.string().optional(), capture: z.string().default("off"), captureLabel: z.string().optional(), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
   state: z.string().optional(), reading: z.boolean().optional(), status: z.string().optional(), task: z.string().optional(), taskLabel: z.string().optional(),
@@ -382,7 +383,8 @@ function renderCard(status: string, copy: Readonly<Record<ChromeKey, string>>) {
   if ((receivedSnapshot && snap.connected !== true) || ["problem", "auth-handoff", "ended"].includes(snap.mode ?? "") ||
       snap.task === "stopping" || snap.capture === "requesting") {
     if (message != null) seenMessages.add(message.id);
-    showBubble("status", status, status);
+    const detail = snap.connected === true && snap.mode === "problem" ? snap.micDiagnostic ?? status : status;
+    showBubble("status", detail, detail);
     return;
   }
   if (message != null && message.id.length > 0 && message.text.length > 0 && !sleeping(snap)) {
