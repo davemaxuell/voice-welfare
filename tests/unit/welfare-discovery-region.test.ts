@@ -135,6 +135,18 @@ it("test_unknown_district_ranks_district_programs_lower_and_names_their_district
   expect([first,...remainingPages(agent)].join(" ")).toContain("부산진구 저소득노인 건강보험료 지원");
 });
 
+it("explains the leading match and its application route before the resident chooses a number", async () => {
+  const agent = localAgent("기장군에 거주하는 중증장애인");
+  const result = await agent.discover({ ...BUSAN_ONLY, sgg: "기장군" });
+  const lead = agent.findInMatches("1번")!;
+  expect(lead.servId).toBe(GIJANG_TRANSPORT);
+  expect(result.speech.indexOf("주소지 읍·면 행정복지센터 방문 신청")).toBeGreaterThan(result.speech.indexOf("1번"));
+  expect(result.speech.indexOf("2번")).toBeGreaterThan(result.speech.indexOf("주소지 읍·면 행정복지센터 방문 신청"));
+  expect(result.sources.some(source => source.title === "복지로 '기장군 교통비'")).toBe(true);
+  expect(agent.pick(undefined)).toBeUndefined();
+  expect(agent.pick("2번")?.servId).not.toBe(lead.servId);
+});
+
 it.each([["사상구","맞지 않을 수 있어요"],["기장군","말씀하신 대로면 맞아요"],[undefined,"확인이 필요해요"]] as const)("test_precheck_surfaces_the_residence_gate", async (home,word) => {
   const agent = localAgent("신청일 현재 기장군에 주민등록을 둔 차상위 이하 저소득 장애 정도가 심한 장애인(시설 입소자 제외)",checks("차상위","장애 정도가 심한 장애인"));
   await agent.discover(BUSAN_ONLY);

@@ -106,6 +106,8 @@ export interface GroundedAnswer {
   count?: number;
   card?: GroundedAnswerCard;
   reviewQuotes?: readonly string[];
+  /** 공식 목록에는 있지만 상세 근거를 받지 못한 공공 제도. */
+  missingPublicDetail?: string;
   /** 검증된 자료(fixture/공식 API)에 근거했는지 여부 */
   grounded: boolean;
   /** 답변에 쓴 서비스(Agent A 인계용) */
@@ -263,7 +265,6 @@ export class WelfareInformationAgent extends WelfareLinks {
   // ---------------------------------------------------------------- 맞춤 복지 찾기
   private matches: Match[] = [];
   private shown = 0;
-  private listHinted = false;
   /** 사용자가 고른 찾기 결과(목록 요약) */
   private picked?: CatalogEntry;
 
@@ -271,27 +272,32 @@ export class WelfareInformationAgent extends WelfareLinks {
     return this.matches.length > 0;
   }
 
-  private listSpeech(from: number): string {
+  /** 첫 페이지에서 먼저 안내한 제도. 후속 정보 질문에만 사용한다. */
+  get discoverySubject(): string | undefined {
+    return this.picked?.servNm ?? (this.shown <= 3 ? this.matches[0]?.service.servNm : undefined);
+  }
+
+  private listSpeech(from: number, firstStep = ''): string {
     const page = this.matches.slice(from, from + 3);
     this.shown = from + page.length;
-    // 목록은 이름만 짧게(듣고 고르기 쉽게). 설명은 번호를 말하면 그때.
     const items = page.map(({service}, i) => {
       const area = programDistrict(service);
       const where = area !== '' && !service.servNm.includes(area) ? area + ' ' : '';
-      return `${from + i + 1}번 ${service.provider === 'private' ? '민간 사업 ' : ''}${where}${service.servNm}`;
-    }).join(', ');
+      const label = `${from + i + 1}번 ${service.provider === 'private' ? '민간 사업 ' : ''}${where}${service.servNm}`;
+      if (from + i !== 0) return label + '.';
+      const summary = firstSentence(strip(service.summary), 100);
+      return [`먼저 살펴볼 제도는 ${label}입니다.`, firstStep, summary.length > 0 ? summary + '.' : ''].filter(Boolean).join(' ');
+    }).join(' ');
     const priv = page.find(({service}) => service.provider === 'private')?.service;
     const source = priv?.provider === 'private' ? ' ' + sourceSentence(priv.source) : '';
     const more = this.matches.length > this.shown ? " 더 들으려면 '더 알려줘'." : '';
-    const hint = this.listHinted ? '' : " 번호를 말씀하시면 자세히 알려 드려요. 예: '1번 자세히', '1번 자격 확인해줘'.";
-    this.listHinted = true;
-    return `${items}${source}이에요.${more}${hint}`;
+    return `${items}${source}${more}`;
   }
 
-  private pageSources(start: number): SourceCitation[] {
+  private pageSources(start: number, catalogSource = this.listSource()): SourceCitation[] {
     const sources: SourceCitation[] = [];
     for (const {service} of this.matches.slice(start, start + 3)) {
-      const source = service.provider === 'private' ? service.source : this.listSource();
+      const source = service.provider === 'private' ? service.source : catalogSource;
       if (!sources.some(s => s.url === source.url && s.note === source.note && s.title === source.title && s.version === source.version && s.lastCheckedAt === source.lastCheckedAt)) sources.push(source);
     }
     return sources;
@@ -302,17 +308,28 @@ export class WelfareInformationAgent extends WelfareLinks {
     signal?.throwIfAborted();
     const catalog: CatalogEntry[] = [...await this.provider.catalog(profile.ctpv ?? undefined, signal), ...(this.shelf?.entries(todayIso()) ?? [])];
     signal?.throwIfAborted();
+    const catalogSource = this.listSource();
+    const matches = matchServices(catalog, profile);
+    const first = matches[0]?.service;
+    const detail = first === undefined ? undefined : await this.detailOf(first, undefined, signal).catch(() => undefined);
+    signal?.throwIfAborted();
     this.picked = undefined;
-    this.matches = matchServices(catalog, profile);
+    this.selectedDetail = undefined;
+    this.matches = matches;
     this.shown = 0;
     if (this.matches.length === 0) {
       return { speech: '말씀하신 조건에 맞는 제도를 찾지 못했어요. 조건을 바꿔 말씀하시거나 보건복지상담센터 129에 문의해 보세요.', sources: [this.listSource()], grounded: false, count: 0, method: 'topic-rule' };
     }
+    const method = detail ? firstSentence(strip(detail.applyMethod), 120) : '';
+    const attribution = detail?.dataOrigin === 'fixture' ? '저장된 예시에서 안내하는 신청 방법' : '자료에서 안내하는 신청 방법';
+    const firstStep = method.length > 0 && !method.endsWith('…') ? `${attribution}은 ‘${method}’예요.` : '';
+    const sources = this.pageSources(0, catalogSource);
+    if (detail && firstStep.length > 0 && !sources.some(source => source.url === detail.source.url)) sources.push(cite(detail.source));
     const leftOut = !this.leftOutTold && otherDistrictLeftOut(catalog, profile);
     if (leftOut) this.leftOutTold = true;
     return {
-      speech: `받을 수 있을 법한 제도를 ${this.matches.length > 10 ? '여러 개' : `${this.matches.length}개`} 찾았어요.${leftOut ? ' 다른 시·군·구 사업은 뺐어요.' : ''} 관련 높은 순서로 ${this.listSpeech(0)} 실제로 받을 수 있는지는 기관이 판단해요.`,
-      sources: this.pageSources(0),
+      speech: `${this.listSpeech(0, firstStep)}${leftOut ? ' 다른 시·군·구 사업은 뺐어요.' : ''} 실제로 받을 수 있는지는 기관이 판단해요.`,
+      sources,
       grounded: true,
       count: this.matches.length,
       method: 'topic-rule',
@@ -368,11 +385,15 @@ export class WelfareInformationAgent extends WelfareLinks {
     return best?.s;
   }
 
-  private async detailOf(s: CatalogEntry | undefined, name?: string): Promise<WelfareService | undefined> {
+  private async detailOf(s: CatalogEntry | undefined, name?: string, signal?: AbortSignal): Promise<WelfareService | undefined> {
     if (s?.provider === 'private') return s;
-    if (s?.provider === 'central') return (await this.provider.getService(s.servId)) ?? (await this.provider.findService(s.servNm));
-    if (s?.provider === 'local') return this.provider.getLocalService?.(s.servId, s.detailUrl);
-    if (name !== undefined && name.length > 0) return this.provider.findService(name);
+    if (s?.provider === 'central') {
+      const detail = await this.provider.getService(s.servId, s.detailUrl, signal);
+      signal?.throwIfAborted();
+      return detail ?? this.provider.findService(s.servNm, signal);
+    }
+    if (s?.provider === 'local') return this.provider.getLocalService?.(s.servId, s.detailUrl, signal);
+    if (name !== undefined && name.length > 0) return this.provider.findService(name, signal);
     return undefined;
   }
 
@@ -410,7 +431,8 @@ export class WelfareInformationAgent extends WelfareLinks {
     if (criteria.length === 0) {
       // 선정기준 원문이 없으면 추측으로 비교하지 않는다.
       return {
-        speech: `${name}의 자세한 선정기준을 공식 자료에서 가져오지 못했어요. ${residence ? `${residence.condition}: ${word[residence.status]}. ` : ''}${s !== undefined && s.targets.length > 0 ? `목록상 대상은 ${s.targets.join(', ')}이에요. ` : ''}정확한 자격은 담당 기관에 확인해 주세요. 복지로 상세 페이지를 열어 드릴까요?`,
+        speech: `${name}의 자세한 선정기준을 공식 자료에서 가져오지 못했어요. ${residence ? `${residence.condition}: ${word[residence.status]}. ` : ''}${s !== undefined && s.targets.length > 0 ? `목록상 대상은 ${s.targets.join(', ')}이에요. ` : ''}최종 자격은 담당 기관이 판단해요.`,
+        ...(s !== undefined && s.provider !== 'private' ? {missingPublicDetail: s.servNm} : {}),
         sources: s !== undefined && s.provider !== 'private' && s.detailUrl.length > 0 ? [this.pickedSource(s)] : [this.listSource()],
         grounded: false,
       };
@@ -472,7 +494,8 @@ export class WelfareInformationAgent extends WelfareLinks {
     const detail = await this.detailOf(s, name);
     if (!detail) {
       return {
-        speech: name !== undefined && name.length > 0 ? `${name}의 신청 서류는 공식 상세 페이지에서 확인해야 해요. '신청 페이지 열어줘'라고 하시면 열어 드릴게요.` : '어떤 제도의 신청을 준비할까요?',
+        speech: name !== undefined && name.length > 0 ? `${name}의 신청 서류는 자료에서 확인하지 못했어요.` : '어떤 도움을 신청하려고 하세요?',
+        ...(s !== undefined && s.provider !== 'private' ? {missingPublicDetail: s.servNm} : {}),
         sources: s !== undefined && s.provider !== 'private' && s.detailUrl.length > 0 ? [this.pickedSource(s)] : [],
         grounded: false,
       };
@@ -507,7 +530,7 @@ export class WelfareInformationAgent extends WelfareLinks {
       }
     }
     return {
-      speech: `${detail.servNm} 신청은 ${firstSentence(how, 80)}에서 해요.${formsPart}${contactPart} 복지로 상세 페이지를 열어 드릴까요?`,
+      speech: `${detail.servNm} 신청은 ${firstSentence(how, 80)}에서 해요.${formsPart}${contactPart}`,
       sources, grounded: true, service: serviceRef(detail),
       card: answerCard(detail, `${detail.servNm} 신청은 ${how}.${formsPart}${contactPart}`, [(detail.applySteps?.length ?? 0) > 0 ? 'applySteps' : 'applyMethod', ...(forms.length > 0 ? ['forms'] : []), ...(contact ? ['contacts'] : [])]),
     };
@@ -585,7 +608,7 @@ export class WelfareInformationAgent extends WelfareLinks {
   }
 
   private static readonly ASK_SERVICE: GroundedAnswer = {
-    speech: '어떤 제도에 대해 궁금하신가요? 예를 들어 기초연금, 주거급여, 아동수당처럼 제도 이름을 말씀해 주세요.',
+    speech: '어떤 일로 지원이 필요하세요? 예를 들어 “월세 내기가 어려워요”처럼 말씀해 주세요.',
     sources: [],
     grounded: false,
     method: 'none',

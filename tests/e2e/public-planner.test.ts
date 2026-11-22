@@ -16,6 +16,64 @@ function decision(fields: Record<string, unknown> = {}) {
     requestedFacts: ["documents"], exclusions: [], continuation: false, question: null, choices: [], ...fields};
 }
 
+it("passes the preceding ordinary conversation to Sol when a spoken request refers back to it", async () => {
+  const {session} = await open();
+  const question = "장학금과 학자금 대출의 차이를 쉬운 말로 설명해 주세요.";
+  const answer = "첫째는 장학금, 둘째는 나중에 갚는 학자금 대출이에요.";
+  const followup = "두 번째 제도는 어디에서 신청하는지 찾아 주세요.";
+  const model = new FakeLlm({ public_service_decision: {
+    kind: "conversation", reply: answer, requestedFacts: [], exclusions: [], continuation: false, choices: [],
+  } });
+  withLlm(session, model);
+  expect((await session.handleTurn(question)).speech).toBe(answer);
+  await session.handleTurn(followup, {fromVoice: true});
+  const requests = model.calls.filter(call => call.schemaName === "public_service_decision");
+  expect(requests).toHaveLength(2);
+  expect(JSON.parse(requests[1]!.user)).toMatchObject({
+    utterance: followup, voice: true, task: {goal: ""}, dialogue: [{user: question, assistant: answer}],
+  });
+});
+
+it("keeps only the latest safe exchanges and clears them across a private readback or Stop", async () => {
+  const {session} = await open();
+  const ask = "장학금과 학자금 대출의 차이를 설명해 주세요.";
+  const answer = "장학금과 학자금 대출은 학비를 지원하는 서로 다른 방식이에요.";
+  const model = new FakeLlm({public_service_decision: {kind: "conversation", reply: answer,
+    requestedFacts: [], exclusions: [], continuation: false, choices: []}});
+  withLlm(session, model);
+  for (let i = 1; i <= 5; i++) await session.handleTurn(ask + " " + i);
+  expect(session.plannerDialogue().map(row => row.user)).toEqual([2, 3, 4, 5].map(i => ask + " " + i));
+  await session.handleTurn("내 이름은 별구름이라고 저장해줘");
+  await session.handleTurn("응");
+  await session.handleTurn("내 정보 알려줘");
+  expect(session.plannerDialogue()).toEqual([]);
+  const readback = session.handleTurn("내 정보 알려줘");
+  const followup = session.handleTurn(ask, {fromVoice: true, plannerDialogue: [{user: "stale snapshot", assistant: answer}]});
+  await Promise.all([readback, followup]);
+  const latest = model.calls.filter(call => call.schemaName === "public_service_decision").at(-1);
+  expect(latest?.user).toContain(ask);
+  expect(latest?.user).not.toContain("stale snapshot");
+  expect(session.plannerDialogue().at(-1)?.assistant).toBe(answer);
+  session.cancel();
+  expect(session.plannerDialogue()).toEqual([]);
+});
+
+it("redacts a frozen handoff, preserves its ordering and marks an oversized exchange incomplete", async () => {
+  const {session} = await open();
+  session.rememberCallName("별구름");
+  const handoff = [{user: "Can you compare these?", assistant: "First student loans, then scholarships."}];
+  const prior = session.plannerDialogue([{user: "And in Japan?", assistant: "별구름: contact@example.org, https://example.org/private?q=hidden."}], handoff);
+  expect(prior[0]).toEqual(handoff[0]);
+  expect(session.plannerDialogue([{user: "내 정보 알려줘", assistant: "저장된 이름은 솔바람이에요."}], handoff)).toEqual([]);
+  expect(prior[1]?.assistant).toContain("https://example.org");
+  for (const secret of ["별구름", "contact@example.org", "hidden"]) expect(JSON.stringify(prior)).not.toContain(secret);
+  const big = session.plannerDialogue([{user: "選択肢", assistant: "🍊".repeat(3000)}], []);
+  expect(big).toHaveLength(1);
+  expect(big[0]?.incomplete).toBe(true);
+  expect(big[0]?.assistant).not.toContain("�");
+  expect(Buffer.byteLength(big[0]!.user) + Buffer.byteLength(big[0]!.assistant)).toBeLessThanOrEqual(6400);
+});
+
 it("test_decision_schema_scopes_memory_and_keeps_explicit_model_overrides", () => {
   const config = loadConfig({OPENAI_API_KEY: "test"});
   expect(config.llmUnderstand.model).toBe(STACK.agent); expect(config.llmGoal.model).toBe(STACK.agent);
@@ -153,4 +211,27 @@ it("test_browser_launch_recovers_on_retry_and_after_disconnect", async () => {
     await first?.close();
     const next = await runtime.createSession(); sessions.push(next); expect(adapterFor(next).context?.browser()).not.toBe(first); expect(launches).toHaveBeenCalledTimes(3);
   } finally { launches.mockRestore(); for (const session of sessions) await session.close(); }
+});
+
+it("includes a completed agency lookup once after redacting a supplied URL in dialogue", async () => {
+  const { session } = await open();
+  const origin = "https://www.kosaf.go.kr", marker = "synthetic_referral";
+  const request = `한국장학재단 안내 ${origin}/notice?ref=${marker} 에서 국가장학금 신청처를 알려줘`;
+  const reply = "국가장학금은 가람관에 신청합니다.";
+  const url = origin + "/application";
+  session.deps.browsePublicSources = async () => ({state: "BROWSING", semanticAction: "web-answer", speech: reply, reviewQuotes: [reply],
+    reviewQuoteSources: {[reply]: [url]}, sources: [{url, title: "합성 자료", lastCheckedAt: "2026-11-23"}]});
+  const model = new FakeLlm({ public_service_decision: decision({ agency: "한국장학재단", subject: "국가장학금",
+    goal: "국가장학금 신청처 확인", requestedFacts: ["procedure"], searchMode: "quiet" }) });
+  withLlm(session, model);
+  expect((await session.handleTurn(request)).speech).toBe(reply);
+  expect(session.recentVoiceDialogue().at(-2)?.text).toContain(origin);
+  expect(JSON.stringify(session.recentVoiceDialogue())).not.toContain(marker);
+  await session.handleTurn("거기서 제출할 서류도 알려줘", { fromVoice: true });
+  const calls = model.calls.filter(call => call.schemaName === "public_service_decision");
+  expect(calls).toHaveLength(2);
+  const user = calls[1]!.user;
+  expect(user).not.toContain(marker);
+  expect(JSON.parse(user)).toMatchObject({ task: { agency: "한국장학재단" }, recent: [],
+    dialogue: [{ user: `한국장학재단 안내 ${origin} 에서 국가장학금 신청처를 알려줘`, assistant: reply }] });
 });

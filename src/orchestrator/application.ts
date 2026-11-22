@@ -8,7 +8,7 @@ import { AGENT_IDS, draft, type AgentHandoff, type Draft } from "../core/turn.ts
 import { speakLabel } from "../speech/phrasing.ts";
 import { applicationPatterns } from "./patterns.ts";
 import { ReviewedTask } from "./review_loop.ts";
-import { APPROVAL_TTL_S, type SessionOrchestrator, type Turn } from "./session.ts";
+import { APPROVAL_TTL_S, withContext, type SessionOrchestrator, type Turn } from "./session.ts";
 
 // 승인을 받았지만 물어본 뒤 화면이 바뀌어 하지 않은 일(승인 대기 종류별)
 const NOT_DONE = { click: "누르지 않았어요.", assist: "넣지 않았어요.", submit: "모의접수하지 않았어요." };
@@ -33,7 +33,7 @@ export class ApplicationCommands {
     // 어떤 제도인지 말하지 않았고 앞선 대화에도 없으면 추측하지 않고 묻는다.
     if (named && practice) return this.open(turn);
     const current = s.grounded?.servNm ?? welfare.currentServiceName;
-    if (current === undefined || current.length === 0) return draft(s.state, "clarify", "어떤 제도를 신청하시려고요? 제도 이름을 말씀해 주세요.");
+    if (current === undefined || current.length === 0) return draft(s.state, "clarify", "어떤 도움을 신청하고 싶으세요? ‘월세를 지원받고 싶어요’처럼 말씀해 주세요.");
     if (current === "장애인연금" && practice) return this.open(turn);
     // 실제 신청은 로그인 후 사용자가 직접
     const hint = s.narrator.once("apply", " 자세히는 '본문 읽어줘', 입력 칸은 '하나씩 채워줘'라고 하세요.");
@@ -79,16 +79,20 @@ export class ApplicationCommands {
       const hit = welfare.findInMatches(service) === undefined ? undefined : welfare.pick(service);
       current = hit === undefined ? await welfare.selectService(service, { ctpv: s.profile.ctpv, sgg: s.profile.sgg }) : hit.servNm;
       if (current === undefined || current.length === 0) {
-        return draft(s.state, "clarify", `'${service}'에 맞는 제도를 찾지 못했어요. 목록 번호나 제도 이름을 다시 말씀해 주세요.`);
+        return draft(s.state, "clarify", `'${service}'에 맞는 제도를 찾지 못했어요. 어떤 도움을 받으려고 하세요?`);
       }
       s.grounded = undefined;
     } else {
       current = s.grounded?.servNm ?? welfare.currentServiceName;
     }
-    if (current === undefined || current.length === 0) return draft(s.state, "clarify", "어떤 제도의 공식 안내를 열까요? 제도 이름이나 목록 번호를 말씀해 주세요.");
+    if (current === undefined || current.length === 0) return draft(s.state, "clarify", "어떤 도움이 필요한지 말씀해 주세요. 거기에 맞는 공식 안내를 찾을게요.");
     const hint = s.narrator.once("official", " 자세히는 '본문 읽어줘'라고 하세요.");
     const opened = await this.openServicePage(current, turn, hint);
-    return opened ?? draft(s.state, "clarify", `${current}의 공식 안내 주소를 확인하지 못했어요. '복지로에서 ${current} 찾아줘'라고 하시면 찾아볼게요.`);
+    if (opened !== undefined) return opened;
+    if (s.deps.practiceMode === false && !welfare.currentIsPrivate && s.speakable(current) && !turn.ctx.signal.aborted) {
+      return s.browse.runGoal(`복지로에서 ${current}의 공식 안내 페이지를 찾아 열어줘`, withContext(turn.ctx, { publicLookup: true }), { agency: "복지로" });
+    }
+    return draft(s.state, "none", `${current}의 공식 안내 페이지를 열지 못했어요.`);
   }
 
   async open(turn: Turn): Promise<Draft> {

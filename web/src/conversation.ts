@@ -11,7 +11,7 @@ import { currentDecision, desktopView, turnNotice, type Consent, type Decision }
 import { createFirstRun } from "./first-run.ts";
 import { issues, type Capture, type IssueKey, type IssueAction } from "./presentation.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
-import { watchProgress } from "./progress-watch.ts";
+import { BackendStatus } from "./backend-status.ts";
 import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
 import {
   applySpeechPrefs, earcon, noteVoiceInterruption, onSpeaking, preloadCues, reportVoiceRecovery, serverTts, withPrivateReadback, speechPrefs,
@@ -20,7 +20,7 @@ import {
 import { LiveConversation } from "./voice-edge.ts";
 import { voiceFault, type VoiceFault } from "../../src/voice/recovery.ts";
 import {
-  consentText as consentTextFor, dictationHelp, GREETINGS, progressUpdate, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
+  consentText as consentTextFor, dictationHelp, GREETINGS, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
 } from "./view.ts";
 import { loadWorkspaceLanguage, workspaceText } from "./workspace-language.ts";
 
@@ -227,7 +227,9 @@ let recoverable = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let sessionGeneration = 0;
 let stoppedGeneration = 0;
-let progressSession: ReturnType<typeof sessionProgress> | undefined;
+let progress: BackendStatus | undefined;
+let releaseVoiceProgress: (() => void) | undefined;
+const busyRequests = new Set<symbol>();
 let commandActionId: string | undefined;
 const RECOVERY_KEY = "cheongeum.recovery";
 const RECOVERY_DECLINED = "cheongeum.recoveryDeclined";
@@ -244,11 +246,8 @@ function tabStore(key: string, value?: string | null) {
   return null;
 }
 let messageSeq = 0;
-// 일하는 동안: 사용자가 말하는 중 / 청음이 짧은 안내(진행 상황)를 말하는 중
-let userTalking = false;
-let busyTalking = false;
 /** 마이크 경로 신호음은 음성 안내 꺼짐과 관계없이 낸다. 결과·알림 신호음은 ui.tts를 따른다. */
-const MIC_CUES = new Set<CueKind>(["start", "listen", "done", "thinking", "working", "stopped", "end"]);
+const MIC_CUES = new Set<CueKind>(["start", "listen", "done", "stopped", "end"]);
 const STOP_CUE_WINDOW_MS = 5000;
 let stopCuedAt = 0;
 
@@ -312,6 +311,15 @@ function set(patch: Partial<typeof ui>) {
   render();
 }
 
+function holdBusy(patch: Partial<typeof ui> = {}) {
+  const request = Symbol();
+  busyRequests.add(request);
+  set({ ...patch, busy: true });
+  return () => {
+    if (busyRequests.delete(request) && busyRequests.size === 0) set({ busy: false });
+  };
+}
+
 function announce(text: string, channel: "status" | "transcript" = "status", lang = ui.lang) {
   if (channel === "transcript") push({ role: "assistant", text, lang });
   else set({ announcement: { text, seq: ui.announcement.seq + 1 } });
@@ -348,7 +356,7 @@ let pendingResult: { sessionId: string; generation: number } | undefined;
 let checkingResult: Promise<void> | undefined;
 
 function connectionChanged(path: string, failure?: ApiError, requestSessionId?: string) {
-  if (path === "/api/audio/speak") return;
+  if (path === "/api/audio/speak" || path.endsWith("/progress")) return;
   const sid = ui.sessionId;
   if ((sid === undefined && path !== "/api/session" && path !== "/api/health") || path.endsWith("/detach") ||
       (requestSessionId !== undefined && requestSessionId !== sid) ||
@@ -370,7 +378,8 @@ function connectionChanged(path: string, failure?: ApiError, requestSessionId?: 
     recording = undefined;
     manualStream?.getTracks().forEach(track => track.stop());
     manualStream = undefined;
-    set({ offline: true, listening: false, activity: null, error: ui.cancelUnconfirmed === true ? "cancelFailed" : pendingResult ? "lostTurn" : "offline", errorSeq: ui.errorSeq + 1 });
+    progress?.stop();
+    set({ offline: true, listening: false, error: ui.cancelUnconfirmed === true ? "cancelFailed" : pendingResult ? "lostTurn" : "offline", errorSeq: ui.errorSeq + 1 });
   }
 }
 
@@ -384,7 +393,7 @@ function applyServerState(state: ServerState, error: IssueKey | undefined) {
   // 서버가 아직 기다리는 승인과 선택지만 새 카드 번호로 다시 고를 수 있다.
   if (decision?.kind === "approval" || decision?.kind === "offer") desk.dropped.delete(decision.key);
   if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
-  set({ state: state.state, last, activity: null, error });
+  set({ state: state.state, last, error });
 }
 
 async function reconcileResult() {
@@ -575,7 +584,12 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
   }
   const prevState = ui.state;
   const stopped = r.intentType === "STOP" || r.semanticAction === "stop";
-  if (stopped && desk.stopping === null) stoppedGeneration++;
+  if (stopped && desk.stopping === null) {
+    stoppedGeneration++;
+    progress?.stop();
+    busyRequests.clear();
+    set({ busy: false });
+  }
   const stop = trace?.stop ?? (stopped ? timing?.confirmedStop(trace?.sent?.time) : undefined);
   const wake = desk.wakeCount;
   if (r.state === "STOPPED" && r.stopGeneration !== undefined && Number.isInteger(r.stopGeneration)) desk.stopGeneration = r.stopGeneration;
@@ -607,8 +621,7 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
   desk.message = desktopNotice(turnNotice(r));
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
-  set({ last: r, state: r.state, lang: language, hasTurn, error: undefined,
-    activity: r.intentType === "PROGRESS" ? ui.activity : null });
+  set({ last: r, state: r.state, lang: language, hasTurn, error: undefined });
   if (r.researchDelivery === "queued") researchStarted();
   if (r.researchDelivery === "outcome") presentedResearch.add(r.turnId);
   if (isConsent) {
@@ -647,6 +660,7 @@ export function speakResearch(text: string) {
   if (ui.workspaceAvailable && ui.consent === "granted") speak(text);
 }
 
+const ACTIVE_RESEARCH_POLL_MS = 2000;
 const presentedResearch = new Set<string>();
 const researchChunks = new Map<string, number>();
 async function playResearch(token: string, text: string, lang?: Lang) {
@@ -657,7 +671,7 @@ async function playResearch(token: string, text: string, lang?: Lang) {
 }
 function canReportResearch() {
   return ui.consent === "granted" && !ui.busy && !ui.speaking && !isSpeechReserved() && !ui.listening &&
-    !userTalking && !busyTalking && !desk.sleeping && ui.state !== "AUTH_HANDOFF" && ui.state !== "WAITING_FOR_USER_CONFIRMATION" &&
+    !desk.sleeping && ui.state !== "AUTH_HANDOFF" && ui.state !== "WAITING_FOR_USER_CONFIRMATION" &&
     ui.phase !== "thinking" && ui.phase !== "hearing";
 }
 function presentResearch(token: string, text: string, lang: Lang) {
@@ -698,14 +712,14 @@ function checkResearchAfterLoss(id: string) {
       if (!current()) return;
       for (const outcome of outcomes) {
         if (!current()) return;
-        if (!canReportResearch()) { scheduleResearchCheck(id, PROGRESS_POLL_MS); return; }
+        if (!canReportResearch()) { scheduleResearchCheck(id, ACTIVE_RESEARCH_POLL_MS); return; }
         if (ui.error === "timeout" || ui.error === "lostTurn") set({error: undefined});
         if (!heardOutcomes.has(outcome.turnId) && tabStore("cheongeum.heard." + outcome.turnId) !== "1") {
           presentResearch(outcome.turnId, outcome.speech, outcome.lang);
         }
         if (!await speakTurn({...outcome, sessionId: id, researchDelivery: "outcome"})) return;
       }
-      if (working && current()) scheduleResearchCheck(id, PROGRESS_POLL_MS);
+      if (working && current()) scheduleResearchCheck(id, ACTIVE_RESEARCH_POLL_MS);
     } catch { if (current()) scheduleResearchCheck(id, RESEARCH_POLL_MS); }
     finally { recoveringResearch = false; }
   })();
@@ -808,24 +822,6 @@ async function speakTurn(result: Spoken, text = result.speech) {
   return withPrivateReadback(() => speakAndWaitFrom([purpose, cue].filter(Boolean).join(" "), 0, speechPrefs.rate, lang));
 }
 
-const THINKING_DELAY_MS = 1000;
-const WORKING_START_MS = 3000;
-
-/** 상태가 바뀔 때 한 번씩 알린다. 이후에는 실제로 확인한 진행 상황을 들려준다. */
-async function withProgressCues<T>(work: Promise<T>) {
-  const tick = (kind: CueKind) => {
-    if (!busyTalking && !ui.speaking && !isSpeechReserved()) void cue(kind);
-  };
-  const thinkingId = setTimeout(() => tick("thinking"), THINKING_DELAY_MS);
-  const workingId = setTimeout(() => tick("working"), WORKING_START_MS);
-  try {
-    return await work;
-  } finally {
-    clearTimeout(thinkingId);
-    clearTimeout(workingId);
-  }
-}
-
 // 대화 시작 번호: 끝내기(인증 인계·멈춤·종료)가 늘려, 마이크를 여는 사이에 끝내라는 요청이 오면 시작을 그만둔다
 let conversationStarts = 0;
 let startingLoop: VoiceLoop | LiveConversation | undefined;
@@ -833,6 +829,8 @@ let edge: LiveConversation | undefined;
 
 export function endConversation(withCue = true) {
   conversationStarts += 1;
+  releaseVoiceProgress?.();
+  releaseVoiceProgress = undefined;
   startingLoop?.stop();
   startingLoop = undefined;
   edge?.stop();
@@ -903,11 +901,6 @@ export async function startConversation() {
         }
         checkResearchAfterLoss(sessionId);
       },
-      activity(text) {
-        if (ticket !== conversationStarts || ui.activity === text) return;
-        set({ activity: text });
-        announce(text, "transcript");
-      },
       caption(event) {
         if (ticket !== conversationStarts || event.delta === undefined || event.delta.length === 0) return;
         const previous = event.start_ms - captionEnd > 1100 ? "" : ui.liveCaption;
@@ -950,6 +943,7 @@ export async function startConversation() {
     try {
       await current.start(ui.micId);
       if (ticket !== conversationStarts) return;
+      releaseVoiceProgress = progress?.watch();
       startingLoop = undefined;
       conversationOn = true;
       setPhase("listening");
@@ -1125,7 +1119,7 @@ async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
   const capture = timing?.begin("capture-end");
   const sent = timing?.measure(capture, "turn-sent");
   try {
-    const result = await withProgressCues(whileBusy(api.audioTurn(sid, audio, asked), voice));
+    const result = await whileBusy(api.audioTurn(sid, audio, asked), voice);
     return { result, capture, sent };
   } catch (error) {
     timing?.measure(sent, "turn-failed");
@@ -1136,74 +1130,18 @@ async function voiceTurn(audio: LiveAudio, asked: string, voice: VoiceLoop) {
   }
 }
 
-const PROGRESS_POLL_MS = 2000;
-
-function sessionProgress(sessionId: string) {
-  let pending: ReturnType<typeof api.progress> | undefined;
-  return {
-    sessionId,
-    spoken: 0,
-    async poll() {
-      if (pending !== undefined) {
-        // 이전 작업에서 보낸 응답은 그 작업에서만 사용한다.
-        await pending;
-        return;
-      }
-      pending = api.progress(sessionId);
-      try { return await pending; }
-      finally { pending = undefined; }
-    },
-  };
-}
-
-/** 서버가 일하는 동안(work가 끝날 때까지): 목표 수행의 새 단계를 말하고, 대화 모드(voice)면 '멈춰'와 '지금 어디까지 했어?'를 듣는다. */
+/** 서버가 일하는 동안 한 줄로 표시하고, 대화 모드면 멈춤과 진행 질문을 듣는다. */
 async function whileBusy<T>(work: Promise<T>, voice?: VoiceLoop) {
-  const stops = [trackProgress(voice), ...(voice !== undefined ? [listenForStopWhileBusy(voice)] : [])];
+  const release = progress?.watch();
+  const stopListening = voice === undefined ? undefined : listenForStopWhileBusy(voice);
+  if (voice !== undefined) releaseVoiceProgress = release;
   try {
     return await work;
   } finally {
-    for (const stop of stops) stop();
+    release?.();
+    if (releaseVoiceProgress === release) releaseVoiceProgress = undefined;
+    stopListening?.();
   }
-}
-
-function trackProgress(voice?: VoiceLoop) {
-  const session = progressSession;
-  if (session === undefined) return () => {};
-  const stop = stoppedGeneration;
-  const isCurrent = () => session === progressSession && stoppedGeneration === stop;
-  const finish = watchProgress({
-    isCurrent,
-    poll: session.poll,
-    wait(next) {
-      const timer = setTimeout(next, PROGRESS_POLL_MS);
-      return () => clearTimeout(timer);
-    },
-    apply(report) {
-      if (recoverable) tabStore(PROGRESS_KEY, String(report.seq));
-      const activity = report.activity ?? null;
-      if (ui.activity !== activity) set({ activity });
-    },
-    considerSpeech(report) {
-      if (userTalking || busyTalking || ui.speaking || isSpeechReserved()) return;
-      const next = progressUpdate(report, session.spoken);
-      if (next.speak === undefined) return;
-      session.spoken = next.seq;
-      announce(next.speak, "transcript");
-      void sayWhileBusy({ speech: next.speak }, voice);
-    },
-  });
-  return () => {
-    finish();
-    if (isCurrent() && ui.activity != null) set({ activity: null });
-  };
-}
-
-/** 일하는 동안 짧게 말한다. 그동안은 멈춤 듣기를 쉰다(안내 소리를 받아쓰지 않게). */
-async function sayWhileBusy(result: Spoken, voice?: VoiceLoop) {
-  busyTalking = true;
-  voice?.cancelListening();
-  await speakTurn(result);
-  busyTalking = false;
 }
 
 /**
@@ -1214,14 +1152,7 @@ function listenForStopWhileBusy(voice: VoiceLoop) {
   let on = true;
   void (async () => {
     while (on && conversationOn) {
-      if (busyTalking) {
-        await new Promise((r) => setTimeout(r, 200));
-        continue;
-      }
-      const clip = await voice.listenOnce(() => (userTalking = true));
-      userTalking = false;
-      // 진행 안내를 말하려고 듣기를 끊었으면 안내가 끝난 뒤 다시 듣는다
-      if (clip === null && busyTalking && on) continue;
+      const clip = await voice.listenOnce();
       if (clip === null || !on) { clip?.cancel(); break; }
       try {
         const sentAt = timing === undefined ? undefined : performance.now();
@@ -1235,7 +1166,7 @@ function listenForStopWhileBusy(voice: VoiceLoop) {
           break;
         } else if (on && r.result !== undefined) {
           await applyResult(r.result, false);
-          await sayWhileBusy(r.result, voice);
+          if (on && loop === voice) await speakTurn(r.result);
         }
       } catch {
         // 멈춤 확인이 실패해도 계속 듣는다. 일반 멈춤 버튼과 단축키는 그대로 쓸 수 있다.
@@ -1415,7 +1346,7 @@ export async function send(text: string, options: { actionId?: string; controlLa
   if (reminderNight && REMINDER_MORNING.test(t)) return;
   const stop = stoppedGeneration;
   const input = timing?.begin("input-received");
-  set({ busy: true, error: undefined });
+  const releaseBusy = holdBusy({ error: undefined });
   timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
   const sent = timing?.measure(input, "turn-sent");
   try {
@@ -1425,7 +1356,7 @@ export async function send(text: string, options: { actionId?: string; controlLa
     timing?.measure(sent, "turn-failed");
     turnFailed(e, sid, stop);
   } finally {
-    set({ busy: false });
+    releaseBusy();
     if (fromForm && stop === stoppedGeneration && ui.recovery === undefined && ui.sessionId !== undefined &&
         (document.activeElement === origin || document.activeElement === document.body)) {
       if (ui.state === "WAITING_FOR_USER_CONFIRMATION") focus("confirm-title", { scroll: "confirm-panel" });
@@ -1489,13 +1420,15 @@ async function stopSession() {
   desk.card = undefined;
   desk.message = null;
   cueStopped();
+  progress?.stop();
+  busyRequests.clear();
   endConversation(false);
   stopSpeaking();
   recording?.cancel();
   recording = undefined;
   manualStream?.getTracks().forEach(track => track.stop());
   manualStream = undefined;
-  set({ listening: false, error: undefined, activity: null });
+  set({ busy: false, listening: false, error: undefined });
   if (ui.sessionId === undefined) return;
   try {
     const result = await api.cancel(ui.sessionId);
@@ -1519,7 +1452,7 @@ async function confirm(approve: boolean, actionId: string) {
   const stop = stoppedGeneration;
   const sid = ui.sessionId;
   const input = timing?.begin("input-received");
-  set({ busy: true });
+  const releaseBusy = holdBusy();
   timing?.afterPaint(input, "first-state-paint", () => stop === stoppedGeneration && ui.busy);
   const sent = timing?.measure(input, "turn-sent");
   try {
@@ -1529,7 +1462,7 @@ async function confirm(approve: boolean, actionId: string) {
     timing?.measure(sent, "turn-failed");
     turnFailed(e, sid, stop);
   } finally {
-    set({ busy: false });
+    releaseBusy();
   }
 }
 
@@ -1539,7 +1472,7 @@ async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: stri
   const stop = stoppedGeneration;
   const sid = ui.sessionId;
   const generation = sessionGeneration;
-  set({ busy: true, error: undefined });
+  const releaseBusy = holdBusy({ error: undefined });
   try {
     const handoffId = card.ref.handoffId;
     const body = { turnId: card.ref.turnId, key, ...(handoffId !== undefined && handoffId.length > 0 ? { handoffId } : {}) };
@@ -1555,7 +1488,7 @@ async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: stri
       setError("expired");
     }
   } finally {
-    set({ busy: false });
+    releaseBusy();
   }
 }
 
@@ -1658,25 +1591,24 @@ export async function toggleMic() {
     const generation = stoppedGeneration;
     const sessionId = ui.sessionId;
     recording = undefined;
-    set({ listening: false, busy: true });
-    announce(t("인식 중입니다."));
-    const audio = await rec.stop();
-    if (generation !== stoppedGeneration || manualRequestGeneration !== generation || sessionId !== ui.sessionId || ui.offline === true) {
-      audio.cancel();
-      set({ busy: false });
-      return;
-    }
+    const releaseBusy = holdBusy({ listening: false });
     const capture = timing?.begin("capture-end");
-    void cue("done");
-    const sent = timing?.measure(capture, "turn-sent");
+    let sent: TimingPoint | undefined;
     try {
-      const result = await withProgressCues(whileBusy(api.audioTurn(sessionId, audio, rec.asked)));
+      const audio = await rec.stop();
+      if (generation !== stoppedGeneration || manualRequestGeneration !== generation || sessionId !== ui.sessionId || ui.offline === true) {
+        audio.cancel();
+        return;
+      }
+      void cue("done");
+      sent = timing?.measure(capture, "turn-sent");
+      const result = await whileBusy(api.audioTurn(sessionId, audio, rec.asked));
       if (generation === stoppedGeneration) await applyResult(result, true, true, { sent, capture });
     } catch (e) {
       timing?.measure(sent, "turn-failed");
-      if (generation === stoppedGeneration && ui.sessionId !== undefined) turnFailed(e, ui.sessionId, generation);
+      turnFailed(e, sessionId, generation);
     } finally {
-      set({ busy: false });
+      releaseBusy();
     }
     return;
   }
@@ -1876,6 +1808,7 @@ function bind() {
   window.addEventListener("keydown", unlockAudio, true);
   // 새로고침·탭 닫기 때 이 세션의 브라우저 창을 닫는다.
   window.addEventListener("pagehide", () => {
+    progress?.stop();
     if (ui.sessionId === undefined) return;
     if (recoverable) api.detach(ui.sessionId);
     else api.close(ui.sessionId);
@@ -1895,7 +1828,12 @@ function closeRecovery() {
 }
 
 function connect(s: { sessionId: string; state?: Session["state"] | undefined; stopGeneration?: number | undefined; token?: string | undefined; writer?: string | undefined }) {
-  if (s.sessionId !== progressSession?.sessionId) progressSession = sessionProgress(s.sessionId);
+  progress?.stop();
+  progress = new BackendStatus(s.sessionId, (status, seq) => {
+    if (s.sessionId !== ui.sessionId) return;
+    if (recoverable && seq !== undefined) tabStore(PROGRESS_KEY, String(seq));
+    if (ui.backendStatus !== status) set({ backendStatus: status });
+  });
   desk.message = null;
   desk.sleeping = s.state === "STOPPED";
   desk.stopGeneration = s.stopGeneration ?? null;
@@ -1917,7 +1855,9 @@ export async function endSession() {
   heardOutcomes.clear();
   timing?.cancelPending();
   const sid = ui.sessionId;
-  progressSession = undefined;
+  progress?.stop();
+  progress = undefined;
+  busyRequests.clear();
   pendingResult = undefined;
   missedHeartbeats = 0;
   desk.message = null;
@@ -1942,7 +1882,7 @@ export async function endSession() {
   commandActionId = undefined;
   set({
     sessionId: undefined, state: "IDLE", offline: false, cancelUnconfirmed: false, error: undefined, last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: desktopLanguage ?? "ko", requestedLanguage: undefined,
-    messages: [], activity: null, commandReset: ui.commandReset + 1, sessionNew: true,
+    messages: [], backendStatus: "", commandReset: ui.commandReset + 1, sessionNew: true,
   });
   focus("session-new");
   try {

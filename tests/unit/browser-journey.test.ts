@@ -67,7 +67,7 @@ it("can verify arrival on a screen with just a title without inventing a status 
 });
 
 it("accepts a personal clarification in the resident's selected language", async () => {
-  const f = fixture(page("/desk", "Service desk", ""), () => ({action: "ask_user", answer: "Which record would you like me to check?"}));
+  const f = fixture(page("/desk", "Service desk", ""), () => ({action: "ask_user", target: "user_choice", answer: "Which record would you like me to check?"}));
   const result = await f.pilot.run("Check my record", ctx(), undefined, {replyLanguage: "en"});
   expect(result).toMatchObject({status: "asked", iterations: 1, speech: "Which record would you like me to check?"});
 });

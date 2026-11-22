@@ -29,7 +29,7 @@ export async function chatRoute(llm: StructuredLlm, text: Redacted, ctx: ChatCon
   if (!ctx.askedJustNow) routes.push("clarify");
   const clarification = ctx.askedJustNow
     ? "방금 되물었는데도 뜻이 불분명하면 general을 고른다. 같은 질문을 되풀이하지 말고 어떤 점이 불분명한지 짧게 말한다."
-    : "- clarify: 필요한 대상이나 뜻을 특정할 수 없을 때 쓴다. reply에 빠진 내용을 묻는 짧은 질문을 쓴다. 확인된 선택지가 있으면 함께 말한다.";
+    : "- clarify: 이용자만 아는 사실이 없어 확인을 시작할 수 없을 때 쉬운 질문 하나를 한다. 이용자가 자기 상황만 말하거나 어떻게 시작하는지 물어도 관련 자료와 첫 단계를 직접 찾아본다. 누구에게나 적용되는 안내를 먼저 확인할 수 있으면 검색이나 탐색에 맡긴다.";
   const output = await llm.generate({
     system: system(clarification),
     user: redactedJson({ utterance: text, page: ctx.page ?? null, lastAssistant: ctx.lastAssistant ?? null, recent: ctx.recent,

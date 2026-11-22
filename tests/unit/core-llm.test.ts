@@ -3,8 +3,9 @@ import { expect, it } from "vitest";
 import { z } from "zod";
 import {
   FileAttachment, ModelConnections, OPENAI_BASE_URL, OpenAIStructuredLlm, OpenAIVisionLlm, REASONING_EFFORT_OVERRIDE,
-  createStructuredLlm, createVisionLlm, messageContent, postJson, resolveReasoningEffort, type LlmConfig,
+  chatCompletion, createStructuredLlm, createVisionLlm, messageContent, postJson, resolveReasoningEffort, type LlmConfig,
 } from "../../src/core/llm.ts";
+import { MODEL_STATUS } from "../../src/core/model_status.ts";
 import { MaskReport, PICTURE_SCHEMA, PICTURE_SCHEMA_NAME, Picture } from "../../src/core/picture.ts";
 import { fakeFetch } from "../helpers.ts";
 import { fixtureText } from "./redacted-fixture.ts";
@@ -268,6 +269,153 @@ it("직접 만든 모델도 제한 시간 0이나 빈 공급자 이름은 기본
   const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: "https://example.test/v1", provider: "", timeoutMs: 0 });
   expect([llm.name, llm.provider, llm.timeoutMs]).toEqual(["openai(m)", "openai", 30_000]);
   expect(new OpenAIVisionLlm({ model: "v", baseUrl: OPENAI_BASE_URL, timeoutMs: 7000 }).timeoutMs).toBe(7000);
+});
+
+it("delivers the first complete status during generation and retains the strict answer and usage", async () => {
+  const seen: string[] = [];
+  const stream = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = stream.writable.getWriter();
+  const fetcher = fakeFetch(() => new Response(stream.readable, { headers: { "Content-Type": "text/event-stream; charset=utf-8" } }));
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
+  const pending = MODEL_STATUS.run({
+    language: "en", begin(name, fallback) { seen.push(name, fallback ?? ""); return line => { seen.push(line); }; },
+  }, () => llm.generate({ ...request, schemaName: "public_search_answer", schema }));
+  const sent = await fetcher.calls[0]?.json();
+  expect(sent.stream).toBe(true);
+  expect(sent.stream_options).toEqual({ include_usage: true });
+  expect(sent.messages[0].content).toBe(request.system);
+  const wireSchema = sent.response_format.json_schema.schema;
+  expect(Object.keys(wireSchema.properties)).toEqual(["backend_status", "answer"]);
+  expect(wireSchema.required).toEqual(["backend_status", "answer"]);
+  expect(schema.required).toEqual(["answer"]);
+  expect(seen[0]).toBe("public_search_answer");
+  expect(seen[1]).toMatch(/[a-z]/iu);
+  const event = (data: unknown) => new TextEncoder().encode("data: " + JSON.stringify(data) + "\r\n\r\n");
+  const delta = (content: string) => event({ choices: [{ index: 0, delta: { content } }] });
+  const first = delta('{"backend_status":"');
+  await writer.write(first.slice(0, 12));
+  await writer.write(first.slice(12));
+  await writer.write(delta("I’m comparing application "));
+  expect(seen).toHaveLength(2);
+  await writer.write(delta('instructions.","answer":"'));
+  await expect.poll(() => seen.slice(2)).toEqual(["I’m comparing application instructions."]);
+  await writer.write(delta('yes"}'));
+  await writer.write(event({ choices: [], usage: { prompt_tokens: 11, completion_tokens: 9 } }));
+  await writer.write(new TextEncoder().encode("data: [DONE]\n\n"));
+  await writer.close();
+  await expect(pending).resolves.toEqual({ answer: "yes" });
+  expect(seen).toHaveLength(3);
+  expect(llm.usage).toEqual({ calls: 1, inputTokens: 11, outputTokens: 9 });
+  expect(fetcher.calls).toHaveLength(1);
+});
+
+it("restricts private, unknown, file and vision activity even when the endpoint ignores its schema", async () => {
+  const fetcher = fakeFetch(() => reply('{"backend_status":"The private value is Fern.","answer":"yes"}'));
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  const seen: string[] = [];
+  const results = await MODEL_STATUS.run({ language: "ja", begin: () => line => { seen.push(line); } }, () => Promise.all([
+    llm.generate({ ...request, schemaName: "personal_answer_check" }),
+    llm.generate({ ...request, schemaName: "an_unknown_task" }),
+    llm.generate({ ...request, schemaName: "public_search_answer", attachment: new FileAttachment("private.pdf", "application/pdf", PNG) }),
+    vision(fetcher).see(seeArgs()),
+  ]));
+  expect(results).toEqual(Array.from({ length: 4 }, () => ({ answer: "yes" })));
+  expect(seen).toEqual([]);
+  for (const call of fetcher.calls) {
+    const choices: string[] = (await call.json()).response_format.json_schema.schema.properties.backend_status.enum;
+    expect(choices.length).toBeGreaterThan(1);
+    expect(choices.every(line => /[ぁ-ん]/u.test(line))).toBe(true);
+  }
+});
+
+it("protects caller-owned status fields and isolates status listener failures from answers", async () => {
+  const output = { _backend_status: "I’m comparing instructions.", backend_status: { ok: true } };
+  const fetcher = fakeFetch(() => reply(JSON.stringify(output)));
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  const schema = { type: "object", properties: { backend_status: { type: "object" } }, required: ["backend_status"] };
+  await expect(MODEL_STATUS.run({ language: "en", begin: () => () => { throw Error("listener closed"); } },
+    () => llm.generate({ ...request, schemaName: "public_search_answer", schema }))).resolves.toEqual({ backend_status: { ok: true } });
+  expect(Object.keys((await fetcher.calls[0]?.json()).response_format.json_schema.schema.properties)).toEqual(["_backend_status", "backend_status"]);
+});
+
+it("keeps JSON mode for the standalone intent pass and strips its scoped status", async () => {
+  const fetcher = fakeFetch(() => reply('{"backend_status":"I’m reading the request.","type":"UNKNOWN"}'));
+  const seen: string[] = [];
+  const result = await MODEL_STATUS.run({ language: "en", begin: name => { seen.push(name); return line => { seen.push(line); }; } },
+    () => chatCompletion({ model: "m", baseUrl: "http://localhost/v1" }, { ...request, format: { type: "json_object" } }, fetcher));
+  expect(result).toEqual({ type: "UNKNOWN" });
+  expect(seen).toEqual(["intent", "I’m reading the request."]);
+  const sent = await fetcher.calls[0]?.json();
+  expect(sent.response_format).toEqual({ type: "json_object" });
+  expect(sent.messages[0].content).toContain("backend_status");
+  expect(sent.stream).toBeUndefined();
+});
+
+it.each([
+  ['{"answer":"yes"}', "public_search_answer", []],
+  ['{"answer":"yes","backend_status":"I’m checking the guidance."}', "public_search_answer", ["I’m checking the guidance."]],
+  ['{"backend_status":["I’m checking"],"answer":"yes"}', "public_search_answer", []],
+  ['{"backend_status":"I’m reading a private note.","answer":"yes"}', "personal_answer_check", []],
+] as const)("retains the streamed answer when its status is missing, late, invalid, or private (%s)", async (content, schemaName, expected) => {
+  const data = JSON.stringify({ choices: [{ index: 0, delta: { content } }] });
+  const fetcher = fakeFetch(() => new Response("data: " + data + "\n\ndata: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } }));
+  const seen: string[] = [];
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  await expect(MODEL_STATUS.run({ language: "en", begin: () => line => { seen.push(line); } },
+    () => llm.generate({ ...request, schemaName }))).resolves.toEqual({ answer: "yes" });
+  expect(seen).toEqual(expected);
+});
+
+it("never promotes a truncated stream to an answer or an incomplete status to activity", async () => {
+  const data = JSON.stringify({ choices: [{ delta: { content: '{"backend_status":"partial' } }] });
+  const fetcher = fakeFetch(() => new Response("data: " + data + "\n\n", { headers: { "Content-Type": "text/event-stream" } }));
+  const seen: string[] = [];
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  await expect(MODEL_STATUS.run({ language: "en", begin: () => line => { seen.push(line); } },
+    () => llm.generate({ ...request, schemaName: "public_search_answer" }))).resolves.toBeUndefined();
+  expect(seen).toEqual([]);
+});
+
+it("cancels the status stream during a read and skips already-aborted work", async () => {
+  const stopped = new AbortController();
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } });
+  const fetcher = fakeFetch(() => new Response(stream, { headers: { "Content-Type": "text/event-stream" } }));
+  const seen: string[] = [];
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  await MODEL_STATUS.run({ language: "en", begin: name => { seen.push(name); return line => { seen.push(line); }; } }, async () => {
+    const args = { ...request, schemaName: "public_search_answer", signal: stopped.signal };
+    const pending = llm.generate(args);
+    await expect.poll(() => stream.locked).toBe(true);
+    stopped.abort();
+    await expect(pending).resolves.toBeUndefined();
+    await expect.poll(() => cancelled).toBe(true);
+    await expect(llm.generate(args)).resolves.toBeUndefined();
+    expect(seen).toEqual(["public_search_answer"]);
+    expect(fetcher.calls).toHaveLength(1);
+  });
+});
+
+it("isolates concurrent sessions sharing a model connection", async () => {
+  let release = () => {};
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  const fetcher = fakeFetch(async req => {
+    const user: string = (await req.json()).messages[1].content;
+    if (user === "first") await hold;
+    return reply(JSON.stringify({ backend_status: user === "first" ? "안내를 확인하고 있어요." : "I’m reading the guidance.", answer: user }));
+  });
+  const llm = new OpenAIStructuredLlm({ model: "m", baseUrl: OPENAI_BASE_URL, pool: new ModelConnections(fetcher) });
+  const korean: string[] = [], english: string[] = [];
+  const run = (language: "ko" | "en", user: string, seen: string[]) => MODEL_STATUS.run({
+    language, begin: () => line => { seen.push(line); },
+  }, () => llm.generate({ ...request, user: fixtureText(user), schemaName: "public_search_answer" }));
+  const first = run("ko", "first", korean);
+  await expect(run("en", "second", english)).resolves.toEqual({ answer: "second" });
+  release();
+  await expect(first).resolves.toEqual({ answer: "first" });
+  expect(korean).toEqual(["안내를 확인하고 있어요."]);
+  expect(english).toEqual(["I’m reading the guidance."]);
 });
 
 it("연결 묶음을 닫으면 본문을 받는 중인 요청도 끊는다", async () => {

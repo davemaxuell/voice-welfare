@@ -74,7 +74,7 @@ function speakSpeech(prefs: SpeechPrefs): string {
   const speed = prefs.rate <= 1.0 ? "천천히" : prefs.rate >= 1.4 ? "빨리" : "보통";
   const length = { short: "짧게", normal: "보통", detailed: "자세히" }[prefs.length];
   return "말하는 속도는 " + speed + ", 답 길이는 " + length + ", 목소리는 " + VOICE_PROFILE.voice +
-    ", 진행 상황 알림은 " + (prefs.progressSpoken ? "켭니다." : "끕니다.");
+    "입니다. 진행 상황은 대화 화면에 표시하고, 물어보시면 읽어 드려요.";
 }
 function listed(values: Vault, lang: Lang): string[] {
   // Preserve the order in which the user supplied the values.

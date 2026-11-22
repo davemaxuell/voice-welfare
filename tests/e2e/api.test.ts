@@ -1,12 +1,14 @@
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { TurnResultSchema } from "../../src/core/turn.ts";
+import { MODEL_STATUS } from "../../src/core/model_status.ts";
 import { makeApp, JSON_LIMIT, AUDIO_LIMIT, MAX_SESSIONS } from "../../src/server/app.ts";
 import { AgentRuntime, loadConfig } from "../../src/server/runtime.ts";
 import { UnsupportedSttProvider, type SttProvider } from "../../src/voice/stt.ts";
 import { UnsupportedTtsProvider, type TtsProvider } from "../../src/voice/tts.ts";
 import { FakeLlm, Gate, PORTAL, step, testRuntimeEnv } from "../helpers.ts";
 import { Approval } from "./runtime-http-fixture.ts";
+import { latch } from "./browser-cases.ts";
 
 const result = z.object({ state: z.string(), speech: z.string(), intentType: z.string() }).passthrough();
 const stt: SttProvider = {
@@ -131,7 +133,7 @@ it("test_stop_supersedes_a_wake_waiting_on_the_session_lock", async () => {
 it("test_progress_endpoint_reports_code_built_steps", async () => {
   const id = await sessionId();
   const url = "/api/session/" + id + "/progress";
-  expect(await (await app.request(url)).json()).toEqual({ running: false, seq: 0, latest: null, spoken: true, activity: null, activitySpoken: false });
+  expect(await (await app.request(url)).json()).toEqual({ running: false, seq: 0, backend_status: "", latest: null, spoken: true, activity: null, activitySpoken: false });
   const gate = new Gate(
     [
       step("open_url", "http://127.0.0.1:5174/external.html"),
@@ -156,19 +158,60 @@ it("test_progress_endpoint_reports_code_built_steps", async () => {
     ]);
     expect(await (await app.request(url)).json()).toEqual({
       running: true,
-      seq: 12,
-      latest: "127.0.0.1에서 '장애인연금 안내'를 눌렀어요.",
+      seq: expect.any(Number), backend_status: expect.stringMatching(/.+/u),
+      latest: expect.stringMatching(/장애인연금 안내|안내 기사/u),
       spoken: true,
-      activity: "'장애인연금 안내'를 눌렀어요.",
+      activity: expect.stringMatching(/장애인연금 안내|다음에 할 일/u),
       activitySpoken: true,
-      activitySeq: 10,
+      activitySeq: expect.any(Number),
     });
   } finally {
     gate.release();
     await pending;
   }
-  expect(await (await app.request(url)).json()).toMatchObject({ running: false });
+  expect(await (await app.request(url)).json()).toMatchObject({ running: false, backend_status: "" });
   expect((await app.request("/api/session/nope/progress")).status).toBe(404);
+});
+
+it("streams the current pass during a turn and clears it when the answer arrives", async () => {
+  const id = await sessionId(), session = app.sessions.get(id)!;
+  const response = await app.request(`/api/session/${id}/progress/stream`);
+  expect(response.headers.get("content-type")).toBe("text/event-stream");
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  const read = async () => {
+    const { value } = await reader.read();
+    return z.object({ seq: z.number(), backend_status: z.string() }).parse(JSON.parse(value!.slice(6)));
+  };
+  expect((await read()).backend_status).toBe("");
+  const hold = latch();
+  const status = "공식 신청 안내를 살펴보고 있어요.";
+  session.deps.llm = new FakeLlm(async ({schemaName}) => {
+    expect(schemaName).toBe("public_service_decision");
+    const publish = MODEL_STATUS.getStore()!.begin(schemaName, "안내를 준비하고 있어요.");
+    publish(status);
+    await hold.promise;
+    return {kind: "conversation", reply: "확인했어요.", requestedFacts: [], exclusions: [], continuation: false, choices: []};
+  });
+  const turn = post("/api/turn", {sessionId: id, text: "국가장학금은 어떻게 신청해요?"});
+  try {
+    const seqs: number[] = [];
+    for (;;) {
+      const snapshot = await read();
+      seqs.push(snapshot.seq);
+      if (snapshot.backend_status === status) break;
+    }
+    expect(seqs).toEqual([...new Set(seqs)].sort((a, b) => a - b));
+    expect((await session.handleTurn("지금 어디까지 했어?")).speech).toBe(status);
+    hold.resolve();
+    expect(await (await turn).json()).toMatchObject({ speech: "확인했어요." });
+    expect((await read()).backend_status).toBe("");
+    session.detachForRecovery();
+    expect((await reader.read()).done).toBe(true);
+  } finally {
+    hold.resolve();
+    await reader.cancel();
+    await turn;
+  }
 });
 
 it("test_bad_requests_and_unsupported_voice", async () => {

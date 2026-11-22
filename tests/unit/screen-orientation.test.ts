@@ -8,7 +8,7 @@ import { context, page, pilot } from "./fake-browser.ts";
 const URL_ = "https://www.hikorea.go.kr/";
 const SPARSE = page(URL_, "하이코리아", { outline: { headings: [], notices: [], steps: [], buttons: [], links: [], mainLinks: [], mainText: "배너" } });
 const FOUND: Orientation = { url: URL_, place: "체류 민원 첫 화면", clickable: ["체류민원"], imageOnly: ["배너 메뉴"] };
-const ask = () => [{ action: "inspect_screen" }, { action: "ask_user", answer: "무엇을 볼까요?" }];
+const ask = () => [{ action: "inspect_screen" }, { action: "ask_user", target: "user_choice", answer: "지금 어떤 비자로 체류하고 계세요?" }];
 const sent = (request: { user: string }) => z.looseObject({ screenOrientation: z.object({ place: z.string(), clickable: z.array(z.string()), imageOnly: z.array(z.string()) }).optional() }).parse(JSON.parse(request.user));
 
 /** 동의를 받는 첫 실행의 결과에서 체크포인트를 꺼낸다. */
@@ -97,7 +97,7 @@ it("사진에서 고른 항목을 누르기 직전 같은 주소가 인증 화�
 
 it("동의하면 첫 단계에서 사진으로 알아본 것을 다음 결정에 비신뢰 자료로만 준다", async () => {
   const { orient, checkpoint } = await consented();
-  const resumed = pilot({ [URL_]: SPARSE }, [{ action: "ask_user", answer: "무엇을 볼까요?" }], { offerVisual: true, orient }, URL_);
+  const resumed = pilot({ [URL_]: SPARSE }, ask().slice(1), { offerVisual: true, orient }, URL_);
   const result = await resumed.auto.run("비자 연장 절차", context(), undefined, { checkpoint });
   expect(orient).toHaveBeenCalledTimes(1);
   expect(orient).toHaveBeenCalledWith("비자 연장 절차", URL_, expect.anything(), expect.anything());
@@ -184,7 +184,7 @@ it("동의한 뒤 화면 주소가 달라졌으면 사진을 보내지 않고 �
 it("사진을 보는 모델이 오류를 내도 목표 수행은 이어진다", async () => {
   const { checkpoint } = await consented();
   const orient = vi.fn(async () => { throw new Error("비전 서비스 오류"); });
-  const resumed = pilot({ [URL_]: SPARSE }, [{ action: "ask_user", answer: "무엇을 볼까요?" }], { offerVisual: true, orient }, URL_);
+  const resumed = pilot({ [URL_]: SPARSE }, ask().slice(1), { offerVisual: true, orient }, URL_);
   const result = await resumed.auto.run("비자 연장 절차", context(), undefined, { checkpoint });
   expect(result.steps[0]).toMatchObject({ action: "inspect_screen", ok: false });
   expect(result.status).toBe("asked");

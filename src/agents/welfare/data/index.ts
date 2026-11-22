@@ -134,7 +134,7 @@ export interface WelfareDataProvider {
   /** 맞춤 찾기용 전체 목록(중앙부처 + 지정한 시·도의 지자체 서비스) */
   catalog(ctpv?: string, signal?: AbortSignal): Promise<ServiceSummary[]>;
   /** 지자체 서비스 상세(선정기준 포함). 없으면 undefined */
-  getLocalService?(servId: string, detailUrl?: string): Promise<WelfareService | undefined>;
+  getLocalService?(servId: string, detailUrl?: string, signal?: AbortSignal): Promise<WelfareService | undefined>;
   readonly mode: 'fixture' | 'official-api';
   readonly lastError?: string;
   listServices(query?: string, signal?: AbortSignal): Promise<WelfareService[]>;
@@ -579,12 +579,12 @@ export class OfficialCentralWelfareApiProvider implements WelfareDataProvider {
     );
   }
 
-  async getLocalService(servId: string, detailUrl = ''): Promise<WelfareService | undefined> {
+  async getLocalService(servId: string, detailUrl = '', signal?: AbortSignal): Promise<WelfareService | undefined> {
     return this.cached(`LD:${servId}`, async () => {
       const url = new URL(`${this.localBaseUrl()}/LcgvWelfaredetailed`);
       url.searchParams.set('servId', servId);
       url.searchParams.set('serviceKey', this.opts.apiKey);
-      const res = await this.fetchImpl(url, { signal: this.requestSignal() });
+      const res = await this.fetchImpl(url, { signal: this.requestSignal(signal) });
       const body = await res.text();
       if (res.status !== 200) throw new WelfareApiError(apiErrorMessage(body), res.status);
       const s = parseWelfareDetail(body, detailUrl);

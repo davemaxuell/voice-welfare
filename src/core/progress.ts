@@ -1,9 +1,48 @@
+import { MODEL_STATUS, modelActivities } from "./model_status.ts";
+import { AGENT_IDS, type Lang } from "./turn.ts";
+
+const activities = {
+  transcribing: {ko: "녹음한 말씀을 글로 옮기고 있어요.", en: "Transcribing your recording.", zh: "正在转写您的录音。", ja: "録音を文字に起こしています。"},
+  planning: modelActivities.request,
+  screen: modelActivities.page,
+  searching: {ko: "공식 자료를 찾고 있어요.", en: "Looking for official guidance.", zh: "正在查找官方资料。", ja: "公式の案内を探しています。"},
+  welfare: {ko: "복지 안내를 살펴보고 있어요.", en: "Checking benefit information.", zh: "正在查看福利信息。", ja: "福祉制度の案内を調べています。"},
+  navigating: {ko: "페이지에서 다음 단계를 확인하고 있어요.", en: "Finding the next step on the page.", zh: "正在页面上查找下一步。", ja: "ページで次の手順を確認しています。"},
+  permission: {ko: "요청하신 작업의 권한을 확인하고 있어요.", en: "Checking permission for this step.", zh: "正在检查这一步的权限。", ja: "この操作の権限を確認しています。"},
+  executing: {ko: "요청하신 단계를 진행하고 있어요.", en: "Carrying out the requested step.", zh: "正在执行您要求的步骤。", ja: "ご依頼の操作を進めています。"},
+  verifying: {ko: "결과를 확인하고 있어요.", en: "Checking the result.", zh: "正在核对结果。", ja: "結果を確認しています。"},
+} satisfies Record<string, Record<Lang, string>>;
+
+export function backendActivity(activity: keyof typeof activities) {
+  const scope = MODEL_STATUS.getStore();
+  if (scope) scope.begin(activity, activities[activity][scope.language]);
+}
+
+/** Trace notes may contain page text and private fields. Only the trusted phase and agent select a UI label. */
+export function backendTrace(phase: string, agent: string) {
+  switch (phase) {
+    case "OBSERVING": return backendActivity("screen");
+    case "VERIFYING": return backendActivity("verifying");
+    case "POLICY_CHECK": return backendActivity("permission");
+    case "EXECUTING": return backendActivity("executing");
+    case "PLANNING":
+      return backendActivity(agent === AGENT_IDS.web ? "navigating" : agent === AGENT_IDS.welfare ? "welfare" : "planning");
+  }
+}
+
+export interface BackendStatus { seq: number; backend_status: string }
+
 export class Progress {
   spoken = true;
   #reviews = 0;
   #running = false;
   #steps: string[] = [];
   #seq = 0;
+  #backend = "";
+  #recordings = new Map<symbol, string>();
+  #owner?: symbol;
+  #pass = 0;
+  #listeners = new Set<(state: BackendStatus | null) => void>();
   #activity: string | null = null;
   #activitySpoken = false;
   #activitySeq = 0;
@@ -16,6 +55,75 @@ export class Progress {
   get count(): number { return this.#steps.length; }
   get latest(): string | undefined { return this.#steps.at(-1); }
   get generation(): number { return this.#generation; }
+  get backendStatus(): string { return this.#backend; }
+
+  watchBackend(listener: (state: BackendStatus | null) => void): () => void {
+    listener({ seq: this.#seq, backend_status: this.#backend });
+    this.#listeners.add(listener);
+    return () => { this.#listeners.delete(listener); };
+  }
+
+  #notify(state: BackendStatus | null) {
+    for (const listener of this.#listeners) {
+      try { listener(state); }
+      catch { this.#listeners.delete(listener); } // A disconnected display cannot interrupt the task.
+    }
+  }
+
+  #setBackend(text: string) {
+    if (this.#backend === text) return;
+    this.#backend = text;
+    this.#notify({ seq: ++this.#seq, backend_status: text });
+  }
+
+  /** An incoming recording may overlap a running task or a Stop. Keep the active turn's status on screen. */
+  async transcribing<T>(lang: Lang, work: () => Promise<T>): Promise<T> {
+    const id = Symbol();
+    this.#recordings.set(id, activities.transcribing[lang]);
+    if (!this.#owner) this.#setBackend(activities.transcribing[lang]);
+    try { return await work(); }
+    finally {
+      if (this.#recordings.delete(id) && !this.#owner) this.#setBackend(this.#recordingStatus());
+    }
+  }
+
+  #recordingStatus() { return [...this.#recordings.values()].at(-1) ?? ""; }
+
+  async trackBackend<T>(language: () => Lang, safe: (line: string) => boolean | Promise<boolean>, work: () => Promise<T>): Promise<T> {
+    const owner = this.#owner = Symbol();
+    const scope = {
+      get language() { return language(); },
+      begin: (_operation: string, fallback?: string) => {
+        if (this.#owner !== owner) return () => {};
+        const pass = ++this.#pass;
+        this.#setBackend(fallback ?? activities.planning[language()]);
+        return (line: string) => {
+          if (this.#owner !== owner || this.#pass !== pass || line.length === 0 || line === this.#backend) return;
+          // Slow privacy checks and parallel model responses can finish after a newer step.
+          void Promise.resolve().then(() => safe(line)).then(ok => {
+            if (ok && this.#owner === owner && this.#pass === pass) this.#setBackend(line);
+          }).catch(() => { /* Keep the trusted activity label when the check is unavailable. */ });
+        };
+      },
+    };
+    try {
+      return await MODEL_STATUS.run(scope, work);
+    } finally {
+      if (this.#owner === owner) this.#endBackend();
+    }
+  }
+
+  #endBackend() {
+    this.#owner = undefined;
+    this.#setBackend(this.#recordingStatus());
+  }
+
+  close() {
+    this.#recordings.clear();
+    this.#endBackend();
+    this.#notify(null);
+    this.#listeners.clear();
+  }
 
   start(): void {
     this.#running = true;
@@ -93,6 +201,8 @@ export class Progress {
   finish(): void { this.#running = false; }
 
   interrupt(): void {
+    this.#recordings.clear();
+    this.#endBackend();
     this.#running = false;
     this.#generation++;
     this.#queue = [];
@@ -113,7 +223,7 @@ export class Progress {
 
   snapshot() {
     return {
-      running: this.running, seq: this.#seq, latest: this.latest ?? null, spoken: this.spoken && (this.#reviews === 0 || this.#activitySpoken),
+      running: this.running, seq: this.#seq, backend_status: this.#backend, latest: this.latest ?? null, spoken: this.spoken && (this.#reviews === 0 || this.#activitySpoken),
       activity: this.#activity, activitySpoken: this.#activitySpoken,
       ...(this.#activitySpoken ? { activitySeq: this.#activitySeq } : {}),
     };

@@ -1,8 +1,7 @@
-import { join } from "node:path";
 import { chromium, expect as browserExpect, type Browser, type Page, type Route } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import type * as Speaker from "../../web/src/speaker.ts";
-import { axeScript, soundCues } from "../../src/core/assets.ts";
+import { axeScript } from "../../src/core/assets.ts";
 import { latch } from "./browser-cases.ts";
 import { recordCues, startUi } from "./web-ui-fixtures.ts";
 
@@ -17,7 +16,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await ui?.close();
-}, 30_000);
+});
 beforeEach(async () => { page = await browser.newPage({ locale: "ko-KR" }); });
 afterEach(async () => { await page?.close(); await ui?.reset(); });
 
@@ -441,15 +440,10 @@ it("test_progress_cues_never_play_over_speech", async () => {
     await consent(voiceUi.url);
     await page.waitForFunction(() => (window.__talking?.length ?? 0) >= 4 &&
       (window.__cues ?? []).filter(([kind]) => kind === "listen").length >= 2, undefined, { timeout: 40_000 });
-    const { talking, cues } = await page.evaluate(() => ({ talking: window.__talking ?? [], cues: window.__cues ?? [] }));
-    const progress = cues.filter(([kind]) => kind === "thinking" || kind === "working");
-    expect(progress.some(([kind]) => kind === "working"), JSON.stringify(cues)).toBe(true);
-    const sent = cues.filter(([kind]) => kind === "done").map(([,at]) => at);
-    for (const [i, begin] of sent.entries()) {
-      const end = sent[i + 1] ?? Infinity;
-      expect(progress.filter(([kind, at]) => kind === "working" && begin <= at && at < end).length).toBeLessThanOrEqual(1);
-    }
-    expect(progress.filter(([, at]) => talking.some(([start, end]) => start <= at && at <= end)), JSON.stringify(talking)).toEqual([]);
+    await browserExpect(page.locator("#log")).toContainText("지금 어디까지 했어?");
+    const cues = await cueNames();
+    expect(cues).not.toContain("thinking");
+    expect(cues).not.toContain("working");
   } finally {
     await page.close();
     await voiceUi.close();
@@ -458,35 +452,96 @@ it("test_progress_cues_never_play_over_speech", async () => {
 
 const progressRoute = "**/api/session/*/progress";
 const finishedStep = "연습 누리집에서 안내를 확인했어요.";
-const finishedReport = { running: true, seq: 17, spoken: true, activity: finishedStep, activitySpoken: true, activitySeq: 17 };
+const finishedReport = { seq: 17, backend_status: finishedStep };
+const pollFallback = () => page.route("**/progress/stream", route => route.fulfill({ status: 503, body: "" }));
 
-it("실시간 대화의 음성을 꺼도 새 진행 문장은 대화 기록에 한 번 남는다", async () => {
-  const native = await startUi(true, { REQUIRE_CONSENT: "false", PRACTICE_MODE: "false" });
+it("shows backend progress in place without adding or announcing chat messages", async () => {
+  await recordCues(page);
+  await consent();
+  const speech: string[] = [];
+  page.on("request", req => { if (new URL(req.url()).pathname === "/api/audio/speak") speech.push(req.postData() ?? ""); });
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  let progress = { seq: 1, backend_status: "공식 자료를 찾고 있어요." };
+  const first = progress.backend_status;
+  await page.route("**/progress/stream", route => route.fulfill({
+    contentType: "text/event-stream", body: "data: " + JSON.stringify(progress) + "\n\n",
+  }));
+  await page.route("**/progress", route => route.fulfill({ json: progress }));
+  await page.route("**/turn", async route => { await pending; await route.continue(); });
+  const status = page.locator(".conversation #backend-status");
   try {
-    await page.route("**/api/health", async route => {
-      const response = await route.fetch();
-      await route.fulfill({ json: { ...await response.json(), voiceEdge: "연습" } });
-    });
-    await page.route(url => url.pathname === "/src/voice-edge.ts", route => route.fulfill({
-      contentType: "text/javascript",
-      body: `export class LiveConversation {
-        constructor(_, callbacks) { this.callbacks = callbacks; }
-        async start() {
-          this.callbacks.activity("연습 화면을 열었어요.");
-          this.callbacks.activity("연습 화면을 열었어요.");
-        }
-        stop() {} updateAudio() {} setLanguage() {}
-      }`,
-    }));
-    await page.goto(native.url);
-    await browserExpect(page.locator("#send")).toBeEnabled();
-    await page.locator("#tts-toggle").click();
-    await page.locator("#conv-start").click();
-    await browserExpect(page.locator("#st-activity")).toHaveText("연습 화면을 열었어요.");
-    await browserExpect(page.getByRole("log").locator(".assistant").filter({ hasText: "연습 화면을 열었어요." })).toHaveCount(1);
+    await send("장애인연금이 뭐야");
+    await browserExpect(status).toHaveText(first);
+    await browserExpect(status).toHaveAttribute("aria-live", "off");
+    const original = await status.elementHandle();
+    progress = { seq: 2, backend_status: "공식 자료에서 신청 방법을 확인하고 있어요." };
+    await browserExpect(status).toHaveText(progress.backend_status);
+    expect(await status.evaluate((element, previous) => element === previous, original)).toBe(true);
+    await browserExpect(page.locator("#log")).not.toContainText(first);
+    await browserExpect(page.locator("#log")).not.toContainText(progress.backend_status);
+    await browserExpect(page.locator("#announce")).not.toContainText(progress.backend_status);
+    expect(speech.some(request => request.includes(first) || request.includes(progress.backend_status))).toBe(false);
+    await browserExpect(command()).toBeFocused();
   } finally {
-    await native.close();
+    finish();
   }
+  await browserExpect(status).toBeHidden(turnTimeout);
+  await browserExpect(page.locator("#log")).toContainText("장애인연금이 뭐야", turnTimeout);
+});
+
+it("shows recorded input progress quietly and clears it before the answer", async () => {
+  const voice = await startUi(true, { REQUIRE_CONSENT: "false", PRACTICE_MODE: "false" });
+  try {
+    await recordCues(page, true);
+    await pollFallback();
+    await page.route(progressRoute, route => route.fulfill({ json: finishedReport }));
+    await page.goto(voice.url);
+    const mic = page.locator("#mic-btn");
+    await browserExpect(mic).toBeEnabled();
+    await mic.click();
+    await browserExpect(mic).toHaveAttribute("aria-pressed", "true");
+    const request = holdNext("**/api/audio/turn?**");
+    await mic.click();
+    const status = page.locator("#backend-status");
+    await browserExpect(status).toHaveText(finishedStep);
+    const turn = await request;
+    await browserExpect(page.locator("#log")).not.toContainText(finishedStep);
+    await browserExpect(page.locator("#announce")).not.toContainText(finishedStep);
+    expect(await cueNames()).not.toContain("working");
+    await turn.continue();
+    await browserExpect(status).toBeHidden(turnTimeout);
+    await browserExpect(page.locator("#log .user").last()).toContainText("기초연금", turnTimeout);
+  } finally { await page.close(); await voice.close(); }
+});
+
+it("shows delegated backend work while Live remains open and clears it when the call ends", async () => {
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    const health: unknown = await response.json();
+    if (health === null || typeof health !== "object") throw new Error("Invalid health response");
+    await route.fulfill({ json: { ...health, stt: { supported: true, provider: "test" }, voiceEdge: "test" } });
+  });
+  await page.route(url => url.pathname === "/src/voice-edge.ts", route => route.fulfill({
+    contentType: "text/javascript", body: "export class LiveConversation { audio = { muted: true, paused: true }; async start() {} stop() {} updateAudio() {} setLanguage() {} }",
+  }));
+  let progress = { seq: 1, backend_status: "" };
+  await page.route("**/progress/stream", route => route.fulfill({ status: 503, body: "" }));
+  await page.route("**/progress", route => route.fulfill({ json: progress }));
+  await consent();
+  const status = page.locator("#backend-status");
+  await browserExpect(page.locator("#phase")).toHaveClass(/phase-listening/);
+  await browserExpect(status).toBeHidden();
+  progress = { seq: 2, backend_status: "최신 공고를 확인하고 있어요." };
+  await browserExpect(status).toHaveText(progress.backend_status);
+  await browserExpect(page.locator("#log")).not.toContainText(progress.backend_status);
+  progress = { seq: 3, backend_status: "" };
+  await browserExpect(status).toBeHidden();
+  await browserExpect(page.locator("#conv-end")).toBeVisible();
+  progress = { seq: 4, backend_status: "다음 페이지를 읽고 있어요." };
+  await browserExpect(status).toHaveText(progress.backend_status);
+  await page.locator("#conv-end").click();
+  await browserExpect(status).toBeHidden();
 });
 
 function holdNext(pattern: string) {
@@ -502,13 +557,12 @@ async function heldTurn(text = "도움말") {
 }
 
 async function afterProgress(route: Route) {
-  const finished = page.waitForEvent("requestfinished", request => request === route.request());
   await route.fulfill({ json: finishedReport });
-  await finished;
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
 
 it("진행 조회가 열 초 지연되어도 요청은 하나만 보낸다", async () => {
+  await pollFallback();
   await consent();
   let waiting = 0;
   await page.route(progressRoute, () => { waiting++; });
@@ -518,6 +572,7 @@ it("진행 조회가 열 초 지연되어도 요청은 하나만 보낸다", asy
 });
 
 it("멈춘 뒤 도착한 진행 응답은 화면과 복구 기록을 바꾸지 않는다", async () => {
+  await pollFallback();
   const personal = await startUi(false, { PILOT_PROFILE: "personal" });
   try {
     await page.goto(personal.url);
@@ -534,7 +589,7 @@ it("멈춘 뒤 도착한 진행 응답은 화면과 복구 기록을 바꾸지 �
     const stored = () => page.evaluate(() => sessionStorage.getItem("cheongeum.progressSeq"));
     const previous = await stored();
     await afterProgress(pending);
-    expect({ visible: await page.locator("#st-activity").isVisible(), stored: await stored(), log: await page.locator("#log").innerText() })
+    expect({ visible: await page.locator("#backend-status").isVisible(), stored: await stored(), log: await page.locator("#log").innerText() })
       .toEqual({ visible: false, stored: previous, log });
   } finally {
     await page.close();
@@ -542,65 +597,9 @@ it("멈춘 뒤 도착한 진행 응답은 화면과 복구 기록을 바꾸지 �
   }
 });
 
-it("같은 세션의 두 번째 요청에서는 지난 단계 문장을 다시 읽지 않는다", async () => {
-  await page.addInitScript(() => localStorage.setItem("cheongeum.voiceMode", "dictate"));
-  await recordCues(page);
-  const spoken: string[] = [];
-  await page.route("**/api/audio/speak", async route => {
-    const body: unknown = route.request().postDataJSON();
-    if (typeof body === "object" && body !== null && "text" in body && typeof body.text === "string") spoken.push(body.text);
-    await route.fulfill({ path: join(soundCues, "done.ogg"), contentType: "audio/ogg" });
-  });
+it("새 작업은 멈춘 조회를 기다리지 않고 새로운 진행 상태를 읽는다", async () => {
   await consent();
-  const firstProgress = holdNext(progressRoute);
-  const firstTurn = await heldTurn();
-  const announcement = await watchLiveRegion("announce");
-  const replies = await watchLiveRegion("log", true);
-  const regions = await page.evaluateHandle(step => {
-    const selectors = ["[role=log]", "#error", "#st-activity", "#mic-check-result", "#announce", "#intro-text", "#phase",
-      "#first-run-live", "#recording-status", "#setup-error", "#workflow-feedback", "#status"];
-    return selectors.map(selector => {
-      const node = document.querySelector(selector);
-      const live = node?.getAttribute("aria-live") ?? node?.getAttribute("role");
-      const row = { selector, writes: 0, active: live != null && live !== "off" };
-      if (node !== null) new MutationObserver(records => {
-        for (const record of records) {
-          const written = record.type === "characterData" ? [record.target] : [...record.addedNodes];
-          if (written.some(item => item.textContent?.includes(step) === true)) row.writes++;
-        }
-      }).observe(node, { childList: true, characterData: true, subtree: true });
-      return row;
-    });
-  }, finishedStep);
-  await afterProgress(await firstProgress);
-  await browserExpect.poll(() => spoken.filter(text => text === finishedStep)).toHaveLength(1);
-  const counts = await regions.jsonValue();
-  expect(counts.filter(row => row.active && row.writes > 0).map(row => row.selector)).toEqual(["[role=log]"]);
-  console.info("진행 안내 관찰", { regions: counts, speechRequests: spoken.filter(text => text === finishedStep).length });
-  expect(await replies.count()).toBe(1);
-  expect(await announcement.count()).toBe(0);
-  await browserExpect(page.locator("#st-activity")).not.toHaveAttribute("aria-live", "polite");
-  await firstTurn.continue();
-  await browserExpect(page.locator("#send")).toBeEnabled();
-  const secondProgress = holdNext(progressRoute);
-  await heldTurn();
-  await afterProgress(await secondProgress);
-  expect(spoken.filter(text => text === finishedStep)).toHaveLength(1);
-  await browserExpect(page.locator("#log .assistant").filter({ hasText: finishedStep })).toHaveCount(1);
-});
-
-it("작업 결과가 도착하면 지금 진행 중인 단계 줄을 숨긴다", async () => {
-  await consent();
-  await page.route(progressRoute, route => route.fulfill({ json: finishedReport }));
-  const turn = await heldTurn();
-  await browserExpect(page.locator("#st-activity")).toHaveText(finishedStep);
-  await turn.continue();
-  await browserExpect(page.locator("#send")).toBeEnabled();
-  await browserExpect(page.locator("#st-activity")).toBeHidden();
-});
-
-it("이전 조회가 남아 있는 동안 다음 작업을 시작해도 진행 요청은 하나다", async () => {
-  await consent();
+  await pollFallback();
   const reports: Route[] = [];
   await page.route(progressRoute, route => { reports.push(route); });
   const first = await heldTurn();
@@ -608,17 +607,16 @@ it("이전 조회가 남아 있는 동안 다음 작업을 시작해도 진행 �
   await first.continue();
   await browserExpect(page.locator("#send")).toBeEnabled();
   const second = await heldTurn();
-  await new Promise(resolve => setTimeout(resolve, 2500));
-  expect(reports).toHaveLength(1);
-  await afterProgress(reports[0]!);
-  await browserExpect(page.locator("#st-activity")).toBeHidden();
   await browserExpect.poll(() => reports.length).toBe(2);
+  await afterProgress(reports[0]!);
+  await browserExpect(page.locator("#backend-status")).toBeHidden();
   await afterProgress(reports[1]!);
-  await browserExpect(page.locator("#st-activity")).toHaveText(finishedStep);
+  await browserExpect(page.locator("#backend-status")).toHaveText(finishedStep);
   await second.continue();
 });
 
 it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽지 않는다", async () => {
+  await pollFallback();
   const voice = await startUi(true, { PRACTICE_MODE: "false" });
   try {
     await recordCues(page, true);
@@ -638,7 +636,7 @@ it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽�
     await browserExpect(state()).toHaveText("중단됨");
     const log = await page.locator("#log").innerText();
     await afterProgress(pendingProgress);
-    expect(await page.locator("#st-activity").isVisible()).toBe(false);
+    expect(await page.locator("#backend-status").isVisible()).toBe(false);
     expect(await page.locator("#log").innerText()).toBe(log);
     await pendingAudio.fulfill({ status: 409, json: { message: "중단된 작업이에요." } });
   } finally {
@@ -648,6 +646,7 @@ it("대화 중 말로 멈춘 뒤 도착한 진행 응답은 표시하거나 읽�
 });
 
 it("진행 상황을 물어도 실행 중인 작업의 단계는 계속 표시한다", async () => {
+  await pollFallback();
   const voice = await startUi(true, { PRACTICE_MODE: "false" });
   try {
     await recordCues(page, true);
@@ -657,11 +656,11 @@ it("진행 상황을 물어도 실행 중인 작업의 단계는 계속 표시�
     let polls = 0;
     await page.route(progressRoute, route => {
       polls++;
-      return route.fulfill({ json: { ...finishedReport, activitySpoken: false } });
+      return route.fulfill({ json: finishedReport });
     });
     await consent(voice.url);
     const [pendingAudio, pendingQuestion] = await Promise.all([audio, question]);
-    const activity = page.locator("#st-activity");
+    const activity = page.locator("#backend-status");
     await browserExpect(activity).toHaveText(finishedStep);
     await pendingQuestion.continue();
     await browserExpect(page.locator("#log .user").last()).toContainText("어디까지");

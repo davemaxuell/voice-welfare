@@ -96,10 +96,8 @@ const CheckpointSchema = z.object({
   authHandoff: opt(AuthHandoffSchema), turnId: opt(text), offeredChoices: opt(z.array(z.object({ key: text, label: text }))),
 });
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
-const ProgressSchema = z.object({
-  running: z.boolean(), seq: z.number(), spoken: z.boolean(), latest: z.string().nullish(),
-  activity: z.string().nullish(), activitySpoken: z.boolean().optional(), activitySeq: z.number().optional(),
-});
+const ProgressSchema = z.object({ seq: z.number(), backend_status: z.string() });
+export type ProgressSnapshot = z.infer<typeof ProgressSchema>;
 const JobSchema = z.object({
   id: text, prompt: text, state: text,
   questionRevision: opt(z.number().int().positive()),
@@ -168,7 +166,7 @@ async function request<T>(path: string, init: RequestInit, read: (response: Resp
   } finally { clearTimeout(timer); }
 }
 
-interface CallInit { method?: string; body?: BodyInit | undefined; headers?: Record<string, string>; signal?: AbortSignal }
+interface CallInit { method?: string; body?: BodyInit | undefined; headers?: Record<string, string>; signal?: AbortSignal; cache?: RequestCache }
 async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, numbered = false, sessionId?: string): Promise<T> {
   const opts = { ...init, headers: headers({ ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}), ...init.headers }) };
   if (numbered && path !== "/api/session/recover") opts.headers["X-Cheongeum-Request"] = String(++requestSeq);
@@ -240,6 +238,34 @@ const sid = (id: string) => encodeURIComponent(id);
 const ok = z.object({ ok: z.boolean() });
 const saved = z.object({ saved: z.boolean() });
 
+// Each SSE data line is a complete JSON snapshot. Fetch carries the writer
+// header for recoverable sessions, and aborting also closes the response body.
+async function streamProgress(sessionId: string, signal: AbortSignal, receive: (p: ProgressSnapshot) => void) {
+  const res = await fetch(`/api/session/${sid(sessionId)}/progress/stream`, {
+    headers: headers({ Accept: "text/event-stream" }), cache: "no-store", signal,
+  });
+  if (!res.ok) return failure(res);
+  if (res.body === null || res.headers.get("Content-Type")?.startsWith("text/event-stream") !== true) {
+    throw new Error("Progress stream unavailable");
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done || signal.aborted) break;
+      const lines = (buffer + chunk.value).split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("data:")) receive(ProgressSchema.parse(JSON.parse(line.slice(5))));
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
 export const api = {
   onConnection: (listener: NonNullable<typeof report>) => { report = listener; },
   onVoiceRestored: (listener: () => void) => { voiceRestored = listener; },
@@ -308,7 +334,10 @@ export const api = {
   /** 서버가 제안한 선택지 고르기: { turnId, key, handoffId? }. 지난 제안이면 409 CHOICE_EXPIRED. */
   choice: (sessionId: string, body: { turnId: string; key: string; handoffId?: string }) => call(TurnSchema, `/api/session/${sessionId}/choice`, post(body), true),
   reminders: (sessionId: string) => call(z.object({ text: z.string().nullish() }), `/api/session/${sessionId}/reminders`),
-  progress: (sessionId: string) => call(ProgressSchema, `/api/session/${sessionId}/progress`),
+  progress: (sessionId: string, signal?: AbortSignal) => call(ProgressSchema, `/api/session/${sid(sessionId)}/progress`, {
+    cache: "no-store", ...(signal === undefined ? {} : { signal }),
+  }),
+  streamProgress,
   language: (sessionId: string, lang: Lang) => call(TurnSchema, `/api/session/${sessionId}/language`, post({ lang })),
   async cancel(sessionId: string) {
     const send = () => call(TurnSchema, `/api/session/${sid(sessionId)}/cancel`, post());

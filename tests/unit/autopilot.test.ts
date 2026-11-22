@@ -47,7 +47,7 @@ it("모델에 보내는 목표·주소·링크 이름·단계 기록을 모두 �
   const inputs: string[] = [];
   const result = await pilot(async request => {
     inputs.push(request.user);
-    return inputs.length === 1 ? { action: "find", target: rrn } : { action: "ask_user", answer: "어떤 항목을 찾을까요?" };
+    return inputs.length === 1 ? { action: "find", target: rrn } : { action: "ask_user", target: "user_choice", answer: "어떤 지원이 필요하세요?" };
   }).run("신청 안내 " + rrn, context());
   expect(result.status).toBe("asked");
   expect(inputs).toHaveLength(2);
@@ -65,8 +65,8 @@ it("잘못된 모델 응답을 한 번 다시 묻고 열 단계에서 멈춘다"
 
 it("test_unknown_action_uses_a_step_and_continues", async () => {
   let calls = 0;
-  const asked = await pilot(async () => ++calls <= 2 ? { action: "scroll" } : { action: "ask_user", answer: "어느 사이트에서 찾아볼까요?" }).run("알려줘", context());
-  expect(asked).toMatchObject({ status: "asked", speech: "어느 사이트에서 찾아볼까요?", steps: [] });
+  const asked = await pilot(async () => ++calls <= 2 ? { action: "scroll" } : { action: "ask_user", target: "user_choice", answer: "어떤 도움을 찾고 계세요?" }).run("알려줘", context());
+  expect(asked).toMatchObject({ status: "asked", speech: "어떤 도움을 찾고 계세요?", steps: [] });
   expect(calls).toBe(3);
 
   calls = 0;

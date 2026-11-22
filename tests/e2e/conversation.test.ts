@@ -193,11 +193,25 @@ it("test_apply_without_service_name_asks", async () => {
   expect(result.page).not.toBe("mock-welfare");
 });
 
-it("test_welfare_question_without_context_asks_service", async () => {
+it("asks about the resident's situation when a welfare question has no context", async () => {
   const session = await newSession();
   const result = await session.handleTurn("얼마 받을 수 있어?");
-  expect(result.speech).toContain("어떤 제도에 대해 궁금하신가요");
+  expect(result.speech).toContain("어떤 일로 지원이 필요하세요");
   expect(result.speech).not.toContain("장애인연금");
+});
+
+it("starts finding benefits with a known circumstance before asking for optional personal details", async () => {
+  const session = await newSession();
+  const result = await session.handleTurn("68살이고 혼자 살아요. 나한테 맞는 복지 찾아줘");
+  expect(result.semanticAction).toBe("discover");
+  expect(result.speech).toContain("먼저 살펴볼 제도");
+  expect(result.sources.length).toBeGreaterThan(0);
+  expect(session.dialogue.profileQuestion).toBeUndefined();
+  expect(result.actions).toEqual([]);
+  const lead = session.deps.welfare.findInMatches("1번")!;
+  const detail = await session.handleTurn("자격 확인해줘");
+  expect(detail.speech).toContain(lead.servNm);
+  expect(detail.actions).toEqual([]);
 });
 
 it("test_fillers_not_entered_as_name", async () => {
@@ -225,13 +239,10 @@ it("test_discover_flow", async () => {
   const r1 = await session.handleTurn("나한테 맞는 복지 찾아줘");
   expect(r1.speech).toContain("나이");
   expect(r1.speech).toContain("저장하지 않아요");
-  await session.handleTurn("일흔 살이에요");
-  await session.handleTurn("아니요");
-  await session.handleTurn("잘 모르겠어요");
-  const r5 = await session.handleTurn("건너뛸게요");
-  expect(r5.semanticAction).toBe("discover");
-  expect(r5.speech).toMatch(/1번 .+2번 .+3번/u);
-  expect(r5.speech).toContain("기관이 판단");
+  const result = await session.handleTurn("일흔 살이에요");
+  expect(result.semanticAction).toBe("discover");
+  expect(result.speech).toMatch(/1번 .+2번 .+3번/u);
+  expect(result.speech).toContain("기관이 판단");
   const pc = await session.handleTurn("1번 자격 확인해줘");
   expect(pc.semanticAction).toBe("precheck");
   expect(pc.speech).toMatch(/최종 자격은 기관이 판단|선정기준을 공식 자료에서 가져오지 못했/u);

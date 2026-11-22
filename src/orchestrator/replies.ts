@@ -2,7 +2,7 @@ import { z } from "zod";
 import { siteSearchTerms } from "../agents/web/search_terms.ts";
 import { helpHumanDraft, isFormOpen } from "../agents/web/skills/common.ts";
 import { speakAnswerCard, type GroundedAnswer } from "../agents/welfare/agent.ts";
-import { nextProfileSlot, parseProfileAnswer, profileQuestion } from "../agents/welfare/discovery.ts";
+import { lifeStageOf, targetsOf, nextProfileSlot, parseProfileAnswer, profileQuestion, type ProfileSlot } from "../agents/welfare/discovery.ts";
 import type { PlaceReply } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
 import { helpPages, type HelpGroup } from "../core/intents.ts";
@@ -18,6 +18,7 @@ import { isQuestionLike } from "../understanding/filters.ts";
 import { cleanValue, wantsTextOnlyScreen } from "../understanding/rules.ts";
 import { resolveSite } from "../understanding/sites.ts";
 import { replyPatterns } from "./patterns.ts";
+import { PublicTask } from "./public_task.ts";
 import type { SessionOrchestrator, Turn } from "./session.ts";
 
 export const HELP_POINTER = "'뭐라고 말하면 돼?'라고 물어보시면 할 수 있는 말을 알려 드려요.";
@@ -32,19 +33,22 @@ export class SessionReplies {
   private helpPage = 0;
   constructor(session: SessionOrchestrator) { this.session = session; }
 
-  /** 맞춤 복지 찾기: 비어 있는 항목을 하나씩 묻고, 다 모이면 찾는다(답은 이번 대화에서만 사용). */
+  /** 알려진 조건으로 먼저 찾아보고, 제도를 찾는 데 정보가 더 필요할 때만 묻는다. */
   async discoverStep(turn: Turn, first: boolean): Promise<Draft> {
     const s = this.session;
     const profile = {...s.need.profile(), ...s.profile};
     const next = nextProfileSlot(profile);
-    if (next !== undefined) {
-      s.dialogue.askProfile(next);
-      const intro = first ? "맞춤 복지를 찾아볼게요. 몇 가지만 여쭤볼게요. 답은 이번 대화에서만 쓰고 저장하지 않아요. " : "";
-      return draft(s.state, "discover", intro + profileQuestion(next, profile));
-    }
-    s.dialogue.profileDone();
+    const ask = (slot: ProfileSlot) => {
+      s.dialogue.askProfile(slot);
+      const intro = first ? "맞춤 복지를 찾아볼게요. 답은 이번 대화에서만 쓰고 저장하지 않아요. " : "";
+      return draft(s.state, "discover", intro + profileQuestion(slot, profile));
+    };
+    if (next !== undefined && lifeStageOf(profile.age) === undefined && targetsOf(profile).length === 0) return ask(next);
     turn.ctx.trace("PLANNING", AGENT_IDS.welfare, "맞춤 복지 찾기");
     const answer = await raceAbort(signal => s.deps.welfare.discover(profile, signal), turn.ctx.signal);
+    if (next !== undefined && answer.count === 0) return ask(next);
+    s.dialogue.profileDone();
+    s.grounded = undefined;
     return this.welfareDraft(answer, "discover");
   }
 
@@ -57,6 +61,20 @@ export class SessionReplies {
 
   async welfareReply(answer: Promise<GroundedAnswer>, semantic: SemanticAction): Promise<Draft> {
     return this.welfareDraft(await answer, semantic);
+  }
+
+  async welfareSteps(answer: Promise<GroundedAnswer>, semantic: "precheck" | "prepare-apply", turn: Turn): Promise<Draft> {
+    const s = this.session;
+    const found = await answer;
+    const subject = found.missingPublicDetail;
+    if (subject !== undefined && s.consentStatus === "granted" && s.deps.practiceMode === false) {
+      const eligibility = semantic === "precheck";
+      const task = new PublicTask({ subject, agency: "복지로", goal: subject + (eligibility ? " 선정 기준" : " 신청 방법과 필요 서류"),
+        facts: eligibility ? ["eligibility"] : ["procedure", "documents"], searchMode: "quiet" });
+      const result = await s.planner.quietLookup(task, turn);
+      if (result.state === "STOPPED" || (result.sources?.length ?? 0) > 0) return result;
+    }
+    return this.welfareDraft(found, semantic);
   }
 
   /** "쉽게 말해줘": 직전 안내를 쉬운 말로(LLM이 없거나 숫자를 바꿔 말하면 그대로 다시). */
@@ -247,7 +265,7 @@ export class SessionReplies {
   clarifyHeard(turn: Turn): Draft {
     const s = this.session;
     const heard = Array.from(strip(s.historySpeech(redactText(turn.text)))).slice(0, 65).join("");
-    let question = "어느 기관이나 업무를 찾으세요?";
+    let question = "어떤 일로 도움이 필요하세요?";
     if (s.activeService !== undefined) {
       const [agency, topic] = s.activeService;
       question = `${topic.length > 0 ? topic : agency}에 이어서 물으신 건가요, 다른 업무를 찾으시나요?`;

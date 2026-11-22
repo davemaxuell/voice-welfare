@@ -1107,7 +1107,7 @@ export class BrowseSkill {
     const orientWith = offerVisual && vision !== undefined ? (question: string, url: string, run: ExecContext, log: WebAction[]) => orientScreen(this.web, vision, question, url, run, log) : undefined;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
       scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: options.remainingRouteMs ?? (maxSteps === undefined || options.continuation ? undefined : maxSteps * 12_000),
-      progress: this.progress, activityLlm: this.deps.webLlm, milestoneText: key => PERSONAL_BROWSE_TEXT[key][this.#replyLanguage()]});
+      progress: this.progress, milestoneText: key => PERSONAL_BROWSE_TEXT[key][this.#replyLanguage()]});
     this.progress.start();
     if (options.continuation && checkpoint) this.progress.milestone("goal-continued", "이어서 요청하신 일을 진행할게요.");
     let result;
