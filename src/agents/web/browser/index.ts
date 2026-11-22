@@ -984,15 +984,15 @@ export class PlaywrightExecutionAdapter {
   }
 
   /** 현재 문서에서 실제로 보이는 조작 대상만 적은 수씩 돌려준다. */
-  async controlWindow(text = "", offset = 0, { ref, exact = false, inspection, destination, notice }: {
-    ref?: string; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
+  async controlWindow(text = "", offset = 0, { ref, refs, exact = false, inspection, destination, notice }: {
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   } = {}): Promise<ControlWindow> {
     const page = this.#requirePage();
     const load = this.#loads.get(page);
     const document = load?.docSeq;
     // notice: ref로 찾은 단추가 팝업 안에 있으면 그 팝업의 사실을 새로 읽어 함께 돌려준다(ref가 있을 때만).
-    const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? 24 : 1,
-      ref: ref ?? null, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
+    const query = { text: [...text].slice(0, 100).join(""), offset: Math.max(0, offset), limit: ref === undefined ? refs?.length ?? 24 : 1,
+      ref: ref ?? null, refs, exact, inspection, destination, notice: ref === undefined ? undefined : notice };
     const window = ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
     // 팝업 사실에는 닫힌 shadow root까지 센 값이 들어간다. 못 읽으면 -1로 두어 안내로 보지 않는다.
     for (const item of window.items) {

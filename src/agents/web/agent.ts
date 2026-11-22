@@ -5,6 +5,7 @@ import type {
   Action, ActionResult, ActionTarget, ExecuteGrants, ExecutionErrorCode, NativeSeen, NoticeFacts, NoticeProof, Observation,
 } from "../../core/actions.ts";
 import type { Redacted } from "../../core/llm.ts";
+import { pickControl, type ControlPicker } from "./control_picker.ts";
 import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
@@ -90,7 +91,7 @@ export interface WebAdapter {
   takeDownloadNotice?(): string | undefined;
   clearSiteLogin?(options: { currentOnly: boolean }, signal?: AbortSignal): Promise<string[]>;
   controlWindow?(text?: string, offset?: number, options?: {
-    ref?: string; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
+    ref?: string; refs?: readonly string[]; exact?: boolean; inspection?: boolean; destination?: string; notice?: boolean;
   }): Promise<ControlWindow>;
   /** 이 조작 중에 취소하거나 받아 준 사이트의 confirm() 창(한 번만 가져간다). */
   takeNative?(actionId: string): NativeSeen | undefined;
@@ -266,10 +267,11 @@ export class WebExecutionAgent {
    * 여러 개가 맞으면 누르지 않고 후보를 돌려준다. 누른 뒤에는 화면이 어떻게 바뀌었는지(effect)를 함께 돌려준다.
    * expected: 사진에서 고른 항목(주소, ref, role). matchedControl: 조작 대상 창에서 고른 항목.
    */
-  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl, visual = false }: {
+  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl, visual = false, picker }: {
     expected?: readonly [url: string, ref: string, role: string];
-    matchedControl?: { ref: string; role: string; url: string; context?: string };
+    matchedControl?: { ref: string; role: string; url: string; context?: string; requireUnmasked?: boolean };
     visual?: boolean;
+    picker?: ControlPicker;
   } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const tab = this.adapter.page;
@@ -280,7 +282,8 @@ export class WebExecutionAgent {
     let item: { ref: string; role: string; name: string; expanded?: boolean } | undefined;
     if (matchedControl !== undefined) {
       const fresh = await this.adapter.controlWindow?.("", 0, { ref: matchedControl.ref });
-      item = fresh?.items.find(it => !it.disabled && (!visual || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
+      const requireUnmasked = visual || matchedControl.requireUnmasked === true;
+      item = fresh?.items.find(it => !it.disabled && (!requireUnmasked || it.pictureMasked !== true) && it.ref === matchedControl.ref && it.name === name && it.role === matchedControl.role &&
         it.context === matchedControl.context);
       if (item === undefined || fresh?.url !== matchedControl.url || fresh.url !== view.url) {
         return { status: "needs-clarification", actions: log, view, message: "고른 항목이 바뀌었어요. 현재 화면에서 다시 찾아 주세요." };
@@ -297,8 +300,13 @@ export class WebExecutionAgent {
       item = located.item;
       if (item === undefined && located.hits.length === 0 && strip(name).length > 0 && this.adapter.controlWindow !== undefined) {
         const window = await this.adapter.controlWindow(name, 0, { exact: true });
-        const candidates = window.items.filter(it => !linksOnly || it.role === "link");
+        const candidates = window.items.filter(it => !it.disabled && (!linksOnly || it.role === "link"));
         if (window.url === view.url && candidates.length === 1 && !window.more) item = candidates[0];
+        if (picker && candidates.length === 0 && !window.more && window.url === view.url && !visual &&
+          !ctx.publicLookup && this.guard.config.publicLookupOnly !== true && ctx.browsingScope === undefined && !ctx.isStopped()) {
+          const picked = await pickControl(picker, view, name, linksOnly, this.adapter, ctx.signal);
+          if (picked) return this.followLink(picked.name, ctx, linksOnly, { matchedControl: { ...picked, url: view.url, requireUnmasked: true } });
+        }
       }
       if (item === undefined) return this.notLocated(view, name, located.hits);
     }
