@@ -355,10 +355,10 @@ function inspectionClickText(lang: Lang, site: string, title: string, name: stri
   return questions[lang];
 }
 
-const fieldAliases: readonly [readonly string[], readonly string[]][] = [
-  [["name", "full name", "applicant name", "姓名", "名字", "氏名", "名前"], ["이름", "성명"]],
-  [["phone", "phone number", "telephone", "contact", "电话", "电话号码", "联系方式", "電話番号", "連絡先"], ["연락처", "전화번호", "연락처 (선택)"]],
-  [["address", "地址", "住所"], ["주소", "주민등록 주소", "실거주지 주소"]],
+const fieldAliases: readonly [readonly string[], readonly string[], string?][] = [
+  [["name", "full name", "applicant name", "姓名", "名字", "氏名", "名前"], ["이름", "성명"], "이름"],
+  [["phone", "phone number", "telephone", "contact", "电话", "电话号码", "联系方式", "電話番号", "連絡先"], ["연락처", "전화번호", "연락처 (선택)"], "연락처"],
+  [["address", "地址", "住所"], ["주소", "주민등록 주소", "실거주지 주소"], "주소"],
   [["registered address", "登记地址", "住民登録住所"], ["주민등록 주소", "주소"]],
   [["current address", "residence address", "实际居住地址", "現住所"], ["실거주지 주소", "주소"]],
   [["email", "email address", "电子邮箱", "邮箱", "メールアドレス", "メール"], ["이메일"]],
@@ -403,10 +403,12 @@ function parseSingleForeignFieldFill(
   const fieldKey = casefold(stripQuotes(rawField));
   const exact = observedLabels.find(label => casefold(label) === fieldKey);
   if (exact !== undefined) return { fieldMention: exact, value };
-  for (const [aliases, targets] of fieldAliases) {
+  for (const [aliases, targets, genericMention] of fieldAliases) {
     if (aliases.includes(fieldKey)) {
-      const matched = targets.find(target => observedLabels.includes(target));
-      if (matched !== undefined) return { fieldMention: matched, value };
+      const matched = targets.filter(target => observedLabels.includes(target));
+      if (matched.length === 1) return { fieldMention: matched[0]!, value };
+      if (matched.length > 1 && genericMention !== undefined) return { fieldMention: genericMention, value };
+      return undefined;
     }
   }
   return undefined;

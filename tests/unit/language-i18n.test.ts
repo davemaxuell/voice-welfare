@@ -190,6 +190,10 @@ it("숫자가 들어간 다국어 입력 요청은 관찰된 입력란으로 직
       { fieldMention: "연락처 (선택)", value: "010-5555-0100" },
     ]);
   expect(parseForeignFieldFill("Fill the name field with Sample 42 and click submit", "en", fields)).toBeUndefined();
+  expect(parseForeignFieldFill("Fill address with 42 Example Road", "en", ["주민등록 주소", "실거주지 주소"]))
+    .toEqual([{ fieldMention: "주소", value: "42 Example Road" }]);
+  expect(parseForeignFieldFill("Fill registered address with 42 Example Road", "en", ["주민등록 주소", "실거주지 주소"]))
+    .toEqual([{ fieldMention: "주민등록 주소", value: "42 Example Road" }]);
   expect(parseForeignFieldFill("把示例 42 555-0100 填到姓名栏", "zh", fields))
     .toEqual([{ fieldMention: "이름", value: "示例 42 555-0100" }]);
   expect(parseForeignFieldFill("氏名欄にサンプル42を入力してください", "ja", fields))
