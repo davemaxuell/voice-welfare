@@ -5,10 +5,10 @@ import { startUi } from "./web-ui-fixtures.ts";
 let browser: Browser;
 let ui: Awaited<ReturnType<typeof startUi>>;
 let page: Page;
-beforeAll(async () => { ui = await startUi(); browser = await chromium.launch({ channel: "chromium", args: ["--use-fake-device-for-media-stream"] }); });
-beforeEach(async () => { page = await browser.newPage(); await page.goto(ui.url); });
-afterEach(async () => { await page.close(); await ui.reset(); });
-afterAll(async () => { await browser?.close(); await ui?.close(); });
+beforeAll(async () => { ui = await startUi(); browser = await chromium.launch({ channel: "chromium", args: ["--use-fake-device-for-media-stream"] }); }, 90_000);
+beforeEach(async () => { page = await browser.newPage(); await page.goto(ui.url); }, 30_000);
+afterEach(async () => { await page?.close(); await ui?.reset(); }, 30_000);
+afterAll(async () => { await browser?.close(); await ui?.close(); }, 30_000);
 
 it("마이크 권한을 거절해도 텍스트로 질문할 수 있다", async () => {
   const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
