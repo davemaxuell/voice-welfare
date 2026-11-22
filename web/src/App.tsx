@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type RefObject } from "react";
 import { LangSchema } from "../../src/core/turn.ts";
 import {
   answerConsent, answerRecovery, actOnIssue, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
@@ -118,21 +118,17 @@ function Message({ m }: { m: LogEntry }) {
   </li>;
 }
 
-function Log({ messages, t }: { messages: LogEntry[]; t: (s: string) => string }) {
-  const log = useRef<HTMLOListElement>(null);
-  const count = useRef(0);
-  const follow = useRef(true);
-  // 새 메시지를 붙이기 전에 맨 아래를 보고 있었는지 잰다(그랬으면 붙인 뒤에도 맨 아래를 보인다).
-  if (messages.length !== count.current && log.current !== null) {
-    const el = log.current;
-    follow.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40;
-  }
-  useLayoutEffect(() => {
-    if (messages.length > count.current && follow.current && log.current !== null) log.current.scrollTop = log.current.scrollHeight;
-    count.current = messages.length;
-  }, [messages.length]);
+const BOTTOM_THRESHOLD_PX = 48;
+function isScrollable(el: HTMLElement | null): el is HTMLElement {
+  return el !== null && el.scrollHeight - el.clientHeight > 1 && getComputedStyle(el).overflowY !== "visible";
+}
+function nearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD_PX;
+}
+
+function Log({ messages, t, logRef }: { messages: LogEntry[]; t: (s: string) => string; logRef: RefObject<HTMLOListElement | null> }) {
   return <div role="log" aria-live="polite" aria-relevant="additions" aria-label={t("대화 기록")}>
-    <ol className="log" id="log" tabIndex={0} aria-label={t("대화 메시지")} ref={log}>{messages.map(m => <Message key={m.id} m={m}/>)}</ol>
+    <ol className="log" id="log" tabIndex={0} aria-label={t("대화 메시지")} ref={logRef}>{messages.map(m => <Message key={m.id} m={m}/>)}</ol>
   </div>;
 }
 
@@ -287,20 +283,70 @@ function SoundPanel({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s:
   </section>;
 }
 
-/** 대화 영역을 맨 아래에서 보고 있으면 새 메시지·카드가 붙어도 계속 맨 아래를 보여 준다. */
-function useFollowThread() {
+/** 대화 영역을 맨 아래에서 보고 있으면 새 메시지·카드가 붙어도 계속 맨 아래를 보여 주고, 위로 올려 둔 경우에는 자리를 지킨다. */
+function useFollowThread(messageCount: number) {
   const thread = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = thread.current;
-    if (el === null) return;
-    let pinned = true;
-    const onScroll = () => { pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= 48; };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    const keep = new ResizeObserver(() => { if (pinned) el.scrollTop = el.scrollHeight; });
-    for (const child of el.children) keep.observe(child);
-    return () => { el.removeEventListener("scroll", onScroll); keep.disconnect(); };
+  const log = useRef<HTMLOListElement>(null);
+  const pinned = useRef(true);
+  const prevCount = useRef(messageCount);
+  const [unread, setUnread] = useState(0);
+
+  const isPinned = useCallback(() => {
+    const t = thread.current, l = log.current;
+    return (!isScrollable(t) || nearBottom(t)) && (!isScrollable(l) || nearBottom(l));
   }, []);
-  return thread;
+
+  const scrollToBottom = useCallback(() => {
+    if (log.current !== null && isScrollable(log.current)) log.current.scrollTop = log.current.scrollHeight;
+    if (thread.current !== null && isScrollable(thread.current)) thread.current.scrollTop = thread.current.scrollHeight;
+  }, []);
+
+  useEffect(() => {
+    const t = thread.current, l = log.current;
+    const onScroll = () => {
+      const atBottom = isPinned();
+      pinned.current = atBottom;
+      if (atBottom) setUnread(0);
+    };
+    t?.addEventListener("scroll", onScroll, { passive: true });
+    l?.addEventListener("scroll", onScroll, { passive: true });
+    const keep = new ResizeObserver(() => {
+      if (pinned.current) scrollToBottom();
+    });
+    if (t !== null) for (const child of t.children) keep.observe(child);
+    return () => {
+      t?.removeEventListener("scroll", onScroll);
+      l?.removeEventListener("scroll", onScroll);
+      keep.disconnect();
+    };
+  }, [isPinned, scrollToBottom]);
+
+  // 새 메시지를 그리기 전에 지금 맨 아래를 보고 있었는지 확인한다.
+  if (messageCount !== prevCount.current && messageCount > prevCount.current) {
+    pinned.current = isPinned();
+  }
+
+  useLayoutEffect(() => {
+    const previous = prevCount.current;
+    prevCount.current = messageCount;
+    if (messageCount === 0 || messageCount < previous) {
+      pinned.current = true;
+      setUnread(0);
+      return;
+    }
+    if (messageCount > previous) {
+      if (pinned.current) scrollToBottom();
+      else setUnread(count => count + (messageCount - previous));
+    }
+  }, [messageCount, scrollToBottom]);
+
+  const jumpToLatest = useCallback(() => {
+    pinned.current = true;
+    setUnread(0);
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  return { thread, log, unread, jumpToLatest };
 }
 
 export function App() {
@@ -309,7 +355,7 @@ export function App() {
   const lang = view.lang;
   const t = (s: string) => workspaceText(s, lang);
   const [researchStatus, setResearchStatus] = useState("");
-  const thread = useFollowThread();
+  const { thread, log, unread, jumpToLatest } = useFollowThread(ui.messages.length);
   const layout = useRef<HTMLDivElement>(null);
   const layoutTop = useRef<number | undefined>(undefined);
   const stage = useRef<string | undefined>(undefined);
@@ -381,9 +427,12 @@ export function App() {
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
             <div className="thread" id="thread" ref={thread}>
-              <Log messages={ui.messages} t={t}/>
+              <Log messages={ui.messages} t={t} logRef={log}/>
               <AnswerPanel view={view} t={t}/>
               <Decisions view={view} ui={ui} t={t}/>
+              <button type="button" id="jump-latest" className="primary jump-latest" hidden={unread === 0} onClick={jumpToLatest}>
+                {workspaceText("새 메시지 보기 ({count})", lang, { count: unread })}
+              </button>
             </div>
             <CommandForm view={view} ui={ui} t={t}/>
             <details className="examples-disclosure"><summary>{t("예시 명령 보기")}</summary><ul className="examples" id="examples">
