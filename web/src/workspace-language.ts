@@ -155,6 +155,7 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '장애인연금 신청할 때 필요한 서류가 뭐야?': ['What documents do I need to apply for a Korean disability pension?', '申请韩国残疾人年金需要哪些材料？', '韓国の障害者年金の申請にはどんな書類が必要ですか？'],
   '지금까지 쓴 내용 읽어줘': ['Read back what I have entered so far.', '请朗读我已经填写的内容。', '入力した内容を読んでください。'],
   '모의 접수 내용을 확인했어': ['I have reviewed my practice application.', '我已核对模拟申请的内容。', '練習用の申請内容を確認しました。'],
+  '새 메시지 보기 ({count})': ['View new messages ({count})', '查看新消息（{count}）', '新しいメッセージを見る（{count}）'],
 };
 
 let supplemental: typeof copy | undefined;
