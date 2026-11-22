@@ -232,3 +232,44 @@ it.each([
   await screen(page.locator(`#research-list li[data-state="completed"] .research-state`)).toHaveText(completed);
   await screen(page.locator(`#research-list li[data-state="needs_input"] .research-state`)).toHaveText(needsInput);
 });
+
+it("중단 응답이 cancelled: false이면 상태 변경을 안내하고, 접힘 알림은 실패와 혼합 결과의 개수를 구분한다", async () => {
+  await page.clock.install();
+  let currentJobs: unknown[] = [
+    { id: "j-race", prompt: "이미 끝난 조사", state: "running" },
+    { id: "j-a", prompt: "숨길 질문 A", state: "running" },
+    { id: "j-b", prompt: "숨길 질문 B", state: "running" },
+  ];
+  await page.route("**/api/session/*/workspace", route => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { jobs: currentJobs, notes: [] } });
+    return route.continue();
+  });
+  await page.route("**/api/session/*/workspace/research/j-race/claim", route => {
+    currentJobs = [
+      { id: "j-race", prompt: "이미 끝난 조사", state: "completed", result: { text: "방금 완료됨", sources: [source] } },
+      { id: "j-a", prompt: "숨길 질문 A", state: "running" },
+      { id: "j-b", prompt: "숨길 질문 B", state: "running" },
+    ];
+    return route.fulfill({ json: { cancelled: false } });
+  });
+
+  await page.goto(ui.url);
+  await page.locator("#workflow-title").click();
+  await page.getByRole("button", { name: "중단: 이미 끝난 조사" }).click();
+  await screen(page.locator("#workflow-feedback")).toContainText("이미 상태가 바뀌어 중단하지 않았어요");
+  await screen(page.locator(`#research-list li[data-state="completed"]`)).toContainText("방금 완료됨");
+
+  // 패널을 닫고 1건은 실패, 1건은 추가 확인 필요로 전환되면 결과별 개수만 정확히 알린다.
+  await page.locator("#workflow-title").click(); // 닫기
+  currentJobs = [
+    { id: "j-race", prompt: "이미 끝난 조사", state: "completed", result: { text: "방금 완료됨", sources: [source] } },
+    { id: "j-a", prompt: "숨길 질문 A", state: "failed" },
+    { id: "j-b", prompt: "숨길 질문 B", state: "needs_input", questionRevision: 1, result: { text: "추가 질문" } },
+  ];
+  await page.clock.runFor(10_500);
+  await screen(page.locator("#workflow-badge")).toHaveText("2");
+  await screen(page.locator("#st-research")).toContainText("자료 조사 1건에 추가 확인이 필요해요.");
+  await screen(page.locator("#st-research")).toContainText("자료 조사 1건을 마치지 못했어요.");
+  expect(await page.locator("#st-research").textContent()).not.toContain("완료됐어요");
+  expect(await page.locator("#st-research").textContent()).not.toContain("숨길 질문");
+});

@@ -6,11 +6,32 @@ import { api, errorCode, WorkspaceSchema, type Note, type Workspace } from "./ap
 import { workflowErrorText, workflowResultText, workflowStateNote, workflowStateText, workflowText } from "./workflows-text.ts";
 
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
+const CancelSchema = z.object({ cancelled: z.boolean() });
+const DeleteSchema = z.object({ deleted: z.boolean() });
 const ACTIVE_STATES = new Set(["queued", "running"]);
+const DONE_STATES = new Set(["completed", "partial"]);
+const UNFINISHED_STATES = new Set(["failed", "incomplete"]);
 const ATTENTION_STATES = new Set(["completed", "partial", "incomplete", "failed", "needs_input"]);
 const OPEN_POLL_MS = 3500;
 const COLLAPSED_POLL_MS = 10_000;
 const LOCALE: Readonly<Record<Lang, string>> = { ko: "ko-KR", en: "en-US", zh: "zh-CN", ja: "ja-JP" };
+
+interface UnreadSummary {
+  done: number;
+  needsInput: number;
+  unfinished: number;
+}
+const EMPTY_UNREAD: UnreadSummary = { done: 0, needsInput: 0, unfinished: 0 };
+
+function summarizeUnread(statesMap: ReadonlyMap<string, string>): UnreadSummary {
+  let done = 0, needsInput = 0, unfinished = 0;
+  for (const state of statesMap.values()) {
+    if (DONE_STATES.has(state)) done++;
+    else if (state === "needs_input") needsInput++;
+    else if (UNFINISHED_STATES.has(state)) unfinished++;
+  }
+  return { done, needsInput, unfinished };
+}
 
 function formatTime(at: number, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALE[lang], { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(at));
@@ -33,7 +54,7 @@ export function WorkflowPanel({
   const [timestamps, setTimestamps] = useState<Readonly<Record<string, number>>>({});
   const [filter, setFilter] = useState<Note[] | undefined>(undefined);
   const [feedback, setFeedback] = useState("");
-  const [unread, setUnread] = useState<{ count: number; needsInput: boolean }>({ count: 0, needsInput: false });
+  const [unread, setUnread] = useState<UnreadSummary>(EMPTY_UNREAD);
   const panel = useRef<HTMLDetailsElement>(null);
   const researchForm = useRef<HTMLFormElement>(null);
   const researchInput = useRef<HTMLTextAreaElement>(null);
@@ -74,7 +95,7 @@ export function WorkflowPanel({
     setTimestamps({});
     setFilter(undefined);
     setFeedback("");
-    setUnread({ count: 0, needsInput: false });
+    setUnread(EMPTY_UNREAD);
     onStatusRef.current?.("");
     if (panel.current !== null) panel.current.open = false;
     researchForm.current?.reset();
@@ -85,18 +106,18 @@ export function WorkflowPanel({
   useEffect(() => () => clearTimeout(live.current.timer), []);
 
   useEffect(() => {
-    if (unread.count === 0) onStatusRef.current?.("");
-    else {
-      const key = unread.needsInput ? "collapsedNeedsInput" : "collapsedDone";
-      onStatusRef.current?.(workflowText(key, lang, { count: unread.count }));
-    }
+    const parts: string[] = [];
+    if (unread.done > 0) parts.push(workflowText("collapsedDone", lang, { count: unread.done }));
+    if (unread.needsInput > 0) parts.push(workflowText("collapsedNeedsInput", lang, { count: unread.needsInput }));
+    if (unread.unfinished > 0) parts.push(workflowText("collapsedUnfinished", lang, { count: unread.unfinished }));
+    onStatusRef.current?.(parts.join(" "));
   }, [unread, lang]);
 
   function scheduleNext(id: string, version: number) {
     const s = live.current;
+    if (s.current !== id || version !== s.readVersion) return;
     clearTimeout(s.timer);
     s.timer = undefined;
-    if (s.current !== id || version !== s.readVersion) return;
     const isOpen = panel.current?.open === true;
     if (!isOpen && !s.hasActive) return;
     s.timer = setTimeout(() => void refresh(), isOpen ? OPEN_POLL_MS : COLLAPSED_POLL_MS);
@@ -136,8 +157,12 @@ export function WorkflowPanel({
       }
       s.hasActive = data.jobs.some(job => ACTIVE_STATES.has(job.state));
       if (currentOpen && s.unreadIds.size > 0) s.unreadIds.clear();
-      const needsInput = [...s.unreadIds.values()].includes("needs_input");
-      setUnread(prev => prev.count === s.unreadIds.size && prev.needsInput === needsInput ? prev : { count: s.unreadIds.size, needsInput });
+      const nextUnread = summarizeUnread(s.unreadIds);
+      setUnread(prev =>
+        prev.done === nextUnread.done && prev.needsInput === nextUnread.needsInput && prev.unfinished === nextUnread.unfinished
+          ? prev
+          : nextUnread,
+      );
       if (s.refreshErrored) {
         s.refreshErrored = false;
         setFeedback("");
@@ -163,7 +188,7 @@ export function WorkflowPanel({
     if (isOpen) {
       if (s.unreadIds.size > 0) {
         s.unreadIds.clear();
-        setUnread({ count: 0, needsInput: false });
+        setUnread(EMPTY_UNREAD);
       }
       void refresh();
     } else if (s.current !== undefined) {
@@ -175,7 +200,7 @@ export function WorkflowPanel({
     path: string,
     method: string,
     data?: unknown,
-    options?: { feedback?: string; markActive?: boolean; onDone?: (result: unknown) => void },
+    options?: { feedback?: string | ((result: unknown) => string); markActive?: boolean; onDone?: (result: unknown) => void },
   ) {
     const s = live.current;
     if (s.current === undefined || s.mutation) return;
@@ -187,7 +212,9 @@ export function WorkflowPanel({
       s.refreshErrored = false;
       if (options?.markActive === true) s.hasActive = true;
       setFilter(undefined);
-      if (options?.feedback !== undefined) setFeedback(options.feedback);
+      if (options?.feedback !== undefined) {
+        setFeedback(typeof options.feedback === "function" ? options.feedback(result) : options.feedback);
+      }
       options?.onDone?.(result);
       await refresh();
     } catch (error) {
@@ -238,10 +265,12 @@ export function WorkflowPanel({
   const actionAria = (action: string, title: string) => workflowText("actionForItem", lang, { action, title: summarizeTitle(title) });
   const matches = filter ?? snapshot?.notes ?? [];
 
+  const unreadTotal = unread.done + unread.needsInput + unread.unfinished;
+
   return <details id="workflow-panel" className="panel settings" hidden={sessionId === undefined} ref={panel} onToggle={handleToggle}>
     <summary id="workflow-title">
       {workflowText("title", lang)}
-      {unread.count > 0 && <span id="workflow-badge" className="workflow-badge" aria-label={workflowText("unreadBadgeLabel", lang, { count: unread.count })}>{unread.count}</span>}
+      {unreadTotal > 0 && <span id="workflow-badge" className="workflow-badge" aria-label={workflowText("unreadBadgeLabel", lang, { count: unreadTotal })}>{unreadTotal}</span>}
     </summary>
     <form id="research-form" ref={researchForm} onSubmit={research}>
       <label id="research-label" htmlFor="research-input">{workflowText("researchLabel", lang)}</label>
@@ -305,7 +334,16 @@ export function WorkflowPanel({
             "/research/" + job.id + (inProgress ? "/claim" : ""),
             "DELETE",
             undefined,
-            { feedback: workflowText(inProgress ? "cancelledJob" : "deletedJob", lang, { title: summarizeTitle(job.prompt) }) },
+            {
+              feedback: (result) => {
+                if (inProgress) {
+                  const parsed = CancelSchema.safeParse(result);
+                  return workflowText(parsed.success && !parsed.data.cancelled ? "cancelAlreadyFinished" : "cancelledJob", langRef.current, { title: summarizeTitle(job.prompt) });
+                }
+                const parsed = DeleteSchema.safeParse(result);
+                return workflowText(parsed.success && !parsed.data.deleted ? "deleteAlreadyRemoved" : "deletedJob", langRef.current, { title: summarizeTitle(job.prompt) });
+              },
+            },
           )}>{cancelOrDelete}</button>
         </div>
       </li>;
