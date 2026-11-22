@@ -7,7 +7,7 @@ import "./overlay.css";
 
 const ChoiceSchema = z.object({ key: z.string(), label: z.string(), open: z.string().optional() });
 const SnapshotSchema = z.object({
-  micDiagnostic: z.string().optional(),
+  micDiagnostic: z.string().optional(), contrast: z.boolean().optional(),
   connected: z.boolean().optional(), instance: z.string().optional(), revision: z.number().optional(),
   mode: z.string().optional(), capture: z.string().default("off"), captureLabel: z.string().optional(), speaking: z.boolean().default(false), busy: z.boolean().default(false),
   sleeping: z.boolean().optional(), introPose: z.string().nullish(), resting: z.boolean().optional(), lang: z.string().optional(),
@@ -232,7 +232,7 @@ function render() {
   const status = live ? snap.status ?? "" : receivedSnapshot ? copy.offline : copy.connecting;
   // 동의는 카드의 '동의하고 음성 대화 시작'으로만(말하기 버튼이 동의가 되지 않게)
   button("talk").disabled = !live || ["ended", "starting", "consent", "auth-handoff"].includes(snap.mode ?? "");
-  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture === "on");
+  $("stop").hidden = !live || !(snap.busy || snap.speaking || snap.capture !== "off");
   root.classList.toggle("has-stop", $("stop").hidden === false);
   renderCard(status, copy);
   setText($("status"), live && snap.taskLabel !== undefined ? status : bubble !== null ? $("card-prompt").textContent ?? "" : status);
@@ -505,6 +505,7 @@ bridge.onSnapshot((next) => {
   receivedSnapshot = true;
   const prev = snap;
   snap = accepted;
+  if (snap.contrast !== undefined) overlay.classList.toggle("high-contrast", snap.contrast);
   animate(prev, snap);
   render();
 });

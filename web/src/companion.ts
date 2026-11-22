@@ -143,7 +143,7 @@ export interface LiveView {
 /** 아바타 창에 보내는 표시 상태. */
 export function desktopView(ui: ViewInput, live: LiveView) {
   const display = presentationOf({ ...ui, capture: ui.capture ?? live.capture, speaking: ui.speaking ?? live.speaking,
-    sleeping: ui.sleeping ?? live.sleeping, listening: ui.listening || live.recording, card: live.card });
+    sleeping: ui.sleeping ?? live.sleeping, listening: ui.listening === true || live.recording, card: live.card });
   const { mode } = display;
   const t = (key: string) => workspaceText(key, ui.lang);
   const status = mode === "starting" ? t("청음을 준비하는 중이에요.") : mode === "ended" ? t("이용을 마쳤어요. 다시 시작하려면 저를 눌러 대화를 여세요.")
@@ -151,10 +151,11 @@ export function desktopView(ui: ViewInput, live: LiveView) {
     : mode === "ready" && display.task === "idle" && ui.consent === "declined"
       ? t("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.") : t(display.taskKey);
   const card = live.card;
-  const busy = ui.busy || ui.phase === "thinking";
+  const busy = ui.busy === true || ui.phase === "thinking";
   const sleeping = live.sleeping && mode === "ready";
   return {
     connected: true,
+    contrast: ui.contrast === true,
     mode,
     capture: display.capture,
     captureLabel: t(display.captureKey),
