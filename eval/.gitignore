@@ -1,3 +1,0 @@
-# 실행 결과는 기본으로 올리지 않는다(공유할 보고서만 골라서 git add -f)
-results/*
-!results/.gitkeep
