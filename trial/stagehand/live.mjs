@@ -60,7 +60,7 @@ try {
       assert(response.ok(), "HTTP " + response.status());
       if (site === "복지로") {
         await page.waitForURL(/index\.do/, { waitUntil: "domcontentloaded", timeout: 15000 });
-        await page.waitForFunction(() => document.body.innerText.trim().length > 80, undefined, {timeout: 8000}).catch(() => {});
+        await page.waitForFunction(() => document.body.innerText.trim().length > 80, undefined, { timeout: 8000 });
       } else {
         await page.waitForLoadState("domcontentloaded");
         await page.evaluate(() => document.querySelector("iframe")?.scrollIntoView());
@@ -81,9 +81,13 @@ try {
         const nonempty = await frame.evaluate(() => (document.body?.innerText.trim().length ?? 0) > 0).catch(() => false);
         frames.push({ host: new URL(frame.url() || "about:blank").hostname || frame.url(), nonempty });
       }
+      const snapshotNodes = Object.keys(tree.xpathMap).length;
+      const bodyLength = await page.locator("body").innerText().then(t => t.trim().length);
       console.log("PUBLIC_NAVIGATION", JSON.stringify({ site, http: response.status(), host: new URL(page.url()).hostname,
-        title: await tab.title(), snapshotNodes: Object.keys(tree.xpathMap).length, bodyLength: await page.locator("body").innerText().then(t => t.trim().length),
+        title: await tab.title(), snapshotNodes, bodyLength,
         frames, modelCalls: callback.calls }));
+      assert(bodyLength > 80, `${site} 본문 미확인 (${bodyLength})`);
+      assert(snapshotNodes > 0, `${site} 스냅샷 노드 미확인`);
       if (site === "MDN") assert(frames.some(f => mdnSample(f.host) && f.nonempty), "공개 예제 iframe 본문 미확인");
     } catch (error) { console.error(site, error.message); process.exitCode = 1; }
     finally { await page.close(); }
