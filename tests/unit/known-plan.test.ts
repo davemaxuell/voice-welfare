@@ -101,6 +101,18 @@ it("한도까지 실행한 뒤 남은 순서를 버린다", async () => {
   expect(s.dialogue.approval).toBeUndefined();
 });
 
+it.each(["검증 실패", "다른 조작 번호"])("클릭 영수증이 %s이면 계획의 다음 항목을 누르지 않는다", async reason => {
+  const { s, clicks, run } = scenario();
+  const yes = await run();
+  const execute = s.web.adapter.execute.bind(s.web.adapter);
+  vi.spyOn(s.web.adapter, "execute").mockImplementation(async (...args) => {
+    const result = await execute(...args);
+    return reason === "검증 실패" ? {...result, verified: false} : {...result, actionId: "다른 조작"};
+  });
+  expect((await yes()).state).toBe("NEEDS_CLARIFICATION");
+  expect(clicks).toEqual(labels.slice(0, 1));
+});
+
 it("동의 뒤 대상 이름 변경, 실행 중 만료와 멈춤도 다음 누르기 전에 검사한다", async () => {
   for (const reason of ["만료", "이름", "멈춤"]) {
     const { s, clicks, items, run, advance } = scenario();

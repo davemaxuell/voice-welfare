@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { GuardianContact } from "../core/dialogue.ts";
+import { RememberedRouteSchema, type RememberedRoute } from "../core/plan.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { hasText } from "../core/text.ts";
 import { SpeechPrefsSchema, type SpeechPrefs } from "../core/turn.ts";
@@ -25,7 +26,7 @@ export type SpeechPatch = Partial<Omit<SpeechPrefs, "voice">> & { voice?: string
 // 보호자와 부르는 이름은 파일에 적힌 그대로 두고, 읽는 쪽(guardian·callName)이 모양을 확인한다. 깨진 값도 다음 저장에 지워지지 않는다.
 const StoreSchema = z.object({
   vault: VaultSchema.default({}), guardian: z.json().default(null), callName: z.json().default(null),
-  applications: z.array(ApplicationSchema).default([]),
+  applications: z.array(ApplicationSchema).default([]), routes: z.array(RememberedRouteSchema).max(40).optional().catch(undefined),
   speech: SpeechPrefsSchema.prefault({}), siteAllow: z.record(z.string(), z.boolean()).default({}),
 });
 type Stored = z.infer<typeof StoreSchema>;
@@ -41,6 +42,8 @@ export class PersonalStore {
     const previous = readPrivateFile(path, seal, data => StoreSchema.parse(data));
     if (previous === undefined) return;
     this.#data = previous.data;
+    // 봉인하기 전에 이미 평문 파일에 있던 경로는 믿지 않는다.
+    if (!previous.sealed) delete this.#data.routes;
     if (seal !== undefined && !previous.sealed) this.#save(this.#data);
   }
   #save(data: Stored) {
@@ -51,9 +54,20 @@ export class PersonalStore {
     this.#data = data;
   }
   get persistent() { return this.path !== undefined; }
+  get canRememberRoutes() { return this.path !== undefined && this.#seal !== undefined; }
+  rememberedRoute(site: string, goalKey: string): RememberedRoute | undefined {
+    if (!this.canRememberRoutes) return undefined;
+    const found = this.#data.routes?.find(route => route.site === site && route.goalKey === goalKey);
+    return found && structuredClone(found);
+  }
+  saveRoute(route: RememberedRoute, eligible: (route: RememberedRoute, values: readonly string[]) => boolean) {
+    if (!this.canRememberRoutes || !eligible(route, Object.values(this.#data.vault))) return;
+    const keep = this.#data.routes?.filter(item => item.site !== route.site || item.goalKey !== route.goalKey) ?? [];
+    this.#save({...this.#data, routes: [...keep.slice(-39), RememberedRouteSchema.parse(route)]});
+  }
   vault(): Vault { return { ...this.#data.vault }; }
   saveVault(values: Vault) { this.#save({ ...this.#data, vault: { ...this.#data.vault, ...values } }); }
-  clearVault() { this.#save({ ...this.#data, vault: {}, guardian: null, callName: null }); }
+  clearVault() { this.#save({ ...this.#data, vault: {}, guardian: null, callName: null, routes: undefined }); }
   /** 청음이 사용자를 부르는 이름(첫 실행에서 물음). 금고의 법적 이름(name)과 따로 둔다. */
   callName(): string | undefined {
     const name = this.#data.callName;

@@ -136,6 +136,7 @@ export interface RunOptions {
   requestedFacts?: readonly PublicFact[];
   checkpoint?: BrowseCheckpoint;
   continuation?: GoalContinuation;
+  routeClick?: (before: PageView | undefined, outcome: WebOutcome) => void;
   visualControl?: string;
   allowedUrls?: readonly string[];
   journey?: BrowserJourney;
@@ -1177,6 +1178,7 @@ export class Autopilot {
             const expected = match !== undefined && view !== undefined ? [view.url, match.ref, match.role] as const : undefined;
             out = await this.web.followLink(target, ctx, false, expected === undefined ? {} : { expected, visual: currentOrientation?.clickable.includes(target) === true });
           }
+          options.routeClick?.(view, out);
           actions.push(...out.actions);
           if (out.view) view = out.view;
           notices.push(...out.notices ?? []);

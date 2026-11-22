@@ -5,14 +5,18 @@ import { bindPlanClick, planPage, revokePlanClick, type PlanGrant, type PlanStep
 import { draft, type Draft } from "../../../core/turn.ts";
 import { clickTier, isInspectionUrl, planControlAllowed } from "../../../safety/guard.ts";
 import { redactPictureText } from "../../../safety/privacy.ts";
-import { ExecContext, type PageView, type WebAction } from "../agent.ts";
+import { ExecContext, verifiedClick, type PageView, type WebAction } from "../agent.ts";
 import { fingerprint, recheck } from "../approval.ts";
 import { accessBlocked, stillNeedsAuth } from "../auth_page.ts";
 import type { BrowseSkill } from "./browse.ts";
 import { browseState } from "./common.ts";
 
 type Continuation = (ctx: ExecContext, completed: number) => Promise<Draft>;
-export interface PlanHooks { onComplete?: Continuation; onMismatch?: Continuation }
+export interface PlanHooks {
+  onComplete?: Continuation; onMismatch?: Continuation;
+  canStep?: (ctx: ExecContext, view: PageView, step: PlanStep) => boolean;
+  didStep?: (ref: string) => void;
+}
 interface BoundStep { action: Action; fingerprint: ApprovalFingerprint; signature: string; url: string }
 interface Asked {
   checked: Map<number, BoundStep>; deadline: number; context: ExecContext; hooks: PlanHooks;
@@ -89,6 +93,8 @@ export class KnownPlans {
     for (const [i, step] of grant.steps.entries()) {
       if (step.page !== first.page) break;
       const bound = await this.#bind(view, step, speech);
+      // 기억한 경로는 앞 단계를 눌러야 같은 페이지에 다음 단추가 나타날 수도 있다.
+      if (!bound && i > 0 && hooks.canStep) break;
       if (!bound) return undefined;
       const policy = web.previewPolicy(bound.action, ctx).policy;
       if (!policy.allowed && policy.code !== "NEEDS_CONFIRMATION") return undefined;
@@ -123,7 +129,10 @@ export class KnownPlans {
     const interrupted = () => ctx.isStopped() || ctx.signal.aborted ? append(draft("STOPPED", "stop", "멈췄어요.")) : expired();
     const changed = async (step: PlanStep, message?: string) => {
       if (!live()) return interrupted();
-      if (asked.hooks.onMismatch) return append(await asked.hooks.onMismatch(ctx, grant.cursor));
+      if (asked.hooks.onMismatch) {
+        const next = await asked.hooks.onMismatch(ctx, grant.cursor);
+        return append({...next, speech: [...notices, next.speech].join(" ")});
+      }
       return append(draft("NEEDS_CLARIFICATION", "clarify",
         (message ?? `“${step.name}” 항목이나 화면이 바뀌었어요.`) + " 남은 순서를 멈췄어요. 지금 어떤 항목을 누를까요?", { view: web.currentView }));
     };
@@ -133,6 +142,7 @@ export class KnownPlans {
       if (ctx.counter.actions >= (ctx.actionLimit ?? 0)) return append(draft("BROWSING", "clarify", "한 번에 할 수 있는 조작 횟수를 채워서 멈췄어요."));
       const view = await web.observe(ctx);
       if (stillNeedsAuth(view) || accessBlocked(view)) return append(await this.#browse.recognizeAuthPage(draft("BROWSING", "goal", "", { view }), undefined, ctx));
+      if (asked.hooks.canStep?.(ctx, view, step) === false) return changed(step);
       const previous = asked.checked.get(i);
       const difference = previous === undefined ? undefined : recheck(previous.fingerprint, view, [previous.action])[1];
       if (difference !== undefined) return changed(step, difference);
@@ -143,26 +153,32 @@ export class KnownPlans {
       const action = bound.action;
       const proof = bindPlanClick(step, action.id, action.target!.ref!, view.url, bound.signature, () => live() && grant.cursor === i && ctx.counter.actions <= (ctx.actionLimit ?? 0));
       let out;
-      try { out = await ctx.granted([action.id], () => web.clickApproved(action, ctx, { plan: proof })); }
+      try { out = await ctx.granted([action.id], () => asked.hooks.canStep
+        ? web.followLink(step.name, ctx, false, {expected: [view.url, action.target!.ref!, step.role], plan: {action, proof}})
+        : web.clickApproved(action, ctx, {plan: proof})); }
       finally { revokePlanClick(proof); }
-      if (out.actions.some(a => a.result?.errorCode === "VERIFY_FAILED" || a.result?.errorCode === "TARGET_NOT_FOUND" || a.result?.errorCode === "AMBIGUOUS_TARGET")) {
+      if (out.status === "needs-clarification" || out.actions.some(a => a.result?.errorCode === "VERIFY_FAILED" || a.result?.errorCode === "TARGET_NOT_FOUND" || a.result?.errorCode === "AMBIGUOUS_TARGET")) {
         actions.push(...out.actions);
         return changed(step);
       }
-      if (out.status === "unconfirmed") {
+      if (out.status === "unconfirmed" || out.status === "ok" && !out.actions.some(row => row.action.id === action.id && verifiedClick(row))) {
         actions.push(...out.actions);
         return append(draft("NEEDS_CLARIFICATION", "clarify", `${out.message ?? "눌렸는지 확인하지 못했어요."} 여기서 멈췄어요. 다음에는 어느 항목을 누를까요?`, { view: out.view }));
       }
-      const result = await this.#browse.finishApprovedClick(out, { action, url: view.url }, ctx);
+      const result = await this.#browse.finishApprovedClick(out, { action, url: view.url }, ctx, asked.hooks.onComplete !== undefined);
       const reply = await this.#browse.recognizeAuthPage(result, view, ctx);
       if (out.status !== "ok" || !out.view || out.effect === "none" || out.question || (out.manual?.length ?? 0) > 0 ||
           reply.state === "AUTH_HANDOFF" || reply.state === "WAITING_FOR_USER_CONFIRMATION" || reply.state === "NEEDS_CLARIFICATION") return append(reply);
       actions.push(...(reply.actions ?? []));
       if ((out.notices?.length ?? 0) > 0) notices.push(reply.speech);
       grant.cursor++;
+      asked.hooks.didStep?.(action.target!.ref!);
     }
     if (!live()) return interrupted();
-    if (asked.hooks.onComplete) return append(await asked.hooks.onComplete(ctx, grant.cursor));
+    if (asked.hooks.onComplete) {
+      const done = await asked.hooks.onComplete(ctx, grant.cursor);
+      return append({...done, speech: [...notices, done.speech].join(" ")});
+    }
     const view = web.currentView;
     return append(draft(view ? browseState(view) : "BROWSING", "confirm-click", [...notices, `말씀하신 ${grant.cursor}개 항목을 차례로 눌렀어요.`].join(" "), { view }));
   }

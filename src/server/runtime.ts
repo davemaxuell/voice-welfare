@@ -363,6 +363,7 @@ export class AgentRuntime {
         initialService: remember ? settings.lastService : undefined, rememberService: remember ? settings.rememberService.bind(settings) : undefined,
         firstRunStep: settings?.completed === true && settings.firstRun !== "done" ? settings.firstRun : undefined,
         firstRunProgress: settings?.setFirstRun.bind(settings), personal,
+        routeDevice: () => !background && this.personalEnabled() && !(settings?.completed === true && settings.preferences.deviceUse === "shared"),
         guardianSender: background ? null : cfg.guardianSender ?? null, actionLog: !background && cfg.pilotProfile === "personal" ? this.actionLog : undefined,
         scanner: this.scanner, searchUrlTemplate: cfg.searchUrlTemplate,
         downloads,

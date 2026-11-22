@@ -28,6 +28,7 @@ export interface SessionOptions extends Pick<OrchestratorDeps, "firstRunStep" | 
   requireConsent?: boolean;
   practiceMode?: boolean;
   personal?: PersonalStore;
+  routeDevice?: () => boolean;
   actionLog?: ActionLog;
   today?: () => string;
   clock?: () => number;
@@ -60,7 +61,7 @@ export function createTestRuntime(defaults: SessionOptions = {}) {
         intentProvider: new RuleBasedIntentProvider(fieldVocabulary(profile)), events: new InMemoryEventLog(),
         requireConsent: opts.requireConsent ?? false, practiceMode: opts.practiceMode ?? true,
         searchUrlTemplate: opts.searchUrlTemplate ?? "http://127.0.0.1:5174/external.html?q={q}",
-        personal: opts.personal, downloads, actionLog: opts.actionLog, today: opts.today, clock: opts.clock,
+        personal: opts.personal, routeDevice: opts.routeDevice, downloads, actionLog: opts.actionLog, today: opts.today, clock: opts.clock,
         firstRunStep: opts.firstRunStep, firstRunProgress: opts.firstRunProgress, guardianSender: opts.guardianSender,
       });
       if (opts.requireConsent !== true) await session.prepare();

@@ -115,6 +115,10 @@ export interface WebAuditEntry {
 }
 export type WebActionResult = ActionResult | { actionId: string; ok: false; verified: false; errorCode: "LOG_FAILED"; latencyMs: 0 };
 export type WebAction = DraftAction;
+export function verifiedClick({ action, policy, result }: WebAction): boolean {
+  return action.type === "click" && policy.allowed && result?.ok === true && "verified" in result &&
+    result.verified && result.actionId === action.id;
+}
 export const webAgentPatterns = {
   assistSecret: /(비밀\p{White_Space}*번호|password|인증\p{White_Space}*번호|otp|주민|계좌|카드)/iu,
   checked: /^(예|네|응|체크)/u,
@@ -270,11 +274,12 @@ export class WebExecutionAgent {
    * 여러 개가 맞으면 누르지 않고 후보를 돌려준다. 누른 뒤에는 화면이 어떻게 바뀌었는지(effect)를 함께 돌려준다.
    * expected: 사진에서 고른 항목(주소, ref, role). matchedControl: 조작 대상 창에서 고른 항목.
    */
-  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl, visual = false, picker }: {
+  async followLink(name: string, ctx: ExecContext, linksOnly = false, { expected, matchedControl, visual = false, picker, plan }: {
     expected?: readonly [url: string, ref: string, role: string];
     matchedControl?: { ref: string; role: string; url: string; context?: string; requireUnmasked?: boolean };
     visual?: boolean;
     picker?: ControlPicker;
+    plan?: {action: Action; proof: NonNullable<ExecuteGrants["plan"]>};
   } = {}): Promise<WebOutcome> {
     const log: WebAction[] = [];
     const view = await this.observe(ctx);
@@ -311,6 +316,12 @@ export class WebExecutionAgent {
         }
       }
       if (item === undefined) return this.notLocated(view, name, located.hits);
+    }
+    if (plan) {
+      const target = plan.action.target;
+      if (!expected || !target || target.ref !== item.ref || target.role !== item.role || target.name !== item.name)
+        return {status: "needs-clarification", actions: log, view};
+      return this.clickApproved(plan.action, ctx, {plan: plan.proof});
     }
     if (ctx.approvedGoalRefs?.has(item.ref) === true) {
       return {status: "failed", actions: log, view, message: "이미 승인받아 누른 항목이에요. 지금 화면에서 다음 단계를 찾아 주세요."};
