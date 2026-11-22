@@ -73,6 +73,28 @@ async function openWorkspace(jobs: unknown[], notes: unknown[] = []) {
   await screen(page.locator("#workflow-title")).toBeVisible({ timeout: 15_000 });
 }
 
+it("기본 조작 모드에서는 조사 시작과 메모 저장을 한 번씩만 요청한다", async () => {
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), directActions: true, workspaceAvailable: true}});
+  });
+  const requests: unknown[] = [];
+  await page.route("**/api/session/*/workspace/{research,notes}", async route => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({json: {}});
+  });
+  await openWorkspace([]);
+  await page.locator("#workflow-title").click();
+  await screen(page.locator("#research-consent, #note-consent")).toHaveCount(0);
+  await page.locator("#research-input").fill("청년 주거 지원");
+  await page.locator("#research-add").click();
+  await screen(page.locator("#research-input")).toHaveValue("");
+  await page.locator("#note-input").fill("전세 지원");
+  await page.locator("#note-add").click();
+  await screen(page.locator("#note-input")).toHaveValue("");
+  expect(requests).toEqual([expect.objectContaining({text: "청년 주거 지원", consent: true}), {text: "전세 지원", consent: true}]);
+});
+
 it("여덟 가지 조사 상태를 각기 다른 표시·안내·시각·고유 버튼 이름으로 보여 준다", async () => {
   await openWorkspace(allStateJobs);
   await page.locator("#workflow-title").click();
@@ -196,8 +218,8 @@ it("패널이 닫혀 있고 진행 중인 조사가 없으면 요청을 보내�
     result: { text: "확인 완료", sources: [source] },
   }];
   await page.clock.runFor(10_500);
-  expect(workspaceGets).toBe(beforeClosed + 1);
   await screen(page.locator("#workflow-badge")).toHaveText("1");
+  expect(workspaceGets).toBe(beforeClosed + 1);
   await screen(page.locator("#st-research")).toBeVisible();
   await screen(page.locator("#st-research")).toContainText("1건");
   // 공용 PC 보호: 상태 줄에는 질문 원문이 포함되지 않는다.

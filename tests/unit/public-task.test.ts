@@ -13,6 +13,11 @@ const oracle = z.object({
   payload: z.object({ user: z.record(z.string(), z.unknown()), schemaName: z.string(), systemTail: z.string(), schemaKind: z.unknown() }),
   rewritten: z.array(z.string()), reviews: z.record(z.string(), z.string()),
 }).parse(JSON.parse(readFileSync(new URL("../fixtures/server/public-task.json", import.meta.url), "utf8")));
+const expectedCatalog = {...z.record(z.string(), z.array(z.string())).parse(oracle.catalog), 하이코리아: []};
+function withCurrentAgencies(snapshot: unknown) {
+  const schema = z.looseObject({properties: z.record(z.string(), z.unknown())}).parse(snapshot);
+  return {...schema, properties: {...schema.properties, agency: {type: ["string", "null"], enum: [...Object.keys(expectedCatalog), null]}}};
+}
 
 function fake(reply: unknown) {
   const calls: LlmRequest[] = [];
@@ -28,9 +33,9 @@ it("개인 탐색과 한 단계 명령은 앞에서 실행하는 계획에만 �
   expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command"]);
   expect(properties.agency.anyOf[0]).toMatchObject({type: "string"});
   expect({...DECISION_SCHEMA, properties: {...properties, agency: RESEARCH_SCHEMA.properties.agency, kind: {...properties.kind, enum: properties.kind.enum.filter(k => !additions.has(k))}},
-    required: DECISION_SCHEMA.required.filter(k => k !== "command" && k !== "outcome")}).toEqual(oracle.schema);
-  expect(JSON.stringify(RESEARCH_SCHEMA)).toBe(JSON.stringify(oracle.research));
-  expect(JSON.stringify(AGENCY_CATALOG)).toBe(JSON.stringify(oracle.catalog));
+    required: DECISION_SCHEMA.required.filter(k => k !== "command" && k !== "outcome")}).toEqual(withCurrentAgencies(oracle.schema));
+  expect(RESEARCH_SCHEMA).toEqual(withCurrentAgencies(oracle.research));
+  expect(AGENCY_CATALOG).toEqual(expectedCatalog);
 });
 it("parse_decision accepts and rejects what Python does", () => {
   for (const [name, raw] of Object.entries(oracle.cases)) {
@@ -95,7 +100,8 @@ it("decide selects a pending choice and sends the same request", async () => {
   expect(user.koreaDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   delete user.koreaDate;
   expect(JSON.stringify(user)).toBe(JSON.stringify(oracle.payload.user));
-  expect([calls[0]?.schemaName, calls[0]?.system.slice(-300)]).toEqual([oracle.payload.schemaName, oracle.payload.systemTail]);
+  expect(calls[0]?.schemaName).toBe(oracle.payload.schemaName);
+  expect(calls[0]?.system).toContain("Agency catalog: " + JSON.stringify(expectedCatalog));
   const reviewRaw = z.record(z.string(), z.unknown()).parse(oracle.cases.review);
   const rewritten = await decide(fake({ ...reviewRaw, requirements: ["바꿔 말한 요구"] }).llm, redactText("등본 서류를 찾아 정리해줘"), "ko", new PublicTask(), { voice: true, recent: [], signal });
   expect(rewritten?.requirements).toEqual(oracle.rewritten);

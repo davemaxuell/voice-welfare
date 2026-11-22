@@ -14,7 +14,7 @@ import { raceAbort } from "../../../core/abort.ts";
 import { MaskReport, Picture, pngSize } from "../../../core/picture.ts";
 import { boundPlanClick, revokePlanClick } from "../../../core/plan.ts";
 import { parseUrl, tryUrl } from "../../../core/url.ts";
-import { isInspectionUrl, isNotice, matchesInspectionSearchTarget, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
+import { confirmsClick, isInspectionUrl, isNotice, matchesInspectionSearchTarget, nativeMessageRisk, planControlAllowed, type InspectionBinding } from "../../../safety/guard.ts";
 import { loadsBokjiroSearchResults } from "../playbook.ts";
 import { REFUSAL_SPEECH, ShotRefusal, judgeMarks, planShot, type ShotPlan } from "../shot.ts";
 import type { Download as DownloadRecord, DownloadStore } from "../downloads.ts";
@@ -23,10 +23,10 @@ import { markBlocks } from "./blocks.ts";
 import { drawCursor, type CursorMode } from "./cursor.ts";
 import { fullPageLayout } from "./full_page.ts";
 import { AdapterError, call, optional, playwrightDriver, type ControlWindow, type PageDriver, type ResolvedElement } from "./driver.ts";
-import { attachStagehand, browserDriver, stagehandLaunchOptions, type BrowserDriver } from "./stagehand_browser.ts";
+import { attachedDriver, attachStagehand, browserDriver, detachStagehand, stagehandLaunchOptions, type BrowserDriver } from "./stagehand_browser.ts";
 import { stagehandDriver } from "./stagehand_driver.ts";
 import { framesOf } from "./frame_controls.ts";
-import { isEmbeddedRef } from "./embedded_element.ts";
+import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
 import { restingCursor } from "./rest_cursor.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
@@ -125,10 +125,16 @@ export function launchChromeProfile(userDataDir: string, slowMoMs = 0, driver = 
     channel: "chrome", headless: false, viewport: null, locale: "ko-KR", slowMo: slowMoMs, acceptDownloads: true, ...options, ...extra,
   }));
 }
+export async function closeLaunchedBrowser(resource: Browser | BrowserContext): Promise<void> {
+  const browser = "contexts" in resource ? resource : resource.browser();
+  try { if (browser !== null) await detachStagehand(browser); }
+  finally { await resource.close(); }
+}
+
 export function stopPlaywright(): Promise<void> {
   return stopping ??= (async () => {
     await Promise.allSettled(launching);
-    await Promise.all([...owned].map(resource => resource.close()));
+    await Promise.all([...owned].map(closeLaunchedBrowser));
   })().finally(() => { stopping = undefined; });
 }
 
@@ -173,6 +179,7 @@ interface NativeArm { grant: NativeGrant; used: boolean; until: number; docSeq: 
 // open: 실제로 누르거나 입력하는 동안만 참. 그 밖(기다림·커서 움직임·확인 중)에 뜬 창은 이 조작이 띄운 것이 아니라서 기록도 받아 주지도 않고 늘 취소한다.
 interface Flight {
   actionId: string; signal: AbortSignal; open: boolean;
+  requested?: { url: string; document: number; target: string; userCommand: boolean };
   revoked?: boolean; acceptance?: Promise<boolean>;
   seen: { cancelled: NativeDialogRecord[]; accepted: boolean }; arm?: NativeArm;
 }
@@ -301,6 +308,7 @@ export class PlaywrightExecutionAdapter {
   #shared = false;
   #closed = false;
   #lastDownload?: DownloadRecord;
+  #lastCursor?: { x: number; y: number };
   #nativeDialogs: string[] = [];
   /** 탭마다 지금 실행 중인 조작. confirm() 창이 어느 조작 때문에 떴는지는 여기서만 가린다(그 밖에 뜬 창은 늘 취소). */
   readonly #flights = new Map<Page, Flight>();
@@ -309,7 +317,7 @@ export class PlaywrightExecutionAdapter {
   /** 마지막으로 끝난 조작들이 겪은 confirm() 창. takeNative로 한 번만 가져간다. */
   readonly #nativeSeen = new Map<string, NativeSeen>();
   readonly #drivers = new WeakMap<Page, PageDriver>();
-  readonly #targetDocuments = new WeakMap<ActionTarget, {page: Page; document: number | undefined}>();
+  readonly #targetDocuments = new WeakMap<ActionTarget, {page: Page; document: number | undefined; login?:string}>();
   readonly #loads = new Map<Page, PageLoad>();
   #onPage?: (page: Page) => void;
   #lifecycle = Promise.resolve();
@@ -407,6 +415,14 @@ export class PlaywrightExecutionAdapter {
     claimed.add(page);
     const load: PageLoad = { method: "GET", fetching: new Map(), tab: randomUUID(), docSeq: 0 };
     this.#loads.set(page, load);
+    if (this.#options.visualCursor === true) {
+      // Redirections and new tabs can finish loading after the triggering action has returned.
+      const restore = () => {
+        if (!this.#closed && this.page === page) void this.#restCursor(page).catch(() => {});
+      };
+      page.on("domcontentloaded", restore);
+      if (previous !== undefined) restore();
+    }
     page.on("framenavigated", frame => { if (frame === page.mainFrame()) load.docSeq++; });
     page.on("request", request => {
       let main = false;
@@ -449,6 +465,15 @@ export class PlaywrightExecutionAdapter {
       return;
     }
     const url = page.url();
+    const requested = flight.requested;
+    if (requested !== undefined) {
+      flight.requested = undefined;
+      if (confirm && this.page === page && requested.document === load.docSeq && requested.url === url &&
+          confirmsClick(message, requested.target, requested.userCommand)) {
+        flight.acceptance = dialog.accept().then(() => true, () => false);
+        return;
+      }
+    }
     const document = String(load.docSeq);
     const hash = createHash("sha256").update(message, "utf8").digest("hex");
     const length = Array.from(message).length;
@@ -580,14 +605,37 @@ export class PlaywrightExecutionAdapter {
   #driver(page: Page): PageDriver {
     const existing = this.#drivers.get(page);
     if (existing !== undefined) return existing;
-    const create = this.#options.createPageDriver ?? ((this.#options.driver ?? browserDriver()) === "stagehand" ? stagehandDriver : playwrightDriver);
+    const create = this.#options.createPageDriver ?? ((this.#options.driver ?? attachedDriver(page)) === "stagehand" ? stagehandDriver : playwrightDriver);
     const driver = create(page, this.#actionTimeout);
     this.#drivers.set(page, driver);
     return driver;
   }
 
   frameOrigins(ref: string) { return framesOf(this.#requirePage()).origins(ref); }
+  documentId(): string | undefined {
+    const page = this.page;
+    return page === undefined || page.isClosed() ? undefined : framesOf(page).documentId();
+  }
   hasOpaqueContent() { return framesOf(this.#requirePage()).hasOpaqueContent(); }
+  async loginSubmitTarget(url: string, signal: AbortSignal): Promise<ActionTarget | undefined> {
+    const page = this.#requirePage();
+    const document = this.#loads.get(page)?.docSeq;
+    const found = await call(signal, () => this.#driver(page).controlWindow({loginSubmit:true, limit:40}));
+    if (found.more || document === undefined || this.page !== page || found.url !== url || page.url() !== url || this.#loads.get(page)?.docSeq !== document) return;
+    const rank = Math.min(...found.items.map(item => item.loginSubmit?.rank ?? Infinity));
+    const best = found.items.filter(item => item.loginSubmit?.rank === rank);
+    const item = best[0];
+    if (best.length !== 1 || item?.loginSubmit === undefined) return;
+    const target = {ref:item.ref, role:item.role, name:item.name};
+    this.#targetDocuments.set(target, {page, document, login:item.loginSubmit.signature});
+    return target;
+  }
+  async #verifyLoginSubmit(page: Page, target: ActionTarget, signature: string, signal: AbortSignal) {
+    const found = await call(signal, () => this.#driver(page).controlWindow({ref:target.ref, loginSubmit:true, limit:1}));
+    const item = found.items[0];
+    if (found.more || !item || item.disabled || item.ref !== target.ref || item.role !== target.role || item.name !== target.name ||
+      item.loginSubmit?.signature !== signature || !item.loginSubmit.filled) throw new AdapterError("VERIFY_FAILED");
+  }
   get findByMeaning(): PageDriver["findByMeaning"] {
     const page = this.page;
     if (page === undefined) return undefined;
@@ -613,7 +661,7 @@ export class PlaywrightExecutionAdapter {
       if (before !== undefined && (before.page !== page || before.document !== document)) throw new AdapterError("VERIFY_FAILED");
       const result = await bind.call(driver, target, signal, optionLabel);
       if (this.page !== page || this.#loads.get(page)?.docSeq !== document) throw new AdapterError("VERIFY_FAILED");
-      this.#targetDocuments.set(result, {page, document});
+      this.#targetDocuments.set(result, {page, document, login:before?.login});
       return result;
     };
   }
@@ -665,6 +713,10 @@ export class PlaywrightExecutionAdapter {
       page = this.#requirePage();
       const current = page;
       flight = { actionId: action.id, signal, open: false, seen: { cancelled: [], accepted: false } };
+      const load = this.#loads.get(current);
+      if (grants?.requestedClick !== undefined && load !== undefined) flight.requested = {
+        url: current.url(), document: load.docSeq, target: action.target?.name ?? "", userCommand: grants.requestedClick === "command",
+      };
       if (grants?.native !== undefined) flight.arm = this.#arm(action, grants, inspection, current);
       this.#flights.set(current, flight);
       const result = await raceAbort(async active => {
@@ -679,11 +731,10 @@ export class PlaywrightExecutionAdapter {
             }
             return completed;
           });
-        // 시연용 가상 커서: 페이지를 옮기면(새 문서·새 탭) 커서가 사라지므로 지금 화면에 다시 놓는다
-        if (this.#options.visualCursor === true && result.ok && action.type !== "read") await this.#restCursor(active);
+        if (this.#options.visualCursor === true && result.ok) await this.#restCursor(this.#requirePage(), active);
         return result;
       }, signal);
-      if (flight.arm !== undefined) {
+      if (flight.arm !== undefined || flight.acceptance !== undefined) {
         flight.seen.accepted = await flight.acceptance === true;
         if (!flight.seen.accepted) throw new AdapterError("VERIFY_FAILED", "앞서 확인한 사이트 질문에 답했는지 확인하지 못했어요. 화면에서 직접 확인해 주세요.");
       }
@@ -756,7 +807,7 @@ export class PlaywrightExecutionAdapter {
   async #back(page: Page, signal: AbortSignal): Promise<Completed> {
     const here = page.url();
     const load = this.#loads.get(page);
-    if (load !== undefined && (this.#options.driver ?? browserDriver()) === "stagehand") {
+    if (load !== undefined && (this.#options.driver ?? attachedDriver(page)) === "stagehand") {
       const network = load.network ??= watchPageLoad(page, load).catch((error: unknown) => { load.network = undefined; throw error; });
       await call(signal, () => network);
     }
@@ -799,7 +850,7 @@ export class PlaywrightExecutionAdapter {
     }
     // 허가는 ref로 가리킨 요소를 누르는 조작에만, 하나씩만 붙는다. 화면 확인 범위와는 함께 쓰지 않는다.
     if (grants !== undefined && (type !== "click" || target?.ref === undefined || inspection !== undefined ||
-      [grants.notice, grants.native, grants.plan].filter(grant => grant !== undefined).length !== 1)) throw new AdapterError("VERIFY_FAILED");
+      [grants.notice, grants.native, grants.plan, grants.requestedClick].filter(grant => grant !== undefined).length !== 1)) throw new AdapterError("VERIFY_FAILED");
     if (inspection?.kind === "search") {
       const fresh = await call(signal, () => this.inspectionSearch(inspection.fieldId));
       if (this.page !== page || type !== "press" || fresh === undefined || !matchesInspectionSearchTarget(target, inspection.fieldId, fresh.field) ||
@@ -851,6 +902,7 @@ export class PlaywrightExecutionAdapter {
       else {
         const element = await this.#resolve(driver, target, signal);
         await element.scroll();
+        if (this.#options.visualCursor === true) await this.#showCursor(page, element, "move", signal);
       }
       return ok;
     }
@@ -860,6 +912,7 @@ export class PlaywrightExecutionAdapter {
     let element = await this.#resolve(driver, target, signal);
     if (inspection?.kind === "control" && inspection.control.kind === "blocked") throw new AdapterError("NOT_SUPPORTED");
     if (inspection?.kind === "control" && inspection.control.kind === "navigation") {
+      if (this.#options.visualCursor === true) await this.#showCursor(page, element, "move", signal);
       await this.#verifyInspectionControl(page, inspection, target, signal);
       const href = inspection.control.href;
       if (!isInspectionUrl(href) || !this.#mayLoad(href)) throw new AdapterError("NOT_SUPPORTED");
@@ -899,11 +952,15 @@ export class PlaywrightExecutionAdapter {
     }
     if (grants?.notice !== undefined) await this.#verifyNotice(page, grants.notice, target, signal);
     if (grants?.native !== undefined) this.#armHolds(page, this.#flights.get(page));
+    if (bound?.login !== undefined && target !== undefined) {
+      await this.#verifyLoginSubmit(page, target, bound.login, signal);
+      if (driver.bindTarget === undefined && !isEmbeddedRef(target.ref)) element = embeddedElement(page, target, signal, this.#actionTimeout, element);
+    }
     verifyDocument();
     switch (type) {
       case "click":
         // 아래 #acting 안(실제로 누르는 동안)에 뜬 confirm() 창만 이 조작의 것으로 본다.
-        await this.#acting(page, () => element.click({ grants, inspection }));
+        await this.#acting(page, () => element.click({ grants, inspection, login:bound?.login }));
         return ok;
       case "focus":
         await element.focus();
@@ -1066,12 +1123,11 @@ export class PlaywrightExecutionAdapter {
     finally { await cdp?.detach().catch(() => {}); }
   }
 
-  /** 커서가 없는 화면(방금 연 페이지)이면 큰 제목이나 본문 위에 놓아 둔다. 있으면 그대로(마지막 조작 위치) 둔다. */
-  async #restCursor(signal: AbortSignal): Promise<void> {
-    const page = this.#requirePage();
-    await optional(signal, () => page.waitForLoadState("domcontentloaded", { timeout: 3000, signal }));
-    const spot = z.object({ x: z.number(), y: z.number() }).safeParse(await optional(signal, () => page.evaluate(restingCursor)));
-    if (spot.success) await optional(signal, () => page.evaluate(cursorScript(spot.data.x, spot.data.y, "move")));
+  /** 새 문서에서도 마지막으로 가리킨 자리를 보여 준다. 첫 화면에만 제목이나 본문을 기준으로 삼는다. */
+  async #restCursor(page: Page, signal = new AbortController().signal): Promise<void> {
+    const point = callScript(restingCursor.toString(), this.#lastCursor ?? null);
+    // Check and mount in one evaluation so a late load cannot overwrite a newer click or wait pose.
+    await optional(signal, () => page.evaluate(`(p => { if (p) (${drawCursor.toString()})({...p, mode: "move"}); })(${point})`));
   }
 
   async #showCursor(page: Page, element: ResolvedElement, mode: CursorMode, signal: AbortSignal): Promise<void> {
@@ -1079,6 +1135,7 @@ export class PlaywrightExecutionAdapter {
     if (box == null) return;
     const evenRound = (value: number) => value % 2 === 0.5 ? Math.floor(value) : Math.round(value);
     const x = evenRound(box.x + box.width / 2), y = evenRound(box.y + box.height / 2);
+    this.#lastCursor = { x, y };
     await optional(signal, () => page.evaluate(cursorScript(x, y, mode)));
     await delay(mode === "click" ? 650 : 450, undefined, { signal });
   }

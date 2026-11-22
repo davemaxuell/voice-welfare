@@ -2,6 +2,7 @@ import type { Browser, Page } from "playwright";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { ExecContext, WebExecutionAgent, type WebAction } from "../../src/agents/web/agent.ts";
 import { PlaywrightExecutionAdapter, launchBrowser, stopPlaywright } from "../../src/agents/web/browser/index.ts";
+import { browserDriver } from "../../src/agents/web/browser/stagehand_browser.ts";
 import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { ACTION_TYPES, type Action, type NativeDialogRecord, type NoticeProof } from "../../src/core/actions.ts";
 import { PolicyGuard } from "../../src/safety/guard.ts";
@@ -127,7 +128,7 @@ it("직접 '확인'을 누르라고 하면 안내 팝업은 묻지 않고 누른
 it("같은 이름의 단추가 화면에 또 있으면 어느 것인지 모호해 묻는다", async () => {
   const { page, agent } = await open({ "/page": html(popup(), "<button type=\"button\" id=\"other\">확인</button>") });
   const out = await agent.followLink("확인", context());
-  if (process.env.BROWSER_DRIVER === "stagehand") {
+  if (browserDriver() === "stagehand") {
     expect(out.status).toBe("needs-clarification");
     expect(out.pending).toBeUndefined();
     expect(out.actions).toHaveLength(0);
@@ -212,14 +213,14 @@ it("증명이 붙은 누르기는 시간이 넘어도 다시 하지 않고, 어�
   expect(perform).not.toHaveBeenCalled();
   expect(log.at(-1)?.policy.code).toBe("DENIED_GRANT_BINDING");
   expect(await clicks(page)).toBe(0);
-  // 허가가 없는 저위험 누르기는 지금처럼 시간이 넘으면 한 번 다시 한다.
+  // 별도 허가가 없는 버튼도 사이트에서 이미 동작했을 수 있다.
   execute.mockClear();
   const observation = await adapter.observe();
   const next = observation.outline?.items?.find(item => item.name === "다음 쪽");
   if (next === undefined) throw new Error("Missing next button");
   const plain: Action = { id: "n3", type: "click", target: { ref: next.ref, role: next.role, name: next.name }, reason: "다음 쪽 누르기", risk: "low", requiresConfirmation: false };
   await agent.run(plain, context(), [], undefined, undefined);
-  expect(execute).toHaveBeenCalledTimes(2);
+  expect(execute).toHaveBeenCalledTimes(1);
 });
 
 // ---- 사이트의 confirm() 질문 ----

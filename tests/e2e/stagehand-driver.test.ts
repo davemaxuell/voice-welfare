@@ -6,9 +6,11 @@ import type { Browser, Page } from "playwright";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import type { Action } from "../../src/core/actions.ts";
 import { createStructuredLlm, ModelConnections } from "../../src/core/llm.ts";
-import { launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../../src/agents/web/browser/index.ts";
+import { closeLaunchedBrowser, launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter, stopPlaywright } from "../../src/agents/web/browser/index.ts";
 import { observedSelectors, stagehandTab } from "../../src/agents/web/browser/stagehand_browser.ts";
 import { stagehandDriver } from "../../src/agents/web/browser/stagehand_driver.ts";
+import { AgentRuntime, loadConfig } from "../../src/server/runtime.ts";
+import { FakeLlm } from "../helpers.ts";
 
 let browser: Browser;
 const adapters: PlaywrightExecutionAdapter[] = [];
@@ -17,7 +19,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(adapters.splice(0).map(adapter => adapter.close()));
 });
-afterAll(async () => { await browser?.close(); });
+afterAll(() => stopPlaywright(), 60_000);
 
 function gate() {
   let resolve!: () => void;
@@ -36,6 +38,160 @@ async function fixture(html: string) {
 function action(type: Action["type"], target: Action["target"], value?: string): Action {
   return { id: "한번", type, target, value, risk: "low", reason: "시험", requiresConfirmation: false };
 }
+
+it.each([undefined, "playwright"])("모델 키가 없는 서비스(%s)에서 한 번 말하면 실제 안내 단추가 한 번만 동작한다", async driver => {
+  const runtime = new AgentRuntime(loadConfig({HEADLESS:"true", REQUIRE_CONSENT:"false", PRACTICE_MODE:"false", BROWSER_DRIVER:driver}));
+  const connectedAtDetach: boolean[] = [];
+  try {
+    const session = await runtime.createSession();
+    try {
+      const adapter = session.deps.web.adapter as PlaywrightExecutionAdapter;
+      const page = adapter.page!;
+      const url = "https://notice.example.org/board";
+      await page.route(url, route => route.fulfill({contentType:"text/html; charset=utf-8", body:'<title>0</title><main><button onclick="document.title=String(Number(document.title)+1)">새 소식</button></main>'}));
+      await session.handleTurn(url + " 열어줘");
+      expect(page.url()).toBe(url);
+      const sdk = driver === undefined ? await stagehandTab(page) : undefined;
+      if (sdk !== undefined) {
+        const handle = sdk.connection.sdk.browser;
+        const detach = handle.disconnect.bind(handle);
+        vi.spyOn(handle, "disconnect").mockImplementation(() => {
+          connectedAtDetach.push(page.context().browser()!.isConnected());
+          return detach();
+        });
+      }
+      const act = sdk && vi.spyOn(sdk.connection.sdk, "act");
+      const result = await session.handleTurn("새 소식 버튼 눌러줘");
+      expect(result.actions).toContainEqual(expect.objectContaining({action:expect.objectContaining({type:"click"}), result:expect.objectContaining({ok:true})}));
+      expect(await page.title()).toBe("1");
+      if (act) expect(act).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({method:"click", selector:expect.any(String)}),
+        expect.objectContaining({page:sdk!.tab}));
+      else expect(adapter.findByMeaning).toBeUndefined();
+    } finally { await session.close(); }
+  } finally { await runtime.close(); }
+  expect(connectedAtDetach).toEqual(driver === undefined ? [true] : []);
+});
+
+it("이름이 같은 두 행에서 음성으로 말한 행만 찾아 한 번 누르고 개인 입력값은 모델에 보내지 않는다", async () => {
+  const {page, adapter} = await fixture('<main><article><h2>교육비 지원</h2><button onclick="document.title=1">자세히</button></article>' +
+    '<article><h2>주거비 지원</h2><button onclick="document.title=2">자세히</button></article><input value="개인입력시험"></main>');
+  const model = new FakeLlm(({user, schemaName}) => {
+    expect(schemaName).toBe("stagehand_pick");
+    expect(user).not.toContain("개인입력시험");
+    const choices = JSON.parse(user) as {options: Record<string, string>};
+    return {ref:Object.keys(choices.options).find(key => choices.options[key]!.includes("주거비"))};
+  });
+  const target = await adapter.findByMeaning!("집세 도움에 관해 더 알아보기", false, page.url(), {model}, new AbortController().signal);
+  expect(target).toMatchObject({role:"button", name:"자세히", context:"주거비 지원"});
+  const act = vi.spyOn((await stagehandTab(page)).connection.sdk, "act");
+  expect((await adapter.execute(action("click", target))).verified).toBe(true);
+  expect(await page.title()).toBe("2");
+  expect(act).toHaveBeenCalledTimes(1);
+});
+
+it("아이콘이나 외부 라벨로 이름을 붙인 버튼은 읽어 준 이름으로 찾아 누른다", async () => {
+  const {page, adapter} = await fixture('<span id="page-label">다음 목록</span><button aria-labelledby="page-label" onclick="document.title=1">›</button>' +
+    '<button aria-label="목록 닫기" onclick="document.title=2">×</button>');
+  expect((await adapter.observe()).outline?.items?.map(i => i.name)).toEqual(["다음 목록", "목록 닫기"]);
+  for (const [name, title] of [["다음 목록", "1"], ["목록 닫기", "2"]]) {
+    expect((await adapter.execute(action("click", {role:"button", name}))).ok).toBe(true);
+    expect(await page.title()).toBe(title);
+  }
+});
+
+it("멈춘 뒤 늦게 도착한 Stagehand 클릭은 같은 자리에 나타난 단추를 작동시키지 않는다", async () => {
+  const {page, adapter} = await fixture('<button onclick="document.title=1">안내</button>');
+  const {connection} = await stagehandTab(page);
+  const act = connection.sdk.act.bind(connection.sdk), started = gate(), release = gate(), delivered = gate();
+  vi.spyOn(connection.sdk, "act").mockImplementation(async (instruction, options) => {
+    started.resolve();
+    await release.promise;
+    try { return await act(instruction, options); } finally { delivered.resolve(); }
+  });
+  const stop = new AbortController();
+  const running = adapter.execute(action("click", {role:"button", name:"안내"}), stop.signal);
+  try {
+    await Promise.race([started.promise, running.then(() => { throw new Error("Stagehand 클릭이 실행되지 않았습니다."); })]);
+    stop.abort();
+    expect((await running).errorCode).toBe("ABORTED");
+    await page.locator("button").evaluate(el => el.replaceWith(el.cloneNode(true)));
+  } finally { release.resolve(); }
+  await delivered.promise;
+  expect(await page.title()).toBe("");
+});
+
+it("Stagehand 클릭을 기다리며 사용자가 이미 체크한 항목을 다시 해제하지 않는다", async () => {
+  const {page, adapter} = await fixture('<input type="checkbox" id="choice" aria-label="수신" onchange="document.title=1">');
+  const {connection} = await stagehandTab(page);
+  const act = connection.sdk.act.bind(connection.sdk);
+  vi.spyOn(connection.sdk, "act").mockImplementation(async (instruction, options) => {
+    await page.locator("#choice").evaluate(el => { (el as HTMLInputElement).checked = true; });
+    return act(instruction, options);
+  });
+  await adapter.execute({...action("check", {fieldId:"choice"}), checked:true});
+  expect(await page.locator("#choice").isChecked()).toBe(true);
+  expect(await page.title()).toBe("");
+});
+
+it("같은 Stagehand 조작에서 추가 포인터가 도착해도 사이트 클릭은 한 번만 실행된다", async () => {
+  const {page, adapter} = await fixture('<button onclick="document.title=String(Number(document.title)+1)">알림</button>');
+  const {connection} = await stagehandTab(page);
+  const act = connection.sdk.act.bind(connection.sdk);
+  vi.spyOn(connection.sdk, "act").mockImplementation(async (instruction, options) => {
+    const first = await act(instruction, options);
+    await act(instruction, options);
+    return first;
+  });
+  expect((await adapter.execute(action("click", {role:"button", name:"알림"}))).verified).toBe(true);
+  expect(await page.title()).toBe("1");
+});
+
+it.each(["iframe", "shadow"])("%s 안에서도 Stagehand가 요청한 단추를 정확히 한 번 누른다", async kind => {
+  const {page, adapter} = await fixture("<main><div id='host'></div></main>");
+  await page.locator("#host").evaluate((host, kind) => {
+    const html = '<button onclick="this.textContent=String(Number(this.dataset.count || 0)+1);this.dataset.count=this.textContent">안쪽 안내</button>';
+    if (kind === "shadow") host.attachShadow({mode:"open"}).innerHTML = html;
+    else { const frame = document.createElement("iframe"); frame.srcdoc = html; host.appendChild(frame); }
+  }, kind);
+  const button = kind === "shadow" ? page.getByRole("button") : page.frameLocator("iframe").getByRole("button");
+  await button.waitFor();
+  const item = (await adapter.observe()).outline!.items!.find(control => control.name === "안쪽 안내")!;
+  const act = vi.spyOn((await stagehandTab(page)).connection.sdk, "act");
+  const result = await adapter.execute(action("click", item), undefined, undefined, {requestedClick:"command"});
+  expect(result).toMatchObject({ok:true, verified:true});
+  expect(await button.textContent()).toBe("1");
+  expect(act).toHaveBeenCalledTimes(1);
+});
+
+it.each(["iframe", "shadow", "autocomplete", "textarea"])("%s의 비밀번호 칸은 값 없이 인계하고, 직접 입력한 뒤 채워졌는지만 확인한다", async kind => {
+  const {page, adapter} = await fixture("<section id='host'></section>");
+  await page.locator("#host").evaluate((host, kind) => {
+    const html = kind === "textarea" ? '<label>비밀번호<textarea autocomplete="new-password">미리채운시험암호</textarea></label>' :
+      '<input type="' + (kind === "autocomplete" ? "text" : "password") + '" autocomplete="current-password" aria-label="비밀번호">';
+    if (kind === "shadow") host.attachShadow({mode:"open"}).innerHTML = html;
+    else if (kind === "iframe") { const frame = document.createElement("iframe"); frame.srcdoc = html; host.appendChild(frame); }
+    else if (kind === "textarea") {
+      const footer = document.createElement("footer");
+      footer.innerHTML = "대표전화 안내 " + html;
+      document.body.appendChild(footer);
+    } else host.innerHTML = html;
+  }, kind);
+  const field = kind === "iframe" ? page.frameLocator("iframe").locator("input") : page.locator("input,textarea");
+  await field.waitFor();
+  const before = await adapter.observe();
+  if (kind === "textarea") expect(before.outline?.footerText).toContain("대표전화 안내");
+  expect(JSON.stringify(before)).not.toContain("미리채운시험암호");
+  const first = before.fields.find(f => f.type === "password");
+  expect(first).toMatchObject({visible:true, filled:kind === "textarea", sensitive:true});
+  expect((await adapter.execute(action("focus", {fieldId:first!.fieldId, label:first!.label}))).ok).toBe(true);
+  expect(await field.evaluate(el => (el.getRootNode() as Document | ShadowRoot).activeElement === el)).toBe(true);
+  await field.fill("본인만아는시험암호");
+  const after = await adapter.observe();
+  expect(after.fields.find(f => f.fieldId === first!.fieldId)).toMatchObject({type:"password", filled:true, value:""});
+  expect(JSON.stringify(after)).not.toContain("본인만아는시험암호");
+  expect((await adapter.execute(action("fill", {fieldId:first!.fieldId, label:first!.label}, "잘못된 값"))).ok).toBe(false);
+  expect(await field.inputValue()).toBe("본인만아는시험암호");
+});
 
 it("같은 주소를 연 두 세션에서 관찰·입력·클릭은 선택한 탭에만 적용한다", async () => {
   const html = '<button onclick="document.title=this.textContent">공통 안내</button><input id="field">';
@@ -282,6 +438,6 @@ it("앱이 만든 지속 프로필의 실제 탭에도 붙는다", async () => {
         await page.setContent("<title>지속 프로필</title>");
         expect((await adapter.observe()).title).toBe("지속 프로필");
       } finally { await adapter.close(); }
-    } finally { await ctx.close(); }
+    } finally { await closeLaunchedBrowser(ctx); }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

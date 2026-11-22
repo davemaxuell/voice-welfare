@@ -15,6 +15,8 @@ export interface PolicyConfig {
   readOnlyWeb?: boolean;
   safeButtons?: readonly string[];
   readOnlyClicks?: "any" | "safe";
+  /** 대화 중 요청한 조작을 화면에서 확인하면 같은 턴에 실행한다. */
+  directActions?: boolean;
   publicLookupOnly?: boolean;
   defaultActionsPerTurn?: number;
 }
@@ -29,6 +31,8 @@ export interface PolicyContext {
   inspection?: InspectionBinding;
   inspectionApproved?: boolean;
   actionLimit?: number;
+  /** 사용자가 지정한 대상을 조작하는 경로. 자료 조사·화면 확인·모델의 자율 탐색은 포함하지 않는다. */
+  userCommand?: boolean;
   /** 이번 누르기가 내용만 알리는 안내 팝업을 닫는 것이라는 증명(어댑터가 누르기 직전에 다시 확인한다). 읽기 전용 사이트의 누르기에만 쓴다. */
   notice?: NoticeProof;
   /** 사이트의 confirm() 창에 답하며 같은 누르기를 되풀이한다는 허가. 누르기에만 붙고 공개 조회·화면 확인 범위에서는 쓰지 않는다. */
@@ -145,6 +149,33 @@ export function nativeMessageRisk(message: string): "routine" | "consequential" 
   return dangerousContext(message) || nativeConsequential.test(message) ? "consequential" : "routine";
 }
 
+function confirmationSubject(text: string): string {
+  return text.normalize("NFKC").toLowerCase().trim()
+    .replace(/[.!?。！？]+$/gu, "").trim()
+    .replace(/^(?:(?:정말로?|지금|이대로|그대로)\s+|(?:are you sure(?: you want to)?|do you want to|would you like to|please confirm)\s+|(?:确定要|是否要|要不要))/u, "")
+    .replace(/(?:[하할](?:시겠습니까|실까요|실래요|겠습니까|시겠어요|까요)|해도\s*(?:될까요|됩니까)|しますか|してもよろしいですか|吗)$/u, "")
+    .replace(/([가-힣])(?:으로|을|를)(?=\s|$)/gu, "$1")
+    .replace(/\b(?:the|this)\s+/gu, "").replace(/\s+/gu, " ").trim();
+}
+
+const continuation = /^(?:계속(?:\s*진행)?|진행|확인|다음(?:\s*(?:단계|화면|페이지))?로?\s*(?:이동)?|continue|proceed|are you sure|继续|继续操作|続行|続ける)$/iu;
+const dialogHeading = /^(?:안내|알림|확인|질문|confirmation|confirm|notice|确认|提示|確認|お知らせ)$/iu;
+const shortEffect = /^(?:저장|제출|접수|신청|삭제|결제|취소|로그인|인쇄|save|submit|delete|print|保存|提交|删除|送信|削除)$/iu;
+const stateChange = /(?:변경|수정|취소|해지|제거|초기화|환불)(?:하기)?$|\b(?:save|update|modify|remove|erase|purchase|subscribe|unsubscribe|reset|cancel|withdraw)\b|(?:保存|提交|删除|付款|支付|购买|取消|送信|削除|購入|退会)$/iu;
+
+/** 제목과 질문이 원래 조작을 그대로 되묻는지 확인한다. 범위나 목적어를 새로 보탠 질문은 사이트에 맡긴다. */
+export function confirmsClick(message: string, target: string, userCommand: boolean, title = ""): boolean {
+  if (Array.from(message + title).length > NATIVE_SPOKEN_LIMIT || guardPatterns.secretLabel.test(message + title)) return false;
+  const label = confirmationSubject(target);
+  const words = label.split(" ");
+  const same = (value: string) => value === label || (shortEffect.test(value) && value === (/^[a-z]/u.test(value) ? words[0] : words.at(-1)));
+  const heading = confirmationSubject(title);
+  if (heading.length > 0 && !dialogHeading.test(heading) && !same(heading)) return false;
+  const subject = confirmationSubject(message);
+  if (subject.length === 0) return title.length > 0 && userCommand && same(heading);
+  return continuation.test(subject) || (userCommand && label.length > 0 && same(subject));
+}
+
 const writeEndpoint = /^(?:pay(?:ment)?|checkout|purchase|submit|send|delete|remove|logout|sign[-_ ]?out|sign[-_ ]?up|register|consent|vote|upload|withdraw|commit|confirm|save|update)(?:\.[a-z0-9]+)?$/iu;
 const endpointParameter = /^(?:_?method|action|operation|op|cmd|command|do)$/iu;
 const searchParameter = /^(?:[\p{L}\p{N}_-]{1,64})$/u;
@@ -186,6 +217,19 @@ export class PolicyGuard {
     this.config = config;
   }
 
+  get directActions(): boolean { return this.config.directActions === true && this.config.publicLookupOnly !== true; }
+
+  private onRequest(action: Action, ctx: PolicyContext, approved: string, pending: string): PolicyDecision {
+    if (this.directActions && !this.publicLookup(ctx)) {
+      if (ctx.userCommand !== true && ctx.inspection === undefined && ctx.notice === undefined && ctx.plan === undefined &&
+          action.type === "click" && /^(?:확인|승인|동의|ok|confirm|accept|同意|确认|確認)$/iu.test(strip(action.target?.name ?? ""))) {
+        return deny("DENIED_TASK_SCOPE", "현재 요청에서 어떤 일을 확인하는지 알 수 없습니다.");
+      }
+      return { allowed: true, code: "ALLOWED_REQUEST", reason: "현재 요청에 필요한 조작입니다." };
+    }
+    return approveOrAsk(action, ctx, approved, pending);
+  }
+
   isAllowedUrl(url: string | undefined): boolean {
     const parsed = tryUrl(url);
     return parsed !== undefined && this.config.allowedOrigins.includes(parsed.origin);
@@ -208,6 +252,15 @@ export class PolicyGuard {
       return deny("DENIED_RATE_LIMIT", "한 번의 요청에서 허용된 조작 횟수를 넘었습니다.");
     }
     if (!this.config.allowedActionTypes.includes(action.type)) return deny("DENIED_ACTION_TYPE", `허용되지 않은 액션 유형(${action.type})입니다.`);
+
+    if (this.directActions && ctx.userCommand !== true && ctx.plan === undefined && ctx.notice === undefined && ctx.inspection === undefined) {
+      const name = strip(action.target?.name ?? "");
+      const changesState = action.type === "click" && ((guardPatterns.hardAction.test(name) && isActionName(name)) || stateChange.test(name));
+      const entersValue = inputTypes.has(action.type) && action.target?.role !== "searchbox";
+      if (changesState || entersValue || action.risk === "consequential") {
+        return deny("DENIED_TASK_SCOPE", "요청하신 탐색 범위에 포함되지 않은 변경입니다.");
+      }
+    }
 
     // 이동은 목적지, 그 외는 현재 화면의 출처로 접근 등급을 정한다.
     let tier = this.tierOf(action.type === "navigate" ? action.url : ctx.currentUrl);
@@ -241,10 +294,10 @@ export class PolicyGuard {
     if (ctx.frameOrigins !== undefined && action.type === "click") {
       const name = strip(action.target?.name ?? "");
       const hard = guardPatterns.hardAction.test(name) && isActionName(name);
-      if (hard && tier === "read-only") return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
+      if (hard && tier === "read-only" && !(this.directActions && ctx.userCommand === true && hasText(action.target?.ref))) return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
       if (hard || guardPatterns.loginName.test(name) || /^(?:확인|ok|confirm)$/iu.test(name)) {
         if (this.publicLookup(ctx) || this.inspectionEnabled(ctx)) return readOnly("정보 확인 중에는 이 항목을 대신 누르지 않습니다.");
-        return approveOrAsk(action, ctx, "사용자가 이 항목을 확인했습니다.", "이 항목을 누르기 전에 사용자 확인이 필요합니다.");
+        return this.onRequest(action, ctx, "사용자가 이 항목을 확인했습니다.", "이 항목을 누르기 전에 사용자 확인이 필요합니다.");
       }
     }
     if (this.publicLookup(ctx)) {
@@ -278,7 +331,7 @@ export class PolicyGuard {
     }
     // 위험도는 부르는 쪽이 높일 수만 있다: 동작 이름의 버튼은 낮게 적어 와도 승인을 받는다.
     if (action.risk !== "low" || action.requiresConfirmation || (action.type === "click" && this.riskyControl(target))) {
-      return approveOrAsk(action, ctx, "사용자가 실행 전에 승인했습니다.", "실행 전에 사용자 승인이 필요합니다.");
+      return this.onRequest(action, ctx, "사용자가 실행 전에 승인했습니다.", "실행 전에 사용자 승인이 필요합니다.");
     }
     return { allowed: true, code: "ALLOWED", reason: "허용된 저위험 조작입니다." };
   }
@@ -326,6 +379,7 @@ export class PolicyGuard {
       return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
     }
     if ((control.kind === "navigation" || control.kind === "disclosure") && !guardPatterns.loginName.test(name)) return allowed;
+    if (this.directActions) return allowed;
     return ctx.inspectionApproved === true
       ? { allowed: true, code: "APPROVED", reason: "사용자가 이 화면에서 이 항목을 누르도록 확인했습니다." }
       : deny("NEEDS_CONFIRMATION", "이 항목을 누르기 전에 사용자 확인이 필요합니다.");
@@ -350,21 +404,27 @@ export class PolicyGuard {
         || (hasText(value) && detectSensitive(value).hasSecretValue)) {
         return deny("DENIED_SECRET", "민감 정보 입력란은 사용자가 직접 입력해야 합니다.");
       }
-      if (action.risk !== "sensitive" || !action.requiresConfirmation) return readOnly("입력은 사용자 확인을 받은 경우에만 합니다.");
-      return approveOrAsk(action, ctx, "사용자가 이 입력을 확인했습니다.", "이 칸에 입력하기 전에 사용자 확인이 필요합니다.");
+      const requested = this.directActions && ctx.userCommand === true && !this.publicLookup(ctx) && hasText(target?.ref);
+      if (action.risk !== "sensitive" || (!action.requiresConfirmation && !requested)) return readOnly("입력은 사용자 확인을 받은 경우에만 합니다.");
+      return this.onRequest(action, ctx, "사용자가 이 입력을 확인했습니다.", "이 칸에 입력하기 전에 사용자 확인이 필요합니다.");
     }
     if (!readOnlyTypes.has(type)) return readOnly("입력·선택은 하지 않습니다.");
     if (action.risk !== "low" || action.requiresConfirmation) return readOnly("중요한 동작은 하지 않습니다.");
     if (type === "click") {
       const tier = (this.config.readOnlyClicks ?? "safe") === "safe" ? clickTier(role, name) : "free";
-      if (tier === "hard") return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
+      if (tier === "hard") {
+        if (this.directActions && ctx.userCommand === true && !this.publicLookup(ctx) && hasText(target?.ref) && hasText(name)) {
+          return { allowed: true, code: "ALLOWED_REQUEST", reason: "사용자가 지정한 항목을 현재 화면에서 확인했습니다." };
+        }
+        return readOnly("신청·제출·동의 같은 동작은 누르지 않습니다.");
+      }
       if (tier === "ask" && this.publicLookup(ctx)) return readOnly("정보를 찾는 동안에는 확인이 필요한 버튼을 누르지 않습니다.");
       // 내용만 알리는 안내 팝업의 '확인'은 증명(어댑터가 누르기 직전에 다시 확인)이 있을 때만 묻지 않는다.
       if (tier === "ask" && !guardPatterns.loginName.test(name) && noticeProven(ctx.notice, action, ctx.currentUrl)) {
         return { allowed: true, code: "ALLOWED_NOTICE", reason: "내용만 알리는 안내 팝업을 닫는 조작입니다." };
       }
       if (tier === "ask" || guardPatterns.loginName.test(name)) {
-        return approveOrAsk(action, ctx, "사용자가 누르라고 확인했습니다.", "누르기 전에 사용자 확인이 필요합니다.");
+        return this.onRequest(action, ctx, "사용자가 누르라고 확인했습니다.", "누르기 전에 사용자 확인이 필요합니다.");
       }
     }
     if (type === "fill" || type === "press") {

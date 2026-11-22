@@ -5,7 +5,7 @@ import type { ActionTarget, ExecuteGrants } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
 import { stampDocument, type DocumentStamp } from "./document_stamp.ts";
 import type { InspectionBinding } from "../../../safety/guard.ts";
-import { AdapterError, call, cssEscape, observeWith, playwrightElement, playwrightTarget, type PageDriver } from "./driver.ts";
+import { AdapterError, call, cssEscape, observeWith, passwordHandoffElement, passwordSelector, playwrightElement, playwrightTarget, type PageDriver } from "./driver.ts";
 import { observePage, type ControlQuery } from "./observe.ts";
 import { observedSelectors, stagehandTab } from "./stagehand_browser.ts";
 import { optionBindings, type ObservedOptions } from "./option_binding.ts";
@@ -13,7 +13,7 @@ import { framesOf } from "./frame_controls.ts";
 import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
 import type { SemanticObservation } from "./semantic_observation.ts";
 
-export interface ClickEvidence { grants?: ExecuteGrants; inspection?: InspectionBinding }
+export interface ClickEvidence { grants?: ExecuteGrants; inspection?: InspectionBinding; login?: string }
 
 // 이 함수와 이를 부르는 입력·클릭 검사는 선택된 탭의 문서 안에서 실행한다.
 function boundItem(observe: typeof observePage, query: ControlQuery, expected: ActionTarget, stamp: DocumentStamp, extra?: ControlQuery) {
@@ -73,16 +73,21 @@ function armSelect(el: Element, {read, safeSelector, token, label, choices, appr
   return () => { el.removeEventListener(token, select); return applied; };
 }
 
-// 마지막 실제 포인터 입력은 중단 신호와 적중 검사를 지원하는 Playwright에 맡긴다.
-// 누르는 도중 사이트가 같은 요소를 바꾸는 경우에는 해당 문서의 이벤트 시점에도 청음의 관찰 규칙으로 확인한다.
-function installInputCheck(read: ReadBound, ref: string, evidence: ClickEvidence, keyboard: boolean) {
-  if (!read()) return undefined;
+// SDK에 건네는 일회용 표지는 현재 문서의 실제 요소에만 붙인다. 포인터가 도착할 때도 역할·이름을 재확인한다.
+function installInputCheck(read: ReadBound, ref: string, evidence: ClickEvidence, keyboard: boolean, marker: string, checked: boolean | null) {
+  const el = document.querySelector('[data-cheongeum-ref="' + CSS.escape(ref) + '"]');
+  if (!el || !read()) return undefined;
   const { grants, inspection } = evidence;
   let rejected = false;
+  let revoked = false;
+  let clicked = false;
+  let alreadyChecked = false;
+  if (!keyboard) el.setAttribute(marker, "");
   const matches = (event: Event) => {
-    const item = read({ inspection: inspection?.kind === "control" || grants?.plan !== undefined, notice: grants?.notice !== undefined });
+    const item = read({ inspection: inspection?.kind === "control" || grants?.plan !== undefined, notice: grants?.notice !== undefined, loginSubmit:evidence.login !== undefined });
     let valid = item !== undefined && event.composedPath().some(node => (node instanceof HTMLElement || node instanceof SVGElement) &&
       window.__cheongeumElementRefs?.get(node)?.ref === ref && node.dataset.cheongeumRef === ref);
+    if (evidence.login !== undefined) valid &&= item?.loginSubmit?.signature === evidence.login && item.loginSubmit.filled;
     if (inspection?.kind === "control") valid &&= location.href === inspection.url && item?.inspection?.signature === inspection.control.signature;
     if (grants?.native !== undefined) valid &&= location.href === grants.native.url;
     if (grants?.plan !== undefined) valid &&= location.href === grants.plan.url &&
@@ -98,17 +103,24 @@ function installInputCheck(read: ReadBound, ref: string, evidence: ClickEvidence
   };
   const check = (event: Event) => {
     if (!event.isTrusted) return;
-    try { rejected ||= !matches(event); } catch { rejected = true; }
-    if (rejected) {
+    if (clicked) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+    try { rejected ||= revoked || !matches(event); } catch { rejected = true; }
+    if (checked !== null && el instanceof HTMLInputElement) {
+      // 크롬은 click 이벤트 직전에만 checked를 뒤집는다. 기다리는 동안 목표 상태가 되면 토글을 취소한다.
+      alreadyChecked ||= event.type === "click" ? el.checked !== checked : el.checked === checked;
+    }
+    if (rejected || alreadyChecked) {
       event.preventDefault();
       event.stopImmediatePropagation();
-    }
+    } else if (event.type === "click") clicked = true;
   };
   const events = keyboard ? ["keydown", "keypress", "keyup"] : ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
   for (const name of events) window.addEventListener(name, check, true);
-  return () => {
+  return (revoke = false) => {
+    if (!keyboard) el.removeAttribute(marker);
+    if (revoke) { revoked = true; return; }
     for (const name of events) window.removeEventListener(name, check, true);
-    return rejected;
+    return rejected || (!keyboard && !clicked && !alreadyChecked);
   };
 }
 
@@ -150,6 +162,8 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
   return {
     ...observations,
     async bindTarget(target, signal, optionLabel) {
+      const handoff = await passwordHandoffElement(page, target, signal, timeout);
+      if (handoff) return handoff.target;
       const {expected} = await bind(target, signal);
       if (optionLabel !== undefined) await bindOption(target, expected, optionLabel, signal);
       return expected;
@@ -162,12 +176,14 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
         if (semantic.controls.length === 0) return undefined;
         const paths = await observedSelectors(page, term, picker.model, signal, semantic);
         const original = semantic.selected;
-        if (original === undefined || paths.length !== 1 || page.url() !== url ||
-            await framesOf(page).path(original.ref) !== paths[0]) return undefined;
-        const fresh = await call(signal, () => observations.controlWindow({text:original.name, exact:true, limit:2, semanticOnly:true, linksOnly}));
-        const [item] = fresh.items;
-        return fresh.url === url && !fresh.more && fresh.items.length === 1 && item?.ref === original.ref && item.role === original.role &&
-          item.name === original.name && item.context === original.context && !item.disabled && item.pictureMasked !== true ? item : undefined;
+        if (original === undefined || page.url() !== url) return undefined;
+        const path = await call(signal, () => framesOf(page).path(original.ref));
+        if (path === undefined || paths.filter(candidate => candidate === path).length !== 1) return undefined;
+        const fresh = await call(signal, () => observations.controlWindow({text:original.name, exact:true, limit:600, semanticOnly:true, linksOnly}));
+        const matches = fresh.items.filter(item => item.role === original.role && item.name === original.name && item.context === original.context);
+        const [item] = matches;
+        return fresh.url === url && !fresh.more && matches.length === 1 && item?.ref === original.ref &&
+          !item.disabled && item.pictureMasked !== true ? item : undefined;
       } catch { signal.throwIfAborted(); return undefined; }
     },
     scroll: signal => call(signal, async () => {
@@ -187,13 +203,20 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       }, name));
     },
     async resolve(target, signal) {
-      const { tab } = await call(signal, selected);
+      const handoff = await passwordHandoffElement(page, target, signal, timeout);
+      if (handoff) return handoff.element;
+      const { tab, connection } = await call(signal, selected);
       const { query, expected, ref, stamp } = await bind(target, signal);
+      async function clickOnce(selector: string) {
+        // 문자열 명령은 SDK가 두 행동으로 나눌 수 있다. 검증한 셀렉터와 동작 하나를 넘겨 이 탭에서 한 번만 누른다.
+        const result = await connection.sdk.act({selector, method:"click", arguments:[], description:"항목 누르기"}, {page:tab, timeout});
+        if (!result.data.success) throw new AdapterError("VERIFY_FAILED");
+      }
       if (isEmbeddedRef(ref)) {
         const path = await framesOf(page).path(ref);
         if (path === undefined || await call(signal, () => tab.locator(path).count({timeout})) !== 1) throw new AdapterError("VERIFY_FAILED");
         const host = playwrightElement(await playwrightTarget(page, expected, signal), signal, timeout);
-        return embeddedElement(page, expected, signal, timeout, host, stamp);
+        return embeddedElement(page, expected, signal, timeout, host, stamp, marker => clickOnce(path + "[@" + marker + "]"));
       }
       const readBound = "(" + boundItem.toString() + ").bind(null," + observePage.toString() + "," + JSON.stringify(query) + "," + JSON.stringify(expected) + "," + JSON.stringify(stamp) + ")";
       const selector = '[data-cheongeum-ref="' + cssEscape(ref) + '"]';
@@ -202,8 +225,11 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       const locator = tab.locator(selector);
       const opts = { timeout };
       if (await call(signal, () => locator.count(opts)) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
-      const safeSelector = selector + ':not(input[type="password" i], [autocomplete~="one-time-code" i], [autocomplete~="current-password" i], [autocomplete~="new-password" i])';
-      const fieldType = () => call(signal, () => tab.evaluate(sel => document.querySelector(sel)?.getAttribute("type")?.toLowerCase() ?? null, selector));
+      const safeSelector = selector + ':not(' + passwordSelector + ', [autocomplete~="one-time-code" i])';
+      const fieldType = () => call(signal, () => tab.evaluate(({target, password}) => {
+        const el = document.querySelector(target);
+        return el?.matches(password) === true ? "password" : el?.getAttribute("type")?.toLowerCase() ?? null;
+      }, {target:selector, password:passwordSelector}));
       const inputValue = () => call(signal, () => tab.locator(safeSelector).inputValue(opts));
       const selectedLabel = () => call(signal, async () => strip(await tab.locator(selector + " option:checked").textContent(opts)));
       const isChecked = () => call(signal, () => locator.isChecked(opts));
@@ -219,10 +245,11 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
           throw error;
         }
       }
-      async function trusted(work: (node: ElementHandle<HTMLElement | SVGElement>) => Promise<void>, evidence: ClickEvidence = {}, keyboard = false) {
+      async function trusted(work: (node: ElementHandle<HTMLElement | SVGElement>, marker: string) => Promise<void>, evidence: ClickEvidence = {}, keyboard = false, checked: boolean | null = null) {
         signal.throwIfAborted();
+        const marker = "data-cheongeum-act-" + randomUUID();
         const script = "(" + installInputCheck.toString() + ")(" + readBound + "," + JSON.stringify(ref) + "," +
-          JSON.stringify(evidence) + "," + String(keyboard) + ")";
+          JSON.stringify(evidence) + "," + String(keyboard) + "," + JSON.stringify(marker) + "," + JSON.stringify(checked) + ")";
         // 기다리다 문서가 바뀌어도 같은 셀렉터로 새 문서의 요소를 다시 잡지 않는다.
         const node = await call(signal, () => hostLocator.elementHandle({ timeout, signal }));
         try {
@@ -230,15 +257,22 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
             () => page.evaluateHandle<ReturnType<typeof installInputCheck>>(script),
             handle => handle.evaluate(cleanup => cleanup?.()),
           );
+          const revoke = () => { void check.evaluate(guard => guard?.(true)).catch(() => {}); };
+          signal.addEventListener("abort", revoke, {once:true});
           try {
             if (!await call(signal, () => check.evaluate(armed => typeof armed === "function"))) throw new AdapterError("VERIFY_FAILED");
-            await call(signal, () => work(node));
+            await call(signal, () => work(node, marker));
           } finally {
+            signal.removeEventListener("abort", revoke);
             const rejected = await check.evaluate(cleanup => cleanup?.() ?? true).catch(() => false);
             await check.dispose().catch(() => {});
             if (rejected) throw new AdapterError("VERIFY_FAILED");
           }
         } finally { await node.dispose().catch(() => {}); }
+      }
+      async function click(evidence: ClickEvidence = {}, checked: boolean | null = null) {
+        if (target.ref === undefined || checked !== null) await host.waitForClick();
+        await trusted((_node, marker) => clickOnce("[" + marker + "]"), evidence, false, checked);
       }
       async function apply(operation: "scroll" | "focus" | "disclosure") {
         const mutate = (read: ReadBound, sel: string, mode: typeof operation) => {
@@ -260,8 +294,14 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       }
       return {
         ...host, fieldType, inputValue, selectedLabel, isChecked,
-        click: evidence => trusted(node => node.click({ timeout, signal }), evidence),
-        check: checked => trusted(node => node.setChecked(checked, { timeout, signal })),
+        click,
+        async check(checked) {
+          const type = await fieldType();
+          if (type !== "checkbox" && type !== "radio") throw new AdapterError("NOT_SUPPORTED");
+          if (await isChecked() === checked) return;
+          if (type === "radio" && !checked) throw new AdapterError("NOT_SUPPORTED");
+          await click({}, checked);
+        },
         async press(key) {
           if (await call(signal, () => tab.locator(safeSelector).count(opts)) !== 1) throw new AdapterError("NOT_SUPPORTED");
           await trusted(node => node.press(key, { timeout, signal }), {}, true);

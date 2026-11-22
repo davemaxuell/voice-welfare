@@ -25,7 +25,8 @@ interface CheongeumOverlay {
   onVisibility?(fn: (state: unknown) => void): void;
   visibilityDone(id: unknown): void;
   onFocus(fn: () => void): void;
-  resize(width: number, height: number, regions: { x: number; y: number; width: number; height: number }[]): void;
+  resize(width: number, height: number, regions: { x: number; y: number; width: number; height: number }[], anchor: { x: number; y: number }): void;
+  move(phase: "move" | "drop" | "cancel", x?: number, y?: number): void;
   talk(): void;
   stop(): void;
   open(focus?: string): void;

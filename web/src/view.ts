@@ -80,6 +80,7 @@ export interface UiState {
   hasTurn: boolean;
   practiceMode: boolean;
   workspaceAvailable: boolean;
+  directActions?: boolean;
   settingsAvailable: boolean;
   listening: boolean;
   voiceMode: VoiceMode;
@@ -151,10 +152,11 @@ export function llmRouteText(ui: Pick<UiState, "voiceMode"> & { lang?: Lang }) {
 }
 
 /** 시작 동의 안내: 무엇을 하는지, 무엇이 외부로 나가는지, 무엇을 하지 않는지, 어떻게 멈추는지 */
-export function consentText(ui: Pick<UiState, "voiceMode" | "lang">, env: Env, lang: string = ui.lang) {
-  const translated = fullGuide(lang, ui.voiceMode, env.background, env.mac ? "Command" : "Control");
+export function consentText(ui: Pick<UiState, "voiceMode" | "lang" | "consent">, env: Env, lang: string = ui.lang) {
+  const awaitingConsent = ui.consent === "ask" || ui.consent === "intro";
+  const translated = fullGuide(lang, ui.voiceMode, env.background, env.mac ? "Command" : "Control", awaitingConsent);
   if (translated.length > 0) return translated;
-  return koreanConsentGuide(ui.voiceMode.llmRoles.vision === "disabled", voiceRouteText(ui), llmRouteText(ui), env.background, env.mac);
+  return koreanConsentGuide(ui.voiceMode.llmRoles.vision === "disabled", voiceRouteText(ui), llmRouteText(ui), env.background, env.mac, awaitingConsent);
 }
 
 const MODE_LABELS: Readonly<Partial<Record<string, readonly [string, string, string]>>> = {

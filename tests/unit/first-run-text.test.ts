@@ -55,6 +55,26 @@ it("test_end_first_run_clears_the_slot", () => {
   expect(dialogue.hasPendingInteraction).toBe(false);
 });
 
+it("continues the offered mic exercise for a greeting and yields the whole turn for a new request", () => {
+  function begin() {
+    const dialogue = new DialogueState("IDLE");
+    const guide = new FirstRunGuide(dialogue, { step: "stage2", lang: () => "en",
+      callName: () => undefined, remember: () => false, isCommand: () => false });
+    expect(guide.offer()).toEqual(LINES.mic);
+    expect(guide.offer()).toBeUndefined();
+    return { dialogue, guide };
+  }
+  for (const greeting of ["안녕하세요!", "Hello!", "你好！", "こんにちは。"]) {
+    const { dialogue, guide } = begin();
+    expect(guide.answer(greeting)).toMatchObject({ speech: expect.stringContaining(LINES.name.en) });
+    expect(dialogue.firstRun).toBe("name");
+  }
+  expect(begin().guide.answer("Skip")).toMatchObject({ speech: LINES.name.en });
+  const { dialogue, guide } = begin();
+  expect(guide.answer("Skip the introduction and open Gov24")).toBeUndefined();
+  expect(dialogue.firstRun).toBeUndefined();
+});
+
 it("test_intro_draft_is_a_valid_turn_result_and_replay_has_no_offer", () => {
   const dialogue = new DialogueState("IDLE"), seen: string[] = [];
   const guide = new FirstRunGuide(dialogue, { progress: step => seen.push(step), lang: () => "ko",
@@ -70,6 +90,65 @@ it("test_intro_draft_is_a_valid_turn_result_and_replay_has_no_offer", () => {
   expect(first?.at(-1)?.ask).toBe(true);
   expect(dialogue.firstRun).toBe("practice");
   expect(seen).toEqual(["practice"]);
+});
+
+it("remembers a volunteered name immediately in the optional guide and lets the user correct it", () => {
+  const dialogue = new DialogueState("IDLE");
+  const names: string[] = [];
+  const guide = new FirstRunGuide(dialogue, { step: "name", lang: () => "en", callName: () => names.at(-1),
+    remember: name => { names.push(name); return false; }, isCommand: () => false });
+  guide.offer();
+  expect(guide.answer("Call me Mary Jane")).toMatchObject({ speech: expect.stringContaining("Mary Jane") });
+  expect(names).toEqual(["Mary Jane"]);
+  expect(dialogue.firstRun).toBe("stop");
+  expect(guide.answer("Change my name")).toMatchObject({ speech: LINES.name.en });
+  expect(guide.answer("Jo")).toMatchObject({ speech: expect.stringContaining(LINES["name-shared"].en) });
+  expect(names).toEqual(["Mary Jane", "Jo"]);
+  expect(dialogue.firstRun).toBe("stop");
+  guide.answer("Change my name");
+  expect(guide.answer("Open Bokjiro")).toBeUndefined();
+  expect(names).toEqual(["Mary Jane", "Jo"]);
+  for (const refusal of ["My name is private", "제 이름은 저장하지 마세요"]) {
+    guide.answer("Change my name");
+    expect(guide.answer(refusal)).toBeUndefined();
+    expect(names).toEqual(["Mary Jane", "Jo"]);
+  }
+  expect(guide.answer("Change my name")).toMatchObject({ speech: LINES.name.en });
+  expect(guide.answer("I'm looking for help")).toBeUndefined();
+  expect(names).toEqual(["Mary Jane", "Jo"]);
+  guide.answer("Change my name");
+  expect(guide.answer("Ada")).toMatchObject({ privateHistory: true });
+  expect(dialogue.firstRun).toBeUndefined();
+  expect(names).toEqual(["Mary Jane", "Jo", "Ada"]);
+});
+
+it.each([
+  ["ko", "저를 지민이라고 불러 줘", "지민", "지민님"],
+  ["en", "Please call me Mary Jane", "Mary Jane", "Mary Jane"],
+  ["zh", "请叫我小王", "小王", "小王"],
+  ["ja", "私を花子と呼んでください", "花子", "花子"],
+])("accepts an explicit %s call name as the first optional onboarding reply", (lang, phrase, name, spoken) => {
+  let remembered: string | undefined;
+  const dialogue = new DialogueState("IDLE");
+  const guide = new FirstRunGuide(dialogue, { step: "stage2", lang: () => lang, callName: () => remembered,
+    remember: name => { remembered = name; return true; }, isCommand: () => false });
+  guide.offer();
+  expect(guide.answer(phrase)).toMatchObject({ privateHistory: true, speech: expect.stringContaining(spoken) });
+  expect(remembered).toBe(name);
+  expect(dialogue.firstRun).toBe("stop");
+});
+
+it("keeps name confirmation when action review is explicitly enabled", () => {
+  const dialogue = new DialogueState("IDLE");
+  const names: string[] = [];
+  const guide = new FirstRunGuide(dialogue, { step: "name", lang: () => "ko", callName: () => names.at(-1),
+    remember: name => { names.push(name); return true; }, isCommand: () => false });
+  guide.offer({ reviewNames: true });
+  guide.answer("홍길동");
+  expect(dialogue.firstRun).toBe("name-confirm");
+  expect(names).toEqual([]);
+  guide.answer("네");
+  expect(names).toEqual(["홍길동"]);
 });
 
 it("replays the reference onboarding dialogues, including a resumed session and a shared device", () => {

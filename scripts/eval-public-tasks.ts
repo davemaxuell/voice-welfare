@@ -14,7 +14,7 @@ interface Case {
 const SCHOLARSHIP = new PublicTask({ agency: "한국장학재단", subject: "국가장학금", goal: "국가장학금 신청 기간", facts: ["dates"] });
 const DOCUMENT = new PublicTask({ agency: "정부24", goal: "주민등록 서류", question: "Do you mean 등본 or 초본?", choices: ["등본", "초본"] });
 const cases: Case[] = [
-  { id: "unlisted-homepage", lang: "ko", words: "하이코리아 홈페이지 열어줘", kind: "existing" },
+  { id: "unlisted-homepage", lang: "ko", words: "푸른마을자료관 홈페이지 열어줘", kind: "existing" },
   { id: "switch-unlisted-site", lang: "en", words: "Open the Maple Library homepage instead.", kind: "existing", task: SCHOLARSHIP },
   { id: "open-screen-result", lang: "ko", words: "지금 화면에서 두 번째 검색 결과를 열어 주세요.", kind: "existing" },
   { id: "skip-login", lang: "ko", words: "정부24에서 로그인은 건너뛰고 주민등록등본 발급 서류만 알려줘", kind: "find_information", agency: "정부24", facts: ["documents"], excluded: "login" },

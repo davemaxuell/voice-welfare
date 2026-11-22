@@ -1,4 +1,5 @@
 import { afterAll, afterEach, expect, it } from "vitest";
+import { browserDriver } from "../../src/agents/web/browser/stagehand_browser.ts";
 import type { TurnResult } from "../../src/core/turn.ts";
 import { PORTAL } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
@@ -76,7 +77,7 @@ it("test_duplicate_link_name_opens_first", async () => {
   const { session, page } = await openPortal();
   const url = page.url();
   const result = await session.handleTurn("자세히 보기 눌러줘");
-  if (process.env.BROWSER_DRIVER === "stagehand") {
+  if (browserDriver() === "stagehand") {
     expect(result.actions).toEqual([]);
     expect(result.speech).toContain("같은 이름");
     expect(page.url()).toBe(url);

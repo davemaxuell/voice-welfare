@@ -36,12 +36,13 @@ contextBridge.exposeInMainWorld("cheongeumOverlay", {
   onVisibility: (cb: (state: unknown) => void) => ipcRenderer.on("overlay:visibility", (_e, state: unknown) => cb(state)),
   visibilityDone: (id: unknown) => ipcRenderer.send("overlay:visibility-done", id),
   onFocus: (cb: () => void) => ipcRenderer.on("overlay:focus", () => cb()),
-  resize: (width: unknown, height: unknown, hitRegions: unknown) => {
+  resize: (width: unknown, height: unknown, hitRegions: unknown, anchor: unknown) => {
     const list: unknown[] = Array.isArray(hitRegions) ? hitRegions : [];
     regions = list;
     lastInteractive = undefined;
-    ipcRenderer.send("overlay:resize", { width, height, regions: list });
+    ipcRenderer.send("overlay:resize", { width, height, regions: list, anchor });
   },
+  move: (phase: unknown, x: unknown, y: unknown) => ipcRenderer.send("overlay:move", phase, { x, y }),
   talk: () => act({ type: "talk" }),
   stop: () => act({ type: "stop" }),
   open: (focus: unknown) => act({ type: "open", focus }),

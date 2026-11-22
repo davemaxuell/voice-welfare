@@ -96,20 +96,22 @@ it("공공 누리집 판정은 https·기본 포트·계정 정보 없음·공�
   expect(ok("https://www.example.or.kr/")).toBe(false);
 });
 
-it("TavilySearch.portals는 공공 도메인 안의 https 누리집을 한 번씩만 돌려주고 개인 정보 검색어는 보내지 않는다", async () => {
+it("공공 도메인의 첫 화면과 기사 주소를 그대로 돌려주고 개인 정보 검색어는 보내지 않는다", async () => {
   const payloads: unknown[] = [];
   const results = [
-    { url: "https://www.hikorea.go.kr/a", title: "하이코리아", content: "체류기간 연장 안내" },
+    { url: "https://www.hikorea.go.kr/Main.pt", title: "하이코리아", content: "체류기간 연장 안내" },
     { url: "https://www.hikorea.go.kr/b", title: "같은 곳", content: "다른 글" },
     { url: "https://evil.example.com/", title: "블로그", content: "광고" },
     { url: "http://www.moj.go.kr/", title: "법무부", content: "http 주소" },
     { url: "https://www.immigration.go.kr/", title: "출입국", content: "출입국 안내" },
+    { url: "https://www.hikorea.go.kr/Main.pt", title: "같은 주소", content: "홈" },
   ];
   const postJson = async (_url: string, _headers: Record<string, string>, body: unknown) => { payloads.push(body); return { results }; };
   const search = new TavilySearch("test", undefined, undefined, { postJson });
   const found = await search.portals("체류기간 연장 신청", new AbortController().signal);
   expect(found).toEqual([
-    { url: "https://www.hikorea.go.kr/", title: "하이코리아" },
+    { url: "https://www.hikorea.go.kr/Main.pt", title: "하이코리아" },
+    { url: "https://www.hikorea.go.kr/b", title: "같은 곳" },
     { url: "https://www.immigration.go.kr/", title: "출입국" },
   ]);
   expect(payloads).toMatchObject([{ query: "체류기간 연장 신청", include_domains: PUBLIC_DOMAINS }]);

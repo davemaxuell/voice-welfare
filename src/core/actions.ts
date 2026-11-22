@@ -93,7 +93,11 @@ export interface NativeDialogRecord extends NativeGrant {
 }
 export interface NativeSeen { cancelled: readonly NativeDialogRecord[]; accepted: boolean }
 /** 한 번의 조작에만 붙는 허가들. 정책 검사와 어댑터의 누르기 직전 확인에 같은 값이 쓰인다. */
-export interface ExecuteGrants { notice?: NoticeProof; native?: NativeGrant; plan?: import("./plan.ts").PlanBinding }
+export interface ExecuteGrants {
+  notice?: NoticeProof; native?: NativeGrant; plan?: import("./plan.ts").PlanBinding;
+  /** 이 탭에서 요청한 누르기가 바로 띄운 확인창 하나에만 답한다. */
+  requestedClick?: "command" | "navigation";
+}
 
 export const ScreenTargetSchema = z.object({
   kind: z.enum(["selection", "focus", "hover"]), role: z.string(), label: z.string(), text: z.string(),

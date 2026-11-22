@@ -1,6 +1,6 @@
 # 윈도 네이티브 확인 도구(시험 전용): 앞 창, 좌표 아래 창, 실제 마우스 클릭·키 입력, UI Automation 트리.
 # 좌표는 물리 픽셀(이 프로세스를 DPI 인식으로 둔다).
-param([string]$Command, [string]$A = '', [string]$B = '')
+param([string]$Command, [string]$A = '', [string]$B = '', [string]$C = '')
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -16,6 +16,7 @@ public static class Native {
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, UIntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
@@ -69,6 +70,40 @@ switch ($Command) {
     Start-Sleep -Milliseconds 40
     [Native]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     'clicked'
+  }
+  'drag' {
+    $from = $A.Split(',')
+    $to = $B.Split(',')
+    $targetWindow = [IntPtr]::new([long]::Parse($C))
+    if ($targetWindow -eq [IntPtr]::Zero) { throw 'Missing test overlay handle' }
+    $points = foreach ($i in 0..8) {
+      $p = New-Object Native+POINT
+      $p.X = [math]::Round([int]$from[0] + ([int]$to[0] - [int]$from[0]) * $i / 8)
+      $p.Y = [math]::Round([int]$from[1] + ([int]$to[1] - [int]$from[1]) * $i / 8)
+      if ([Native]::GetAncestor([Native]::WindowFromPoint($p), 2) -ne $targetWindow) { throw 'Drag path outside this test overlay' }
+      $p
+    }
+    $previous = New-Object Native+POINT
+    if (-not [Native]::GetCursorPos([ref]$previous)) { throw 'Cannot read the cursor position' }
+    $start = New-Object Native+RECT
+    $held = New-Object Native+RECT
+    try {
+      [void][Native]::SetCursorPos($points[0].X, $points[0].Y)
+      Start-Sleep -Milliseconds 80
+      if ([Native]::GetAncestor([Native]::WindowFromPoint($points[0]), 2) -ne $targetWindow) { throw 'Test overlay moved before drag' }
+      [void][Native]::GetWindowRect($targetWindow, [ref]$start)
+      [Native]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+      try {
+        foreach ($p in $points[1..8]) {
+          if ([Native]::GetAncestor([Native]::WindowFromPoint($p), 2) -ne $targetWindow) { throw 'Test overlay left the drag path' }
+          [void][Native]::SetCursorPos($p.X, $p.Y)
+          Start-Sleep -Milliseconds 50
+        }
+        [void][Native]::GetWindowRect($targetWindow, [ref]$held)
+      } finally { [Native]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero) }
+      Start-Sleep -Milliseconds 80
+    } finally { [void][Native]::SetCursorPos($previous.X, $previous.Y) }
+    [pscustomobject]@{ dx = $held.Left - $start.Left; dy = $held.Top - $start.Top } | ConvertTo-Json -Compress
   }
   'keys' {
     # 앞 창이 시험 창($B)이 아니면 보내지 않는다(사용자가 쓰던 프로그램에 키가 들어가지 않게)

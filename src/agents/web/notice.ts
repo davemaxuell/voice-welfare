@@ -42,6 +42,14 @@ export function noticeKey(origin: string, said: NoticeSaid): string {
 /** 누르고 나서 떠서 그대로 남은 팝업. 읽어 주고 사용자가 고르게 한다(청음이 고르지 않는다). */
 export interface PopupQuestion { title: string; text: string; choices: string[]; cut: boolean; dialogIndex: number }
 
+/** 선택지가 진행/취소 두 개뿐인 사이트 대화상자에서 진행 단추의 실제 이름을 찾는다. */
+export function continuationButton(question: PopupQuestion): string | undefined {
+  if (question.cut || question.choices.length !== 2) return undefined;
+  const yes = /^(?:확인|계속|진행|예|네|ok|yes|continue|confirm|确定|确认|继续|はい|続行)$/iu;
+  const no = /^(?:취소|아니[요오]?|cancel|no|取消|否|キャンセル|いいえ)$/iu;
+  return question.choices.some(name => no.test(name)) ? question.choices.find(name => yes.test(name)) : undefined;
+}
+
 const QUESTION_CHOICES = 6;
 const QUESTION_TEXT_LIMIT = 300;
 
@@ -94,7 +102,7 @@ export function revealedExcept(revealed: string | undefined, said: readonly stri
  * auto = 안내 팝업을 묻지 않고 닫다가 사이트가 물었다. 없으면 사용자가 직접 시킨 누르기다.
  */
 export interface NativeQuestion {
-  record: NativeDialogRecord; answerable: boolean; count: number; scope?: "lookup" | "private" | "auto";
+  record: NativeDialogRecord; answerable: boolean; count: number; scope?: "lookup" | "private" | "auto" | "additional";
 }
 
 /** 사이트가 물어서(confirm) 청음이 취소한 질문을 사용자에게 알리는 말. 대신 답해도 되는 질문이면 진행할지를 함께 묻는다. */
@@ -107,6 +115,7 @@ export function nativeSpeech({ record, answerable, count, scope }: NativeQuestio
   if (scope === "private") {
     return `사이트가 확인 창으로 질문을 해서 제가 취소했어요. 개인 화면이라 질문 내용은 읽지 않았고 제가 대신 답하지도 않았어요. ${own}`;
   }
+  if (scope === "additional") return `사이트가 '${said}'라고 추가로 물었어요. 요청하신 조작과 같은 내용인지 확인할 수 없어 그 단계에서 멈췄어요.`;
   if (count > 1) return `사이트가 질문을 여러 번 해서 제가 대신 답하지 않았어요. ${own}`;
   if (record.risk === "long") return `사이트가 긴 안내문으로 물어서 제가 대신 답하지 않았어요. 앞부분은 '${said}'예요. ${own}`;
   if (scope === "lookup") return `사이트가 '${said}'라고 물었어요. 정보를 찾는 동안에는 제가 대신 답하지 않고 취소했어요. ${own}`;

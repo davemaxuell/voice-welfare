@@ -49,7 +49,7 @@ function requestHeaders(c: Context): HeaderList {
 
 export type HttpSession = Pick<
   SessionOrchestrator,
-  | "id" | "dialogue" | "generation" | "linkOfferId" | "missedSpeechHint" | "recentVoiceDialogue" | "choose" | "wake"
+  | "id" | "dialogue" | "firstRun" | "generation" | "linkOfferId" | "missedSpeechHint" | "recentVoiceDialogue" | "choose" | "wake"
   | "detachForRecovery" | "resumeForRecovery" | "stageSettings" | "researchPublic" | "deps"
   | "state"
   | "consentStatus"
@@ -300,14 +300,15 @@ export function makeApp<S extends HttpSession>(
     return error(500, "INTERNAL", "서버 오류가 발생했습니다. 모의 사이트와 브라우저가 실행 중인지 확인하세요.");
   });
   const mockOnly = () => runtime.config?.readOnlyWeb === false && runtime.config.extraAllowedOrigins.length === 0;
+  const submissionScope = () => runtime.config?.directActions === true && !mockOnly() ? "user-requested" : "practice-only";
   app.get("/api/health", () => {
     const { stt, tts } = audio;
     return Response.json({
       ok: true, llmProvider: runtime.intentProvider.name, llmRoles: runtime.llmRoles(), welfareData: runtime.welfareProvider.mode,
-      datasets: runtime.openData?.statuses ?? [], workspaceAvailable: workflows.personal,
+      datasets: runtime.openData?.statuses ?? [], workspaceAvailable: workflows.personal, directActions: runtime.config?.directActions === true,
       stt: { provider: stt.name, supported: stt.supported, localLanguages: [], liveModel: stt.live?.model ?? null },
       tts: { provider: tts.name, supported: tts.supported }, voiceEdge: stt.edgeModel ?? null, mockOnly: mockOnly(),
-      submissionScope: "practice-only", practiceMode: runtime.config?.practiceMode ?? true,
+      submissionScope: submissionScope(), practiceMode: runtime.config?.practiceMode ?? true,
       voiceSpeed: tts.speed ?? runtime.settings?.preferences.speed ?? runtime.config?.voice.ttsSpeed,
       setupRequired: runtime.settings !== undefined && !runtime.settings.completed, settingsAvailable: runtime.settings !== undefined,
       firstRun: runtime.settings?.firstRun ?? "done", recoveryAvailable: recoveryAvailable(),
@@ -371,8 +372,9 @@ export function makeApp<S extends HttpSession>(
       const lease = body.recovery === true ? sessions.enable(s.id) : undefined;
       if (body.attached === true && lease === undefined) sessions.keepEphemeral(s.id);
       return Response.json({
-        sessionId: s.id, state: s.state, llmProvider: runtime.intentProvider.name, mockOnly: mockOnly(), submissionScope: "practice-only",
+        sessionId: s.id, state: s.state, llmProvider: runtime.intentProvider.name, mockOnly: mockOnly(), submissionScope: submissionScope(),
         consentRequired: s.consentStatus !== "granted", speechPrefs: s.snapshot().speechPrefs, lang: s.lang,
+        firstRunPrompt: s.consentStatus === "granted" ? s.firstRun.offer({ reviewNames: !s.deps.web.guard.directActions }) : undefined,
         firstStartupGuide: s.consentStatus === "pending" ? runtime.settings?.claimStartupGuide() ?? null : null, ...lease?.credentials(),
       });
     });

@@ -1,10 +1,10 @@
 import type { Fill, Intent } from "../core/intents.ts";
-import { approval, authInputDone, doneReply, EXPLICIT_APPROVE_KO } from "../core/lexicon.ts";
+import { approval, asksActionPermission, authInputDone, doneReply, EXPLICIT_APPROVE_KO } from "../core/lexicon.ts";
 import type { ModelIntentContext, Redacted } from "../core/llm.ts";
 import { isPlaceRequest } from "../core/places.ts";
 import { hasText, rstripChars, strip } from "../core/text.ts";
 import { stripAddress } from "./filters.ts";
-import { isSiteName, mentionsKnownSite, publicServiceSite } from "./sites.ts";
+import { isSiteName, mentionsKnownSite, namedSiteCommand, publicServiceSite } from "./sites.ts";
 
 /** 결정적 한국어 규칙 파서(모델 없이). 입력은 이미 비식별화된 사용자 발화뿐이며, 화면 텍스트는 넣지 않는다. */
 export interface IntentContext {
@@ -26,6 +26,23 @@ const PROGRESS = String.raw`(?:지금|현재|아직|그거)?\p{White_Space}*(?:`
   + String.raw`|언제\p{White_Space}*(?:끝나(?:나요|요|니)?|끝날까(?:요)?|다\p{White_Space}*돼(?:요)?|다\p{White_Space}*되(?:나요|죠))`
   + ")";
 const DOWNLOAD_NOUN = "(?:파일|문서|다운로드|PDF|피디에프|HWPX|이미지|사진)";
+
+/** 이름 뒤에 바로 붙은 부탁 표현만 벗긴다. 실행 전에는 관찰된 조작 이름과 대조한다. */
+export function requestedControl(text: string): string | undefined {
+  const match = /^(.+?)(?:을|를)?\s*(?:좀\s*)?(?:해\s*(?:줘요?|주세요|주실래요?|주시겠어요?|줄래요?)|부탁(?:해요?|합니다|드려요|드립니다))[.!?。？！~]*$/u.exec(text.trim());
+  return match?.[1]?.trim();
+}
+
+/** 조작을 포함한 설명·거절에서 앞부분의 버튼 이름만 떼어 실행하지 않는다. */
+export function interactionLimit(text: string, target?: string): "question" | "decline" | undefined {
+  const clauses = text.split(/[,，;；]|그리고\s+|(?:누르|열|하|말|해\s*주)고\s+/u).map(part => part.trim()).filter(part => part.length > 0);
+  for (const clause of clauses) {
+    if (clauses.length > 1 && target !== undefined && !clause.replace(/\s+/gu, "").includes(target.replace(/\s+/gu, ""))) continue;
+    if (/(?:지\s*(?:는\s*)?(?:마(?:세요|요)?|말아(?:\s*(?:주세요|줘요?|요))?|않(?:아|아요|을래요?))|하면\s*안\s*(?:돼요?|됩니다))[.!?。？！~]*$/u.test(clause)) return "decline";
+    if (asksActionPermission(clause) || /(?:누르면|눌렀을\s*때|클릭하면|선택하면|입력하면|제출하면|삭제하면|저장하면)\s*(?:어떻|어떤|무슨|뭐|어디)/u.test(clause)) return "question";
+  }
+  return undefined;
+}
 // 하지 말라는 말: "로그인하거나 신청하지 말고", "로그인 없이", "제출 금지", "제출은 나중에 하고".
 // '못 하'·'되지 않'은 넣지 않는다: "로그인 못 하겠어, 도와줘", "로그인이 되지 않아요"는 로그인을 도와 달라는 말
 const NEGATION = String.raw`[^,.?!]{0,12}?(\P{White_Space}*(?<!되)지\p{White_Space}*(말|마|않)|없이|말고|안\p{White_Space}*(하|해|할|함)|하면\p{White_Space}*안\p{White_Space}*(돼|되)|필요\p{White_Space}*없|빼고|나중에|금지|(게|건)\p{White_Space}*아니|하기\p{White_Space}*전에)`;
@@ -98,7 +115,7 @@ export const rulesPatterns = {
   queryPrefix: /^(에서|좀)\p{White_Space}*/u,
   quotesAnywhere: /["'“”‘’「」]/gu,
   linkCommand: /\p{White_Space}*(링크|메뉴|탭|버튼)?\p{White_Space}*(을|를|좀)?\p{White_Space}*(눌러|클릭|열어|들어가|선택|가\p{White_Space}*줘)\P{White_Space}*[^\n]*(?=\n?$)/u,
-  slot: /^([^\n]+?)\p{White_Space}*(?:칸|란|입력란|입력\p{White_Space}*칸)\p{White_Space}*에\p{White_Space}*([^\n]+?)\p{White_Space}*(?:을|를)?\p{White_Space}*(?:써|입력해|넣어|적어)\p{White_Space}*(?:줘|주세요|줄래)?(?=\n?$)/u,
+  slot: /^([^\n]+?)\p{White_Space}*(?:입력\p{White_Space}*칸|입력란|칸|란)?\p{White_Space}*에\p{White_Space}*([^\n]+?)\p{White_Space}*(?:을|를)?\p{White_Space}*(?:써|입력해|넣어|적어)\p{White_Space}*(?:줘요?|주세요|줄래요?)?(?=\n?$)/u,
   edit: /(수정|고칠|고쳐|바꿀|바꿔|변경|틀렸|잘못)/u,
   editCommand: /^(수정|고칠|고쳐|바꿀|바꿔|변경|틀렸|잘못)\P{White_Space}*\p{White_Space}*/u,
   punctuationPrefix: /^[:,]\p{White_Space}*/u,
@@ -276,6 +293,8 @@ export class RuleBasedIntentProvider implements IntentProvider {
     if (/(사람|상담원|상담사)[^\n]*(도움|연결|바꿔)|도움\p{White_Space}*요청/u.test(text)) return { type: "HELP_HUMAN" };
     if (rulesPatterns.help.test(text)) return { type: "WHAT_CAN_I_SAY", more: rulesPatterns.moreHelp.test(text) };
     if (isSiteName(text) && !awaiting) return { type: "OPEN_SITE", target: text };
+    const explicitSite = awaiting ? undefined : namedSiteCommand(text);
+    if (explicitSite !== undefined) return explicitSite;
     const agency = publicServiceSite(text);
     if (agency !== undefined && !awaiting && !/눌러|클릭|링크\p{White_Space}*목록/u.test(text)) {
       const compact = text.replace(rulesPatterns.space, "");

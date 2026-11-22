@@ -32,6 +32,7 @@ export function testRuntimeEnv(overrides: Record<string, string> = {}) {
     LLM_PROVIDER: "mock",
     DATASETS_DIR: join(REPO_ROOT, "tests/fixtures/open_data"),
     REQUIRE_CONSENT: "false",
+    REQUIRE_ACTION_CONFIRMATION: "true",
     READ_ONLY_WEB: "true",
     READ_ONLY_CLICKS: "safe",
     VISUAL_CURSOR: "false",

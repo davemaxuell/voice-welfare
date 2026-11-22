@@ -455,7 +455,7 @@ export function App() {
             </li>)}</ol>
           </section>
           <SoundPanel view={view} ui={ui} t={t}/>
-          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} onRead={speakResearch} onStatus={setResearchStatus}/>
+          <WorkflowPanel sessionId={view.workspaceOwner} lang={lang} directActions={ui.directActions === true} onRead={speakResearch} onStatus={setResearchStatus}/>
           <details className="support-details">
             <summary id="unsupported-title">{t("지원하지 않는 기능")}</summary><ul id="unsupported">{UNSUPPORTED.map(u => <li key={u}>{t(u)}</li>)}</ul>
           </details>

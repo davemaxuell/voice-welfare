@@ -10,7 +10,7 @@ import { ACTION_TYPES, type Action } from "../../src/core/actions.ts";
 import { ExecContext, WebExecutionAgent } from "../../src/agents/web/agent.ts";
 import { createMockWelfareProfile } from "../../src/agents/web/profile.ts";
 import { DownloadStore } from "../../src/agents/web/downloads.ts";
-import { PlaywrightExecutionAdapter, launchBrowser, launchChromeProfile, stopPlaywright } from "../../src/agents/web/browser/index.ts";
+import { PlaywrightExecutionAdapter, closeLaunchedBrowser, launchBrowser, launchChromeProfile, stopPlaywright } from "../../src/agents/web/browser/index.ts";
 import { PolicyGuard } from "../../src/safety/guard.ts";
 
 let browser: Browser;
@@ -145,7 +145,7 @@ it("test_footer_text_is_the_site_footer_not_article_footers", async () => {
 
 async function shared() {
   const ctx = await launchChromeProfile(await temp(), 0, undefined, { channel: "chromium", headless: true });
-  cleanup.push(() => ctx.close());
+  cleanup.push(() => closeLaunchedBrowser(ctx));
   return ctx;
 }
 const options = (context: BrowserContext) => ({ context, allowedOrigins: [], readOnlyWeb: true });
@@ -195,11 +195,9 @@ it("test_changed_element_is_not_clicked", async () => {
 it("멈춘 뒤에는 기다리던 클릭이 실행되지 않고 후속 페이지 호출도 없다", async () => {
   const { page, adapter } = await start();
   await page.setContent('<button data-testid="go" onclick="document.title=String(321)">신청</button><div id="cover" style="position:fixed;inset:0"></div>');
-  // 두 구동기가 모두 쓰는 실제 포인터 입력이 가려진 단추를 기다릴 때 멈춘다.
+  // 화면에 가린 요소의 실제 클릭 또는 Stagehand 클릭 전 적중 검사를 기다릴 때 멈춘다.
   const button = page.locator("button");
-  const node = await button.elementHandle();
-  const locator = Object.getPrototypeOf(process.env.BROWSER_DRIVER === "stagehand" ? node : button) as Locator;
-  await node.dispose();
+  const locator = Object.getPrototypeOf(button) as Locator;
   const originalClick = locator.click;
   const signal = new AbortController();
   const callsAfterStop: PropertyKey[] = [];
@@ -244,11 +242,11 @@ it("커서를 놓은 뒤 이름이 바뀐 단추를 누르지 않는다", async 
   if (item === undefined) throw new Error("Missing button");
   await page.evaluate(() => {
     const observer = new MutationObserver(() => {
-      if (document.getElementById("__cheongeum_cursor") === null) return;
+      if (document.getElementById("__cheongeum_cursor")?.dataset.mode !== "click") return;
       document.querySelector("button")!.textContent = "다른 단추";
       observer.disconnect();
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ["data-mode"], subtree: true });
   });
   const result = await adapter.execute(action("click", { target: { ref: item.ref, role: item.role, name: item.name } }));
   expect(result.errorCode).toBe("VERIFY_FAILED");
@@ -364,7 +362,7 @@ it("reads a verified same-site search form as a GET without filling or submittin
 it("Stagehand 개인 조회 검색은 같은 칸과 양식을 다시 확인하고 GET으로만 이동한다", async () => {
   const site = await formSite(), home = site.url + "/inspection";
   const stagehand = await launchBrowser(true, 0, "stagehand");
-  cleanup.push(() => stagehand.close());
+  cleanup.push(() => closeLaunchedBrowser(stagehand));
   const { adapter, page } = await start({ browser: stagehand, driver: "stagehand", allowedOrigins: [], readOnlyWeb: true });
   await page.goto(home);
   const form = `<form method="get" action="/search" onsubmit="sessionStorage.setItem('사용', '제출')">

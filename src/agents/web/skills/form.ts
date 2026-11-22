@@ -72,6 +72,7 @@ export class FormSkill {
     }
     const [first, ...rest] = actions;
     if (!first) throw new Error("입력할 항목이 없습니다.");
+    if (this.web.guard.directActions) return this.assistApproved(actions, ctx);
     const site = tryUrl(view.url)?.host ?? view.url;
     const listed = values.map(v => `${v.label} 칸에 "${v.value}"`).join(", ");
     return requestAssist(this.dialogue, view, [first, ...rest], values, site, `${site}의 ${listed}, 이렇게 넣을까요? 맞으면 '응', 아니면 '아니'라고 해 주세요.`);
@@ -208,13 +209,19 @@ export class FormSkill {
     return draft(this.formState(), "review", head + ` 비어 있는 필수 항목: ${missing.length > 0 ? missing.join(", ") : "없음"}. 연락처 등은 일부를 가려서 읽었고, 비밀번호 같은 보안 정보는 읽지 않습니다.`, {view, masked: true, missingFields: missing});
   }
 
-  async prepareSubmit(ctx: ExecContext): Promise<Draft> {
+  async prepareSubmit(ctx: ExecContext, submit = false): Promise<Draft> {
     if (!isFormOpen(this.web.currentView)) return notOpen(this.web.currentView, this.dialogue.state);
     ctx.trace("PLANNING", AGENT_IDS.orchestrator, "검토 단계로 이동 후 승인 요청");
     const out = await this.web.goToFinalStep(ctx);
     if (out.status !== "ok" || !out.view) return this.#afterStepMove(out, "prepare-submit");
+    if (this.web.guard.directActions && !submit) return {...await this.review(ctx), actions: out.actions};
     const action = this.web.buildSubmitAction();
     if (!await this.web.observedAction(action, ctx.signal)) return draft(this.formState(), "clarify", "접수 단추가 바뀌었어요. 검토 화면을 다시 확인해 주세요.", {view: out.view});
+    if (this.web.guard.directActions) {
+      this.dialogue.dropValueWait();
+      const submitted = await this.submitApproved(action, ctx);
+      return {...submitted, actions: [...out.actions, ...submitted.actions ?? []]};
+    }
     const preview = this.web.previewPolicy(action, ctx);
     const values = this.#reviewValues(out.view);
     const listed = values.map(v => `${v.label}: ${v.value}`).join(". ");
@@ -229,16 +236,16 @@ export class FormSkill {
 
   async assistApproved(actions: Action[], ctx: ExecContext): Promise<Draft> {
     const out = await this.web.assistFill(actions, ctx);
-    if (out.status === "unconfirmed") return askAgain(out, "fill", "다시 넣으려면 '응', 그만두려면 '아니'라고 해 주세요.");
+    if (out.status === "unconfirmed" && !this.web.guard.directActions) return askAgain(out, "fill", "다시 넣으려면 '응', 그만두려면 '아니'라고 해 주세요.");
     this.dialogue.clearApproval();
     if (out.status !== "ok" || !out.view) return outcomeFailure(out, "BROWSING");
-    return draft(browseState(out.view), "fill", "넣고 확인했어요. 제출이나 신청 버튼은 직접 눌러 주세요. 다른 칸도 말씀하시면 같은 방식으로 도와드릴게요.", {actions: out.actions, view: out.view});
+    return draft(browseState(out.view), "fill", this.web.guard.directActions ? "요청하신 값을 넣고 확인했어요." : "넣고 확인했어요. 제출이나 신청 버튼은 직접 눌러 주세요. 다른 칸도 말씀하시면 같은 방식으로 도와드릴게요.", {actions: out.actions, view: out.view});
   }
 
   async submitApproved(action: Action, ctx: ExecContext): Promise<Draft> {
     const out = await this.web.submitApproved(action, ctx);
-    if (out.status === "unconfirmed") return askAgain(out, "submit", "다시 하려면 '승인', 그만두려면 '거절'이라고 말씀해 주세요.");
-    if (out.status !== "ok") return outcomeFailure(out, "WAITING_FOR_USER_CONFIRMATION");
+    if (out.status === "unconfirmed" && !this.web.guard.directActions) return askAgain(out, "submit", "다시 하려면 '승인', 그만두려면 '거절'이라고 말씀해 주세요.");
+    if (out.status !== "ok") return outcomeFailure(out, this.web.guard.directActions ? "APPLICATION_OPEN" : "WAITING_FOR_USER_CONFIRMATION");
     this.dialogue.clearApproval();
     return draft("MOCK_SUBMITTED", "submit", `모의접수를 마쳤습니다. 모의 접수번호는 ${out.receipt}입니다. 실제 복지로 접수가 아니며 어떤 기관에도 전송되지 않았습니다.`,
       {actions: out.actions, view: out.view, verification: {receipt: out.receipt}, value: out.receipt});

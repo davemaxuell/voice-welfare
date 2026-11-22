@@ -43,10 +43,11 @@ function summarizeTitle(prompt: string): string {
 }
 
 export function WorkflowPanel({
-  sessionId, lang, onRead, onStatus,
+  sessionId, lang, directActions = false, onRead, onStatus,
 }: {
   sessionId: string | undefined;
   lang: Lang;
+  directActions?: boolean;
   onRead: (text: string) => void;
   onStatus?: (line: string) => void;
 }) {
@@ -230,7 +231,7 @@ export function WorkflowPanel({
     e.preventDefault();
     const prompt = researchInput.current?.value ?? "";
     void change("/research", "POST", {
-      text: prompt, consent: researchConsent.current?.checked === true, requestId: crypto.randomUUID(),
+      text: prompt, consent: directActions || researchConsent.current?.checked === true, requestId: crypto.randomUUID(),
     }, {
       feedback: workflowText("submittedJob", lang, { title: summarizeTitle(prompt) }),
       markActive: true,
@@ -239,7 +240,7 @@ export function WorkflowPanel({
   };
   const saveNote = (e: FormEvent) => {
     e.preventDefault();
-    if (noteConsent.current?.checked !== true) {
+    if (!directActions && noteConsent.current?.checked !== true) {
       noteConsent.current?.focus();
       setFeedback(workflowText("noteConsent", lang));
       return;
@@ -275,7 +276,8 @@ export function WorkflowPanel({
     <form id="research-form" ref={researchForm} onSubmit={research}>
       <label id="research-label" htmlFor="research-input">{workflowText("researchLabel", lang)}</label>
       <textarea id="research-input" rows={2} maxLength={600} required ref={researchInput}></textarea>
-      <label><input id="research-consent" type="checkbox" required ref={researchConsent}/> <span id="research-permission">{workflowText("researchConsent", lang)}</span></label>
+      {directActions ? <p id="research-permission">{workflowText("researchStorage", lang)}</p> :
+        <label><input id="research-consent" type="checkbox" required ref={researchConsent}/> <span id="research-permission">{workflowText("researchConsent", lang)}</span></label>}
       <button id="research-add" type="submit">{workflowText("researchAdd", lang)}</button>
     </form>
     <ul id="research-list" className="research-list">{snapshot?.jobs.map(job => {
@@ -351,7 +353,8 @@ export function WorkflowPanel({
     <form id="note-form" ref={noteForm} onSubmit={saveNote}>
       <label id="note-label" htmlFor="note-input">{workflowText("noteLabel", lang)}</label>
       <textarea id="note-input" rows={2} maxLength={300} required ref={noteInput}></textarea>
-      <label><input id="note-consent" type="checkbox" ref={noteConsent}/> <span id="note-permission">{workflowText("noteConsent", lang)}</span></label>
+      {directActions ? <p id="note-permission">{workflowText("noteStorage", lang)}</p> :
+        <label><input id="note-consent" type="checkbox" ref={noteConsent}/> <span id="note-permission">{workflowText("noteConsent", lang)}</span></label>}
       <div className="row">
         <button id="note-add" type="submit">{workflowText("noteAdd", lang)}</button>
         <button id="note-search" type="button" onClick={searchNotes}>{workflowText("noteSearch", lang)}</button>

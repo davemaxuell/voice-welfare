@@ -1,6 +1,7 @@
 // 데스크톱 앱 시험 도구: 실제 Electron 앱(메인·대화 창·아바타 창)과 로컬 서비스를 띄우고,
 // 받아쓰기·음성 합성은 이 파일의 가짜 서버가 맡는다(외부로 아무것도 보내지 않음). 마이크는 합성 WAV 파일.
 const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 const http = require('node:http');
 const net = require('node:net');
 const os = require('node:os');
@@ -145,6 +146,7 @@ async function launch({ env: extra = {}, avatarPrefs, mic = {} } = {}) {
     HEADLESS: 'true',
     PRACTICE_MODE: 'true',
     REQUIRE_CONSENT: 'true',
+    REQUIRE_ACTION_CONFIRMATION: 'true',
     READ_ONLY_CLICKS: 'safe',
     VISUAL_CURSOR: 'false',
     BROWSER_MODE: 'chromium',
@@ -271,6 +273,16 @@ async function windows(app) {
   );
 }
 
+function native(...args) {
+  const file = path.join(__dirname, 'native.ps1');
+  const out = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file, ...args.map(String)],
+    { encoding: 'utf8', windowsHide: true });
+  if (out.error) throw out.error;
+  if (out.status !== 0) throw new Error(`native ${args[0]} failed: ${out.stderr}`);
+  const text = out.stdout.trim();
+  return text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : text;
+}
+
 async function until(check, { timeout = 20000, every = 100, what = 'condition' } = {}) {
   const end = Date.now() + timeout;
   let last;
@@ -282,4 +294,4 @@ async function until(check, { timeout = 20000, every = 100, what = 'condition' }
   throw new Error(`timed out waiting for ${what}`);
 }
 
-module.exports = { ROOT, launch, windows, until, fakeVoice, wav, playwright, windowWhere };
+module.exports = { ROOT, launch, windows, native, until, fakeVoice, wav, playwright, windowWhere };

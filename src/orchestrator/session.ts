@@ -20,7 +20,7 @@ import { CHOICE_TURNS, choiceLabel, type ChoiceKey } from "../core/choices.ts";
 import { APPROVAL_TTL_S, DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
-import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
+import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, permitsOfferedAction, wholeRejection } from "../core/lexicon.ts";
 import { ModelTransportError, type Redacted, type StructuredLlm } from "../core/llm.ts";
 import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
@@ -36,7 +36,7 @@ import { approvalAction, approvalNarration, approvalPresentation, type ApprovalN
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, foreignVaultSave, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalDialogue, vaultReply } from "../personal/dialogue.ts";
-import { GuardianDialogue, PreviewSender, guardianCommand, type GuardianSender } from "../personal/guardian.ts";
+import { GuardianDialogue, PreviewSender, guardianRequest, type GuardianSender } from "../personal/guardian.ts";
 import { PersonalStore, VAULT_LABELS, type Vault } from "../personal/store.ts";
 import { consentRefusal, gateRefusal, type Consent, type GateRefusal } from "../safety/gates.ts";
 import { guardPatterns } from "../safety/guard.ts";
@@ -46,8 +46,8 @@ import { REDACTED, detectSensitive, disclosureNotice, historyLine, maskValue, re
 import { josa, speakCallName, speakLabel } from "../speech/phrasing.ts";
 import { Narrator } from "../speech/screen.ts";
 import { isQuestionLike, stripAddress, stripFiller, vagueQuestion } from "../understanding/filters.ts";
-import { RuleBasedIntentProvider, afterProgressQuestion, isProgressQuestion, isStopUtterance, type IntentProvider } from "../understanding/rules.ts";
-import { nearSiteGuess, serviceTopic, siteLabel } from "../understanding/sites.ts";
+import { RuleBasedIntentProvider, afterProgressQuestion, interactionLimit, isProgressQuestion, isStopUtterance, requestedControl, type IntentProvider } from "../understanding/rules.ts";
+import { nearSiteGuess, requestedSiteName, serviceTopic, siteLabel } from "../understanding/sites.ts";
 import { Understanding, type Understood } from "../understanding/understand.ts";
 import { ApplicationCommands } from "./application.ts";
 import { fullMatch, sessionPatterns } from "./patterns.ts";
@@ -58,6 +58,7 @@ import { PublicTask } from "./public_task.ts";
 import { SessionReplies } from "./replies.ts";
 import { LIVE_DIFFICULTY, REVIEW_LIMITS, ReviewLoop, ReviewedTask, isDifficulty } from "./review_loop.ts";
 import { VOCAB, interpretSpeech } from "./speech_repair.ts";
+import { decisionReply } from "../understanding/decision_reply.ts";
 
 export interface OrchestratorDeps {
   intentProvider: IntentProvider;
@@ -129,7 +130,7 @@ export interface TurnOptions {
   /** 받아쓴 글이 길 때 앞에서 이만큼(코드 포인트)만 받는다. 가리기는 전체 글을 보고 한다. */
   maxCodePoints?: number;
 }
-interface ProcessOptions { fromVoice?: boolean; staleLinkOffer?: boolean }
+interface ProcessOptions { fromVoice?: boolean; staleLinkOffer?: boolean; proposalReply?: boolean }
 interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string; navigationHandoff?: Draft["navigationHandoff"] }
 /** 공공업무 판단에 주는 지난 대화 한 줄. 기관을 모르면 agency는 null(모델에 가는 JSON 그대로). */
 export interface PublicTurn { agency: string | null; request: string; reply: string }
@@ -149,10 +150,10 @@ export const NO_SECRET: Detection = { kinds: [], hasSecretValue: false };
 const READ_ONLY_QUESTIONS: ReadonlySet<string> = new Set(["UNKNOWN", "ABOUT_SITE", "CURRENT_STEP", "DESCRIBE_SCREEN", "READ_MAIN"]);
 const NAVIGATION: ReadonlySet<string> = new Set(["OPEN_SITE", "OPEN_OFFICIAL", "FOLLOW_LINK", "NEXT", "PREV", "GOAL", "SEARCH"]);
 const SPEECH_REPAIR_STATES: ReadonlySet<SessionState> = new Set(["IDLE", "BROWSING", "NEEDS_CLARIFICATION"]);
-const START_GUIDE = "청음은 동의를 받으면 공공서비스 웹사이트를 열고 화면과 신청 절차를 읽어 드립니다. " +
+const START_GUIDE = "청음은 요청하신 웹사이트를 열고, 화면과 신청 절차를 읽고, 말씀하신 항목을 누르거나 칸에 입력해 드립니다. " +
   "음성과 읽어 드릴 문장은 설정한 음성 API에 전달하고, 질문과 화면 글은 설정한 AI로 보낼 수 있어요. " +
   "화면 설명은 먼저 글로 확인해요. 그림을 봐야 답할 수 있으면 입력란을 가린 페이지 사진도 OpenAI에 보내요. 글로만 들으려면 '사진 없이 화면 설명해줘'라고 하세요. " +
-  "비밀번호나 주민등록번호는 말하지 마세요. 중요한 동작은 미리 확인하고 실제 제출과 본인 인증은 직접 하셔야 합니다. " +
+  "비밀번호와 본인 인증은 사이트에서 직접 입력해 주세요. 비밀번호나 주민등록번호는 소리 내어 말하지 마세요. " +
   "언제든 '멈춰'라고 말씀해 주세요.";
 
 const SiteGuessSchema = z.object({
@@ -267,14 +268,14 @@ export class SessionOrchestrator {
     this.firstRun = new FirstRunGuide(this.dialogue, {
       step: deps.firstRunStep, progress: deps.firstRunProgress, lang: () => this.lang, callName: () => this.callName,
       remember: name => this.rememberCallName(name),
-      isCommand: text => this.rules.parseSync(text, { state: this.state }).type !== "UNKNOWN",
+      isCommand: text => detectLangSwitch(text) !== undefined || this.rules.parseSync(text, { state: this.state }).type !== "UNKNOWN",
     });
     this.understanding = new Understanding(this.rules, deps, vocabulary);
     this.guided = new GuidedFill(deps.web, this.dialogue, this.narrator, this.rules, {
       savedValue: label => this.personalDialogue.savedFor(label),
       siteAllowed: origin => this.personal.siteAllowed(origin), allowSite: origin => this.personal.allowSite(origin),
     });
-    this.browse.guidedResume = view => this.guided.resumeAfterAuth(view);
+    this.browse.guidedResume = (view, ctx) => this.guided.resumeAfterAuth(view, ctx);
     this.replies = new SessionReplies(this);
     this.application = new ApplicationCommands(this);
     this.planner = new PublicPlanner(this);
@@ -359,6 +360,7 @@ export class SessionOrchestrator {
     const d = this.dialogue;
     const askedVault = d.vaultConfirm, askedAction = d.approval, askedHandoff = d.authHandoff, askedTask = this.publicTask;
     const offered = linkOfferId ?? this.linkOfferId;
+    const proposedLinks = this.browse.linkChoices;
     const navigation = this.#offer?.navigationHandoff;
     const presented = approvalId ?? (fromVoice ? "" : d.confirmation?.actionId ?? "");
 
@@ -413,7 +415,39 @@ export class SessionOrchestrator {
         turn.intentType = "SECRET_DISCLOSURE";
         return this.finish(turn, this.#possibleSecret());
       }
-      if (d.firstRun !== undefined && d.firstRun.length > 0) {
+      // 제안 없이 맞장구만 한 경우는 명령이 아니다. 사이트의 글이나 버튼 이름을 이 판정에 보내지 않는다.
+      const boundClick = askedAction?.kind === "click" && presented === askedAction.confirmation.actionId;
+      const boundLink = offered.length > 0 && proposedLinks?.proposed !== undefined && askedAction === undefined && !d.hasPendingInteraction;
+      if ((boundClick || boundLink) && !d.authWaiting && this.state !== "AUTH_HANDOFF" && this.state !== "STOPPED" &&
+          this.#consent === "granted" && !hint && !sensitive.hasSecretValue && sensitive.kinds.length === 0 &&
+          guardianRequest(spoken, this.web.guard.directActions) === undefined && foreignVaultSave(spoken) === undefined &&
+          parsePersonalCommand(spoken, this.today)?.kind.startsWith("vault-") !== true) {
+        const parsed = this.rules.parseSync(spoken, { state: this.state });
+        const linked = boundLink ? linkReference(spoken, proposedLinks) : undefined;
+        const recognized = boundClick && (approval(spoken, this.lang) === "approve" || wholeRejection(spoken, this.lang));
+        const generalReply = (parsed.type === "UNKNOWN" || parsed.type === "APPROVE" || parsed.type === "REJECT") && linked === undefined;
+        if (!recognized && (generalReply || permitsOfferedAction(spoken))) {
+          const reply = await decisionReply(spoken, this.lang, this.deps.webLlm ?? this.deps.llm, this.#controller.signal);
+          if (this.#queue.epoch !== epoch) return this.voided();
+          if (reply !== undefined && boundClick) {
+            if (askedAction !== d.approval || presented !== d.confirmation?.actionId) return this.fixedReply(confirm, FIXED.changedApproval[this.lang], this.lang);
+            return this.process(spoken, sensitive, {type: reply === "approve" ? "APPROVE" : "REJECT"}, {fromVoice, proposalReply: true});
+          }
+          if (reply !== undefined && boundLink) {
+            const turn = this.beginTurn(spoken);
+            turn.fromVoice = fromVoice;
+            if (proposedLinks !== this.browse.linkChoices || offered !== this.linkOfferId) return this.localize(this.finish(turn, this.changedLinkReply()));
+            const before = this.web.currentView;
+            return this.localize(await this.planner.command(turn, "FOLLOW_LINK", async () => {
+              const result = await this.browse.chooseLink({action: reply === "approve" ? "open" : "decline", index: proposedLinks.proposed, matchDescription: false},
+                spoken, turn.ctx, {redact: value => this.historySpeech(value)});
+              return this.browse.recognizeAuthPage(result, before, turn.ctx);
+            }));
+          }
+        }
+      }
+      if ((d.firstRun !== undefined && d.firstRun.length > 0) || (this.#consent === "granted" && this.state === "IDLE" &&
+          !d.hasPendingInteraction && this.firstRun.wantsNameChange(spoken))) {
         const guided = await this.#firstRunTurn(spoken, sensitive, fromVoice);
         if (guided !== undefined) return guided;
       }
@@ -432,7 +466,8 @@ export class SessionOrchestrator {
     // 연습 사이트는 장애인연금 모의 신청서다(연습이라고 말한 것과 같은 길)
     if (reply === "practice") return this.process(redactText("장애인연금 연습 신청서 열어줘"), sensitive, { type: "START_APPLICATION" }, { fromVoice });
     // 이름을 말한 차례는 기록에 남기지 않는다(LLM에 가는 최근 대화에 들어가므로)
-    const turn = this.beginTurn(asked === "name" || asked === "name-confirm" ? redactText(REDACTED) : spoken);
+    const nameReply = asked === "name" || asked === "name-confirm" || asked === "rename" || reply.privateHistory === true;
+    const turn = this.beginTurn(nameReply ? redactText(REDACTED) : spoken);
     turn.intentType = "FIRST_RUN";
     return this.finish(turn, { ...reply, lang: this.lang });
   }
@@ -768,7 +803,7 @@ export class SessionOrchestrator {
         signal: this.#controller.signal, approvals: this.#approvals,
         isStopped: () => epoch !== this.#queue.epoch || this.state === "STOPPED",
         trace: (phase, agent, note) => trace.push(omitAbsent({ phase, agent, note, atMs: Math.floor(performance.now() - started) })),
-        counter: { actions: 0 }, sessionId: this.id, taskId: id,
+        counter: { actions: 0 }, sessionId: this.id, taskId: id, requestedControl: requestedControl(text),
       }),
     };
   }
@@ -782,7 +817,7 @@ export class SessionOrchestrator {
    * 한 턴: 언어 바꾸기 명령 → (외국어면) 한국어로 옮겨 기존 흐름 → 응답을 사용자 언어로.
    * 승인 대기 중에는 번역 결과가 '승인'으로 읽혀도 원문이 언어별 승인 단어가 아니면 받지 않는다.
    */
-  async process(text: Redacted, sensitive: Detection, forced?: Intent, { fromVoice = false, staleLinkOffer = false }: ProcessOptions = {}): Promise<TurnResult> {
+  async process(text: Redacted, sensitive: Detection, forced?: Intent, { fromVoice = false, staleLinkOffer = false, proposalReply = false }: ProcessOptions = {}): Promise<TurnResult> {
     const d = this.dialogue;
     if (forced === undefined && (d.expectsConfirmation || d.vaultConfirm !== undefined) && approval(text, this.lang) !== "approve" &&
         LANGS.some(lang => lang !== this.lang && approval(text, lang) === "approve")) {
@@ -794,13 +829,13 @@ export class SessionOrchestrator {
       if (to !== undefined) return this.#switchLanguage(text, to);
       return this.#korean(text, sensitive, forced);
     }
-    if (forced !== undefined) return this.localize(await this.#korean(text, sensitive, forced));
+    if (forced !== undefined) return this.localize(await this.#korean(text, sensitive, forced, undefined, {fromVoice, staleLinkOffer, proposalReply}));
     // 비밀값은 번역(외부 LLM)에 넘기기 전에 막는다: 어느 언어든 바로 경고만 한다
     if (sensitive.hasSecretValue) {
       this.guardian.takePending();
       return this.localize(await this.#korean(text, sensitive));
     }
-    if (guardianCommand(text) !== undefined) return this.#korean(text, sensitive);
+    if (guardianRequest(text, this.web.guard.directActions) !== undefined) return this.#korean(text, sensitive);
     const localSave = foreignVaultSave(text);
     if (localSave !== undefined) {
       const [sourceLang, values] = localSave;
@@ -818,7 +853,7 @@ export class SessionOrchestrator {
     if (script !== undefined && script !== this.lang && (script === "ko" || llm !== undefined)) this.lang = script;
     const lang = this.lang;
     if (lang === "ko" || script === "ko" || llm === undefined ||
-        (sessionPatterns.hangul.test(text) && parsePersonalCommand(text, this.today)?.kind === "vault-save")) {
+        (sessionPatterns.hangul.test(text) && parsePersonalCommand(text, this.today)?.kind.startsWith("vault-") === true)) {
       return this.#korean(text, sensitive, undefined, undefined, { fromVoice, staleLinkOffer });
     }
     if (this.linkOfferId.length > 0 && !d.hasPendingInteraction && this.publicTask.question.length === 0 && agree(text) !== undefined) {
@@ -959,7 +994,7 @@ export class SessionOrchestrator {
         return this.finish(turn, await this.guardian.approved(pending, view, this.clock(), APPROVAL_TTL_S));
       }
     }
-    const command = forced === undefined ? guardianCommand(text) : undefined;
+    const command = forced === undefined ? guardianRequest(text, this.web.guard.directActions) : undefined;
     if (command === undefined) return undefined;
     turn.intentType = "GUARDIAN_CONTACT";
     turn.text = redactText(REDACTED);
@@ -972,11 +1007,16 @@ export class SessionOrchestrator {
     this.dialogue.clearApproval();
     const view = command.kind === "guardian-send" && this.personal.guardian() !== undefined ? await this.web.observe(turn.ctx) : undefined;
     if (turn.ctx.signal.aborted) return this.voided();
-    return this.finish(turn, this.guardian.ask(command, view, this.clock(), resume));
+    const response = this.guardian.ask(command, view, this.clock(), resume);
+    if (this.web.guard.directActions && response.state === "WAITING_FOR_USER_CONFIRMATION") {
+      const requested = this.guardian.takePending();
+      if (requested) return this.finish(turn, await this.guardian.approved(requested, view, this.clock(), APPROVAL_TTL_S));
+    }
+    return this.finish(turn, response);
   }
 
   async #korean(text: Redacted, sensitive: Detection, forced?: Intent, original?: Redacted,
-    { fromVoice = false, staleLinkOffer = false, vaultValues }: ProcessOptions & { vaultValues?: Vault } = {}): Promise<TurnResult> {
+    { fromVoice = false, staleLinkOffer = false, proposalReply = false, vaultValues }: ProcessOptions & { vaultValues?: Vault } = {}): Promise<TurnResult> {
     const turn = this.beginTurn(text);
     turn.original = original;
     turn.fromVoice = fromVoice;
@@ -1113,13 +1153,13 @@ export class SessionOrchestrator {
           turn.intentType = type;
           if (command.kind === "vault-save") this.redactEarlierMentions(Object.values(command.values));
           const refused = this.gate([type]);
-          if (refused !== undefined) return this.finish(turn, refused);
-          const done = this.personalDialogue.run(command, { lang: this.lang });
+          if (refused !== undefined) return this.finish(turn, command.kind.startsWith("vault-") ? {...refused, privateHistory: true} : refused);
+          const done = this.personalDialogue.run(command, { lang: this.lang, direct: this.web.guard.directActions });
           if (done !== undefined) return this.finish(turn, done);
         }
         const free = guess === undefined && sensitive.kinds.length === 0;
         if (free && !d.hasPendingInteraction && this.publicTask.question.length === 0) {
-          if (original === undefined && this.#consent === "granted" && (this.state === "BROWSING" || this.state === "APPLICATION_OPEN") && this.lang === "ko" &&
+          if (!this.web.guard.directActions && original === undefined && this.#consent === "granted" && (this.state === "BROWSING" || this.state === "APPLICATION_OPEN") && this.lang === "ko" &&
               !turn.staleLinkOffer && turn.text === text) {
             const names = spokenPlanNames(this.rules.splitCommands(text));
             if (names !== undefined) {
@@ -1194,7 +1234,7 @@ export class SessionOrchestrator {
         return this.finish(turn, draft(this.state, "clarify", vague));
       }
       const heard = text;
-      const understood: Understood = forced !== undefined ? { intents: [forced], by: "ui" } : await raceAbort(() => this.understand(heard, turn), turn.ctx.signal);
+      const understood: Understood = forced !== undefined ? { intents: [forced], by: proposalReply ? "context" : "ui" } : await raceAbort(() => this.understand(heard, turn), turn.ctx.signal);
       if (turn.ctx.signal.aborted) return this.voided();
       const intents = understood.intents;
       if (forced === undefined && intents.some(i => i.type === "APPROVE") && approval(original ?? turn.text, this.lang) !== "approve") {
@@ -1272,10 +1312,14 @@ export class SessionOrchestrator {
     const waiting = this.authReview;
     const sameGoal = waiting !== undefined && handoff?.id === waiting[0] && waiting[1].continuation !== undefined;
     if (sameGoal) turn.ctx = waiting[1].context(turn.ctx);
-    if (intent === "AUTH_DONE" || (sameGoal && intent === "APPROVE" && loginSubmit())) {
+    const enteredCredentials = !inspection && handoff?.kind === "login" && authInputDone(text) &&
+      (intent === "LOGIN" || (intent === "AUTH_DONE" && this.web.guard.directActions));
+    if (enteredCredentials || intent === "AUTH_DONE" || (sameGoal && intent === "APPROVE" && loginSubmit())) {
       if (intent === "AUTH_DONE") d.clearApproval();
       const journey = handoff?.id === waiting?.[0] ? waiting?.[1].journey : undefined;
-      const result = intent === "AUTH_DONE" ? await this.browse.authDone(turn.ctx, inspection ? journey : undefined) : await this.application.approve(turn);
+      const result = enteredCredentials ? await this.browse.login(text, turn.ctx)
+        : intent === "AUTH_DONE" ? await this.browse.authDone(turn.ctx, inspection ? journey : undefined)
+          : await this.application.approve(turn);
       if (waiting !== undefined && handoff?.id === waiting[0] && handoff.status === "completed") {
         this.authReview = undefined;
         journey?.resumeAfterAuth();
@@ -1284,7 +1328,6 @@ export class SessionOrchestrator {
       if (waiting && !d.authWaiting) this.authReview = undefined;
       return result;
     }
-    if (!inspection && intent === "LOGIN" && handoff?.kind === "login" && authInputDone(text)) return this.browse.login(text, turn.ctx);
     if ((intent === "APPROVE" || intent === "REJECT") && loginSubmit()) {
       if (intent === "APPROVE") return this.#approve(turn);
       d.clearApproval();
@@ -1538,7 +1581,7 @@ export class SessionOrchestrator {
     const t = strip(text.replace(sessionPatterns.phraseEnd, ""));
     if (t.length === 0 || (Array.from(t).length > 30 && t.includes(" ")) || isQuestionLike(t) || ackKind(t) !== undefined || doneReply(t, { whole: true })) return false;
     if (d.expectsConfirmation && approval(text, this.lang) !== undefined) return false;
-    if (detectLangSwitch(t) !== undefined || guardianCommand(t) !== undefined || parsePersonalCommand(t, this.today) !== undefined) return false;
+    if (detectLangSwitch(t) !== undefined || guardianRequest(t, this.web.guard.directActions) !== undefined || parsePersonalCommand(t, this.today) !== undefined) return false;
     if (this.rules.parseSync(t, { state: this.state }).type !== "UNKNOWN") return false;
     // 원문 대신 해시만 기억한다(비밀값일 수 있으므로)
     const digest = createHash("sha256").update(t, "utf8").digest("hex");
@@ -1555,6 +1598,12 @@ export class SessionOrchestrator {
     const awaiting = this.dialogue.awaiting !== undefined && this.dialogue.awaiting.length > 0 ? this.dialogue.awaiting : undefined;
     const current = this.web.currentView;
     const followup = this.planner.followup(text);
+    if (this.web.guard.directActions && !this.dialogue.hasPendingInteraction && current?.pageId === "external") {
+      const name = requestedControl(text);
+      if (name !== undefined && current.outline?.items?.some(item => !item.disabled && item.name === name) === true) {
+        return {intents: [{type: "FOLLOW_LINK", name}], by: "rules"};
+      }
+    }
     if (followup !== undefined) return { intents: [{ type: "GOAL", goal: followup }], by: "context" };
     const understood = await this.understanding.understand(text, { state: this.state, awaitingFieldId: awaiting === undefined ? undefined : redactText(awaiting) }, {
       awaited: awaiting === undefined ? undefined : this.web.field(awaiting), clarifying: this.dialogue.clarification !== undefined,
@@ -1562,6 +1611,14 @@ export class SessionOrchestrator {
       trace: note => turn.ctx.trace("PLANNING", AGENT_IDS.orchestrator, note),
     });
     if (awaiting === undefined && understood.intents.length === 1 && understood.intents[0]?.type === "UNKNOWN" && sessionPatterns.goThere.test(text)) {
+      const name = requestedSiteName(text);
+      if (name !== undefined && !this.dialogue.hasPendingInteraction) {
+        if (current?.outline?.items?.some(item => !item.disabled && item.name === name) === true &&
+            !/(?:누리집|사이트|홈페이지)/u.test(text)) {
+          return { intents: [{ type: "FOLLOW_LINK", name }], by: "rules" };
+        }
+        return { intents: [{ type: "OPEN_SITE", target: text }], by: "rules" };
+      }
       const direct = await this.deps.welfare.resolveSiteLink(text, { ctpv: this.profile.ctpv, sgg: this.profile.sgg });
       if (direct?.url !== undefined && direct.url.length > 0) return { intents: [{ type: "OPEN_SITE", target: text }], by: "direct-link" };
     }
@@ -1608,6 +1665,11 @@ export class SessionOrchestrator {
     plannedQuestion?: boolean; exclusions?: readonly string[]; confirmPicture?: boolean;
   } = {}): Promise<Draft> {
     if (intent.type === "FOLLOW_LINK" && turn.staleLinkOffer) return this.changedLinkReply();
+    if (this.web.guard.directActions && ["FOLLOW_LINK", "FILL", "LOGIN", "PREPARE_SUBMIT", "OPEN_SITE", "NEXT"].includes(intent.type)) {
+      const limit = interactionLimit(turn.text, intent.type === "FOLLOW_LINK" ? intent.name : undefined);
+      if (limit === "decline") return draft(this.state, "none", "현재 화면을 그대로 둘게요.");
+      if (limit === "question") return draft(this.state, "chat", "현재 화면에서 확인할 수 있는 안내를 읽어 드릴 수 있어요. 누른 뒤의 결과는 아직 확인할 수 없어요.");
+    }
     // 모델이 풀어 쓴 질문을 번호 선택이나 입력 칸의 값으로 받아들이지 않는다.
     if (plannedQuestion) {
       const refused = this.consentGate(intent);
@@ -1680,7 +1742,8 @@ export class SessionOrchestrator {
       case "FILL": return this.form.fill(intent.fills, ctx);
       case "READ_FIELD": return this.replies.readField(intent.fieldMention, turn);
       case "EDIT_FIELD": return this.form.editField(intent.fieldMention, ctx);
-      case "NEXT": return this.form.next(ctx);
+      case "NEXT": return this.web.guard.directActions && this.web.currentView?.pageId === "external"
+        ? this.browse.followLink("다음", ctx) : this.form.next(ctx);
       case "PREV": return isFormOpen(this.web.currentView) ? this.form.prev(ctx) : this.browse.back(ctx);
       case "OPEN_SITE": return this.browse.openSite(intent.target, ctx);
       case "FOLLOW_LINK": return this.browse.followLink(intent.name, ctx);
@@ -1689,7 +1752,13 @@ export class SessionOrchestrator {
       case "SEARCH": return this.browse.search(intent.query, intent.site, ctx);
       case "REVIEW": return this.form.review(ctx);
       case "EXPLAIN": return this.application.explain(intent.fieldMention, turn);
-      case "PREPARE_SUBMIT": return this.form.prepareSubmit(ctx);
+      case "PREPARE_SUBMIT": {
+        const send = /(?:접수|제출)(?:을|를)?\s*(?:해\s*(?:줘요?|주세요|주실래요?|주시겠어요?)|하자|할게요?|진행해\s*(?:줘요?|주세요))[.!?。？！~]*$/u.exec(turn.text.trim());
+        if (this.web.guard.directActions && this.web.currentView?.pageId === "external") {
+          return send ? this.browse.followLink(send[0].startsWith("접수") ? "접수" : "제출", ctx) : this.browse.readMain(false, ctx);
+        }
+        return this.form.prepareSubmit(ctx, send !== null);
+      }
       case "APPROVE": return this.#approve(turn);
       case "REJECT": return this.form.reject();
       case "RESUME": return this.#offer?.navigationHandoff === undefined ? this.browse.resume(ctx) : this.#resumeNavigation(this.#offer.navigationHandoff, turn);

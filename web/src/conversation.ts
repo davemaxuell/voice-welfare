@@ -1895,6 +1895,7 @@ function refreshHealth() {
     set({
       practiceMode: h.practiceMode === true,
       workspaceAvailable: h.workspaceAvailable === true,
+      directActions: h.directActions === true,
       settingsAvailable: h.settingsAvailable === true,
       baseSpeed: h.voiceSpeed ?? 1.35,
       voiceMode: {
@@ -1994,6 +1995,11 @@ async function openSession(recovery: boolean) {
     if (!s.consentRequired) {
       setConsent("granted");
       announce(t("청음이 준비됐어요."));
+      const prompt = s.firstRunPrompt?.[language];
+      if (prompt !== undefined) {
+        desk.message = desktopNotice(prompt);
+        notice(prompt);
+      }
       return;
     }
     let first = s.firstStartupGuide;

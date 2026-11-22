@@ -73,7 +73,7 @@ export async function replayGoal(browse: BrowseSkill, run: Replay): Promise<Draf
     view = entered.view;
   }
   if (routeView(view, values) !== first.page) return append(await fallback(ctx));
-  if (route.steps.some(step => clickTier(step.role, step.name) === "ask")) {
+  if (!web.guard.directActions && route.steps.some(step => clickTier(step.role, step.name) === "ask")) {
     const offered = await browse.knownPlans.offer(run.goal, route.steps, ctx, {
       canStep, didStep, onComplete: async live => { const done = await complete(live); return {...done, browserIterations: used + (done.browserIterations ?? 0)}; },
       onMismatch: async live => { const next = await fallback(live); return {...next, browserIterations: used + (next.browserIterations ?? 0)}; },

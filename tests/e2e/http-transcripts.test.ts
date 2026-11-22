@@ -11,7 +11,8 @@ import { fixtureIndex, loadTranscript, replayTranscript } from "./transcripts.ts
 
 const base = new URL("../fixtures/transcripts/", import.meta.url);
 const index = fixtureIndex.parse(JSON.parse(readFileSync(new URL("index.json", base), "utf8")));
-const runtime = createTestRuntime();
+// Python/Playwright에서 채록한 대화는 같은 드라이버의 응답과 대조한다.
+const runtime = createTestRuntime({ browserDriver: "playwright" });
 afterAll(runtime.close);
 const open = openBrowserTranscript(runtime, async (session) => {
   const app = makeApp({

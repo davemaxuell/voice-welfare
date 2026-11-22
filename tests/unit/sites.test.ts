@@ -1,6 +1,8 @@
 import { expect, it } from "vitest";
+import { flatToIntent } from "../../src/understanding/llm_planner.ts";
+import { uniquePortalHome } from "../../src/agents/web/portal_home.ts";
 import {
-  goalSiteRequest, isSiteName, KNOWN_SITES, nearSiteGuess, publicServiceSite, resolveSite, serviceTopic,
+  goalSiteRequest, isSiteName, KNOWN_SITES, namedSiteCommand, nearSiteGuess, publicServiceSite, resolveSite, serviceTopic,
 } from "../../src/understanding/sites.ts";
 
 function listed(label: string) {
@@ -8,6 +10,40 @@ function listed(label: string) {
   if (site === undefined) throw new Error("missing site: " + label);
   return site;
 }
+
+it("모델이 이름에서 만들어 낸 주소는 열지 않고 원래 요청으로 목적지를 찾는다", () => {
+  const text = "푸른마당 누리집 열어줘";
+  const guess = "https://guessed.go.kr/";
+  expect(flatToIntent({ type: "OPEN_SITE", site: guess }, text)).toEqual({ type: "OPEN_SITE", target: text });
+  const related = "하이코리아연구소 열어줘";
+  expect(flatToIntent({ type: "OPEN_SITE", site: "하이코리아" }, related)).toEqual({ type: "OPEN_SITE", target: related });
+  expect(flatToIntent({ type: "OPEN_SITE", site: guess }, guess + " 열어줘")).toEqual({ type: "OPEN_SITE", target: guess });
+  const path = guess + "agency/main.do 열어줘";
+  expect(flatToIntent({ type: "OPEN_SITE", site: guess }, path)).toEqual({ type: "OPEN_SITE", target: path });
+});
+
+it("긴 기관명 일부가 알려진 이름과 겹쳐도 다른 기관으로 보내지 않는다", () => {
+  expect(resolveSite("하이코리아연구소 누리집 열어줘")).toBeUndefined();
+  expect(resolveSite("정부24동우회 누리집 열어줘")).toBeUndefined();
+});
+
+it("등록되지 않은 누리집도 명시된 열기와 검색을 구분하고 다른 사이트 안에서의 요청은 계획에 남긴다", () => {
+  const open = "새봄자료원 공식 누리집으로 가 줘";
+  expect(namedSiteCommand(open)).toEqual({type: "OPEN_SITE", target: open});
+  expect(namedSiteCommand("새봄자료원 홈페이지를 검색해 줘")).toEqual({type: "SEARCH", query: "새봄자료원 홈페이지"});
+  expect(namedSiteCommand("네이버에서 새봄자료원 홈페이지를 검색해 줘")).toBeUndefined();
+  expect(namedSiteCommand("문서를 읽고 새봄자료원 누리집을 열어 줘")).toBeUndefined();
+  expect(namedSiteCommand("이 홈페이지를 열어 줘")).toBeUndefined();
+});
+
+it("기관명이 같아도 기사, 중계 주소, 비공식 호스트, 자격 증명, 기본 포트 이외의 주소는 직접 열지 않는다", () => {
+  const title = "별빛도서관", homepage = "https://library.go.kr/ko/main.do";
+  const candidates = ["/news/43", "/redirect?to=home", "/#go"].map(path => ({title, url: "https://library.go.kr" + path}));
+  for (const url of ["https://account@library.go.kr/", "http://library.go.kr/", "https://library.go.kr:8443/", "https://library.go.kr.example/"]) candidates.push({title, url});
+  candidates.push({title: "새 소식 | 별빛도서관", url: "https://library.go.kr/"});
+  expect(uniquePortalHome(title, candidates)).toBeUndefined();
+  expect(uniquePortalHome(title, [...candidates, {title: "홈 < 별빛도서관", url: homepage}])).toBe(homepage);
+});
 
 it.each([
   ["복지로에서 기초연금 신청 방법 찾아줘", "https://www.bokjiro.go.kr"],

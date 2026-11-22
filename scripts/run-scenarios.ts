@@ -197,7 +197,7 @@ async function writeReport(
 
 - 생성: ${generatedAt}
 - 범위: 합성 데이터·모의 사이트·로컬 합성 포털. **실제 사용자 테스트 결과가 아닙니다.** 목표치는 PRD §12의 실험 전 가설입니다.
-- 실행 조건: 의도 분석 = 규칙 파서(mock, 재현성 위해 LLM 미사용), 복지 데이터 = fixture, 브라우저 = Chromium, 읽기 전용 정책 = ${policy}
+- 기존 승인 절차를 켠 환경에서 규칙 파서(mock), 복지 예제 데이터, Chromium으로 평가했습니다. 읽기 전용 정책은 ${policy}입니다.
 - 시나리오: demo_scenarios.json(활성 4 + 구현된 S5) + 합성 30건(정상 10·오류복구 10·안전중단 10), 총 ${reports.length}개 / ${metrics.steps}단계
 
 ## PRD 지표
@@ -290,6 +290,7 @@ export async function main() {
     HEADLESS: process.env.HEADED === "1" ? "false" : "true",
     LLM_PROVIDER: "mock",
     REQUIRE_CONSENT: "false",
+    REQUIRE_ACTION_CONFIRMATION: "true",
     READ_ONLY_WEB: "true",
     READ_ONLY_CLICKS: policy,
     DATASETS_DIR: join(REPO_ROOT, "tests/fixtures/open_data"),

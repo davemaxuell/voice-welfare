@@ -3,8 +3,8 @@ import { FakeLlm, PORTAL } from "../helpers.ts";
 import { browserCases, flat } from "./browser-cases.ts";
 
 const open = browserCases();
-const search = "하이코리아 홈페이지 열어줘";
-const first = "하이코리아 홈페이지 신청 방법";
+const search = "푸른마을자료관 홈페이지 열어줘";
+const first = "푸른마을자료관 홈페이지 신청 방법";
 const list = "링크 목록 알려줘";
 async function listed() {
   const opened = await open();
@@ -96,7 +96,7 @@ it.each([
   const { session, page } = await open();
   await session.handleTurn(search);
   const firstOffer = session.linkOfferId;
-  expect((await session.handleTurn("2번?")).speech).toContain("하이코리아 홈페이지 지원 대상");
+  expect((await session.handleTurn("2번?")).speech).toContain("푸른마을자료관 홈페이지 지원 대상");
   const before = page.url();
   const result = await session.handleTurn("네, " + ordinal + " 링크가 맞아요", { fromVoice: true, linkOfferId: firstOffer });
   expect(page.url()).toBe(before);
@@ -159,7 +159,7 @@ it("test_search_result_numbers_are_consistent_after_reading_the_list", async () 
   await session.handleTurn(search);
   expect((await session.handleTurn(list)).speech).toContain("1번 " + first);
   await session.handleTurn("2번");
-  expect([...new URL(page.url()).searchParams]).toEqual([["q", "하이코리아 홈페이지 지원 대상"]]);
+  expect([...new URL(page.url()).searchParams]).toEqual([["q", "푸른마을자료관 홈페이지 지원 대상"]]);
 });
 
 it("test_reply_already_queued_cannot_accept_a_new_search_proposal", async () => {
@@ -204,9 +204,9 @@ it("test_voice_opens_the_named_search_heading_without_reading_the_page", async (
   const { session, page } = await open();
   await page.route("**/external.html?q=*", route => route.fulfill({ contentType: "text/html; charset=utf-8",
     body: '<title>검색 결과</title><header><a href="/">전체</a></header><main id="search"><div id="rso">'
-      + '<a href="/external2.html?section=immigration"><h3>하이코리아 홈페이지</h3></a>'
+      + '<a href="/external2.html?section=immigration"><h3>푸른마을자료관 홈페이지</h3></a>'
       + '<a href="/external2.html?section=help"><h3>출입국 이용 안내</h3></a></div></main>' }));
-  expect((await session.handleTurn(search, { fromVoice: true })).speech).toContain("하이코리아 홈페이지");
+  expect((await session.handleTurn(search, { fromVoice: true })).speech).toContain("푸른마을자료관 홈페이지");
   expect(new URL(page.url()).pathname).toBe("/external.html");
   const opened = await session.handleTurn("네, 그 링크 맞아. 화면에 있는 첫 링크가 맞아. 그거 열어줘.", { fromVoice: true });
   expect(opened.intentType).toBe("FOLLOW_LINK");

@@ -15,9 +15,9 @@ export const languages: Readonly<Partial<Record<string, Readonly<Partial<Record<
     save: 'Save and start', resume: 'Save and continue',
     welcome: 'Welcome to Cheongeum', lead: 'Find civil services, scholarships and welfare benefits, and read public-service pages together.',
     hear: 'Hear the introduction', yes: 'Agree and start', no: 'Decline', details: 'Voice and privacy guide', replay: 'Read the full guide',
-    guide: 'With your consent, Cheongeum opens websites in a separate browser, reads them aloud and helps with practice forms. It asks before an action that needs approval. You handle identity verification and final submissions.',
+    guide: 'Cheongeum opens the website you request, reads it aloud, and clicks or fills in the items you ask for. Enter passwords and complete identity checks directly on the website.',
     image: 'Cheongeum first checks the page text. When your question needs a visual detail, it sends OpenAI a full-page screenshot of the current tab, page text and recent requests. It masks form fields, embedded documents and detected personal details. Images can still contain personal information. Say “describe the screen without a screenshot” for text only.',
-    files: 'For file analysis, you choose whether to send each file or its text to OpenAI after hearing the destination.',
+    files: 'When you ask for file analysis, the selected file or its text is sent to OpenAI.',
     keyed: 'Audio and spoken replies use your speech API. Recordings are not saved.', typed: 'You can type. Add an API key in settings to use voice.',
     liveHistory: 'Starting a live voice call sends a short excerpt of this conversation to OpenAI with detected personal details masked.',
     model: 'Questions and page text may be sent to these configured services', local: 'Text commands run locally.',
@@ -35,9 +35,9 @@ export const languages: Readonly<Partial<Record<string, Readonly<Partial<Record<
     save: '保存并开始', resume: '保存并继续',
     welcome: '欢迎使用青音', lead: '查找政务、奖学金和福利信息，一起阅读公共服务网页。',
     hear: '收听使用说明', yes: '同意并开始', no: '不同意', details: '语音使用与隐私说明', replay: '朗读完整说明',
-    guide: '经您同意，青音会在单独的浏览器中打开网页，为您朗读并协助练习填表。需要批准的操作会事先询问。身份验证和正式提交由您本人完成。',
+    guide: '青音会打开您指定的网站，为您朗读网页，并按您的要求点击或填写表单。请在网站上亲自输入密码、完成身份验证。',
     image: '青音会先查看网页文字。需要查看图像才能回答时，才会将当前标签页的整页截图、网页文字和最近的部分请求发送给 OpenAI。输入框、嵌入文档和检测到的个人信息会被遮挡。图片中仍可能包含个人信息。您可以说“只读文字，不要截图”。',
-    files: '分析文件前会说明接收方，由您逐个决定是否向 OpenAI 发送文件或正文。',
+    files: '当您请求分析文件时，所选文件或正文会发送给 OpenAI。',
     keyed: '语音输入和朗读使用您配置的语音接口。青音不保存录音。', typed: '您可以打字提问。在设置中添加密钥即可使用语音。',
     liveHistory: '开始实时语音对话时，近期的部分对话内容会发送至 OpenAI，检测到的个人信息会被遮盖。',
     model: '问题和网页文字可能发送到以下已配置的服务', local: '文字指令在本机处理。',
@@ -55,9 +55,9 @@ export const languages: Readonly<Partial<Record<string, Readonly<Partial<Record<
     save: '保存して開始', resume: '保存して会話を続ける',
     welcome: 'チョンウムへようこそ', lead: '行政手続き、奨学金、福祉制度を探し、公共サービスのページを一緒に読みます。',
     hear: '使い方を聞く', yes: '同意して開始', no: '同意しない', details: '音声利用とプライバシーの説明', replay: '説明をすべて聞く',
-    guide: '同意すると、チョンウムが別のブラウザーでウェブサイトを開き、読み上げや練習用の申請書の記入をお手伝いします。承認の必要な操作は事前に確認します。本人確認と正式な提出はご自身で行います。',
+    guide: 'チョンウムは指定されたサイトを開いて読み上げ、ご依頼に応じて項目を押したり入力したりします。パスワードの入力と本人確認は、サイト上でご自身で行ってください。',
     image: 'まずページの文字を確認します。画像を見て答える必要があるときは、今のタブのページ全体の画像と本文、直近の依頼の一部を OpenAI に送ります。入力欄、埋め込み文書、検出した個人情報は隠します。画像には個人情報が残ることがあります。「スクリーンショットなしで説明して」とも言えます。',
-    files: 'ファイルの分析では、送信先を確認したうえで、ファイルまたは本文を OpenAI に送るか、その都度選べます。',
+    files: 'ファイルの分析を依頼すると、選んだファイルまたは本文が OpenAI に送られます。',
     keyed: '音声入力と読み上げには設定した音声 API を使います。録音は保存しません。', typed: '文字で質問できます。設定でキーを登録すると音声を使えます。',
     liveHistory: 'リアルタイム音声会話を始めると、最近の会話の一部が OpenAI に送信されます。検出した個人情報は隠します。',
     model: '質問やページの文章が次のサービスに送られることがあります', local: '文字の指示はこのパソコンで処理します。',
@@ -66,19 +66,18 @@ export const languages: Readonly<Partial<Record<string, Readonly<Partial<Record<
   },
 };
 
-export function koreanConsentGuide(visionDisabled: boolean, voice: string, model: string, background: boolean, mac: boolean) {
+export function koreanConsentGuide(visionDisabled: boolean, voice: string, model: string, background: boolean, mac: boolean, awaitingConsent: boolean) {
   return (
     "공공서비스 음성 도우미 청음입니다. " +
-    "동의하시면 청음은 별도의 브라우저 창에서 웹사이트를 열고 화면을 읽어 드립니다. 연습용 신청서 작성도 도와드려요. " +
-    "승인이 필요한 입력이나 클릭은 실행 전에 대상과 내용을 알려 드립니다. 실제 접수와 본인 인증은 직접 하셔야 합니다. " +
+    "요청하신 웹사이트를 열고 화면을 읽어 드립니다. 말씀하신 항목을 누르거나 칸에 입력해 드려요. 비밀번호 입력과 본인 인증은 사이트에서 직접 해 주세요. " +
     (visionDisabled
       ? "이 설정에서는 웹페이지를 글로 읽어 드립니다. "
       : "화면 설명은 먼저 페이지 글을 확인합니다. 그림을 봐야 답할 수 있으면 현재 탭의 전체 페이지 사진도 본문, 최근 요청 일부와 함께 OpenAI에 보냅니다. 입력란과 내장 문서, 감지된 개인정보는 가립니다. 그림 속 개인정보는 남을 수 있습니다. 글로만 들으려면 “사진 없이 화면 설명해 줘”라고 하세요. ") +
-    "받은 파일에 대해 질문하거나 요약을 요청하면 파일 전체나 본문을 OpenAI 파일 분석 서버에 보낼 수 있습니다. 파일마다 보낼 곳을 알려 드리고 동의를 받습니다. " +
+    "받은 파일에 대해 질문하거나 요약을 요청하면 해당 파일이나 본문을 OpenAI에 보냅니다. " +
     `${voice} ${model} 비밀번호나 주민등록번호는 말하지 마세요. ` +
-    "언제든 '멈춰'라고 말하면 멈춥니다. " +
-    (background
-      ? `동의하시면 ${mac ? "커맨드" : "컨트롤"}, 시프트, 스페이스 키를 함께 눌러 주세요. 동의하지 않으시면 메뉴 막대의 청음에서 종료를 고르세요.`
-      : "동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.")
+    "언제든 '멈춰'라고 말하면 멈춥니다." +
+    (!awaitingConsent ? "" : background
+      ? ` 동의하시면 ${mac ? "커맨드" : "컨트롤"}, 시프트, 스페이스 키를 함께 눌러 주세요. 동의하지 않으시면 메뉴 막대의 청음에서 종료를 고르세요.`
+      : " 동의하시면 Enter를, 동의하지 않으시면 Escape를 눌러 주세요.")
   );
 }

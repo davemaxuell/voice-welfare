@@ -64,7 +64,7 @@ const HealthSchema = z.object({
   tts: z.object({ provider: text, supported: z.boolean() }),
   voiceEdge: opt(text), practiceMode: opt(z.boolean()), voiceSpeed: opt(z.number()),
   setupRequired: opt(z.boolean()), firstRun: opt(text), settingsAvailable: opt(z.boolean()),
-  workspaceAvailable: opt(z.boolean()), recoveryAvailable: opt(z.boolean()),
+  workspaceAvailable: opt(z.boolean()), recoveryAvailable: opt(z.boolean()), directActions: opt(z.boolean()),
 });
 export type Health = z.infer<typeof HealthSchema>;
 const DEVICE_USES = ["unidentified", "personal", "shared"] as const;
@@ -78,10 +78,12 @@ export type Settings = z.infer<typeof SettingsSchema>;
 export interface SettingsInput {
   apiKey: string; language: Lang; region: string; speed: number;
   deviceUse: typeof DEVICE_USES[number]; rememberService: boolean; browser: typeof BROWSERS[number];
+  soundSetupComplete?: true;
 }
 const CredentialsSchema = z.object({ token: opt(text), writer: opt(text) });
 const SessionSchema = CredentialsSchema.extend({
   sessionId: text, state: SessionStateSchema, consentRequired: z.boolean(), firstStartupGuide: opt(z.boolean()),
+  firstRunPrompt: opt(z.record(LangSchema, text)),
   speechPrefs: opt(SpeechPrefsSchema), lang: opt(LangSchema), stopGeneration: opt(z.number()),
 });
 export type Session = z.infer<typeof SessionSchema>;

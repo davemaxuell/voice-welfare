@@ -8,6 +8,9 @@ export interface ControlQuery {
   inspection?: boolean; destination?: string; searchField?: string;
   /** 안쪽 문서에서는 확인할 수 있는 조작 이름과 상태만 읽는다. */
   embedded?: boolean;
+  /** 안쪽 문서의 비밀번호는 값 대신 위치와 입력 여부만 반환한다. */
+  passwordHandoff?: boolean;
+  loginSubmit?: boolean;
   semanticOnly?: boolean;
   /** 사용자가 말한 이름을 찾을 때만 행의 본문을 제외하고 전체 문서의 이름을 대조한다. */
   spokenName?: boolean;
@@ -19,7 +22,7 @@ type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 type RefElement = HTMLElement | SVGElement;
 // shadows는 페이지 안에서 알 수 없다(닫힌 shadow root는 스크립트에 보이지 않는다). 어댑터가 브라우저의 DOM 정보로 채운다.
 type PageNotice = Omit<NoticeFacts, "shadows">;
-type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice; planSignature?: string };
+type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice; planSignature?: string; loginSubmit?: {rank:number; signature:string; filled:boolean} };
 type BoundItem = Omit<Item, "role"> & { role: string; fieldId: string };
 type RawObservation = Omit<Observation, "platform" | "capturedAt" | "outline"> &
   { outline?: Omit<ScreenOutline, "screenTarget"> & { screenTarget: ScreenTarget | null } };
@@ -27,6 +30,7 @@ declare global {
   interface Window {
     __cheongeumElementRefs?: WeakMap<RefElement, { ref: string; href: string | null; context?: string }>;
     __cheongeumRefSeq?: number;
+    __cheongeumLoginControls?: WeakSet<Element>;
   }
 }
 
@@ -39,7 +43,21 @@ export function observePage(query: ControlQuery | null = null) {
   const inner = (el: Element) => el instanceof HTMLElement ? el.innerText : "";
   const disabled = (el: Element) => "disabled" in el && el.disabled === true;
   const control = (el: Element | null | undefined): el is Control => el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement;
-  const text = (el: Node | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const passwordSelector = 'input[type="password" i], [autocomplete~="current-password" i], [autocomplete~="new-password" i]';
+  const text = (el: Node | null | undefined) => {
+    if (el instanceof Element && el.closest(passwordSelector)) return '';
+    let value: string;
+    // textarea의 초기값은 글 노드여서 바깥 라벨이나 팝업의 textContent에도 포함된다.
+    if (el instanceof Element && el.querySelector(passwordSelector)) {
+      const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const parts: string[] = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.parentElement?.closest(passwordSelector)) parts.push(node.nodeValue ?? '');
+      }
+      value = parts.join('');
+    } else value = el?.textContent ?? '';
+    return value.replace(/\s+/g, ' ').trim();
+  };
   const isVisible = (el: Element | null | undefined) => {
     if (!el || el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) return false;
     const s = getComputedStyle(el);
@@ -68,15 +86,19 @@ export function observePage(query: ControlQuery | null = null) {
     refs.set(el, { ref, href, context });
     return ref;
   };
-  const fieldLabel = (c: Control) => first(text(c.labels?.[0]),
-    (c.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean).map(id => {
-      const label = document.getElementById(id);
+  const labelledBy = (el: Element) => {
+    const root = el.getRootNode();
+    if (!(root instanceof Document || root instanceof ShadowRoot)) return '';
+    return (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean).map(id => {
+      const label = root.getElementById(id);
       const privateField = 'input, textarea, select, [contenteditable]';
       return label && !label.closest(privateField) && !label.querySelector(privateField) ? text(label) : '';
-    }).join(' ').trim(),
+    }).join(' ').trim();
+  };
+  const fieldLabel = (c: Control) => first(text(c.labels?.[0]), labelledBy(c),
       c.getAttribute('aria-label'), c.getAttribute('title'), c.getAttribute('placeholder'), c.name, '이름 없는 입력란');
-  const sensitiveField = (c: Control) => c.type === 'password' ||
-    c.autocomplete.toLowerCase().split(/\s+/).some(token => ['one-time-code', 'current-password', 'new-password'].includes(token));
+  const passwordField = (c: Control) => c.matches(passwordSelector);
+  const sensitiveField = (c: Control) => passwordField(c) || c.autocomplete.toLowerCase().split(/\s+/).includes('one-time-code');
   const fieldRef = (c: Control, name: string) => refOf(c, JSON.stringify([idOf(c), name, c.type, sensitiveField(c)]));
   if (query?.searchField !== undefined) {
     const id = CSS.escape(query.searchField);
@@ -97,7 +119,7 @@ export function observePage(query: ControlQuery | null = null) {
       signature: JSON.stringify([ref, refOf(form), el.type, el.name, form.action, form.method]) };
   }
   if (query?.semanticOnly === true && Array.from(document.querySelectorAll(
-    'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"]',
+    passwordSelector + ', [autocomplete~="one-time-code" i], [autocomplete^="cc-" i]',
   )).some(isVisible)) return {url:location.href, items:[], more:false};
   const isField = (el: Element): el is Control => control(el) && !['hidden', 'submit', 'button', 'image', 'reset'].includes(el.type);
   const searchField = (c: Control, label: string) => !sensitiveField(c) && (c.type === 'search' || c.getAttribute('role') === 'searchbox' ||
@@ -106,6 +128,7 @@ export function observePage(query: ControlQuery | null = null) {
   const marked = target?.testId === undefined ? undefined
     : Array.from(document.querySelectorAll('[data-testid="' + CSS.escape(target.testId) + '"]')).filter(isVisible);
   const fieldRole = (c: Control) => {
+    if (passwordField(c)) return 'password';
     if (c instanceof HTMLSelectElement) return c.multiple || c.size > 1 ? 'listbox' : 'combobox';
     if (c.type === 'number') return 'spinbutton';
     if (c.type === 'range') return 'slider';
@@ -141,13 +164,15 @@ export function observePage(query: ControlQuery | null = null) {
     .slice(0, 60);
   const fields = controls.map((c) => {
     const isSelect = c instanceof HTMLSelectElement;
-    const type = isSelect ? 'select' : (c.tagName === 'TEXTAREA' ? 'textarea' : first(c.type, 'text'));
+    const type = passwordField(c) ? 'password' : isSelect ? 'select' : (c.tagName === 'TEXTAREA' ? 'textarea' : first(c.type, 'text'));
     const sensitive = sensitiveField(c);
     const isCheck = c instanceof HTMLInputElement && (type === 'checkbox' || type === 'radio');
     let value = '';
-    if (isSelect) value = c.value !== '' && c.selectedIndex >= 0 ? text(c.options[c.selectedIndex]) : '';
-    else if (isCheck) value = c.checked ? '예' : '아니오';
-    else if (!sensitive) value = c.value;
+    if (!sensitive) {
+      if (isSelect) value = c.value !== '' && c.selectedIndex >= 0 ? text(c.options[c.selectedIndex]) : '';
+      else if (isCheck) value = c.checked ? '예' : '아니오';
+      else value = c.value;
+    }
     const errId = c.getAttribute('aria-errormessage');
     const errEl = errId !== null && errId.length > 0 ? document.getElementById(errId) : null;
     const invalid = c.getAttribute('aria-invalid') === 'true';
@@ -168,7 +193,7 @@ export function observePage(query: ControlQuery | null = null) {
     const hint = (c.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
       .map((id) => document.getElementById(id)).filter((el) => el !== null && el !== errEl && isVisible(el)).map(text).join(' ');
     if (hint.length > 0) field.hint = hint.slice(0, 200);
-    if (isSelect) field.options = Array.from(c.options).filter((o) => o.value !== '').map((o) => text(o)).slice(0, 30);
+    if (isSelect && !sensitive) field.options = Array.from(c.options).filter((o) => o.value !== '').map((o) => text(o)).slice(0, 30);
     return field;
   });
   const result: RawObservation = {
@@ -191,8 +216,12 @@ export function observePage(query: ControlQuery | null = null) {
     const img = Array.from(el.querySelectorAll('img[alt]')).find((i) => (i.getAttribute('alt') ?? '').trim().length > 0);
     return img?.getAttribute('alt')?.trim() ?? '';
   };
-  const nameOf = (el: Element) => first(text(el), el.getAttribute('aria-label'), imgAlt(el), el.getAttribute('title'), elementValue(el))
-    .replace(/\s+/g, ' ').trim().slice(0, 60);
+  const nameOf = (el: Element) => {
+    const shown = text(el);
+    // 펼침 화살표·닫기 기호만 보이는 단추는 스크린리더가 읽는 이름으로 찾는다.
+    const label = /[\p{L}\p{N}]/u.test(shown) ? shown : first(labelledBy(el), el.getAttribute('aria-label'), imgAlt(el), el.getAttribute('title'), shown, elementValue(el));
+    return label.replace(/\s+/g, ' ').trim().slice(0, 60);
+  };
   const linkName = nameOf;
   const uniq = (arr: (string | null | undefined)[]) => [...new Set(arr.filter((s): s is string => s !== undefined && s !== null && s.length > 0))];
   const linkNames = linkEls.map(linkName).filter(Boolean);
@@ -370,7 +399,7 @@ export function observePage(query: ControlQuery | null = null) {
     .map((el) => {
       const clone = el.cloneNode(true);
       if (!(clone instanceof Element)) return "";
-      clone.querySelectorAll('script, style, noscript, nav, button, select, [aria-hidden="true"], [hidden], a:not([href^="tel:"])').forEach((n) => n.remove());
+      clone.querySelectorAll(pictureMask + ', script, style, noscript, nav, button, [aria-hidden="true"], [hidden], a:not([href^="tel:"])').forEach((n) => n.remove());
       const rows = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
       while (rows.nextNode()) if (rows.currentNode instanceof Text) rows.currentNode.data = rows.currentNode.data.replace(/\s+/g, ' ');
       clone.querySelectorAll('span').forEach((n) => n.append(' '));
@@ -475,6 +504,7 @@ export function observePage(query: ControlQuery | null = null) {
     };
   };
   const items: Item[] = [];
+  const passwords: ObservedField[] = [];
   let links = 0;
   let others = 0;
   let generics = 0;
@@ -484,7 +514,27 @@ export function observePage(query: ControlQuery | null = null) {
   const needle = compactName(query?.text ?? '');
   const requestedRefs = query?.ref !== undefined && query.ref !== null && query.ref.length > 0 ? [query.ref] : query?.refs;
   const selector = requestedRefs?.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(',');
-  const privateArea = pictureMask + ', [inert], [aria-hidden="true"], [hidden], [role="textbox"], [role="combobox"], [role="searchbox"], form:has(input[type="password"], input[autocomplete="one-time-code"])';
+  const privateArea = pictureMask + ', [inert], [aria-hidden="true"], [hidden], [role="textbox"], [role="combobox"], [role="searchbox"], form:has(' + passwordSelector + ', [autocomplete~="one-time-code" i])';
+  const credentialSubmit = (el: RefElement) => {
+    if (!el.matches('button, input[type="submit"], input[type="button"], [role="button"], a[href]') || el.closest('[inert]') || !isVisible(el)) return;
+    const root = el.getRootNode();
+    if (!(root instanceof Document || root instanceof ShadowRoot)) return;
+    const native = el instanceof HTMLButtonElement || el instanceof HTMLInputElement;
+    const form = native ? el.form : el.closest('form');
+    if (form === null && el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]')) return;
+    const group = 'main,section,article,dialog,[role="main"],[role="form"],[role="dialog"]';
+    const fields = [...root.querySelectorAll(passwordSelector)].filter(control).filter(field => isVisible(field) && field.form === form &&
+      (form !== null || field.closest(group) === el.closest(group)));
+    if (fields.length === 0) return;
+    const label = nameOf(el).replace(/[\s-]+/gu, '').toLowerCase();
+    const submit = native && el.type === 'submit' && form !== null;
+    if (!/^(?:(?:회원|아이디)?로그인(?:하기)?|signin|login)$/u.test(label) && !(submit && /^(?:계속|확인|다음|continue|submit)$/u.test(label))) return;
+    if (el instanceof HTMLAnchorElement && form === null) return;
+    const rank = submit ? 0 : form !== null ? 1 : 2;
+    const signature = JSON.stringify([form ? refOf(form) : null, form?.action, form?.method,
+      el.getAttribute('formaction'), el.getAttribute('formmethod'), el.getAttribute('href'), fields.map(f => refOf(f))]);
+    return {rank, signature, filled:fields.every(field => field.value.length > 0)};
+  };
   function* openElements(root: Element | ShadowRoot): Generator<Element> {
     for (const el of root.querySelectorAll('*')) {
       if (selector === undefined || el.matches(selector)) yield el;
@@ -496,7 +546,15 @@ export function observePage(query: ControlQuery | null = null) {
   for (const el of candidates) {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     const embedded = query?.embedded === true || el.getRootNode() instanceof ShadowRoot;
-    if ((embedded || query?.semanticOnly === true) && (el.closest(privateArea) || el.querySelector(privateArea))) continue;
+    if (embedded && (!query || query.passwordHandoff === true) && control(el) && passwordField(el) && isVisible(el)) {
+      const label = "비밀번호";
+      passwords.push({fieldId:fieldRef(el, label), type:"password", label, visible:true, sensitive:true, required:el.required,
+        filled:el.value.length > 0, value:"", invalid:el.getAttribute("aria-invalid") === "true"});
+    }
+    const loginSubmit = query?.loginSubmit === true ? credentialSubmit(el) : undefined;
+    if (query?.loginSubmit === true && loginSubmit === undefined) continue;
+    const boundLogin = query?.semanticOnly !== true && requestedRefs !== undefined && window.__cheongeumLoginControls?.has(el) === true;
+    if (!loginSubmit && !boundLogin && (embedded || query?.semanticOnly === true) && (el.closest(privateArea) || el.querySelector(privateArea))) continue;
     const standard = el.matches(CANDIDATE);
     if (standard) {
       if (el.classList.contains('skip-link')) continue;
@@ -517,7 +575,7 @@ export function observePage(query: ControlQuery | null = null) {
     if (query?.destination !== undefined && (!(el instanceof HTMLAnchorElement) || el.href !== query.destination)) continue;
     let context = '';
     if (query) {
-      if (target === undefined && (disabled(el) || el.getAttribute('aria-disabled') === 'true') && !(query.spokenName === true && query.exact === true)) continue;
+      if (!loginSubmit && target === undefined && (disabled(el) || el.getAttribute('aria-disabled') === 'true') && !(query.spokenName === true && query.exact === true)) continue;
       // 같은 '자세히 보기' 링크를 어느 제도·표 행에 속하는지로 구분한다. 입력값은 읽지 않는다.
       const row = embedded ? null : el.closest('li, tr, article, [role="row"], [role="listitem"]');
       if (row && !row.closest(pictureMask)) {
@@ -534,6 +592,10 @@ export function observePage(query: ControlQuery | null = null) {
     else others++;
     if (!standard) generics++;
     const item: Item = { ref: refOf(el, query ? context : undefined), role, name, region: regionOf(el), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' };
+    if (loginSubmit) {
+      (window.__cheongeumLoginControls ??= new WeakSet()).add(el);
+      item.loginSubmit = loginSubmit;
+    }
     if (context.length > 0 && context !== name) item.context = context;
     if (el.closest(pictureMask) || el.querySelector(pictureMask)) item.pictureMasked = true;
     if (!embedded && query?.inspection === true) {
@@ -560,7 +622,8 @@ export function observePage(query: ControlQuery | null = null) {
     else if (el.tagName === 'SUMMARY' && el.parentElement) item.expanded = el.parentElement instanceof HTMLDetailsElement && el.parentElement.open;
     items.push(item);
   }
-  if (query) return {url: location.href, items, more: matching > (query.offset ?? 0) + items.length};
+  if (query) return {url: location.href, items, more: matching > (query.offset ?? 0) + items.length,
+    ...(passwords.length > 0 ? {passwords} : {})};
   const landmarkNames: Record<string, string> = { HEADER: '머리말', NAV: '탐색 메뉴', MAIN: '본문', ASIDE: '보조 영역', FOOTER: '꼬리말', FORM: '입력 양식' };
   const landmarks = uniq(Array.from(document.querySelectorAll('header, nav, main, aside, footer, [role="banner"], [role="navigation"], [role="main"], [role="search"], [role="contentinfo"]'))
     .filter(isVisible)
@@ -581,7 +644,7 @@ export function observePage(query: ControlQuery | null = null) {
       .map((n) => ({ label: n.getAttribute('aria-label') ?? '', text: text(n).slice(0, 300) })).filter((n) => n.text.length > 0).slice(0, 5),
     steps,
     buttons: Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]')).filter((el) => isVisible(el) && !inDialog(el))
-      .map((el) => ({ name: first(text(el), el.getAttribute('aria-label'), elementValue(el)).slice(0, 60), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' }))
+      .map((el) => ({ name: nameOf(el), disabled: !!disabled(el) || el.getAttribute('aria-disabled') === 'true' }))
       .filter((x) => x.name.length > 0).slice(0, 80),
     links: linkNames.slice(0, 300),
     linkCount: linkNames.length,
@@ -606,5 +669,5 @@ export function observePage(query: ControlQuery | null = null) {
   }
   const status = Array.from(document.querySelectorAll('[role="status"]')).filter(isVisible).map(text).filter(Boolean).join(' ').slice(0, 300);
   if (status.length > 0) result.status = status;
-  return result;
+  return passwords.length > 0 ? {...result, passwords} : result;
 }

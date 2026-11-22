@@ -100,7 +100,7 @@ it("guided auth redirects ask the new site for vault permission", async () => {
   const after = page([field1, field("contact", "인증번호", {type: "password"})], "https://other.example.org/form");
   setView(after);
   await web.observe(ctx);
-  const question = guided.resumeAfterAuth(after);
+  const question = await guided.resumeAfterAuth(after, ctx);
   expect(question).toContain("other.example.org에 저장된 내 정보를 쓸까요");
   expect(question).not.toContain("김하늘");
   expect(dialogue.guided?.fieldIds).toEqual(["name"]);

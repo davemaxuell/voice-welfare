@@ -3,7 +3,7 @@ import { approval, commandKey, doneReply } from "../core/lexicon.ts";
 import { PUBLIC_AGENCIES } from "../core/sites.ts";
 import { rstripChars } from "../core/text.ts";
 import { isPictureRequest, isProgressQuestion, isStopUtterance, type IntentContext, type RuleBasedIntentProvider } from "./rules.ts";
-import { isSiteName } from "./sites.ts";
+import { isSiteName, namedSiteCommand } from "./sites.ts";
 
 /** 안전 명령과 등록된 예문은 모델을 거치지 않고 사용자가 한 말에서 바로 판정한다. */
 const COMMANDS = new Map<IntentType, ReadonlySet<string>>(INTENTS.filter(spec => spec.type !== "UNKNOWN")
@@ -37,6 +37,10 @@ export function fastIntent(text: string, ctx: IntentContext, rules: RuleBasedInt
     if (answer !== undefined) return { type: answer === "approve" ? "APPROVE" : "REJECT" };
   }
   if (ctx.state === "AUTH_HANDOFF" && doneReply(text)) return rules.parseSync(text, ctx);
+  if (ctx.awaitingFieldId === undefined && ["IDLE", "BROWSING", "NEEDS_CLARIFICATION"].includes(ctx.state)) {
+    const explicitSite = namedSiteCommand(text);
+    if (explicitSite !== undefined) return explicitSite;
+  }
   if (REGISTERED.has(commandKey(text)) || isSiteName(text)) {
     const intent = rules.parseSync(text, ctx);
     if (intent.type !== "UNKNOWN") return intent;

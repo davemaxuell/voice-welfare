@@ -382,15 +382,15 @@ it("test_timed_out_mock_submit_that_went_through_reports_the_receipt", async () 
   expect(result.verification?.receipt).toMatch(/^MOCK-\d{8}-\d{4}$/u);
 });
 
-it("test_timed_out_low_risk_click_is_retried_once", async () => {
+it("test_timed_out_click_that_reached_the_site_is_not_dispatched_twice", async () => {
   const session = await openForm();
   for (const said of filled) {
     await session.handleTurn(said);
   }
-  const clicks = timeOutFirst(session, "다음");
-  const result = await session.handleTurn("다음으로");
-  expect(clicks.length).toBe(2);
-  expect(result.observation?.step?.index).toBe(2);
+  const clicks = timeOutFirst(session, "다음", true);
+  await session.handleTurn("다음으로");
+  expect(clicks).toHaveLength(1);
+  expect((await session.web.adapter.observe()).step?.index).toBe(2);
 });
 
 it("test_cancel_drops_a_pending_vault_save_and_says_so", async () => {
@@ -413,6 +413,7 @@ it("test_vault_and_records_wait_while_stopped", async () => {
   await session.handleTurn("멈춰");
   const read = await session.handleTurn("내 정보 알려줘");
   expect(read.state).toBe("STOPPED");
+  expect(read.localSpeechOnly).toBe(true);
   expect(read.speech).toContain("중단 상태");
   expect(read.speech).not.toContain("최하늘");
   const recorded = await session.handleTurn("주거급여 신청했어");
@@ -424,6 +425,7 @@ it("test_vault_and_records_wait_for_consent", async () => {
   const { session } = await runtime.createBrowserSession({ requireConsent: true });
   const save = await session.handleTurn("내 이름은 김하늘이라고 저장해줘");
   expect(save.speech).toContain("동의해 주세요");
+  expect(save.localSpeechOnly).toBe(true);
   expect(save.state).toBe("AWAITING_CONSENT");
   await session.handleTurn("응");
   const record = await session.handleTurn("기초연금 신청했어 접수번호는 AB12345");

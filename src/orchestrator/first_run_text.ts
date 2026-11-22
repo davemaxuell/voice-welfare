@@ -96,19 +96,19 @@ export const INTRO = [
   [
     "confirmation",
     {
-      "ko": "신청서 입력도 도와드려요. 누르기 전에는 꼭 여쭤볼게요.",
-      "en": "I help fill in application forms too, and I always ask before I press anything.",
-      "zh": "我也会帮您填写申请表，按下之前一定会先问您。",
-      "ja": "申請書の入力もお手伝いします。押す前には必ずお聞きします。"
+      "ko": "말씀하신 항목을 누르고 신청서에 값을 넣어 드려요.",
+      "en": "I can click the item you ask for and fill in your application.",
+      "zh": "我可以按您的要求点击页面上的项目并填写申请表。",
+      "ja": "ご指定の項目を押したり、申請書に入力したりできます。"
     }
   ],
   [
     "auth-handoff",
     {
-      "ko": "본인인증과 진짜 제출은 직접 하시도록 넘겨 드려요.",
-      "en": "Identity checks and real submissions are yours to do, so I hand those over to you.",
-      "zh": "身份验证和正式提交由您亲自完成，我会交给您。",
-      "ja": "本人確認と本当の提出はご自身でできるようにお渡しします。"
+      "ko": "비밀번호 입력과 본인 인증은 사이트에서 직접 해 주세요.",
+      "en": "Enter your password and complete identity checks directly on the website.",
+      "zh": "请在网站上亲自输入密码、完成身份验证。",
+      "ja": "パスワードの入力と本人確認は、サイト上でご自身で行ってください。"
     }
   ],
   [

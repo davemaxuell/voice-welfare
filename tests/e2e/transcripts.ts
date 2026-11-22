@@ -54,11 +54,11 @@ export interface TranscriptSession {
   close(): Promise<void>;
 }
 export type OpenTranscript = (options: Header) => Promise<TranscriptSession>;
-const runtime = createTestRuntime();
+const runtime = createTestRuntime({ browserDriver: "playwright" });
 export const openRecordedSession = openBrowserTranscript(runtime);
 export const closeTranscriptRuntime = runtime.close;
 
-const publicTaskPrompt = "b1643521d29d4b8799081706b74f71bf9b5a11149308ee117f29154a68784955";
+const publicTaskPrompt = "107a4430968baaa5a5663b5cfdda43a4a7a5ebf3e824d35cefaf0c9cbd8c4476";
 // 원본 녹취에 쓰인 프롬프트만 새 해시로 옮긴다. 실제 호출의 프롬프트와 입력은 그대로 대조한다.
 const promptRevisions = new Map([
   ["public_service_decision/22a52d57ec64dd88f4e0a766ac2e27544d66000b9d8d5de14575c47c23251d49", publicTaskPrompt],
@@ -76,7 +76,6 @@ const browserIntakeTurns = new Map([
   [conversationCase + "test_planner_understands_what_rules_miss[LIST_LINKS]", 4],
   [conversationCase + "test_planner_understands_what_rules_miss[READ_MAIN]", 4],
   [conversationCase + "test_planner_understands_what_rules_miss[REPHRASE]", 4],
-  [conversationCase + "test_planner_understands_what_rules_miss[SEARCH]", 4],
   [conversationCase + "test_rephrase_that_changes_a_number_repeats_the_original", 2],
   [conversationCase + "test_summary_with_unknown_number_dropped", 2],
 ]);
@@ -91,6 +90,11 @@ export function loadTranscript(base: URL, entry: IndexEntry) {
   const turns = rest.map(line => turn.parse(JSON.parse(line)));
   for (const row of turns) {
     for (const call of row.llm) call.systemHash = promptRevisions.get(`${call.schemaName}/${call.systemHash}`) ?? call.systemHash;
+    // 보관함 요청은 동의 대기나 중단 상태에서 거절할 때도 로컬에서만 읽는다.
+    if ((row.result.state === "AWAITING_CONSENT" || row.result.state === "STOPPED") &&
+        typeof row.result.intentType === "string" && row.result.intentType.startsWith("PERSONAL_VAULT_")) {
+      row.result.localSpeechOnly = true;
+    }
   }
   const intakeTurn = browserIntakeTurns.get(entry.case);
   if (intakeTurn !== undefined) {

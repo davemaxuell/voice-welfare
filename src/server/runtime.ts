@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Browser, BrowserContext } from "playwright";
 import { WebExecutionAgent } from "../agents/web/agent.ts";
-import { launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../agents/web/browser/index.ts";
+import { closeLaunchedBrowser, launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../agents/web/browser/index.ts";
 import { browserDriver } from "../agents/web/browser/stagehand_browser.ts";
 import { DownloadStore } from "../agents/web/downloads.ts";
 import { createMockWelfareProfile, fieldVocabulary } from "../agents/web/profile.ts";
@@ -104,12 +104,13 @@ export function loadConfig(env: Env = process.env) {
     extraAllowedOrigins,
     headless,
     slowMoMs: Math.trunc(decimal(env.BROWSER_SLOWMO_MS) ?? 0),
-    requireConsent: env.REQUIRE_CONSENT !== "false",
+    requireConsent: env.REQUIRE_CONSENT === "true",
+    directActions: env.REQUIRE_ACTION_CONFIRMATION !== "true",
     practiceMode: env.PRACTICE_MODE !== "false",
     pilotProfile,
     dataDir: pilotProfile === "personal" ? blank(env.CHEONGEUM_DATA_DIR) : undefined,
     personalDataDir: blank(env.CHEONGEUM_DATA_DIR),
-    browserDriver: browserDriver(env.BROWSER_DRIVER ?? "playwright"),
+    browserDriver: browserDriver(env.BROWSER_DRIVER ?? "stagehand"),
     browserMode: pilotProfile === "personal" && env.BROWSER_MODE === "chrome" ? ("chrome" as const) : ("chromium" as const),
     chromeProfileDir: blank(env.CHROME_PROFILE_DIR) ?? join(homedir(), ".cheongeum", "chrome-profile"),
     readOnlyWeb: env.READ_ONLY_WEB !== "false",
@@ -346,7 +347,7 @@ export class AgentRuntime {
         ],
         allowedFieldIds: background ? [] : profile.fields.filter(f => f.sensitivity !== "secret").map(f => f.fieldId),
         secretFieldIds: background ? [] : profile.fields.filter(f => f.sensitivity === "secret").map(f => f.fieldId),
-        maxActionsPerTurn: 32, defaultActionsPerTurn: 12, publicLookupOnly: background,
+        maxActionsPerTurn: 32, defaultActionsPerTurn: 12, publicLookupOnly: background, directActions: cfg.directActions && !background,
         safeButtons: [profile.buttons.next, profile.buttons.prev, ...profile.buttons.dismissDialog],
         readOnlyWeb, readOnlyClicks: background ? "safe" : cfg.readOnlyClicks,
       });
@@ -384,10 +385,10 @@ export class AgentRuntime {
   async close() {
     this.closed = true;
     await Promise.allSettled([
-      this.chrome?.then((c) => c.close()),
-      this.browser?.then((b) => b.close()),
+      this.chrome?.then(closeLaunchedBrowser),
+      this.browser?.then(closeLaunchedBrowser),
       this.pii?.close(),
-      this.workerBrowser?.then(browser => browser.close()),
+      this.workerBrowser?.then(closeLaunchedBrowser),
       this.connections.close(),
     ]);
   }

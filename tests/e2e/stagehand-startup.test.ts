@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { chromium, type BrowserContext } from "playwright";
 import { expect, it } from "vitest";
 import { attachStagehand, stagehandLaunchOptions, stagehandTab } from "../../src/agents/web/browser/stagehand_browser.ts";
+import { closeLaunchedBrowser } from "../../src/agents/web/browser/index.ts";
 
 async function withProfile(work: (context: BrowserContext, marker: string, record: string) => Promise<void>) {
   const profile = await mkdtemp(join(tmpdir(), "cheongeum-cdp-test-"));
@@ -15,7 +16,7 @@ async function withProfile(work: (context: BrowserContext, marker: string, recor
       const read = () => readFile(marker, "utf8").catch(() => "");
       await expect.poll(read, { timeout: 10_000 }).toMatch(/\/devtools\/browser\/[\da-f-]{36}/u);
       await work(context, marker, await read());
-    } finally { await context.close(); }
+    } finally { await closeLaunchedBrowser(context); }
   } finally { await rm(profile, { recursive: true, force: true }); }
 }
 

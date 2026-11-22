@@ -79,6 +79,10 @@ export const PUBLIC_SITES: readonly KnownSite[] = [
     ["코레일", "레츠코레일", "korail"], "https://www.letskorail.com", "코레일",
     "기차표를 예매하는 한국철도공사 사이트",
   ),
+  knownSite(
+    ["하이코리아", "Hi Korea"], "https://www.hikorea.go.kr/Main.pt", "하이코리아",
+    "외국인의 출입국 민원과 방문 예약을 안내하는 법무부 누리집",
+  ),
 ];
 
 export const KNOWN_SITES: readonly KnownSite[] = [
@@ -110,7 +114,7 @@ export const KNOWN_SITES: readonly KnownSite[] = [
 ];
 
 export const PUBLIC_AGENCIES: ReadonlyMap<string, KnownSite> = new Map(PUBLIC_SITES.map(site => [site.label, site]));
-export const PUBLIC_ORIGINS: ReadonlySet<string> = new Set(PUBLIC_SITES.map(site => site.url.replace(/\/+$/u, "")));
+export const PUBLIC_ORIGINS: ReadonlySet<string> = new Set(PUBLIC_SITES.map(site => new URL(site.url).origin));
 
 /** 공공 누리집으로 볼 수 있는 주소인지. https, 기본 포트, 계정 정보 없음에 `.go.kr` 도메인이거나 알려진 공공 누리집이다. */
 export function isOfficialPortal(url: { href: string; protocol: string; hostname: string; port: string; origin: string }): boolean {
