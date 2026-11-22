@@ -1315,7 +1315,7 @@ function startReminders() {
     publishDesktop();
     push({ role: "assistant", text: t("알림: {message}", { message: text }) });
     await cue("reminder");
-    void speakAndWait(t("알림이에요. {message} 들으셨으면 '알겠어'라고 해 주세요.", { message: text }));
+    void speakTurn({speech: "", localSpeechOnly: true});
   };
   void check();
   reminderTimer = setInterval(() => void check(), 60 * 60 * 1000);
@@ -1339,7 +1339,7 @@ export async function send(text: string, options: { actionId?: string; controlLa
     if (due != null && due.length > 0) {
       reminderSeen = `${new Date().toDateString()}|${due}`;
       push({ role: "assistant", text: due });
-      if (ui.tts) speak(due);
+      if (ui.tts) void speakTurn({speech: "", localSpeechOnly: true});
     }
     return;
   }

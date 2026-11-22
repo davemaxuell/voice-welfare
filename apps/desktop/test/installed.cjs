@@ -19,12 +19,39 @@ async function waitForShutdown(origin) {
   }, { what: 'local server to exit' });
 }
 
+async function verifyLiveSpeech(origin, voice) {
+  const text = '청음의 음성 읽기를 확인합니다.';
+  const start = voice.readings.length;
+  const response = await fetch(origin + '/api/audio/speak', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, lang: 'ko' }), signal: AbortSignal.timeout(25_000),
+  });
+  assert.equal(voice.legacySpeechRequests, 0, 'all read-aloud requests use Live sessions');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'audio/wav');
+  const audio = Buffer.from(await response.arrayBuffer());
+  assert.equal(audio.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(audio.toString('ascii', 8, 16), 'WAVEfmt ');
+  assert.equal(audio.readUInt16LE(20), 1, 'PCM');
+  assert.equal(audio.readUInt16LE(22), 1, 'mono');
+  assert.equal(audio.readUInt32LE(24), 24000);
+  assert.equal(audio.readUInt16LE(34), 16);
+  assert.equal(audio.toString('ascii', 36, 40), 'data');
+  assert.equal(audio.length, 44 + audio.readUInt32LE(40));
+  assert.equal(audio.readUInt32LE(4), audio.length - 8);
+  const samples = new Int16Array(audio.buffer, audio.byteOffset + 44, audio.readUInt32LE(40) / 2);
+  assert.ok(samples.includes(4096), 'returned WAV contains the provider tone');
+  assert.ok(voice.readings.slice(start).includes(text), 'provider received the requested Korean text');
+  const health = await (await fetch(origin + '/api/health')).json();
+  assert.deepEqual(health.tts, { provider: 'gpt-live-1.1(coral)', supported: true });
+}
+
 async function main() {
   assert.ok(process.argv[2], 'Pass the path to the installed Cheongeum executable.');
   const exe = fs.realpathSync(process.argv[2]);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cheongeum-install-'));
   const profile = path.join(dir, 'profile');
-  const args = [`--user-data-dir=${profile}`];
+  const args = [`--user-data-dir=${profile}`, '--proxy-server=http://127.0.0.1:9'];
   const env = {};
   for (const key of ['SystemRoot', 'WINDIR', 'SystemDrive', 'COMSPEC', 'ProgramFiles', 'ProgramFiles(x86)',
     'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'HOME', 'TMP', 'TEMP', 'TMPDIR', 'LANG']) {
@@ -35,6 +62,7 @@ async function main() {
     PATH: process.platform === 'win32' ? path.join(env.SystemRoot, 'System32') : '/usr/bin:/bin',
     CHEONGEUM_PYTHON: missing, PYTHONHOME: missing, PYTHONPATH: missing, PLAYWRIGHT_BROWSERS_PATH: missing,
     HF_HUB_OFFLINE: '1', HF_HOME: path.join(dir, 'hf'),
+    NODE_ENV: 'test', CHEONGEUM_SETTINGS_DIR: profile,
   });
   const silence = wav(new Array(16000).fill(0), 16000);
   const fakeMic = path.join(dir, 'silent.wav');
@@ -48,10 +76,24 @@ async function main() {
   let app;
   let origin;
   const voice = await fakeVoice();
+  const configureVoice = () => fs.writeFileSync(path.join(profile, 'settings.env'), `PRACTICE_MODE=true\nLLM_PROVIDER=mock\nVOICE_API_KEY=fake\nVOICE_BASE_URL=${voice.url}\n`);
   try {
+    fs.mkdirSync(profile);
+    if (process.argv.includes('--live-speech')) {
+      configureVoice();
+      app = await launch();
+      assert.ok(await app.evaluate(({ app }) => app.isPackaged));
+      const controller = await windowWhere(app, url => url.includes('desktop=1'));
+      origin = new URL(controller.url()).origin;
+      assert.equal(new URL(origin).hostname, '127.0.0.1');
+      await verifyLiveSpeech(origin, voice);
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      assert.equal(version, require('../package.json').version);
+      console.log(`PASS installed ${version}: /api/audio/speak returned Korean gpt-live-1.1(coral) read-aloud audio as mono 24 kHz PCM WAV over a loopback Live session`);
+      return;
+    }
     busy.listen(0, '127.0.0.1');
     await once(busy, 'listening');
-    fs.mkdirSync(profile);
     fs.writeFileSync(path.join(profile, 'service-port'), String(busy.address().port));
     app = await launch();
     assert.ok(await app.evaluate(({ app }) => app.isPackaged));
@@ -133,7 +175,7 @@ async function main() {
     await app.close();
     app = null;
     await waitForShutdown(origin);
-    fs.writeFileSync(path.join(profile, 'settings.env'), `PRACTICE_MODE=true\nVOICE_API_KEY=fake\nVOICE_BASE_URL=${voice.url}\n`);
+    configureVoice();
     const hardware = process.env.CHEONGEUM_TEST_HARDWARE === '1';
     app = await launch(hardware);
     const restarted = await windowWhere(app, (url) => url.includes('desktop=1'));
@@ -147,10 +189,11 @@ async function main() {
     assert.equal((await (await fetch(origin + '/api/settings')).json()).region, '부산광역시');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('desktop=1')).show());
     await restarted.locator('#consent-yes').waitFor({ timeout: 60_000 });
-    assert.equal(voice.speeches, 0, 'a returning user is never read the startup guide automatically');
+    assert.equal(voice.readings.length, 0, 'a returning user is never read the startup guide automatically');
     await restarted.locator('#consent-panel summary').click();
     await restarted.locator('#consent-full').click();
-    await until(() => voice.speeches > 0, { what: 'explicit startup guide replay' });
+    await until(() => voice.readings.length > 0, { what: 'explicit startup guide replay' });
+    await verifyLiveSpeech(origin, voice);
     const consentReply = restarted.waitForResponse((r) => new URL(r.url()).pathname.endsWith('/consent'));
     await restarted.locator('#consent-yes').click({ timeout: 60_000 });
     assert.ok((await (await consentReply).json()).sessionId);

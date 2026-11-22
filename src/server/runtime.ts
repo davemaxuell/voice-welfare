@@ -88,7 +88,7 @@ export function loadConfig(env: Env = process.env) {
   const voice: VoiceConfig = {
     ...VOICE_DEFAULTS, apiKey: blank(env.VOICE_API_KEY) ?? (officialVoice ? openaiKey ?? (officialLlm ? llm.apiKey : undefined) : undefined),
     baseUrl: voiceUrl ?? VOICE_DEFAULTS.baseUrl, sttModel: blank(env.STT_MODEL) ?? VOICE_DEFAULTS.sttModel,
-    liveModel: blank(env.VOICE_LIVE_MODEL) ?? VOICE_DEFAULTS.liveModel,
+    mockVoice: env.LLM_PROVIDER === "mock",
     ttsSpeed: speed !== undefined && speed > 0 ? Math.min(4, Math.max(0.25, speed)) : VOICE_DEFAULTS.ttsSpeed,
   };
   const pilotProfile = env.PILOT_PROFILE === "shared" || env.PILOT_PROFILE === "personal" ? env.PILOT_PROFILE : "unidentified";
