@@ -3,10 +3,9 @@ import { expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 import { createVoiceProviders, VOICE_DEFAULTS } from "../../src/voice/config.ts";
 import { VoiceEdge } from "../../src/server/voice_edge.ts";
-import { VoiceProviderError } from "../../src/voice/errors.ts";
 import { HandshakeRejected, LiveTranscriber, SAMPLE_RATE, SocketClosed, connectSocket, type SocketConnect, type UpstreamSocket } from "../../src/voice/live.ts";
 import { STT_PROMPT, audioExtension, isPromptEcho, isHallucination, OpenAISttProvider, sttPatterns } from "../../src/voice/stt.ts";
-import { OpenAITtsProvider } from "../../src/voice/tts.ts";
+import { LiveSpeechProvider } from "../../src/voice/live_speech.ts";
 import { fakeFetch } from "../helpers.ts";
 
 const cfg = { apiKey: "sk-test", baseUrl: "https://api.openai.com/v1", model: "stt-model" };
@@ -57,39 +56,17 @@ it("gpt-transcribe gets languages and keywords instead of one language and a pro
   await korean.stt.transcribe(audio, ko);
   expect((await korean.calls[0]!.formData()).get("prompt")).toBe(STT_PROMPT);
 });
-it("test_tts_body_and_mp3", async () => {
-  const fetcher = fakeFetch(() => new Response(new Uint8Array([1, 2, 3])));
-  const tts = new OpenAITtsProvider({ ...cfg, model: "tts-model", voice: "coral", instructions: "천천히", fetch: fetcher });
-  expect(await tts.synthesize("안녕하세요", ko)).toEqual({ audio: new Uint8Array([1, 2, 3]), mimeType: "audio/mpeg" });
-  expect(await fetcher.calls[0]!.json()).toEqual({ model: "tts-model", voice: "coral", input: "안녕하세요", response_format: "mp3", instructions: "천천히" });
-});
-function speedOf(body: unknown) {
-  return typeof body === "object" && body !== null && "speed" in body ? body.speed : undefined;
-}
-it("네 언어의 안내와 실시간 대화가 같은 목소리와 말투를 사용한다", async () => {
-  const fetcher = fakeFetch(() => new Response(new Uint8Array([1])));
-  const [stt, tts] = createVoiceProviders({ apiKey: "test", ttsVoice: "coral", ttsInstructions: "A calm and friendly voice.", ttsSpeed: 1.1 }, fetcher);
-  for (const language of ["ko", "en", "zh", "ja"]) {
-    await tts.synthesize("안내", { language });
-    expect(await fetcher.calls.at(-1)!.json()).toMatchObject({ voice: "coral", instructions: "A calm and friendly voice.", speed: 1.1 });
-  }
+it("passes one speech profile to the GPT Live reader and conversation", () => {
+  const [stt, tts] = createVoiceProviders({ apiKey: "test", ttsVoice: "coral", ttsInstructions: "A calm and friendly voice.", ttsSpeed: 1.1 });
+  expect(tts).toBeInstanceOf(LiveSpeechProvider);
+  expect(tts.speed).toBe(1.1);
   const provider = new VoiceEdge().provider(stt, tts.profile);
   expect(provider).toHaveProperty("voice", "coral");
   expect(provider).toHaveProperty("instructions", "A calm and friendly voice.");
 });
-it("test_server_tts_follows_saved_pace", async () => {
-  const fetcher = fakeFetch(() => new Response(new Uint8Array([1])));
-  const tts = new OpenAITtsProvider({ ...cfg, model: "m", voice: "coral", speed: 1.1, fetch: fetcher });
-  await tts.synthesize("안녕하세요", { language: "ko", pace: 0.9 / 1.25 });
-  await tts.synthesize("안녕하세요", { language: "ko" });
-  const [slow, normal] = await Promise.all(fetcher.calls.map(async call => speedOf(await call.json())));
-  expect(slow).toBeCloseTo(1.1 * 0.72);
-  expect(normal).toBeCloseTo(1.1);
-});
 it("test_provider_error_status_only", async () => {
   const fetcher = fakeFetch(() => new Response('{"error":"bad"}', { status: 401 }));
   await expect(new OpenAISttProvider({ ...cfg, fetch: fetcher }).transcribe(audio, ko)).rejects.toMatchObject({ status: 401, message: "voice provider error (HTTP 401)" });
-  await expect(new OpenAITtsProvider({ ...cfg, voice: "coral", fetch: fetcher }).synthesize("음성", ko)).rejects.toBeInstanceOf(VoiceProviderError);
 });
 it("test_one_key_enables_both_api_providers", () => {
   expect(createVoiceProviders({}).map(p => p.supported)).toEqual([false, false]);
@@ -97,7 +74,7 @@ it("test_one_key_enables_both_api_providers", () => {
 });
 it("test_edge_selection_is_endpoint_and_key_specific", () => {
   const cases: Array<[{ apiKey?: string; liveModel?: string; baseUrl?: string }, string | undefined]> = [
-    [{}, undefined], [{ apiKey: "dummy" }, "gpt-live-1.1"], [{ apiKey: "dummy", liveModel: "gpt-live-transcribe" }, undefined],
+    [{}, undefined], [{ apiKey: "dummy" }, "gpt-live-1.1"], [{ apiKey: "dummy", liveModel: "gpt-live-transcribe" }, "gpt-live-1.1"],
     [{ apiKey: "dummy", baseUrl: "https://custom.example/v1" }, undefined],
   ];
   for (const [config, expected] of cases) {
@@ -112,7 +89,7 @@ it("legacy local settings use only the authenticated API with the shared base UR
   expect([stt.baseUrl, tts.baseUrl, tts.speed]).toEqual([VOICE_DEFAULTS.baseUrl, VOICE_DEFAULTS.baseUrl, 1.35]);
   expect(stt instanceof OpenAISttProvider ? stt.model : "").toBe("gpt-transcribe");
   expect(() => new OpenAISttProvider({ ...cfg, apiKey: "" })).toThrow("받아쓰기 API 키가 필요합니다.");
-  expect(() => new OpenAITtsProvider({ ...cfg, apiKey: "", voice: "coral" })).toThrow("음성 합성 API 키가 필요합니다.");
+  expect(() => new LiveSpeechProvider({ ...cfg, apiKey: "", voice: "coral" })).toThrow("음성 합성 API 키가 필요합니다.");
 });
 it("test_audio_extension", () => {
   // Python audio_extension으로 계산한 값

@@ -340,7 +340,8 @@ export class SessionOrchestrator {
       // 첫 실행이면 시작 인사 뒤에 음성 단계(마이크 확인부터, 또는 끊긴 단계)를 묻는다
       const setup = this.firstRun.begin();
       const tail = setup !== undefined && setup.length > 0 ? ` ${setup}` : due === undefined ? "" : ` 알려 드릴 게 있어요. ${due}`;
-      return this.finish(turn, draft("IDLE", "consent", `${hello} 시작할게요.${tail}`));
+      return this.finish(turn, draft("IDLE", "consent", `${hello} 시작할게요.${tail}`,
+        {privateHistory: due !== undefined && (setup === undefined || setup.length === 0)}));
     });
   }
 

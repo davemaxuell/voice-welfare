@@ -76,7 +76,7 @@ npm run start:desktop
 | `LLM_VISION_MODEL`, `LLM_VISION_DETAIL` | `gpt-6.1-terra`, `high` | 화면 사진 설명과 사용자가 허용한 시각 탐색에 사용합니다. |
 | `LLM_WEB_MODEL`, `LLM_RECOVERY_MODEL` | `gpt-6-luna`, `gpt-6.2-astra` | 짧은 요약·재표현과, 근거 확인에 반복해서 실패한 업무의 재계획을 맡습니다. |
 | `LLM_FILE_PROVIDER`, `LLM_FILE_MODEL`, `LLM_FILE_BASE_URL`, `LLM_FILE_API_KEY`, `LLM_FILE_REASONING_EFFORT` | 각각 기본 LLM 설정 | 파일 분석은 `openai`에서 사용합니다. PDF와 이미지를 지원하는 상위 모델 ID를 `LLM_FILE_MODEL`에 지정하세요. 시간 제한은 120초입니다. |
-| `OPENAI_API_KEY`, `VOICE_API_KEY`, `VOICE_LIVE_MODEL` | 키 없음, `gpt-live-1.1` | 대화 모드의 WebRTC 음성 모델. 한 번씩 말하는 받아쓰기에는 `gpt-live-transcribe`를 사용합니다. |
+| `OPENAI_API_KEY`, `VOICE_API_KEY` | 키 없음 | 실시간 대화와 안내 낭독에는 `gpt-live-1.1`을 사용합니다. 키를 등록하기 전에는 같은 모델로 녹음한 설정 안내를 재생합니다. 한 번씩 말하는 받아쓰기에는 `gpt-live-transcribe`를 사용합니다. |
 | `STT_MODEL` | `gpt-transcribe` | 사용자가 직접 선택한 녹음 파일을 받아씁니다. |
 | `CHEONGEUM_DATABASE_URL` | 로컬 SQLite | PostgreSQL 연결 문자열을 지정하면 개인 기기의 백그라운드 조사와 명시적으로 저장한 메모를 PostgreSQL과 pgvector에 보관합니다. |
 | `PII_MODEL`, `PII_THRESHOLD` | 경로 없음, `0.5` | 개인정보는 먼저 규칙으로 찾습니다. `npm run setup-models`로 받은 `models/koelectra-ko-pii-ner`를 지정하면 이 PC에서 ONNX 모델의 탐지 결과도 함께 가립니다. |

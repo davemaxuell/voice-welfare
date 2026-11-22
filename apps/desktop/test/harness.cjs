@@ -63,12 +63,50 @@ function micFile(dir, { seconds = 40, burstAt = 9 } = {}) {
   return file;
 }
 
+// Read the developer's seeded message and send PCM only while the client streams silent input.
+function readLiveSpeech(ws, state) {
+  let phrase;
+  let frames = 0;
+  ws.on('message', data => {
+    const event = JSON.parse(data);
+    if (event.type === 'session.start') {
+      const session = event.session;
+      const item = session?.input?.[0];
+      const content = item?.content?.[0];
+      const quoted = typeof content?.text === 'string' && /<say>([^<]*)<\/say>/.exec(content.text);
+      if (phrase !== undefined || session?.model !== 'gpt-live-1.1' || session.store !== false || session.audio?.output?.voice !== 'coral'
+        || session.audio.format?.type !== 'audio/pcm' || session.audio.format.rate !== 24000 || item?.type !== 'message'
+        || item.role !== 'developer' || content?.type !== 'input_text' || !quoted) {
+        return ws.close(1008, 'invalid seeded Live speech session');
+      }
+      const entities = { '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&apos;': "'" };
+      phrase = quoted[1].replace(/&(lt|gt|amp|quot|apos);/g, entity => entities[entity]);
+      ws.send(JSON.stringify({ type: 'session.started' }));
+    } else if (event.type === 'session.input_audio.append' && phrase !== undefined) {
+      const input = Buffer.from(event.audio ?? '', 'base64');
+      if (input.length !== 4800 || input.some(byte => byte !== 0)) return ws.close(1008, 'expected 100 ms of silent 24 kHz PCM');
+      if (++frames !== 2) return;
+      state.readings.push(phrase);
+      const rate = 24000;
+      const pcm = Buffer.alloc(2 * Math.round(rate * state.speechMs / 1000));
+      for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(4096 * Math.sin(2 * Math.PI * 220 * i / rate)), i * 2);
+      ws.send(JSON.stringify({ type: 'session.output_transcript.delta', delta: phrase, start_ms: 0, end_ms: state.speechMs }));
+      for (const block of [pcm, Buffer.alloc(2 * rate * 1.4)]) {
+        ws.send(JSON.stringify({ type: 'session.output_audio.delta', delta: block.toString('base64') }));
+      }
+    } else if (event.type === 'session.close') {
+      ws.close();
+    } else {
+      ws.close(1008, 'unexpected Live speech event');
+    }
+  });
+}
+
 /** 가짜 OpenAI 호환 음성 서버: 받아쓰기는 줄 세운 글을 차례로, 합성은 speechMs 길이의 조용한 소리. */
 async function fakeVoice() {
-  const state = { said: [], transcriptions: 0, liveFrames: 0, liveCommits: 0, speeches: 0, speechMs: 1200 };
+  const state = { said: [], transcriptions: 0, liveFrames: 0, liveCommits: 0, readings: [], legacySpeechRequests: 0, speechMs: 1200 };
   const server = http.createServer((req, res) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    req.resume();
     req.on('end', () => {
       if (req.url === '/v1/audio/transcriptions') {
         state.transcriptions += 1;
@@ -77,13 +115,7 @@ async function fakeVoice() {
         return;
       }
       if (req.url === '/v1/audio/speech') {
-        state.speeches += 1;
-        const rate = 16000;
-        const x = new Float32Array(Math.round((rate * state.speechMs) / 1000));
-        for (let i = 0; i < x.length; i++) x[i] = 0.02 * Math.sin((2 * Math.PI * 220 * i) / rate);
-        res.setHeader('Content-Type', 'audio/wav');
-        res.end(wav(x, rate));
-        return;
+        state.legacySpeechRequests++;
       }
       res.statusCode = 404;
       res.end();
@@ -91,10 +123,11 @@ async function fakeVoice() {
   });
   const live = new (require('ws').WebSocketServer)({ noServer: true });
   server.on('upgrade', (req, socket, head) => {
-    if (req.url !== '/v1/realtime?intent=transcription' || !req.headers.authorization?.startsWith('Bearer ')) return socket.destroy();
-    live.handleUpgrade(req, socket, head, ws => live.emit('connection', ws));
+    if (!['/v1/realtime?intent=transcription', '/v1/live/sessions'].includes(req.url) || !req.headers.authorization?.startsWith('Bearer ')) return socket.destroy();
+    live.handleUpgrade(req, socket, head, ws => live.emit('connection', ws, req));
   });
-  live.on('connection', ws => {
+  live.on('connection', (ws, req) => {
+    if (req.url === '/v1/live/sessions') return readLiveSpeech(ws, state);
     ws.on('message', data => {
       const event = JSON.parse(data);
       const send = (type, props = {}) => ws.send(JSON.stringify({ type, ...props }));
@@ -158,7 +191,6 @@ async function launch({ env: extra = {}, avatarPrefs, mic = {} } = {}) {
     NODE_ENV: 'test',
     LLM_API_KEY: '',
     STT_MODEL: 'fake-stt',
-    TTS_MODEL: 'fake-tts',
     VOICE_API_KEY: 'fake',
     VOICE_BASE_URL: voice.url,
     WELFARE_DATA_MODE: '',

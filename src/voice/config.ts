@@ -4,14 +4,15 @@ import { STACK } from "../core/model_stack.ts";
 import { rstripChars } from "../core/text.ts";
 import { LIVE_MODEL, LiveTranscriber, connectSocket, type SocketConnect } from "./live.ts";
 import { OpenAISttProvider, UnsupportedSttProvider, type SttProvider } from "./stt.ts";
-import { OpenAITtsProvider, UnsupportedTtsProvider, type TtsProvider } from "./tts.ts";
+import { UnsupportedTtsProvider, type TtsProvider } from "./tts.ts";
+import { LiveSpeechProvider } from "./live_speech.ts";
 import { VOICE_PROFILE } from "../core/voice_profile.ts";
 
 export const DEFAULT_SPEED = VOICE_PROFILE.speed;
 
 export interface VoiceConfig {
   apiKey?: string; baseUrl?: string; sttModel?: string; ttsModel?: string; ttsVoice?: string;
-  ttsInstructions?: string; ttsSpeed?: number; liveModel?: string;
+  ttsInstructions?: string; ttsSpeed?: number; liveModel?: string; mockVoice?: boolean;
 }
 export const VOICE_DEFAULTS = {
   baseUrl: OPENAI_BASE_URL, sttModel: STACK.transcription, ttsModel: VOICE_PROFILE.model, ttsVoice: VOICE_PROFILE.voice,
@@ -24,16 +25,16 @@ export function createVoiceProviders(cfg: VoiceConfig, fetcher: typeof fetch = f
   if (apiKey.length === 0) return [new UnsupportedSttProvider(), new UnsupportedTtsProvider()];
   const base = rstripChars(cfg.baseUrl ?? VOICE_DEFAULTS.baseUrl, "/");
   const sttModel = cfg.sttModel ?? VOICE_DEFAULTS.sttModel;
-  const liveModel = cfg.liveModel ?? VOICE_DEFAULTS.liveModel;
   const stt = new OpenAISttProvider({
     apiKey, baseUrl: base, model: sttModel === LIVE_MODEL ? VOICE_DEFAULTS.sttModel : sttModel, fetch: fetcher,
     live: new LiveTranscriber(base, apiKey, connect),
     // Live sessions use a different protocol from Realtime transcription.
-    edgeModel: base === OPENAI_BASE_URL && liveModel !== LIVE_MODEL ? liveModel : undefined,
+    edgeModel: base === OPENAI_BASE_URL ? STACK.voice : undefined,
   });
-  const tts = new OpenAITtsProvider({
-    apiKey, baseUrl: base, model: cfg.ttsModel ?? VOICE_DEFAULTS.ttsModel, voice: cfg.ttsVoice ?? VOICE_DEFAULTS.ttsVoice,
-    instructions: cfg.ttsInstructions ?? VOICE_PROFILE.instructions, speed: cfg.ttsSpeed ?? VOICE_DEFAULTS.ttsSpeed, fetch: fetcher,
-  });
+  const localFixture = cfg.mockVoice === true && URL.canParse(base) && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(base).hostname);
+  const tts = base === OPENAI_BASE_URL || localFixture ? new LiveSpeechProvider({
+    apiKey, baseUrl: base, voice: cfg.ttsVoice ?? VOICE_DEFAULTS.ttsVoice, connect,
+    instructions: cfg.ttsInstructions ?? VOICE_PROFILE.instructions, speed: cfg.ttsSpeed ?? VOICE_DEFAULTS.ttsSpeed,
+  }) : new UnsupportedTtsProvider();
   return [stt, tts];
 }

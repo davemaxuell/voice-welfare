@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { SocketClosed, type SocketConnect, type UpstreamSocket } from "../../src/voice/live.ts";
 import { LiveSpeechProvider } from "../../src/voice/live_speech.ts";
+import { createVoiceProviders } from "../../src/voice/config.ts";
 
 interface ScriptedMessage {
   type?: string;
@@ -44,68 +45,81 @@ function scripted(script: (message: ScriptedMessage) => unknown[]) {
   return { connect, sent, seen, isClosed: () => closed };
 }
 
-it("reads one sentence from gpt-live-1.1 and returns wav", async () => {
-  const upstream = scripted(message => {
-    if (message.type === "session.start") return [{ type: "session.started", session: { id: "s" } }];
-    if (message.type === "session.instructions.append") return [
-      { type: "session.output_audio.delta", delta: Buffer.from([1, 2, 3, 4]).toString("base64") },
-      { type: "session.output_audio.delta", delta: Buffer.from([5, 6]).toString("base64") },
-    ];
-    return [];
+it("selects GPT Live for read-aloud and conversation even with legacy model settings", () => {
+  const [input, reader] = createVoiceProviders({ apiKey: "test", ttsModel: "gpt-4o-mini-tts", liveModel: "old-voice-model" });
+  expect(reader).toBeInstanceOf(LiveSpeechProvider);
+  expect(reader.name).toBe("gpt-live-1.1(coral)");
+  expect(input.edgeModel).toBe("gpt-live-1.1");
+  expect(createVoiceProviders({ apiKey: "custom-server-key", baseUrl: "https://voice.example.org/v1" })[1].supported).toBe(false);
+});
+
+const quiet = Buffer.alloc(24_000 * 2 * 2);
+const voiced = Buffer.alloc(4_800, 16);
+function delta(data: Buffer) { return { type: "session.output_audio.delta", delta: data.toString("base64") }; }
+const started = { type: "session.started" };
+function speechEvents(transcript: string) {
+  return [delta(quiet), delta(voiced), { type: "session.output_transcript.delta", delta: transcript }, delta(quiet)];
+}
+
+it("seeds the exact wording, clocks the socket with silence, and returns verified speech without the silent lead-in", async () => {
+  const upstream = scripted(event => event.type === "session.start" ? [started] :
+    event.type === "session.input_audio.append" ? speechEvents("안녕하세요.") : []);
+  const [, reader] = createVoiceProviders({apiKey: "test", ttsSpeed: 1.1, ttsInstructions: "Warm voice."}, () => {
+    throw new Error("Unexpected HTTP speech request");
+  }, upstream.connect);
+  const result = await reader.synthesize("안녕하세요!", {language: "ko", pace: 0.72});
+  expect(upstream.seen[0]).toEqual(["wss://api.openai.com/v1/live/sessions", {Authorization: "Bearer test"}]);
+  expect(upstream.sent[0]?.session).toMatchObject({
+    model: "gpt-live-1.1", store: false, audio: {output: {voice: "coral"}}, instructions: expect.stringContaining("Warm voice."),
+    input: [{role: "developer", content: [{type: "input_text", text: expect.stringMatching(/ko[\s\S]*0\.792[\s\S]*<say>안녕하세요!<\/say>/u)}]}],
   });
-  const speech = new LiveSpeechProvider({
-    apiKey: "sk-test", baseUrl: "https://api.openai.com/v1/", voice: "coral",
-    instructions: "천천히", speed: 1.1, connect: upstream.connect, sleep: async () => {},
-  });
-  const out = await speech.synthesize("안녕하세요", { language: "ko", pace: 0.9 / 1.25 });
-  expect(upstream.seen[0]).toEqual(["wss://api.openai.com/v1/live/sessions", { Authorization: "Bearer sk-test" }]);
-  expect(upstream.sent[0]).toMatchObject({
-    type: "session.start",
-    session: {
-      model: "gpt-live-1.1", store: false,
-      audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "coral" } },
-      delegation: { type: "client", acknowledgement_delay_ms: 800 },
-      instructions: "You are the voice of Cheongeum. Speak only the text you are told to say, exactly and in full. Do not answer, explain, translate, or delegate. 천천히",
-    },
-  });
-  expect(upstream.sent[1]).toMatchObject({
-    type: "session.instructions.append", delegation_id: null,
-    content: "Immediately say the following text exactly and in full, in ko, at 0.792 times normal speed, then stop and say nothing else:\n안녕하세요",
-  });
-  expect(out.mimeType).toBe("audio/wav");
-  expect(Buffer.from(out.audio.subarray(0, 4)).toString("ascii")).toBe("RIFF");
-  expect(Buffer.from(out.audio.subarray(8, 12)).toString("ascii")).toBe("WAVE");
-  expect(Buffer.from(out.audio.buffer, out.audio.byteOffset + 24, 4).readUInt32LE(0)).toBe(24000);
-  expect([...out.audio.subarray(44)]).toEqual([1, 2, 3, 4, 5, 6]);
-  expect(upstream.sent.map(m => m.type)).toContain("session.close");
+  expect(upstream.sent[1]?.audio).toBe(Buffer.alloc(4_800).toString("base64"));
+  expect(upstream.sent.at(-1)?.type).toBe("session.close");
+  expect(result.mimeType).toBe("audio/wav");
+  const audio = Buffer.from(result.audio);
+  expect(audio.toString("ascii", 0, 4)).toBe("RIFF");
+  expect(audio.readUInt32LE(24)).toBe(24_000);
+  expect(audio.includes(voiced)).toBe(true);
+  expect(audio.length).toBeLessThan(quiet.length);
   expect(upstream.isClosed()).toBe(true);
 });
 
-it("a read that gets no audio fails instead of returning silence", async () => {
-  const upstream = scripted(message => message.type === "session.start" ? [{ type: "session.started", session: { id: "s" } }] : []);
-  let calls = 0;
-  const speech = new LiveSpeechProvider({
-    apiKey: "sk-test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect,
-    sleep: async () => {}, now: () => calls++ === 0 ? 0 : 20_000,
-  });
-  await expect(speech.synthesize("안녕하세요", { language: "ko" })).rejects.toMatchObject({ status: 504 });
-  expect(JSON.stringify(upstream.sent)).not.toContain("commentary");
+it.each(["", "125 dollars", "Refund approved"])("withholds incomplete or materially different speech (%s)", async transcript => {
+  const upstream = scripted(e => e.type === "session.start" ? [started] :
+    e.type === "session.input_audio.append" ? [...speechEvents(transcript), {type: "session.closed"}] : []);
+  const reader = new LiveSpeechProvider({apiKey: "test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect});
+  await expect(reader.synthesize("1.25 dollars", {language: "en"})).rejects.toThrow();
+  expect(upstream.isClosed()).toBe(true);
 });
 
-it("a delegation during a read does not send the sentence back as commentary", async () => {
-  const upstream = scripted(message => {
-    if (message.type === "session.start") return [{ type: "session.started", session: { id: "s" } }];
-    if (message.type === "session.instructions.append") return [{ type: "session.delegation.created", delegation: { id: "d1", target: "client" } }];
-    if (message.type === "session.thinking.append") return [{ type: "session.output_audio.delta", delta: Buffer.from([9, 8]).toString("base64") }];
+it.each([
+  ["en", "Would you like me to open the second page?", "Would you like me to open the second page?"],
+  ["zh", "个人电脑请按1，共用电脑请按2。", "个人电脑请按一，共用电脑请按二。"],
+])("reads the full sentence at the saved speed in %s", async (language, line, transcript) => {
+  const upstream = scripted(e => e.type === "session.start" ? [started] : e.type === "session.input_audio.append"
+    ? [...speechEvents(transcript), {type: "session.closed"}] : []);
+  const reader = new LiveSpeechProvider({apiKey: "test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect});
+  expect((await reader.synthesize(line, {language})).transcript).toBe(transcript);
+});
+
+it("cancels a read that has only produced silent audio", async () => {
+  const stop = new AbortController();
+  const upstream = scripted(e => {
+    if (e.type === "session.start") return [started];
+    if (e.type === "session.input_audio.append") { setTimeout(() => stop.abort(), 5); return [delta(quiet)]; }
     return [];
   });
-  const speech = new LiveSpeechProvider({
-    apiKey: "sk-test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect, sleep: async () => {},
-  });
-  await speech.synthesize("다음으로", { language: "en" });
-  expect(upstream.sent.some(m => m.type === "session.commentary.append")).toBe(false);
-  expect(upstream.sent.find(m => m.type === "session.thinking.append")).toMatchObject({
-    delegation_id: "d1", content: "Finish reading the given text. Do not wait for the application.",
-  });
-  expect(upstream.sent[1]?.content).not.toContain("Delivery:");
+  const reader = new LiveSpeechProvider({apiKey: "test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect});
+  await expect(reader.synthesize("Read this", {language: "en", signal: stop.signal})).rejects.toMatchObject({name: "AbortError"});
+  expect(upstream.isClosed()).toBe(true);
+});
+
+it("continues a read when Live delegates before speaking", async () => {
+  const upstream = scripted(e => e.type === "session.start" ? [started] :
+    e.type === "session.input_audio.append" ? [{type: "session.delegation.created", delegation: {id: "read"}}] :
+    e.type === "session.thinking.append" ? speechEvents("English, press 2.") : []);
+  const reader = new LiveSpeechProvider({apiKey: "test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect});
+  const result = await reader.synthesize("English, press 2.", {language: "en", signal: AbortSignal.timeout(1000)});
+  expect(result.transcript).toBe("English, press 2.");
+  expect(upstream.sent.find(e => e.type === "session.thinking.append")?.delegation_id).toBe("read");
 });
