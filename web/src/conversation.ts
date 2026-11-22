@@ -315,9 +315,10 @@ let missedHeartbeats = 0;
 let pendingResult: { sessionId: string; generation: number } | undefined;
 let checkingResult: Promise<void> | undefined;
 
-function connectionChanged(path: string, failure?: ApiError) {
+function connectionChanged(path: string, failure?: ApiError, requestSessionId?: string) {
   const sid = ui.sessionId;
   if ((sid === undefined && path !== "/api/session" && path !== "/api/health") || path.endsWith("/detach") ||
+      (requestSessionId !== undefined && requestSessionId !== sid) ||
       (path.startsWith("/api/session/") && !path.startsWith("/api/session/" + sid + "/"))) return;
   if (failure === undefined) {
     if (path.endsWith("/heartbeat") || ui.offline === true) missedHeartbeats = 0;
@@ -346,8 +347,8 @@ function applyServerState(state: ServerState, error: IssueKey | undefined) {
     ? { authHandoff: state.authHandoff, turnId: state.turnId, offeredChoices: state.offeredChoices }
     : { pendingConfirmation: state.pendingConfirmation, authHandoff: state.authHandoff, turnId: state.turnId, offeredChoices: state.offeredChoices };
   const decision = currentDecision({ ...ui, state: state.state, last });
-  // 서버가 아직 기다리는 승인만 새 카드 번호로 다시 고를 수 있다.
-  if (decision?.kind === "approval") desk.dropped.delete(decision.key);
+  // 서버가 아직 기다리는 승인과 선택지만 새 카드 번호로 다시 고를 수 있다.
+  if (decision?.kind === "approval" || decision?.kind === "offer") desk.dropped.delete(decision.key);
   if (state.state === "STOPPED") { desk.sleeping = true; desk.stopGeneration = state.stopGeneration ?? null; }
   set({ state: state.state, last, activity: null, error });
 }

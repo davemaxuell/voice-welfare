@@ -125,7 +125,7 @@ export class ApiError extends Error {
 export const errorCode = (error: unknown) => error instanceof ApiError ? error.code : undefined;
 export const errorStatus = (error: unknown) => error instanceof ApiError ? error.status : undefined;
 export const errorMessage = (error: unknown) => workspaceText(errors[error instanceof ApiError ? error.kind : "server"], getSpeechLang());
-let report: ((path: string, error?: ApiError) => void) | undefined;
+let report: ((path: string, error?: ApiError, sessionId?: string) => void) | undefined;
 
 let writer: string | undefined;
 let requestSeq = 0;
@@ -142,7 +142,7 @@ async function failure(res: Response): Promise<never> {
 }
 
 // 응답 본문까지 같은 기한을 적용한다. 사용자가 직접 취소한 파일 작업은 연결 장애로 표시하지 않는다.
-async function request<T>(path: string, init: RequestInit, read: (response: Response) => Promise<T>): Promise<T> {
+async function request<T>(path: string, init: RequestInit, read: (response: Response) => Promise<T>, sessionId?: string): Promise<T> {
   const deadline = new AbortController();
   const longRequest = path.includes("/turn") || path.includes("/recording") || path.includes("/confirm") || path.includes("/choice") || path.includes("/audio/stop");
   const timer = setTimeout(() => deadline.abort(), longRequest ? 90_000 : 12_000);
@@ -151,22 +151,22 @@ async function request<T>(path: string, init: RequestInit, read: (response: Resp
     const res = await fetch(path, { ...init, signal });
     if (!res.ok) await failure(res);
     const data = await read(res);
-    report?.(path);
+    report?.(path, undefined, sessionId);
     return data;
   } catch (cause) {
     if (init.signal?.aborted === true) throw cause;
     const error = deadline.signal.aborted ? new ApiError("timeout") : cause instanceof ApiError ? cause
       : new ApiError(cause instanceof TypeError ? "network" : "server");
-    report?.(path, error);
+    report?.(path, error, sessionId);
     throw error;
   } finally { clearTimeout(timer); }
 }
 
 interface CallInit { method?: string; body?: BodyInit | undefined; headers?: Record<string, string>; signal?: AbortSignal }
-async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, numbered = false): Promise<T> {
+async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, numbered = false, sessionId?: string): Promise<T> {
   const opts = { ...init, headers: headers({ ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}), ...init.headers }) };
   if (numbered && path !== "/api/session/recover") opts.headers["X-Cheongeum-Request"] = String(++requestSeq);
-  return request(path, opts, async res => schema.parse(await res.json()));
+  return request(path, opts, async res => schema.parse(await res.json()), sessionId);
 }
 const post = (body?: unknown): CallInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
@@ -237,7 +237,7 @@ export const api = {
     { method, body: data !== undefined ? JSON.stringify(data) : undefined }),
   recording: (id: string, file: Blob, type: string, signal: AbortSignal) => call(z.object({ text: z.string() }), `/api/audio/recording?sessionId=${sid(id)}`, {
     method: "POST", headers: { "Content-Type": type }, body: file, signal,
-  }),
+  }, false, id),
   liveAudio,
   /** 실시간 음성 대화(WebRTC)의 제안·결과를 주고받는 연결. */
   conversationSocket: (id: string) => {
@@ -271,7 +271,7 @@ export const api = {
       headers: headers({ "Content-Type": clip.type, "X-Cheongeum-Action": actionId,
         "X-Cheongeum-Request": String(++requestSeq) }),
       body: clip.body,
-    }, async res => TurnSchema.parse(await res.json()));
+    }, async res => TurnSchema.parse(await res.json()), sessionId);
   },
   /** 일하는 동안 들은 말을 보낸다. 멈춤 말이면 멈추고, 진행 상황 물음이면 바로 답하고(result), 그 밖의 말은 버린다. */
   async audioStop(sessionId: string, audio: LiveAudio) {
@@ -280,14 +280,14 @@ export const api = {
       method: "POST",
       headers: headers({ "Content-Type": clip.type }),
       body: clip.body,
-    }, async res => z.object({ stopped: z.boolean(), result: opt(TurnSchema) }).parse(await res.json()));
+    }, async res => z.object({ stopped: z.boolean(), result: opt(TurnSchema) }).parse(await res.json()), sessionId);
   },
   /** rate: 말 빠르기 설정(speechPrefs.rate). 서버 음성도 이 빠르기로 합성한다. */
   async speak(chunk: string, lang: Lang, rate: number) {
     return request("/api/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: chunk, lang, rate }) }, res => res.blob());
   },
   createSession: (recoverable = false) => call(SessionSchema, "/api/session", post(recoverable ? { recovery: true } : { attached: true })),
-  turn: (sessionId: string, message: string, actionId = "") => call(TurnSchema, "/api/turn", post({ sessionId, text: message, actionId, clientPlatform: "pc" }), true),
+  turn: (sessionId: string, message: string, actionId = "") => call(TurnSchema, "/api/turn", post({ sessionId, text: message, actionId, clientPlatform: "pc" }), true, sessionId),
   confirm: (sessionId: string, approve: boolean, actionId: string | undefined) => call(TurnSchema, `/api/session/${sessionId}/confirm`, post({ approve, actionId }), true),
   /** 서버가 제안한 선택지 고르기: { turnId, key, handoffId? }. 지난 제안이면 409 CHOICE_EXPIRED. */
   choice: (sessionId: string, body: { turnId: string; key: string; handoffId?: string }) => call(TurnSchema, `/api/session/${sessionId}/choice`, post(body), true),
