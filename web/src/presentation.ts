@@ -16,7 +16,9 @@ export const issues = {
   micDenied: [issueText.micDenied, ["microphone", "type"]],
   micLost: [issueText.micLost, ["microphone", "type"]],
   voiceDown: [issueText.voiceDown, ["type"]],
+  localVoiceUnavailable: [issueText.localVoiceUnavailable, ["type"]],
   turnFailed: [issueText.turnFailed, ["type"]],
+  languageFailed: [issueText.languageFailed, []],
   expired: [issueText.expired, ["check", "type"]],
   blocked: [issueText.blocked, ["type"]],
   consentRequired: [issueText.consentRequired, ["type"]],
@@ -24,9 +26,10 @@ export const issues = {
 export type IssueKey = keyof typeof issues;
 
 export interface PresentationInput extends DecisionInput {
-  busy: boolean;
-  phase: Phase;
-  listening: boolean;
+  contrast?: boolean;
+  busy?: boolean;
+  phase?: Phase;
+  listening?: boolean;
   speaking?: boolean;
   capture?: Capture;
   stopping?: boolean;
@@ -46,7 +49,7 @@ function taskOf(ui: PresentationInput): Task {
   if (ui.card !== undefined) return "awaiting_choice";
   if (ui.error !== undefined && ui.error.length > 0) return "failed";
   if (ui.sleeping === true) return "stopped";
-  if (ui.busy || ui.phase === "thinking") return "working";
+  if (ui.busy === true || ui.phase === "thinking") return "working";
   return "idle";
 }
 
@@ -63,7 +66,7 @@ function modeOf(ui: PresentationInput, task: Task, playing: boolean): Mode {
     case "idle":
       if (playing) return "speaking";
       if (ui.phase === "starting") return "working";
-      if (ui.listening || ui.phase === "listening" || ui.phase === "hearing") return "listening";
+      if (ui.listening === true || ui.phase === "listening" || ui.phase === "hearing") return "listening";
       return "ready";
   }
 }
@@ -75,8 +78,9 @@ export function presentationOf(ui: PresentationInput) {
   const playback = playing ? "speaking" : "idle";
   const task = taskOf(ui);
   const mode = modeOf(ui, task, playing);
-  const phase = ui.phase !== "off" ? ui.phase : ui.listening ? "listening" : playing ? "speaking" : ui.busy ? "thinking" : "off";
-  const phaseKey = phase !== ui.phase ? phaseKeys[phase].manual : phaseKeys[phase].active;
+  const currentPhase = ui.phase ?? "off";
+  const phase = currentPhase !== "off" ? currentPhase : ui.listening === true ? "listening" : playing ? "speaking" : ui.busy === true ? "thinking" : "off";
+  const phaseKey = phase !== currentPhase ? phaseKeys[phase].manual : phaseKeys[phase].active;
   return { capture, captureKey: captureKeys[capture], playback, playbackKey: playing ? phaseKeys.speaking.manual : phaseKeys.off.manual,
     task, taskKey: taskKeys[task], mode, phase, phaseKey };
 }

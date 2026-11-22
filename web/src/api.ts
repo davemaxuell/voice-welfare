@@ -144,7 +144,8 @@ async function failure(res: Response): Promise<never> {
 // 응답 본문까지 같은 기한을 적용한다. 사용자가 직접 취소한 파일 작업은 연결 장애로 표시하지 않는다.
 async function request<T>(path: string, init: RequestInit, read: (response: Response) => Promise<T>): Promise<T> {
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), path.includes("/turn") || path.includes("/recording") ? 90_000 : 12_000);
+  const longRequest = path.includes("/turn") || path.includes("/recording") || path.includes("/confirm") || path.includes("/choice") || path.includes("/audio/stop");
+  const timer = setTimeout(() => deadline.abort(), longRequest ? 90_000 : 12_000);
   const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
   try {
     const res = await fetch(path, { ...init, signal });
@@ -256,7 +257,8 @@ export const api = {
   wake: (id: string, stopGeneration: number) => call(z.object({ state: SessionStateSchema }), `/api/session/${id}/wake`, post({ stopGeneration }), true),
   heartbeat: (id: string) => call(ok, `/api/session/${id}/heartbeat`),
   sessionState: (id: string) => call(z.object({ state: SessionStateSchema, stopGeneration: opt(z.number()),
-    pendingConfirmation: opt(PendingSchema) }), `/api/session/${sid(id)}/state`),
+    pendingConfirmation: opt(PendingSchema), authHandoff: opt(AuthHandoffSchema), turnId: opt(text),
+    offeredChoices: opt(z.array(z.object({ key: text, label: text }))) }), `/api/session/${sid(id)}/state`),
   end: (id: string) => call(z.unknown(), `/api/session/${id}`, { method: "DELETE" }),
   detach: (id: string) => {
     void request(`/api/session/${id}/detach`, { method: "POST", headers: headers(), keepalive: true }, async () => undefined).catch(() => undefined);

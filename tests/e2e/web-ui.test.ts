@@ -375,18 +375,58 @@ it("test_failed_language_change_restores_session_language", async () => {
   await browserExpect(select).toHaveValue("ko");
 });
 
-it.each([false, true])("test_web_ui_axe_violations (고대비 %s)", async highContrast => {
-  await openConsent();
-  if (highContrast) {
-    await page.getByRole("button", { name: "고대비 꺼짐" }).click();
-    await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
-  }
+async function expectAccessible() {
   await page.addScriptTag({ path: axeScript });
   const violations = await page.evaluate<Array<{ id: string; nodes: string[][] }>>(`(async () => {
     const result = await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } });
     return result.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) }));
   })()`);
   expect(violations).toEqual([]);
+}
+
+it("어두운 테마에서 대화, 환경 설정, 조사와 처음 설정을 읽을 수 있다", async () => {
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  let setup = false;
+  await page.route("**/api/health", route => route.fulfill({ json: {
+    settingsAvailable: true, workspaceAvailable: true, setupRequired: setup, practiceMode: true,
+    stt: { provider: "fixture", supported: false }, tts: { provider: "fixture", supported: false },
+  } }));
+  await page.route("**/api/settings", route => route.fulfill({ json: {
+    language: "ko", region: "", regions: [], speed: 1.35, deviceUse: "personal", browser: "separate",
+    sharedDevice: false, rememberService: false, hasKey: false, loadError: false, browserFallback: false,
+  } }));
+  await consent();
+  await expectAccessible();
+  await page.locator("#open-settings").click();
+  await browserExpect(page.locator("#settings-dialog")).toBeVisible();
+  await expectAccessible();
+  await page.keyboard.press("Escape");
+  await page.locator("#workflow-title").click();
+  await browserExpect(page.locator("#workflow-panel")).toHaveAttribute("open", "");
+  await expectAccessible();
+  setup = true;
+  await page.reload();
+  await browserExpect(page.locator("#first-run")).toBeVisible();
+  await expectAccessible();
+});
+
+it.each([false, true])("test_web_ui_axe_violations (고대비 %s)", async highContrast => {
+  if (highContrast) await page.addInitScript(() => {
+    document.addEventListener("animationstart", event => {
+      if (!(event.target instanceof HTMLElement) || !event.target.matches(".consent-details") || event.animationName !== "fade-in") return;
+      const fade = event.target.getAnimations().find(a => a instanceof CSSAnimation && a.animationName === "fade-in");
+      if (fade?.effect !== null && fade?.effect !== undefined) {
+        fade.pause();
+        fade.currentTime = Number(fade.effect.getTiming().delay) + 30;
+      }
+    });
+  });
+  await openConsent();
+  if (highContrast) {
+    await page.getByRole("button", { name: "고대비 꺼짐" }).click();
+    await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
+  }
+  await expectAccessible();
 });
 
 it("test_progress_cues_never_play_over_speech", async () => {

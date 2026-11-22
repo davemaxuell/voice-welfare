@@ -21,7 +21,7 @@ async function overlayState(overlay) {
 }
 
 async function logLines(controller) {
-  return controller.locator('#log li').allInnerTexts();
+  return (await controller.locator('#log li').allInnerTexts()).map((line) => line.replace(/^(나|청음|안내):\n+/u, '$1: '));
 }
 
 /** 대화 창에 글로 명령한다(창이 숨어 있어도 같은 입력란). */
