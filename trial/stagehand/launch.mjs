@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, realpath } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,7 @@ export async function attached(launch, options, { persistentDir, model, liveProx
     await handle?.disconnect().catch(() => {});
     await resource?.close();
     if (!liveProxy) await proxy.close();
+    await rm(folder, { recursive: true, force: true });
     throw error;
   }
 }

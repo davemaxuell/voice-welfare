@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import net from "node:net";
 import { createServer } from "node:http";
 import { channel } from "node:diagnostics_channel";
@@ -18,10 +17,11 @@ export function nodeNetwork() {
     }
     local.add(host);
   }
-  function inspect(value) {
+  function inspect(value, block = true) {
     const url = new URL(value);
     if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) return;
-    hostAllowed(url.hostname);
+    if (block) hostAllowed(url.hostname);
+    else if (!localHost(url.hostname)) denied.push(url.hostname);
     requests.push({ host: url.hostname, telemetry: telemetry(url.href) });
   }
   const previousFetch = globalThis.fetch, previousSocket = net.Socket.prototype.connect;
@@ -41,11 +41,11 @@ export function nodeNetwork() {
     return previousSocket.apply(this, args);
   };
   // undici와 내장 HTTP를 직접 부르는 SDK도 관찰한다. 소켓에서 실제 외부 연결은 계속 막힌다.
-  const undici = msg => inspect(msg.request.origin + msg.request.path);
+  const undici = msg => inspect(msg.request.origin + msg.request.path, false);
   const http = msg => {
     if (msg.request.socketPath) return;
     const host = msg.request.getHeader("host");
-    if (host) inspect(new URL(msg.request.path, msg.request.protocol + "//" + host));
+    if (host) inspect(new URL(msg.request.path, msg.request.protocol + "//" + host), false);
   };
   channel("undici:request:create").subscribe(undici);
   channel("http.client.request.start").subscribe(http);

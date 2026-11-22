@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { afterAll, expect } from "vitest";
 import { chromium } from "playwright";
 import { attached } from "./launch.mjs";
@@ -67,7 +68,11 @@ chromium.launchPersistentContext = (dir, options) => withStagehand(opts => persi
 afterAll(async () => {
   try {
     await Promise.all([...active].map(trial => trial.resource.close()));
-    process.stderr.write("B0.2 runtime " + JSON.stringify({ suite: expect.getState().testPath, launches, closed, visibleTargets: seen, hiddenTargets: hidden }) + "\n");
+    const suite = basename(expect.getState().testPath);
+    const evidence = { suite, launches, closed, visibleTargets: seen, hiddenTargets: hidden };
+    await mkdir("reports/stagehand-b0", { recursive: true });
+    await writeFile("reports/stagehand-b0/" + suite + ".json", JSON.stringify(evidence) + "\n");
+    process.stderr.write("B0.2 runtime " + JSON.stringify(evidence) + "\n");
     assert(launches > 0 && closed === launches && seen + hidden > 0);
   } finally {
     chromium.launch = launch;
