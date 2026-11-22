@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { parseTurnResult } from "../../src/core/turn.ts";
 import { FakeLlm, Gate, PORTAL, step } from "../helpers.ts";
 import { pageFor, runtimeCases } from "./browser-runtime-cases.ts";
@@ -133,4 +133,38 @@ it("단계가 바뀌어 같은 DOM 단추를 재사용하면 다음 단계에서
   expect(await target.getAttribute("data-step")).toBe("3");
   expect(await target.getAttribute("data-count")).toBe("2");
   expect(calls).toBe(3);
+});
+
+it("승인 유효시간이 지나 다시 물은 뒤 확인해도 목표를 이어 가며 같은 화면의 중복 클릭을 막는다", async () => {
+  const {session, page, say} = await openGoal();
+  await page.route(address, route => route.fulfill({contentType: "text/html; charset=utf-8", body:
+    `<title>상담 일정</title><main><button onclick="this.dataset.count++; document.querySelector('p').textContent='${answer}'" data-count="0">확인</button><p>상담 안내입니다.</p></main>`}));
+  await page.goto(address);
+  let calls = 0;
+  const responses = [step("click", "확인"), step("click", "확인"), step("answer", null, answer, [answer])];
+  const model = new FakeLlm(call => {
+    if (call.schemaName === "intent_plan") return goalPlan;
+    if (call.schemaName === "browse_step") return responses[calls++];
+    return undefined;
+  });
+  session.deps.llm = session.deps.goalLlm = model;
+  const target = page.getByRole("button", {name: "확인"});
+  const firstAsk = await say(currentGoal);
+  expect(firstAsk).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}});
+
+  const realNow = performance.now.bind(performance);
+  let offset = 0;
+  const spy = vi.spyOn(performance, "now").mockImplementation(() => realNow() + offset);
+  try {
+    offset = 125_000;
+    const renewed = await say("눌러");
+    expect(renewed).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}});
+    expect(renewed.speech).toContain("다시 여쭤볼게요");
+    expect(await target.getAttribute("data-count")).toBe("0");
+
+    const done = await say("눌러");
+    expect(done).toMatchObject({speech: answer, review: {status: "completed", browserIterations: 3}});
+    expect(await target.getAttribute("data-count")).toBe("1");
+    expect(calls).toBe(3);
+  } finally { spy.mockRestore(); }
 });

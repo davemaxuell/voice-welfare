@@ -264,8 +264,12 @@ export class ReviewLoop {
           const step = continuation.checkpoint?.steps.at(-1);
           if (step?.action === "click") Object.assign(step, {ok: true, note: "사용자가 승인해 누른 뒤 화면에서 확인함"});
         }
-        continuation.pendingClickId = undefined;
-        continuation.pendingClickKey = undefined;
+        const awaitingSameClick = needsInput(resumed) && s.dialogue.approval?.kind === "click" &&
+          s.dialogue.approval.action.id === continuation.pendingClickId;
+        if (!awaitingSameClick) {
+          continuation.pendingClickId = undefined;
+          continuation.pendingClickKey = undefined;
+        }
         if (clicked || resumed.semanticAction === "goal") {
           resumed = {...resumed, ...await s.browse.recognizeAuthPage(resumed, continuation.checkpoint?.choice, turn.ctx)};
         }
