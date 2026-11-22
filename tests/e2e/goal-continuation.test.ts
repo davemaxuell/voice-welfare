@@ -90,3 +90,47 @@ it("음성 목표가 로그인 화면에서 기다렸다가 직접 인증한 뒤
   expect(done.sources.map(source => source.url)).toContain(address);
   expect(calls).toBe(2);
 });
+
+it("단계가 바뀌어 같은 DOM 단추를 재사용하면 다음 단계에서 새 승인을 받아 진행한다", async () => {
+  const {session, page, say} = await openGoal();
+  await page.route(address, route => route.fulfill({contentType: "text/html; charset=utf-8", body:
+    `<title>상담 안내</title><main><h1>1단계</h1><p>첫 번째 안내입니다.</p><button id="next" data-step="1" data-count="0">확인</button></main>
+    <script>
+      const btn = document.getElementById('next');
+      const h1 = document.querySelector('h1');
+      const p = document.querySelector('p');
+      btn.addEventListener('click', () => {
+        const next = Number(btn.dataset.step) + 1;
+        btn.dataset.step = String(next);
+        btn.dataset.count = String(Number(btn.dataset.count) + 1);
+        h1.textContent = next + '단계';
+        p.textContent = next === 3 ? '${answer}' : '두 번째 안내입니다.';
+      });
+    </script>`}));
+  await page.goto(address);
+  let calls = 0;
+  const model = new FakeLlm(call => {
+    if (call.schemaName === "intent_plan") return goalPlan;
+    if (call.schemaName === "browse_step") {
+      calls++;
+      return calls <= 2 ? step("click", "확인") : step("answer", null, answer, [answer]);
+    }
+    return undefined;
+  });
+  session.deps.llm = session.deps.goalLlm = model;
+  const target = page.getByRole("button", {name: "확인"});
+  const firstAsk = await say(currentGoal);
+  expect(firstAsk).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}});
+  expect(await target.getAttribute("data-count")).toBe("0");
+
+  const secondAsk = await say("눌러");
+  expect(secondAsk).toMatchObject({state: "WAITING_FOR_USER_CONFIRMATION", pendingConfirmation: {kind: "click"}});
+  expect(await target.getAttribute("data-step")).toBe("2");
+  expect(await target.getAttribute("data-count")).toBe("1");
+
+  const done = await say("눌러");
+  expect(done).toMatchObject({speech: answer, review: {status: "completed", browserIterations: 3}});
+  expect(await target.getAttribute("data-step")).toBe("3");
+  expect(await target.getAttribute("data-count")).toBe("2");
+  expect(calls).toBe(3);
+});

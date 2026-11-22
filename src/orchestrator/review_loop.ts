@@ -260,10 +260,12 @@ export class ReviewLoop {
           action.type === "click" && action.id === continuation.pendingClickId &&
           policy.allowed && result?.ok === true && "verified" in result && result.verified && result.actionId === action.id) : undefined;
         if (clicked?.action.target?.ref !== undefined) {
-          continuation.approvedRefs.add(clicked.action.target.ref);
+          continuation.approvedRefs.add(continuation.pendingClickKey ?? clicked.action.target.ref);
           const step = continuation.checkpoint?.steps.at(-1);
           if (step?.action === "click") Object.assign(step, {ok: true, note: "사용자가 승인해 누른 뒤 화면에서 확인함"});
         }
+        continuation.pendingClickId = undefined;
+        continuation.pendingClickKey = undefined;
         if (clicked || resumed.semanticAction === "goal") {
           resumed = {...resumed, ...await s.browse.recognizeAuthPage(resumed, continuation.checkpoint?.choice, turn.ctx)};
         }

@@ -21,7 +21,7 @@ import { guideSection } from "./playbook.ts";
 import { ShotRefusal, planShot } from "./shot.ts";
 import { screenKey, type Orientation } from "./orient.ts";
 import { choices, controlNames, type VisualChoice } from "./visual_step.ts";
-import type { WebObservation } from "./view.ts";
+import { approvedClickKey, type WebObservation } from "./view.ts";
 import { BrowserJourney, personalScrubber, webOrigin } from "./journey.ts";
 import { describeActivity, fixedActivity, type ActivityFact } from "../../speech/activity.ts";
 
@@ -96,6 +96,7 @@ export interface AutopilotResult {
 export interface GoalContinuation {
   checkpoint?: BrowseCheckpoint;
   pendingClickId?: string;
+  pendingClickKey?: string;
   approvedRefs: Set<string>;
   request: Redacted;
   publicLookup: boolean;
@@ -618,6 +619,7 @@ export class Autopilot {
         const url = stillNeedsAuth(view) ? lastReadableUrl ?? view.url : view.url;
         options.continuation.checkpoint = snapshot({url, controls: new Map()}, Math.max(0, maxSteps - iterations), {kind: "goal"});
         options.continuation.pendingClickId = more.pending?.id;
+        options.continuation.pendingClickKey = more.pending?.target?.ref === undefined ? undefined : approvedClickKey(view, more.pending.target.ref);
       }
       if (evidence !== undefined && (status === "failed" || status === "limit") && evidence.passages.size > 0) {
         [speech, sources] = evidence.result(seenTitle);
