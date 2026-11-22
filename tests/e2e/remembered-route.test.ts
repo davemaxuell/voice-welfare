@@ -8,8 +8,8 @@ import { FakeLlm, step } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
 
 const runtime = createTestRuntime();
-afterEach(runtime.closeSessions);
-afterAll(runtime.close);
+afterEach(runtime.closeSessions, 30_000);
+afterAll(runtime.close, 30_000);
 const request = "지금 열린 누리집에서 상담하는 요일을 찾아줘";
 const address = "http://127.0.0.1:5174/counsel";
 const first = "상담 일정";

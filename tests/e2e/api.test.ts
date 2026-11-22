@@ -304,6 +304,26 @@ it("keeps audio on the client until consent, then uses the selected conversation
   }
 });
 
+it("동의를 거절하면 받아쓰기와 녹음 파일을 처리하지 않는다", async () => {
+  const restricted = new AgentRuntime(loadConfig(testRuntimeEnv({ REQUIRE_CONSENT: "true" })), stt, tts);
+  app = makeApp(restricted);
+  try {
+    const sid = await sessionId();
+    expect((await post(`/api/session/${sid}/consent`, { granted: false })).status).toBe(200);
+    for (const path of ["turn", "stop", "transcribe", "recording"]) {
+      const response = await app.request(`/api/audio/${path}?sessionId=${sid}`, {
+        method: "POST", body: new Uint8Array(1000), headers: { "content-type": "audio/webm" },
+      });
+      expect(response.status, path).toBe(403);
+      expect(await response.json()).toMatchObject({ error: "CONSENT_REQUIRED" });
+    }
+    expect(calls).toEqual([]);
+  } finally {
+    await app.sessions.close();
+    await restricted.close();
+  }
+});
+
 it("긴 음성의 500번째 글자에 걸친 주민번호도 전부 가린다", async () => {
   const id = await sessionId();
   for (const prefix of ["가".repeat(497), "😀".repeat(497), "  " + "가".repeat(495)]) {

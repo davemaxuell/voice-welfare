@@ -56,6 +56,7 @@ export interface LlmRequest {
   schema: object;
   signal?: AbortSignal;
   attachment?: FileAttachment;
+  throwOnTransportError?: boolean;
 }
 
 export interface StructuredLlm {
@@ -144,21 +145,37 @@ export class ModelConnections {
   }
 }
 
-/** POST → JSON. 실패하면 undefined. */
+export class ModelTransportError extends Error {
+  readonly status: number | undefined;
+
+  constructor(status?: number) {
+    super(status === undefined ? "Model request failed" : `Model request failed (HTTP ${status})`);
+    this.name = "ModelTransportError";
+    this.status = status;
+  }
+}
+
+/** 잘못된 JSON은 undefined로 돌려준다. 요청 실패를 따로 처리하는 호출에는 예외를 전달한다. */
 export async function postJson(
   url: string, headers: Record<string, string>, body: unknown, timeoutS: number, signal?: AbortSignal, pool?: ModelConnections,
+  throwOnTransportError = false,
 ): Promise<unknown> {
   try {
     const timeout = AbortSignal.timeout(timeoutS * 1000);
     const combined = signal === undefined ? timeout : AbortSignal.any([timeout, signal]);
     return await raceAbort(async (active) => {
       const response = await (pool ?? new ModelConnections()).post(url, headers, JSON.stringify(body), active);
-      if (!response.ok) return undefined;
-      const parsed: unknown = await response.json();
-      return parsed;
+      if (!response.ok) throw new ModelTransportError(response.status);
+      try { return await response.json(); }
+      catch (error) {
+        if (error instanceof SyntaxError) return undefined;
+        throw error;
+      }
     }, combined);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (!throwOnTransportError) return undefined;
+    if (signal?.aborted === true || error instanceof ModelTransportError) throw error;
+    throw new ModelTransportError();
   }
 }
 
@@ -202,6 +219,7 @@ interface ChatRequest {
   user: ChatContent;
   format: ResponseFormat;
   signal?: AbortSignal;
+  throwOnTransportError?: boolean;
 }
 
 function effortFor(endpoint: ChatEndpoint, format: ResponseFormat): string | undefined {
@@ -224,7 +242,7 @@ async function requestChat(endpoint: ChatEndpoint, request: ChatRequest): Promis
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (configured(endpoint.apiKey)) headers.Authorization = `Bearer ${endpoint.apiKey}`;
   const timeoutMs = endpoint.timeoutMs === undefined || endpoint.timeoutMs === 0 ? 30_000 : endpoint.timeoutMs;
-  return postJson(`${endpoint.baseUrl.replace(/\/+$/u, "")}/chat/completions`, headers, body, timeoutMs / 1000, request.signal, endpoint.pool);
+  return postJson(`${endpoint.baseUrl.replace(/\/+$/u, "")}/chat/completions`, headers, body, timeoutMs / 1000, request.signal, endpoint.pool, request.throwOnTransportError);
 }
 
 export async function chatCompletion(
@@ -276,14 +294,14 @@ class OpenAIChat {
   }
 
   protected async ask(
-    request: { system: string; content: ChatContent; schemaName: string; schema: object; signal?: AbortSignal },
+    request: { system: string; content: ChatContent; schemaName: string; schema: object; signal?: AbortSignal; throwOnTransportError?: boolean },
   ): Promise<unknown> {
     this.usage.calls++;
     const raw = await requestChat({
       baseUrl: this.baseUrl, model: this.model, apiKey: this.#apiKey, reasoningEffort: this.reasoningEffort,
       timeoutMs: this.timeoutMs, provider: this.provider, pool: this.pool,
     }, {
-      system: request.system, user: request.content, signal: request.signal,
+      system: request.system, user: request.content, signal: request.signal, throwOnTransportError: request.throwOnTransportError,
       format: { type: "json_schema", json_schema: { name: request.schemaName, strict: true, schema: request.schema } },
     });
     const usage = isRecord(raw) ? raw.usage : undefined;
@@ -297,12 +315,11 @@ class OpenAIChat {
   }
 }
 
-/** OpenAI Structured Outputs(strict json_schema) 범용 호출. 실패하면 undefined(호출자가 규칙 기반으로 대체). */
 export class OpenAIStructuredLlm extends OpenAIChat implements StructuredLlm {
-  generate({ system, user, schemaName, schema, signal, attachment }: LlmRequest): Promise<unknown> {
-    if (attachment === undefined) return this.ask({ system, content: user, schemaName, schema, signal });
-    if (this.provider !== "openai") return Promise.resolve(undefined);
-    return this.ask({ system, content: [{ type: "text", text: user }, attachment.contentPart()], schemaName, schema, signal });
+  generate({ system, user, schemaName, schema, signal, attachment, throwOnTransportError }: LlmRequest): Promise<unknown> {
+    if (attachment !== undefined && this.provider !== "openai") return Promise.resolve(undefined);
+    const content: ChatContent = attachment === undefined ? user : [{ type: "text", text: user }, attachment.contentPart()];
+    return this.ask({ system, content, schemaName, schema, signal, throwOnTransportError });
   }
 }
 

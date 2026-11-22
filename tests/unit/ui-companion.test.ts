@@ -39,7 +39,8 @@ it("아바타 카드에는 승인할 값과 목적이 실리지 않는다", () =
   expect(text).not.toContain("900101");
   expect(text).not.toContain("주민번호 입력");
   expect(text).not.toContain("actionId");
-  expect(view).toMatchObject({ mode: "choice", choiceSetId: "i-1", prompt: "입력란을 채울까요?", site: "복지로", message: null });
+  expect(view).toMatchObject({ mode: "choice", task: "awaiting_approval", taskLabel: "승인을 기다리고 있어요.",
+    choiceSetId: "i-1", prompt: "입력란을 채울까요?", site: "복지로", message: null });
 });
 
 it("응답 알림은 답 글을 옮기지 않고 앱이 정한 문장만 쓴다", () => {
@@ -63,6 +64,7 @@ it("한 줄 상태는 준비·종료·동의·인증·선택·문제·멈춤·�
   expect(mode({ busy: true }, { speaking: true })).toBe("working");
   expect(mode({}, { speaking: true, recording: true })).toBe("speaking");
   expect(mode({}, { recording: true })).toBe("listening");
+  expect(desktopView({ ...base, consent: "declined" }, live).status).toBe("음성 대화는 꺼져 있어요. 저를 누르면 글로 물어볼 수 있어요.");
   const resting = desktopView(base, live);
   expect(resting).toMatchObject({ mode: "ready", resting: true, status: "기다리고 있어요." });
   expect(desktopView({ ...base, lang: "en" }, { ...live, message: { id: "m1", text: "Hi" } }).message).toEqual({ id: "m1", text: "Hi" });

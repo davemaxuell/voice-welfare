@@ -3,7 +3,7 @@ import { InMemoryEventLog } from "../../src/core/events.ts";
 import type { TurnResult } from "../../src/core/turn.ts";
 import type { SessionOrchestrator } from "../../src/orchestrator/session.ts";
 import { REDACTED } from "../../src/safety/privacy.ts";
-import { FakeLlm, fieldValue, withLlm } from "../helpers.ts";
+import { FakeLlm, PORTAL, fieldValue, withLlm } from "../helpers.ts";
 import { createTestRuntime } from "./session-runtime.ts";
 
 const runtime = createTestRuntime();
@@ -313,7 +313,10 @@ it("test_ordinary_words_pass_outside_login", async () => {
 });
 
 it("test_mock_submit_receipt", async () => {
-  const session = await openForm();
+  const session = await newSession();
+  const opened = await session.handleTurn("장애인연금 신청 도와줘");
+  expect(opened.state).toBe("APPLICATION_OPEN");
+  expect(opened.speech).toContain("연습용이라 실제로 접수되지는 않아요.");
   await session.handleTurn("이름은 김하늘");
   await session.handleTurn("주소는 부산광역시 예시구 예시로 10");
   await session.handleTurn("연락처는 010-1234-5678");
@@ -324,6 +327,7 @@ it("test_mock_submit_receipt", async () => {
   const done = await session.confirm(true);
   expect(done.state).toBe("MOCK_SUBMITTED");
   expect(done.realSubmission).toBe(false);
+  expect(done.speech).toContain("실제 복지로 접수가 아니며 어떤 기관에도 전송되지 않았습니다.");
   expect(done.verification?.receipt).toMatch(/^MOCK-\d{8}-\d{4}$/u);
 });
 
@@ -460,4 +464,31 @@ it("test_vault_values_hidden_in_history", async () => {
   const replies = session.exportHistory().filter(h => h.role === "assistant");
   expect(replies.some(h => /저장된 정보|이름/u.test(h.text) && h.text.includes(REDACTED))).toBe(true);
   for (const reply of replies) expect(reply.text).not.toContain("박하늘");
+});
+
+it.each(["changed", "expired"] as const)("영어 승인 재확인 사유 %s에서 실행과 모델 전송을 막는다", async reason => {
+  let now = 120;
+  const { session, page } = await runtime.createBrowserSession({ clock: () => now });
+  const model = new FakeLlm();
+  withLlm(session, model);
+  await session.handleTurn(PORTAL + " 열어줘");
+  const ask = await session.handleTurn("이름 칸에 김하늘 써줘");
+  const id = ask.pendingConfirmation?.actionId;
+  if (id === undefined) throw new Error("입력 승인이 생성되지 않았습니다.");
+  await session.setLanguage("en");
+  if (reason === "changed") await page.goto("http://" + PORTAL + "?changed=1");
+  else now += 121;
+  const before = model.calls.length;
+  const result = await session.confirm(true, id);
+  expect(result.lang).toBe("en");
+  expect(result.speech).toContain(reason === "changed" ? "has changed" : "Two minutes");
+  expect(result.actions).toEqual([]);
+  expect(await page.locator("#opinionName").inputValue()).toBe("");
+  expect(model.calls).toHaveLength(before);
+  if (reason === "changed") expect(result.pendingConfirmation).toBeUndefined();
+  else {
+    expect(result.pendingConfirmation?.purpose).toBe("Fill in fields without submitting");
+    expect(result.pendingConfirmation?.actionId).not.toBe(id);
+    expect(result.localSpeechOnly).toBe(true);
+  }
 });
