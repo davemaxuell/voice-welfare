@@ -17,15 +17,16 @@ function setup(prefs: Partial<Settings>, { check = "ok", desktop }: { check?: st
   const guardians: { name: string; phone: string }[] = [];
   const spoken: string[] = [];
   const clips: string[] = [];
+  const rates: number[] = [];
   const consent = vi.fn(() => Promise.resolve());
   const machine = createFirstRun({
     desktop,
-    speak: (text) => { spoken.push(text); return Promise.resolve(); },
+    speak: (text, _lang, speed) => { spoken.push(text); rates.push(speed); return Promise.resolve(); },
     stopSpeaking: () => {},
     onSaved: () => Promise.resolve(),
     onConsentReady: consent,
     loadManifest: () => Promise.resolve(MANIFEST),
-    playClip: (src) => { clips.push(src); return Promise.resolve(); },
+    playClip: (src, speed) => { clips.push(src); rates.push(speed); return Promise.resolve(); },
     pauseClip: () => {},
     settings: () => Promise.resolve(prefs),
     checkKey: () => Promise.resolve(check),
@@ -42,7 +43,7 @@ function setup(prefs: Partial<Settings>, { check = "ok", desktop }: { check?: st
     settle();
   };
   const step = () => machine.snapshot().step;
-  return { machine, saved, guardians, spoken, clips, consent, settle, flush, answer, step };
+  return { machine, saved, guardians, spoken, clips, rates, consent, settle, flush, answer, step };
 }
 
 async function toKeyStep(run: ReturnType<typeof setup>, who = "1") {
@@ -52,6 +53,15 @@ async function toKeyStep(run: ReturnType<typeof setup>, who = "1") {
   await run.answer(who);
   expect(run.step()).toBe("key");
 }
+
+it.each([false, true])("첫 실행의 네 언어 안내는 저장된 빠르기를 지키고 키가 있으면 같은 음성 API를 쓴다 (%s)", async hasKey => {
+  const run = setup({ ...STAGE1, speed: 0.85, hasKey });
+  await run.machine.start(1);
+  await run.flush();
+  expect(run.rates).toEqual([0.85, 0.85, 0.85, 0.85]);
+  expect(run.spoken).toHaveLength(hasKey ? 4 : 0);
+  expect(run.clips).toHaveLength(hasKey ? 0 : 4);
+});
 
 it("test_user_alone_finishes_stage1_with_keys_only", async () => {
   const run = setup(STAGE1);

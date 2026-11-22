@@ -23,16 +23,20 @@ const MIXED: readonly PortalCandidate[] = [
 ];
 
 it("find_portal은 걸러 낸 공공 누리집만 후보로 두고 그 host를 open_url로 연다", async () => {
+  const discoveryQuery = "site:go.kr 체류기간 연장";
+  const requestsToProvider: string[] = [];
   const { auto, requests, opened, executed } = pilot({ [HIKOREA]: page(HIKOREA, "하이코리아") }, [
-    { action: "find_portal", target: "체류기간 연장 신청 출입국" },
+    { action: "find_portal", target: discoveryQuery },
     { action: "open_url", target: "www.hikorea.go.kr" },
     { action: "ask_user", answer: "어느 절차를 볼까요?" },
-  ], { discoverPortal: async () => MIXED });
+  ], { discoverPortal: async query => { requestsToProvider.push(query); return MIXED; } });
   const result = await auto.run("비자 연장 절차 알려줘", context());
   expect(result.status).toBe("asked");
   expect(matches(requests[1]!)).toEqual([{ host: "www.hikorea.go.kr", name: "하이코리아" }]);
   expect(result.steps.map(s => [s.action, s.ok])).toEqual([["find_portal", true], ["open_url", true]]);
   expect(opened).toEqual([HIKOREA]);
+  expect(requestsToProvider).toEqual([discoveryQuery]);
+  expect(JSON.stringify([result.steps, result.speech, result.actions])).not.toContain("site:");
   expect(executed).not.toContain("fill");
 });
 

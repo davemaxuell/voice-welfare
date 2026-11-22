@@ -47,10 +47,10 @@ let readingTime = 0;
 let lang: string | undefined;
 type ChromeKey = "talk" | "stop" | "hide" | "avatar" | "micOn" | "micOff" | "on" | "off" | "site" | "offline" | "title" | "connecting" | "hideTitle";
 const chromeText = {
-  ko: { connecting: "청음과 연결하는 중이에요.", hideTitle: "도우미 숨기기", talk: "말하기", stop: "멈춰", hide: "숨기기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
-  en: { connecting: "Connecting to Cheongeum.", hideTitle: "Hide assistant", talk: "Talk", stop: "Stop", hide: "Hide", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
-  zh: { connecting: "正在连接青音。", hideTitle: "隐藏助手", talk: "说话", stop: "停止", hide: "隐藏", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
-  ja: { connecting: "チョンウムに接続しています。", hideTitle: "アシスタントを隠す", talk: "話す", stop: "停止", hide: "隠す", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
+  ko: { connecting: "청음과 연결하는 중이에요.", hideTitle: "대화와 마이크는 계속 켜집니다", talk: "말하기", stop: "멈춰", hide: "마스코트 닫기", avatar: "청음 대화 열기", micOn: "마이크 켜짐", micOff: "마이크 꺼짐", on: "켜짐", off: "꺼짐", site: "대상", offline: "대화 창과 연결이 끊겼어요. 저를 누르면 대화 창을 열어요.", title: "청음 도우미" },
+  en: { connecting: "Connecting to Cheongeum.", hideTitle: "Chat and microphone stay on", talk: "Talk", stop: "Stop", hide: "Close mascot", avatar: "Open Cheongeum chat", micOn: "Mic on", micOff: "Mic off", on: "On", off: "Off", site: "Site", offline: "The chat is disconnected. Select Cheongeum to open it.", title: "Cheongeum assistant" },
+  zh: { connecting: "正在连接青音。", hideTitle: "对话和麦克风继续工作", talk: "说话", stop: "停止", hide: "关闭吉祥物", avatar: "打开青音对话", micOn: "麦克风已开", micOff: "麦克风已关", on: "已开", off: "已关", site: "网站", offline: "对话连接已断开。点击青音可打开对话。", title: "青音助手" },
+  ja: { connecting: "チョンウムに接続しています。", hideTitle: "会話とマイクは継続します", talk: "話す", stop: "停止", hide: "マスコットを閉じる", avatar: "チョンウムとの会話を開く", micOn: "マイクオン", micOff: "マイクオフ", on: "オン", off: "オフ", site: "対象", offline: "会話画面との接続が切れました。チョンウムを押すと会話画面が開きます。", title: "チョンウムアシスタント" },
 } satisfies Record<"ko" | "en" | "zh" | "ja", Record<ChromeKey, string>>;
 const moveHint = {
   ko: "끌어서 위치를 옮겨요. 키보드로는 방향키를 누르세요.",

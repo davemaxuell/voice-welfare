@@ -8,7 +8,7 @@ let page: Page;
 beforeAll(async () => { ui = await startUi(); browser = await chromium.launch({ channel: "chromium", args: ["--use-fake-device-for-media-stream"] }); }, 90_000);
 beforeEach(async () => { page = await browser.newPage(); await page.goto(ui.url); }, 30_000);
 afterEach(async () => { await page?.close(); await ui?.reset(); }, 30_000);
-afterAll(async () => { await browser?.close(); await ui?.close(); }, 30_000);
+afterAll(async () => { await Promise.all([browser?.close(), ui?.close()]); }, 30_000);
 
 it("마이크 권한을 거절해도 텍스트로 질문할 수 있다", async () => {
   const voice = await startUi(true, { REQUIRE_CONSENT: "false" });
@@ -190,7 +190,7 @@ it("test_private_speech_mutes_existing_and_new_uploading_microphones", async () 
   await page.locator("h1").click();
   const result = await page.evaluate(`(async () => {
     const { VoiceLoop, startRecording } = await import('/src/mic.ts');
-    const { speakOnDevice } = await import('/src/speaker.ts');
+    const { withPrivateReadback } = await import('/src/speaker.ts');
     const { LiveConversation } = await import('/src/voice-edge.ts');
     const { audioContext } = await import('/src/audio.ts');
     const tracks = [];
@@ -199,14 +199,11 @@ it("test_private_speech_mutes_existing_and_new_uploading_microphones", async () 
       tracks.push(stream.getAudioTracks()[0]);
       return stream;
     };
-    window.SpeechSynthesisUtterance = class {};
-    speechSynthesis.getVoices = () => [{name: 'Device', lang: 'ko-KR', localService: true}];
     let complete;
-    speechSynthesis.speak = utterance => { complete = () => utterance.onend(); };
     const loop = new VoiceLoop();
     await loop.start();
     const stopWatch = loop.watchBargeIn(() => {});
-    const playback = speakOnDevice('비공개 테스트', 'ko');
+    const playback = withPrivateReadback(() => new Promise(resolve => { complete = resolve; }));
     const pendingRecord = await startRecording(() => ({ append() {}, cancel() {} }), undefined, () => {});
     const live = new LiveConversation('test', {});
     const muted = tracks.every(track => !track.enabled) && live.localSpeech === true;

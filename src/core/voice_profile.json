@@ -1,0 +1,7 @@
+{
+  "model": "gpt-4o-mini-tts",
+  "voice": "coral",
+  "instructions": "Speak warmly, calmly and clearly, like a friendly guide. Use a steady pace and natural pauses in the listener's language.",
+  "speed": 1.35,
+  "normalRate": 1.25
+}

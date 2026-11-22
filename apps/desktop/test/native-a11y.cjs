@@ -44,7 +44,7 @@ async function main() {
       return Array.isArray(rows) && rows.some((r) => r.name === '동의하고 음성 대화 시작') ? rows : null;
     }, { timeout: 15000, what: 'UIA tree of the overlay' });
     const buttons = tree.filter((r) => r.type === 'ControlType.Button').map((r) => r.name);
-    for (const name of ['동의하고 음성 대화 시작', '동의하지 않음', '안내 보기', '말하기', '숨기기', '청음 대화 열기']) {
+    for (const name of ['동의하고 음성 대화 시작', '동의하지 않음', '안내 보기', '말하기', '마스코트 닫기', '청음 대화 열기']) {
       assert.ok(buttons.includes(name), `UIA button "${name}" (${buttons.join(', ')})`);
     }
     const status = tree.find((r) => r.id === 'status');

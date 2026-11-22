@@ -119,7 +119,9 @@ export const INTENTS = [
 export const INTENT_TYPES = INTENTS.map(spec => spec.type);
 const [first, ...others] = INTENTS;
 export const IntentSchema = z.discriminatedUnion("type", [first.schema, ...others.map(row => row.schema)]).transform(omitAbsent);
-export type Intent = z.infer<typeof IntentSchema>;
+/** 데스크톱이 조작할 수 있는 아바타 창이 있을 때만 모델의 의도 목록에 넣는다. */
+export type AvatarIntent = { type: "SHOW_AVATAR" } | { type: "HIDE_AVATAR" };
+export type Intent = z.infer<typeof IntentSchema> | AvatarIntent;
 export type IntentType = Intent["type"];
 export function parseIntent(candidate: unknown): Intent | undefined {
   return IntentSchema.safeParse(candidate).data;

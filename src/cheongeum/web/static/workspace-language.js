@@ -1,6 +1,8 @@
 // Korean strings are also the fallback for the first render, before a session exists.
 const copy = {
-  '이 기기에서 사용할 수 있는 음성이 없어 개인 안내를 화면에 표시했어요.': ['No on-device voice is available for this language. Your private reply is on screen.', '此设备没有可用的本地语音，私人回复已显示在屏幕上。', 'この端末で利用できる音声がないため、個人情報を含む案内は画面に表示しました。'],
+  '음성 연결이 잠시 끊겼다가 다시 연결됐어요.': ['The voice connection dropped briefly and is working again.', '语音连接刚才短暂中断，现在已恢复。', '音声が一時途切れましたが、再接続できました。'],
+  '개인정보가 있는 안내를 대화 기록에 표시했어요. 화면 낭독기로 내용을 들을 수 있어요.': ['Your private message is in the conversation transcript. Your screen reader can read it aloud.', '含有个人信息的消息已显示在对话记录中，可使用屏幕阅读器朗读。', '個人情報を含む案内を会話履歴に表示しました。スクリーンリーダーで読み上げられます。'],
+  '마이크를 껐어요. 사이트에서 직접 로그인이나 본인 확인을 마쳐 주세요.': ['The microphone is off. Complete sign-in or identity verification directly on the site.', '麦克风已关闭。请在网站上直接完成登录或身份验证。', 'マイクを切りました。サイトで直接ログインまたは本人確認を済ませてください。'],
   '시작 전 안내를 듣고 동의해 주세요.': ['Please review the introduction and choose whether to start.', '请查看使用说明，再选择是否开始。', '開始時の案内を確認し、同意するか選んでください。'],
   '동의하고 음성 대화 시작': ['Agree and start voice chat', '同意并开始语音对话', '同意して音声会話を開始'],
   '동의하지 않음': ['Decline', '不同意', '同意しない'],

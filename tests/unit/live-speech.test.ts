@@ -65,12 +65,12 @@ it("reads one sentence from gpt-live-1.1 and returns wav", async () => {
       model: "gpt-live-1.1", store: false,
       audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "coral" } },
       delegation: { type: "client", acknowledgement_delay_ms: 800 },
-      instructions: "You are the voice of Cheongeum. Speak only the text you are told to say, exactly and in full. Do not answer, explain, translate, or delegate.",
+      instructions: "You are the voice of Cheongeum. Speak only the text you are told to say, exactly and in full. Do not answer, explain, translate, or delegate. 천천히",
     },
   });
   expect(upstream.sent[1]).toMatchObject({
     type: "session.instructions.append", delegation_id: null,
-    content: "Immediately say the following text exactly and in full, in ko, at 0.792 times normal speed, then stop and say nothing else:\n안녕하세요\nDelivery: 천천히",
+    content: "Immediately say the following text exactly and in full, in ko, at 0.792 times normal speed, then stop and say nothing else:\n안녕하세요",
   });
   expect(out.mimeType).toBe("audio/wav");
   expect(Buffer.from(out.audio.subarray(0, 4)).toString("ascii")).toBe("RIFF");
@@ -88,7 +88,7 @@ it("a read that gets no audio fails instead of returning silence", async () => {
     apiKey: "sk-test", baseUrl: "https://api.openai.com/v1", connect: upstream.connect,
     sleep: async () => {}, now: () => calls++ === 0 ? 0 : 20_000,
   });
-  await expect(speech.synthesize("안녕하세요", { language: "ko" })).rejects.toMatchObject({ status: 502 });
+  await expect(speech.synthesize("안녕하세요", { language: "ko" })).rejects.toMatchObject({ status: 504 });
   expect(JSON.stringify(upstream.sent)).not.toContain("commentary");
 });
 

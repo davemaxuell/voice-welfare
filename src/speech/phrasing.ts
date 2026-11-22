@@ -2,6 +2,13 @@ import { asciiDecimalDigits, strip } from "../core/text.ts";
 import { maskValue } from "../safety/privacy.ts";
 
 export const READ_CHUNK = 350;
+/** 조용한 조사 창은 이미 닫혀 있으므로 이용자가 볼 검색 화면을 열도록 안내한다. */
+export const OPEN_SITE_SEARCH = {
+  ko: "이어서 ‘공식 사이트의 검색 화면을 열어 줘’라고 말씀해 주세요.",
+  en: "To continue, say “Open the official site’s search page.”",
+  zh: "要继续，请说“打开官方网站的搜索页面”。",
+  ja: "続けるには「公式サイトの検索画面を開いて」とお伝えください。",
+} as const;
 export const phrasingPatterns = {
   wordTail: /[\p{White_Space})）'"’”]+(?=\n?$)/u,
   digit: /[0-9]/u,
@@ -16,6 +23,20 @@ export const phrasingPatterns = {
   cueBefore: /(번호|전화|국번\p{White_Space}*없이|센터|문의|연락처|☎)\p{White_Space}*(?:는|은|:|번호는|번호)?\p{White_Space}*(?:국번\p{White_Space}*없이\p{White_Space}*)?$/u,
   digits: /\p{Nd}+/gu,
 };
+
+export type ClickEffect = "moved" | "changed" | "none";
+export function pressResult(pressed: string, effect?: ClickEffect, { revealed, moved, approved = false }: {
+  revealed?: string; moved?: string; approved?: boolean;
+} = {}): string {
+  if (effect === "none") return pressed + " 눌렀지만 화면이 바뀌지 않았어요.";
+  const receipt = approved ? pressed + " 눌렀어요. " : "";
+  if (effect === "changed") {
+    const shown = chunkText((revealed ?? "").split("\n").join(" "), 0);
+    return receipt + (shown.length > 0 ? "새로 보이는 내용입니다. " + shown : "같은 화면에서 내용이 바뀌었어요.");
+  }
+  if (effect === "moved") return receipt + (moved !== undefined && moved.length > 0 ? moved : "새 페이지가 열렸어요.");
+  return receipt + "화면 변화를 확인하지 못했어요.";
+}
 
 export function josa(word: string, withBatchim: string, without: string): string {
   const last = Array.from(word.replace(phrasingPatterns.wordTail, "")).at(-1);

@@ -5,7 +5,8 @@ import type { UpgradeWebSocket, WSContext, WSEvents } from "hono/ws";
 import { strip } from "../core/text.ts";
 import { redactText } from "../safety/privacy.ts";
 import { isStopUtterance } from "../understanding/rules.ts";
-import { SAMPLE_RATE, withDeadline } from "../voice/live.ts";
+import { SAMPLE_RATE, SocketClosed, withDeadline } from "../voice/live.ts";
+import { recoverVoice, TRANSCRIPTION_DEADLINE_MS, voiceFault, VoiceFault } from "../voice/recovery.ts";
 import type { SttProvider } from "../voice/stt.ts";
 import { RequestConflict, type RequestLedger } from "./recovery.ts";
 import { TURN_TEXT_LIMIT, originRefusal, type HeaderList } from "./request_policy.ts";
@@ -172,7 +173,37 @@ export class LiveAudio {
           yield frame;
         }
       }
-      const text = turnTranscript(await withDeadline(55_000, upstream.transcribe(frames(), session.lang)));
+      // 같은 녹음·동의·세대에 대해서만 받아쓰기를 재시도한다. 동작은 영수증을 소비할 때 한 번만 실행한다.
+      const lifetime = new AbortController();
+      const input = frames();
+      const buffered: Uint8Array[] = [];
+      let reading: Promise<void> | undefined;
+      let finished = false;
+      async function* recording() {
+        for (let i = 0; ; i++) {
+          lifetime.signal.throwIfAborted();
+          current();
+          if (socket.disconnected) throw new SocketDisconnected();
+          if (i === buffered.length && !finished) {
+            reading ??= input.next().then(next => {
+              if (next.done === true) finished = true;
+              else buffered.push(next.value);
+            }).finally(() => { reading = undefined; });
+            await reading;
+          }
+          const frame = buffered[i];
+          if (frame === undefined) return;
+          yield frame;
+        }
+      }
+      let recovered = false, text: string;
+      try {
+        text = turnTranscript(await withDeadline(TRANSCRIPTION_DEADLINE_MS, recoverVoice("transcription", lifetime.signal, () => {
+          current();
+          if (socket.disconnected) throw new SocketDisconnected();
+          return upstream.transcribe(recording(), session.lang);
+        }, () => { recovered = true; }, undefined, e => e instanceof SocketClosed ? new VoiceFault("UPSTREAM_CLOSED_" + e.code, true) : voiceFault(e))));
+      } finally { lifetime.abort(); }
       current();
       // Only the server holds the final. A dropped recording cannot dispatch an action.
       const mine = [...this.#receipts].filter(([, row]) => row.sid === sid).map(([key]) => key);
@@ -180,7 +211,7 @@ export class LiveAudio {
       const token = tokenUrlsafe(24);
       this.#receipts.set(token, { sid, ledger, generation, text });
       setTimeout(() => { this.#receipts.delete(token); }, 30_000).unref();
-      await socket.sendJson({ receipt: token });
+      await socket.sendJson(recovered ? { receipt: token, voiceRecovered: true } : { receipt: token });
     } catch (error) {
       if (error instanceof SocketDisconnected) return;
       if (error instanceof InvalidAudio || error instanceof RequestConflict) await socket.sendJson(LISTENING_ENDED).catch(() => {});

@@ -55,6 +55,8 @@ async def test_live_offer_seeds_recent_redacted_app_dialogue(new_session, monkey
     monkeypatch.setattr("cheongeum.server.voice_edge.httpx", SimpleNamespace(AsyncClient=client))
     await provider.offer("v=0", session, 1.35)
     config = requests[-1]["session"]
+    assert config["audio"]["output"]["voice"] == VoiceConfig.ttsVoice
+    assert VoiceConfig.ttsInstructions and VoiceConfig.ttsInstructions in config["instructions"]
     assert "input" not in config
     assert "triggers" not in config
     assert config["delegation"]["type"] == "decisions"

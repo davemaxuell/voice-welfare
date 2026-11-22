@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cheongeum.core.jsutil import jdumps, rx
+from cheongeum.core.voice_profile import VOICE_PROFILE
 from cheongeum.personal.atomic import write_private
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ MOBILE = rx(r"(?:010[0-9]{8}|01[16789][0-9]{7,8})")
 VAULT_LABELS = {"name": "이름", "address": "주소", "phone": "연락처", "email": "이메일", "birth": "생년월일"}
 
 # 말하기 설정(기본값). 금고 파일의 speech에 두고, 음성 명령으로만 바꾼다.
-DEFAULT_SPEECH = {"rate": 1.25, "length": "normal", "voice": None, "progressSpoken": True}
+DEFAULT_SPEECH = {"rate": VOICE_PROFILE.normalRate, "length": "normal", "voice": None, "progressSpoken": True}
 SPEECH_LABELS = {"rate": "말하는 속도", "length": "답 길이", "voice": "목소리", "progressSpoken": "진행 상황 알림"}
 
 

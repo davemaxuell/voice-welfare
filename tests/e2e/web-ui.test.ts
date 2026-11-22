@@ -444,6 +444,11 @@ it("test_progress_cues_never_play_over_speech", async () => {
     const { talking, cues } = await page.evaluate(() => ({ talking: window.__talking ?? [], cues: window.__cues ?? [] }));
     const progress = cues.filter(([kind]) => kind === "thinking" || kind === "working");
     expect(progress.some(([kind]) => kind === "working"), JSON.stringify(cues)).toBe(true);
+    const sent = cues.filter(([kind]) => kind === "done").map(([,at]) => at);
+    for (const [i, begin] of sent.entries()) {
+      const end = sent[i + 1] ?? Infinity;
+      expect(progress.filter(([kind, at]) => kind === "working" && begin <= at && at < end).length).toBeLessThanOrEqual(1);
+    }
     expect(progress.filter(([, at]) => talking.some(([start, end]) => start <= at && at <= end)), JSON.stringify(talking)).toEqual([]);
   } finally {
     await page.close();

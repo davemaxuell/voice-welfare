@@ -446,7 +446,7 @@ it("test_web_answer_hides_resident_number_from_llm", async () => {
     if (!main.includes(quote)) main = quote + "\n" + main;
     return { ...out, view: { ...out.view, outline: { ...outline, mainText: main + "\n주민등록번호 예시 " + residentNumber } } };
   });
-  const model = new FakeLlm({ chat_route: { route: "web_search", reply: "", searchQuery: "오늘 날씨" },
+  const model = new FakeLlm({ chat_route: { route: "web_search", reply: "", keywords: ["오늘", "날씨"] },
     web_answer: { found: true, answer: "첫 검색 결과는 " + quote + "이에요.", evidence: [quote] } });
   withLlm(session, model);
   const result = await session.handleTurn("오늘 날씨 어때");

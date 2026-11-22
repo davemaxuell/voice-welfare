@@ -5,15 +5,17 @@ import { rstripChars } from "../core/text.ts";
 import { LIVE_MODEL, LiveTranscriber, connectSocket, type SocketConnect } from "./live.ts";
 import { OpenAISttProvider, UnsupportedSttProvider, type SttProvider } from "./stt.ts";
 import { OpenAITtsProvider, UnsupportedTtsProvider, type TtsProvider } from "./tts.ts";
+import { VOICE_PROFILE } from "../core/voice_profile.ts";
 
-export const DEFAULT_SPEED = 1.35;
+export const DEFAULT_SPEED = VOICE_PROFILE.speed;
 
 export interface VoiceConfig {
   apiKey?: string; baseUrl?: string; sttModel?: string; ttsModel?: string; ttsVoice?: string;
   ttsInstructions?: string; ttsSpeed?: number; liveModel?: string;
 }
 export const VOICE_DEFAULTS = {
-  baseUrl: OPENAI_BASE_URL, sttModel: STACK.transcription, ttsModel: "gpt-4o-mini-tts", ttsVoice: "coral",
+  baseUrl: OPENAI_BASE_URL, sttModel: STACK.transcription, ttsModel: VOICE_PROFILE.model, ttsVoice: VOICE_PROFILE.voice,
+  ttsInstructions: VOICE_PROFILE.instructions,
   ttsSpeed: DEFAULT_SPEED, liveModel: STACK.voice,
 } as const;
 
@@ -31,7 +33,7 @@ export function createVoiceProviders(cfg: VoiceConfig, fetcher: typeof fetch = f
   });
   const tts = new OpenAITtsProvider({
     apiKey, baseUrl: base, model: cfg.ttsModel ?? VOICE_DEFAULTS.ttsModel, voice: cfg.ttsVoice ?? VOICE_DEFAULTS.ttsVoice,
-    instructions: cfg.ttsInstructions, speed: cfg.ttsSpeed ?? VOICE_DEFAULTS.ttsSpeed, fetch: fetcher,
+    instructions: cfg.ttsInstructions ?? VOICE_PROFILE.instructions, speed: cfg.ttsSpeed ?? VOICE_DEFAULTS.ttsSpeed, fetch: fetcher,
   });
   return [stt, tts];
 }

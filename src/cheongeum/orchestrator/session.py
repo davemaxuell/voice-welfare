@@ -301,6 +301,10 @@ class SessionOrchestrator:
         return await self._enqueue(work)
 
     @property
+    def speech_rate(self) -> float:
+        return self._personal.speech()["rate"]
+
+    @property
     def call_name(self) -> str | None:
         """청음이 부르는 이름: 개인 PC면 금고, 아니면 이번 대화(세션 메모리 금고)에만 있다."""
         return self._personal.call_name()

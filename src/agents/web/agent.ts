@@ -6,6 +6,7 @@ import type {
 } from "../../core/actions.ts";
 import type { Redacted } from "../../core/llm.ts";
 import { pickControl, type ControlPicker } from "./control_picker.ts";
+import type { SiteSearchTerms } from "./search_terms.ts";
 import { AGENT_IDS, PIPELINE_PHASES, type DraftAction, type ExecutedAction } from "../../core/turn.ts";
 import { hasText, strip } from "../../core/text.ts";
 import { tryUrl } from "../../core/url.ts";
@@ -39,6 +40,7 @@ interface ContextOptions {
   browsingScope?: "personal-inspection";
   actionLimit?: number;
   approvedGoalRefs?: ReadonlySet<string>;
+  suppliedOrigins?: ReadonlySet<string>;
 }
 export class ExecContext {
   readonly signal: AbortSignal;
@@ -54,10 +56,11 @@ export class ExecContext {
   readonly browsingScope?: "personal-inspection";
   readonly actionLimit?: number;
   readonly approvedGoalRefs?: ReadonlySet<string>;
+  readonly suppliedOrigins?: ReadonlySet<string>;
 
   constructor({
     signal, approvals = new Set(), isStopped, trace, counter = { actions: 0 }, actor = "resident", sessionId = "", taskId = "",
-    publicLookup = false, browsingScope, actionLimit, approvedGoalRefs, requestedControl,
+    publicLookup = false, browsingScope, actionLimit, approvedGoalRefs, requestedControl, suppliedOrigins,
   }: ContextOptions) {
     this.signal = signal;
     this.approvals = approvals;
@@ -72,6 +75,7 @@ export class ExecContext {
     this.browsingScope = browsingScope;
     this.actionLimit = actionLimit;
     this.approvedGoalRefs = approvedGoalRefs;
+    this.suppliedOrigins = suppliedOrigins;
   }
   requested(name?: string): boolean {
     if (this.actor === "resident") return true;
@@ -97,6 +101,7 @@ export interface ControlWindow {
   more: boolean;
 }
 export interface WebAdapter {
+  withTask?<T>(work: () => Promise<T>): Promise<T>;
   observe(signal?: AbortSignal): Promise<Observation>;
   bindTarget?(target: ActionTarget, signal: AbortSignal, optionLabel?: string): Promise<ActionTarget>;
   loginSubmitTarget?(url: string, signal: AbortSignal): Promise<ActionTarget | undefined>;
@@ -529,7 +534,7 @@ export class WebExecutionAgent {
   }
 
   /** 화면의 검색창에 검색어를 넣고 Enter. 검색창이 아닌 입력란에는 쓰지 않는다. */
-  async search(query: string, ctx: ExecContext): Promise<WebOutcome> {
+  async search(query: SiteSearchTerms, ctx: ExecContext): Promise<WebOutcome> {
     this.pendingSearch = undefined;
     const log: WebAction[] = [];
     const view = await this.observe(ctx);

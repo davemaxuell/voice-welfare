@@ -75,6 +75,16 @@ const count = z.object({ n: z.union([z.number(), z.bigint(), z.string()]).transf
 const claimRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), attempts: z.number() });
 const jobRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), state: z.string(), result: z.string().nullable(),
   checkpoint: z.string().nullable(), revision: z.number().nullable() });
+const deliveryRow = jobRow.extend({token: z.string()});
+
+function readJob({checkpoint, revision, ...row}: z.infer<typeof jobRow>): JobRow {
+  const saved = checkpoint === null ? undefined : ResearchCheckpoint.parse(JSON.parse(checkpoint));
+  const fallback = row.state === "failed" && saved !== undefined ? researchSummary(saved.plan)[1] : null;
+  const result: unknown = row.result !== null && row.result !== "" ? JSON.parse(row.result) : fallback;
+  const waiting = saved?.plan.steps.find(step => step.outcome?.status === "waiting");
+  const questionRevision = row.state === "needs_input" && waiting !== undefined && waiting.attempts < 2 ? revision ?? undefined : undefined;
+  return { ...row, result, ...(questionRevision === undefined ? {} : { questionRevision }) };
+}
 const noteRow = z.object({ id: z.string(), body: z.string() });
 const noteVectorRow = noteRow.extend({ embedding: z.string().nullable(), model: z.string().nullable() });
 const scoreRow = z.object({ id: z.string(), score: z.number() });
@@ -141,6 +151,9 @@ export class WorkflowStore {
                 attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, expires DOUBLE PRECISION,
                 result TEXT, UNIQUE(owner,request_id))`);
       await sql.run("CREATE INDEX IF NOT EXISTS cg_jobs_queue ON cg_jobs(owner,state,created)");
+      await sql.run(`CREATE TABLE IF NOT EXISTS cg_job_delivery (
+                id TEXT PRIMARY KEY REFERENCES cg_jobs(id) ON DELETE CASCADE, token TEXT NOT NULL)`);
+      await sql.run("INSERT INTO cg_job_delivery(id,token) SELECT id,id FROM cg_jobs WHERE state IN ('queued','running') ON CONFLICT(id) DO NOTHING");
       await sql.run(`CREATE TABLE IF NOT EXISTS cg_job_progress (
                 id TEXT PRIMARY KEY REFERENCES cg_jobs(id) ON DELETE CASCADE,
                 revision INTEGER NOT NULL, checkpoint TEXT NOT NULL)`);
@@ -215,6 +228,7 @@ export class WorkflowStore {
       const jobId = randomUUID();
       await sql.run("INSERT INTO cg_jobs(id,owner,request_id,prompt,language,state,created) VALUES(?,?,?,?,?,'queued',?)",
         [jobId, this.owner, requestId, prompt, language, now()]);
+      await sql.run("INSERT INTO cg_job_delivery(id,token) VALUES(?,?)", [jobId, randomUUID()]);
       return jobId;
     });
   }
@@ -295,7 +309,8 @@ export class WorkflowStore {
       const plan = { ...saved.plan, steps: saved.plan.steps.map((step, i) => i === waiting ? { ...step, outcome: undefined, clarification: answer } : step) };
       await sql.run("UPDATE cg_job_progress SET revision=revision+1,checkpoint=? WHERE id=?",
         [JSON.stringify({ ...saved, plan }), jobId]);
-      await sql.run("UPDATE cg_jobs SET state='queued',expires=?,attempts=0 WHERE owner=? AND id=?", [now(), ...id]);
+      await sql.run("UPDATE cg_jobs SET state='queued',result=NULL,expires=?,attempts=0 WHERE owner=? AND id=?", [now(), ...id]);
+      await sql.run("INSERT INTO cg_job_delivery(id,token) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token", [jobId, randomUUID()]);
       return true;
     });
   }
@@ -315,10 +330,32 @@ export class WorkflowStore {
 
   async cancel(jobId: string): Promise<boolean> {
     return await this.transaction(async sql => {
-      const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',lease=NULL,expires=NULL WHERE owner=? AND id=?
+      const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',result=NULL,lease=NULL,expires=NULL WHERE owner=? AND id=?
                           AND state IN ('queued','running','needs_input')`, [this.owner, jobId]) === 1;
       if (cancelled) await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
       return cancelled;
+    });
+  }
+
+  async pendingDeliveries() {
+    return this.transaction(async sql => {
+      const rows = await sql.rows(`SELECT d.token,j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision
+        FROM cg_job_delivery d JOIN cg_jobs j ON j.id=d.id
+        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed')
+        WHERE j.owner=? ORDER BY j.created,d.id`, [this.owner]);
+      return rows.map(raw => {
+        const {token, ...row} = deliveryRow.parse(raw);
+        const {id, language, state, result} = readJob(row);
+        return {id, token, language, state, result};
+      });
+    }, {write: false});
+  }
+
+  async heard(id: string, token: string): Promise<void> {
+    await this.transaction(async sql => {
+      await sql.run(`DELETE FROM cg_job_delivery WHERE id=? AND token=?
+        AND EXISTS (SELECT 1 FROM cg_jobs j WHERE j.id=cg_job_delivery.id AND j.owner=? AND j.state NOT IN ('queued','running'))`,
+      [id, token, this.owner]);
     });
   }
 
@@ -326,15 +363,7 @@ export class WorkflowStore {
     return await this.transaction(async sql => {
       const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
         LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id`, [this.owner]);
-      return rows.map(raw => {
-        const { checkpoint, revision, ...row } = jobRow.parse(raw);
-        const saved = checkpoint === null ? undefined : ResearchCheckpoint.parse(JSON.parse(checkpoint));
-        const fallback = row.state === "failed" && saved !== undefined ? researchSummary(saved.plan)[1] : null;
-        const result: unknown = row.result !== null && row.result !== "" ? JSON.parse(row.result) : fallback;
-        const waiting = saved?.plan.steps.find(step => step.outcome?.status === "waiting");
-        const questionRevision = row.state === "needs_input" && waiting !== undefined && waiting.attempts < 2 ? revision ?? undefined : undefined;
-        return { ...row, result, ...(questionRevision === undefined ? {} : { questionRevision }) };
-      });
+      return rows.map(raw => readJob(jobRow.parse(raw)));
     }, { write: false });
   }
 

@@ -1,8 +1,10 @@
 // ⑥ 말하기: 서버 TTS를 문장 단위로 받아 이어 재생, 신호음.
-import { audioContext } from './audio.js';
+import { audioContext, getSpeechLang } from './audio.js';
+import { workspaceText } from './workspace-language.js';
+import profile from './voice-profile.json' with { type: 'json' };
 
 /** 말하기 설정(세션 TurnResult·snapshot의 speechPrefs). 기본은 예전 고정값과 같다. */
-export const speechPrefs = { rate: 1.25, voice: null };
+export const speechPrefs = { rate: profile.normalRate, voice: null };
 
 export function applySpeechPrefs(p) {
     if (!p) return;
@@ -47,14 +49,13 @@ export function splitForSpeech(text, max = 140) {
     }
     return chunks;
 }
-async function playBuffer(c, data, token) {
+async function playBuffer(c, buffer, token) {
     if (token !== playToken)
         return 'cancelled';
     if (c.state === 'suspended')
         await c.resume().catch(() => undefined);
     if (c.state !== 'running')
         return 'blocked';
-    const buffer = await c.decodeAudioData(data);
     if (token !== playToken)
         return 'cancelled';
     const node = c.createBufferSource();
@@ -75,26 +76,62 @@ async function playBuffer(c, data, token) {
 }
 /** 끼어들기로 멈춘 안내를 이어 말할 때 쓴다(문장 조각 번호). */
 let interrupted = null;
-let cancelDeviceSpeech;
-export function isSpeakingOnDevice() {
-    return Boolean(cancelDeviceSpeech);
+let requestController;
+let interruptedConnection = false;
+let privateReadbacks = 0;
+export const isPrivateReadback = () => privateReadbacks > 0;
+export async function withPrivateReadback(read) {
+    if (++privateReadbacks === 1) for (const cb of speakingListeners) cb(isSpeaking());
+    try {
+        return await read();
+    } finally {
+        if (--privateReadbacks === 0) for (const cb of speakingListeners) cb(isSpeaking());
+    }
 }
 // 문장 조각 사이(다음 조각을 받는 틈)도 한 번의 말로 본다: 첫 조각이 소리 나기 시작한 speak()의 번호
 let utterance = null;
 
 /** 서버 TTS 재생. 문장 단위로 다음 조각을 미리 받아 두며 이어서 재생한다. */
 export const serverTts = {
-    async speak(text, fetchAudio, fromChunk = 0, rate = speechPrefs.rate) {
+    async speak(text, fetchAudio, fromChunk = 0, rate = speechPrefs.rate, lang = getSpeechLang()) {
         this.cancel();
         interrupted = null;
         const token = playToken;
+        const controller = requestController = new AbortController();
+        const signal = controller.signal;
         const chunks = splitForSpeech(text);
         try {
             const c = audioContext();
+            const loadText = async chunk => {
+                for (let attempt = 1; ; attempt++) {
+                    signal.throwIfAborted();
+                    try {
+                        const bytes = await (await fetchAudio(chunk, rate, signal)).arrayBuffer();
+                        return await c.decodeAudioData(bytes);
+                    } catch (error) {
+                        signal.throwIfAborted();
+                        interruptedConnection = true;
+                        const status = error.status;
+                        const network = error instanceof TypeError || error.name === 'NetworkError';
+                        const decode = error.name === 'EncodingError';
+                        const terminal = ['VOICE_KEY', 'VOICE_MODEL', 'VOICE_QUOTA', 'NOT_SUPPORTED'].includes(error.code);
+                        console.warn('[voice]', {operation: 'speech', attempt, status, cause: network ? 'network' : decode ? 'decode' : 'provider'});
+                        if (attempt >= 3 || terminal || !(network || decode || status === 408 || status === 429 || status >= 500)) throw error;
+                        await new Promise((resolve, reject) => {
+                            const abort = () => { clearTimeout(timer); reject(signal.reason); };
+                            const timer = setTimeout(() => {
+                                signal.removeEventListener('abort', abort);
+                                resolve();
+                            }, error.retryAfterMs ?? 300 * 2 ** (attempt - 1));
+                            signal.addEventListener('abort', abort, {once: true});
+                        });
+                    }
+                }
+            };
             // 서버 음성도 말 빠르기 설정을 따르게 설정값을 함께 넘긴다
             const load = (i) => {
                 if (i >= chunks.length || token !== playToken) return;
-                const pending = fetchAudio(chunks[i], rate).then((b) => b.arrayBuffer());
+                const pending = loadText(chunks[i]);
                 // 미리 받은 조각이 재생 대기 중 실패해도 처리되지 않은 거부가 남지 않게 한다.
                 pending.catch(() => undefined);
                 return pending;
@@ -112,14 +149,19 @@ export const serverTts = {
                     return r;
                 }
             }
+            if (interruptedConnection && token === playToken) {
+                const cue = workspaceText('음성 연결이 잠시 끊겼다가 다시 연결됐어요.', lang);
+                const status = await loadText(cue).then(data => playBuffer(c, data, token)).catch(() => undefined);
+                if (status === 'played') interruptedConnection = false;
+            }
             return 'played';
         }
         catch (e) {
-            console.warn('[tts] 서버 음성 재생 실패', e);
             if (token !== playToken) return 'cancelled';
             throw e;
         }
         finally {
+            if (requestController === controller) requestController = undefined;
             if (utterance === token) {
                 utterance = null;
                 notifySpeaking();
@@ -128,7 +170,8 @@ export const serverTts = {
     },
     cancel() {
         playToken++;
-        cancelDeviceSpeech?.();
+        requestController?.abort();
+        requestController = undefined;
         utterance = null;
         try {
             source?.stop();
@@ -140,61 +183,6 @@ export const serverTts = {
         notifySpeaking();
     },
 };
-
-export async function speakOnDevice(text, lang, rate = speechPrefs.rate) {
-    serverTts.cancel();
-    interrupted = null;
-    const token = playToken;
-    const synth = window.speechSynthesis;
-    if (!synth || !window.SpeechSynthesisUtterance) return 'unavailable';
-    if (!synth.getVoices().length) {
-        await new Promise(resolve => {
-            const ready = () => {
-                clearTimeout(timer);
-                synth.removeEventListener('voiceschanged', ready);
-                resolve();
-            };
-            const timer = setTimeout(ready, 1000);
-            synth.addEventListener('voiceschanged', ready);
-        });
-    }
-    if (playToken !== token) return 'cancelled';
-    const voice = synth.getVoices().find(v =>
-        v.localService === true && v.lang.toLowerCase().split(/[-_]/)[0] === lang);
-    if (!voice) return 'unavailable';
-    const line = new SpeechSynthesisUtterance(text);
-    line.voice = voice;
-    line.lang = voice.lang;
-    line.rate = rate;
-    return new Promise(resolve => {
-        const finish = status => {
-            if (cancelDeviceSpeech !== cancel) return;
-            cancelDeviceSpeech = undefined;
-            utterance = null;
-            notifySpeaking();
-            resolve(status);
-        };
-        const cancel = () => {
-            line.onend = line.onerror = null;
-            try {
-                synth.cancel();
-            } finally {
-                finish('cancelled');
-            }
-        };
-        cancelDeviceSpeech = cancel;
-        line.onend = () => finish('played');
-        line.onerror = () => finish('unavailable');
-        // Mute the microphone before the operating system starts speaking.
-        utterance = token;
-        notifySpeaking();
-        try {
-            synth.speak(line);
-        } catch {
-            finish('unavailable');
-        }
-    });
-}
 
 /** 끼어들기 직후: 멈춘 안내를 이어 말할 수 있으면 그 상태, 없으면 null. */
 export function takeInterruptedSpeech() {

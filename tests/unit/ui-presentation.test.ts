@@ -38,7 +38,8 @@ it("서버 확인이 없는 멈춤은 오류 안내와 함께 멈춤 상태를 �
 
 it.each(Object.entries({
   offline: ["reconnect"], timeout: ["check", "type"], lostTurn: ["check", "type"], cancelFailed: ["stop"],
-  micDenied: ["microphone", "type"], micLost: ["microphone", "type"], voiceDown: ["type"], localVoiceUnavailable: ["type"],
+  micDenied: ["microphone", "type"], micLost: ["microphone", "type"], voiceDown: ["type"], playbackBlocked: [],
+  voiceCredentials: ["type"], voiceQuota: ["type"], voiceLimit: ["type"],
   turnFailed: ["type"], languageFailed: [], expired: ["check", "type"], blocked: ["type"], consentRequired: ["type"],
 } satisfies Record<IssueKey, string[]>))("오류 %s에 실행할 수 있는 동작이 있다", (key, actions) => {
   const view = viewOf({ ...base, error: key as IssueKey }, { background: false, mac: false });

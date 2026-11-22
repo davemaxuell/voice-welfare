@@ -3,9 +3,38 @@ import { expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { LIVE_MODEL, LiveTranscriber } from "../../src/voice/live.ts";
+import { VoiceProviderError } from "../../src/voice/errors.ts";
 import { redactText } from "../../src/safety/privacy.ts";
 import type { SttProvider } from "../../src/voice/stt.ts";
 import { apiFixture, serveFixture } from "./runtime-http-fixture.ts";
+
+it("받아쓰기 도중 만료된 연결은 같은 녹음으로 복구하고 동작 영수증은 하나만 발급한다", async () => {
+  const attempts: number[][] = [];
+  const stt: SttProvider = { name: "fake", supported: true, live: { model: "test", async transcribe(frames) {
+    const seen: number[] = [];
+    attempts.push(seen);
+    for await (const frame of frames) {
+      seen.push(frame[0]!);
+      if (attempts.length === 1) throw VoiceProviderError.fromBody({ error: { code: "session_expired" } });
+    }
+    return "신청 방법";
+  } }, async transcribe() { throw new Error("unexpected upload"); } };
+  const { api, rt, close, post } = apiFixture({}, { stt });
+  const service = await serveFixture(api);
+  try {
+    const s = await rt.createSession(); api.sessions.add(s); await s.consentTo(true);
+    const turn = vi.spyOn(s, "handleTurn").mockImplementation(async text => s.fixedReply(redactText(text), "네", "ko"));
+    const receipt = await service.packet("/api/session/" + s.id + "/audio/live", { writer: "" },
+      Uint8Array.of(10, 10), Uint8Array.of(20, 20), "commit");
+    expect(receipt).toMatchObject({ voiceRecovered: true });
+    expect(attempts).toEqual([[10], [10, 20]]);
+    expect(turn).not.toHaveBeenCalled();
+    const body = z.object({ receipt: z.string() }).parse(receipt);
+    expect((await post("/api/audio/turn?sessionId=" + s.id, body)).status).toBe(200);
+    expect((await post("/api/audio/turn?sessionId=" + s.id, body)).status).toBe(409);
+    expect(turn).toHaveBeenCalledTimes(1);
+  } finally { await service.closeServer(); await close(); }
+});
 
 it("test_streams_before_commit_and_uses_only_the_matching_final", async () => {
   const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });

@@ -19,7 +19,7 @@ export const verifyPatterns = {
 
 export const PUBLIC_FACT_LABELS = {
   documents: "필요한 서류", dates: "기간", eligibility: "대상", amount: "금액",
-  procedure: "방법", contact: "연락처", location: "위치", other: "요청한 정보",
+  procedure: "방법", contact: "연락처", location: "위치", other: "요청한 정보", page_title: "페이지 제목",
 } as const;
 export type PublicFact = keyof typeof PUBLIC_FACT_LABELS;
 export interface PublicSource { url: string; title: string }

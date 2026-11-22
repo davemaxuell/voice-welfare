@@ -106,15 +106,11 @@ export const connectSocket: SocketConnect = (url, options) => new Promise((resol
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-const ERROR_STATUS = new Map([["invalid_api_key", 401], ["permission_denied", 403], ["model_not_found", 404],
-  ["rate_limit_exceeded", 429], ["insufficient_quota", 429]]);
-
 function liveEvent(message: string): Record<string, unknown> {
   const event: unknown = JSON.parse(message);
   if (!isRecord(event)) throw new TypeError("live event is not an object");
   if (event.type === "error" || event.type === "conversation.item.input_audio_transcription.failed") {
-    const code = isRecord(event.error) ? event.error.code : undefined;
-    throw new VoiceProviderError(typeof code === "string" ? ERROR_STATUS.get(code) ?? 502 : 502);
+    throw VoiceProviderError.fromBody(event);
   }
   return event;
 }

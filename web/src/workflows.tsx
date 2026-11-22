@@ -3,6 +3,7 @@ import type { Lang } from "../../src/core/turn.ts";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { api, errorCode, WorkspaceSchema, type Note, type Workspace } from "./api.ts";
+import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
 import { workflowErrorText, workflowResultText, workflowStateNote, workflowStateText, workflowText } from "./workflows-text.ts";
 
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
@@ -13,7 +14,6 @@ const DONE_STATES = new Set(["completed", "partial"]);
 const UNFINISHED_STATES = new Set(["failed", "incomplete"]);
 const ATTENTION_STATES = new Set(["completed", "partial", "incomplete", "failed", "needs_input"]);
 const OPEN_POLL_MS = 3500;
-const COLLAPSED_POLL_MS = 10_000;
 const LOCALE: Readonly<Record<Lang, string>> = { ko: "ko-KR", en: "en-US", zh: "zh-CN", ja: "ja-JP" };
 
 interface UnreadSummary {
@@ -121,7 +121,7 @@ export function WorkflowPanel({
     s.timer = undefined;
     const isOpen = panel.current?.open === true;
     if (!isOpen && !s.hasActive) return;
-    s.timer = setTimeout(() => void refresh(), isOpen ? OPEN_POLL_MS : COLLAPSED_POLL_MS);
+    s.timer = setTimeout(() => void refresh(), isOpen ? OPEN_POLL_MS : RESEARCH_POLL_MS);
   }
 
   async function refresh() {
@@ -224,7 +224,10 @@ export function WorkflowPanel({
         s.refreshErrored = true;
         setFeedback(workflowErrorText(code, langRef.current));
       }
-    } finally { s.mutation = false; }
+    } finally {
+      s.mutation = false;
+      if (options?.markActive === true && s.current === id) researchStarted();
+    }
   }
 
   const research = (e: FormEvent) => {

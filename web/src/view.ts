@@ -72,6 +72,7 @@ export interface Recovery { choice: "resume" | "retry" | "new"; title: string; m
 export interface FocusRequest { id: string; seq: number; scroll?: string; fallback?: string }
 
 export interface UiState {
+  avatarVisible?: boolean | undefined;
   sessionId?: string | undefined;
   state: SessionState;
   last?: LastTurn | undefined;

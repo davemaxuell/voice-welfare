@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 import { createVoiceProviders, VOICE_DEFAULTS } from "../../src/voice/config.ts";
+import { VoiceEdge } from "../../src/server/voice_edge.ts";
 import { VoiceProviderError } from "../../src/voice/errors.ts";
 import { HandshakeRejected, LiveTranscriber, SAMPLE_RATE, SocketClosed, connectSocket, type SocketConnect, type UpstreamSocket } from "../../src/voice/live.ts";
 import { STT_PROMPT, audioExtension, isPromptEcho, isHallucination, OpenAISttProvider, sttPatterns } from "../../src/voice/stt.ts";
@@ -65,6 +66,17 @@ it("test_tts_body_and_mp3", async () => {
 function speedOf(body: unknown) {
   return typeof body === "object" && body !== null && "speed" in body ? body.speed : undefined;
 }
+it("네 언어의 안내와 실시간 대화가 같은 목소리와 말투를 사용한다", async () => {
+  const fetcher = fakeFetch(() => new Response(new Uint8Array([1])));
+  const [stt, tts] = createVoiceProviders({ apiKey: "test", ttsVoice: "coral", ttsInstructions: "A calm and friendly voice.", ttsSpeed: 1.1 }, fetcher);
+  for (const language of ["ko", "en", "zh", "ja"]) {
+    await tts.synthesize("안내", { language });
+    expect(await fetcher.calls.at(-1)!.json()).toMatchObject({ voice: "coral", instructions: "A calm and friendly voice.", speed: 1.1 });
+  }
+  const provider = new VoiceEdge().provider(stt, tts.profile);
+  expect(provider).toHaveProperty("voice", "coral");
+  expect(provider).toHaveProperty("instructions", "A calm and friendly voice.");
+});
 it("test_server_tts_follows_saved_pace", async () => {
   const fetcher = fakeFetch(() => new Response(new Uint8Array([1])));
   const tts = new OpenAITtsProvider({ ...cfg, model: "m", voice: "coral", speed: 1.1, fetch: fetcher });

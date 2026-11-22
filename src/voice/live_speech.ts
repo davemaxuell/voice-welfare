@@ -4,17 +4,13 @@ import { rstripChars } from "../core/text.ts";
 import { VoiceProviderError } from "./errors.ts";
 import { HandshakeRejected, SAMPLE_RATE, connectSocket, type SocketConnect, type UpstreamSocket } from "./live.ts";
 import type { TtsProvider } from "./tts.ts";
+import { speechSpeed, VOICE_PROFILE, type SpeechProfile } from "../core/voice_profile.ts";
+import { liveClosure, VoiceFault } from "./recovery.ts";
 
 const READER_INSTRUCTIONS = "You are the voice of Cheongeum. Speak only the text you are told to say, exactly and in full. Do not answer, explain, translate, or delegate.";
 const CONTINUE_READING = "Finish reading the given text. Do not wait for the application.";
 const SILENCE_MS = 700;
 const AUDIO_DEADLINE_MS = 20_000;
-// LiveTranscriber가 쓰는 오류 코드와 같다.
-const ERROR_STATUS = new Map<string, number>([
-  ["invalid_api_key", 401], ["permission_denied", 403], ["model_not_found", 404],
-  ["rate_limit_exceeded", 429], ["insufficient_quota", 429],
-]);
-
 interface LiveSpeechOptions {
   apiKey: string;
   baseUrl: string;
@@ -35,9 +31,9 @@ export class LiveSpeechProvider implements TtsProvider {
   readonly supported = true;
   readonly baseUrl: string;
   readonly voice: string;
+  readonly profile: SpeechProfile;
   readonly speed?: number;
   readonly #apiKey: string;
-  readonly #instructions?: string;
   readonly #url: string;
   readonly #connect: SocketConnect;
   readonly #sleep: (ms: number) => Promise<void>;
@@ -45,11 +41,11 @@ export class LiveSpeechProvider implements TtsProvider {
 
   constructor(options: LiveSpeechOptions) {
     this.baseUrl = options.baseUrl;
-    this.voice = options.voice ?? "coral";
-    this.speed = options.speed;
+    this.voice = options.voice ?? VOICE_PROFILE.voice;
+    this.speed = options.speed ?? VOICE_PROFILE.speed;
     this.name = STACK.voice + "(" + this.voice + ")";
     this.#apiKey = options.apiKey;
-    this.#instructions = options.instructions;
+    this.profile = { voice: this.voice, instructions: options.instructions ?? VOICE_PROFILE.instructions };
     this.#url = liveSessionUrl(options.baseUrl);
     this.#connect = options.connect ?? connectSocket;
     this.#sleep = options.sleep ?? (ms => new Promise(resolve => { setTimeout(resolve, ms); }));
@@ -63,10 +59,10 @@ export class LiveSpeechProvider implements TtsProvider {
     let socket: UpstreamSocket | undefined;
     try {
       socket = await this.#open(signal);
-      await this.#send(socket, sessionStart(this.voice), signal);
+      await this.#send(socket, sessionStart(this.voice, this.profile.instructions), signal);
       await this.#untilStarted(socket, started, signal);
       const pace = spokenPace(this.speed, input.pace);
-      const content = readingInstructions(text, input.language, pace, this.#instructions);
+      const content = readingInstructions(text, input.language, pace);
       await this.#send(socket, { type: "session.instructions.append", delegation_id: null, content }, signal);
       const audio = await this.#readAloud(socket, started, signal);
       await this.#send(socket, { type: "session.close" }, signal);
@@ -92,7 +88,7 @@ export class LiveSpeechProvider implements TtsProvider {
     for (;;) {
       const event = await this.#next(socket, { ms: this.#remaining(started) }, signal);
       if (event === undefined) {
-        if (this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(502);
+        if (this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(504);
         continue;
       }
       if (event.type === "session.started") return;
@@ -109,7 +105,7 @@ export class LiveSpeechProvider implements TtsProvider {
       const event = await this.#next(socket, heard ? silence : deadline, signal);
       if (event === undefined) {
         if (heard) return pcmWav(joinPcm(parts));
-        if (deadline.ms === 0 || this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(502);
+        if (deadline.ms === 0 || this.#now() - started >= AUDIO_DEADLINE_MS) throw new VoiceProviderError(504);
         continue;
       }
       if (event.type === "session.output_audio.delta") {
@@ -164,27 +160,25 @@ export class LiveSpeechProvider implements TtsProvider {
   }
 }
 
-function sessionStart(voice: string): Record<string, unknown> {
+function sessionStart(voice: string, instructions: string): Record<string, unknown> {
   return {
     type: "session.start",
     session: {
       model: STACK.voice, store: false,
       audio: { format: { type: "audio/pcm", rate: SAMPLE_RATE }, output: { voice } },
       delegation: { type: "client", acknowledgement_delay_ms: 800 },
-      instructions: READER_INSTRUCTIONS,
+      instructions: READER_INSTRUCTIONS + " " + instructions,
     },
   };
 }
 
-function readingInstructions(text: string, language: string, pace: string, delivery: string | undefined): string {
-  const spoken = "Immediately say the following text exactly and in full, in " + language + ", at " + pace
+function readingInstructions(text: string, language: string, pace: string): string {
+  return "Immediately say the following text exactly and in full, in " + language + ", at " + pace
     + " times normal speed, then stop and say nothing else:\n" + text;
-  if (language === "ko" && delivery !== undefined && delivery.length > 0) return spoken + "\nDelivery: " + delivery;
-  return spoken;
 }
 
 function spokenPace(speed: number | undefined, pace: number | undefined): string {
-  const value = Math.min(4, Math.max(0.25, factor(speed) * factor(pace)));
+  const value = speechSpeed(factor(speed), factor(pace));
   return String(Number(value.toPrecision(6)));
 }
 
@@ -208,15 +202,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function liveEvent(message: string): Record<string, unknown> {
   const event: unknown = JSON.parse(message);
   if (!isRecord(event)) throw new TypeError("live event is not an object");
-  if (event.type === "error") throw providerError(event);
+  if (event.type === "error") throw VoiceProviderError.fromBody(event);
+  if (event.type === "session.closed") throw liveClosure(event.reason) ?? new VoiceFault("VOICE_REMOTE_HANGUP", true);
   return event;
-}
-
-function providerError(event: Record<string, unknown>): VoiceProviderError {
-  const body = event.error;
-  const code = isRecord(body) ? body.code : undefined;
-  const status = typeof code === "string" ? ERROR_STATUS.get(code) ?? 502 : 502;
-  return new VoiceProviderError(status);
 }
 
 function delegationId(event: Record<string, unknown>): string {

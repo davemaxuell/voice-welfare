@@ -9,6 +9,7 @@ declare const currentFrame: number;
 
 /** Electron preload(apps/desktop/preload.cjs)가 넣는 대화 창 다리. */
 interface CheongeumDesktop {
+  avatarVisible?(visible?: boolean): Promise<boolean | null>;
   isDesktop?: boolean;
   showSetup?(): void;
   setAutoStart?(on: boolean): void;
@@ -35,6 +36,7 @@ interface CheongeumOverlay {
   choose(choiceSetId: string, key: string): void;
 }
 interface Window {
+  cheongeumFocusWindow?: () => Promise<void>;
   webkitAudioContext?: typeof AudioContext;
   cheongeumDesktop?: CheongeumDesktop;
   cheongeumOverlay?: CheongeumOverlay;

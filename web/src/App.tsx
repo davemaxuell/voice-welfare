@@ -3,7 +3,7 @@ import { LangSchema } from "../../src/core/turn.ts";
 import {
   answerConsent, answerRecovery, actOnIssue, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
   focusCommand, hearConsent, openSettings, selectLanguage, selectMic, send, setConversationMode, skipIntro, snapshot, soundCheck, speakConsent,
-  speakResearch, stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
+  deliverResearch, speakResearch, stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
   type Snapshot,
 } from "./conversation.ts";
 import { FirstRunDialog } from "./FirstRun.tsx";
@@ -12,6 +12,7 @@ import { RecordingReview } from "./recording-review.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
 import { EXAMPLES, UNSUPPORTED, viewOf, type Env, type LogEntry, type WorkspaceView } from "./view.ts";
 import { WorkflowPanel } from "./workflows.tsx";
+import { watchResearch } from "./research-delivery.ts";
 import { workflowText } from "./workflows-text.ts";
 import { LANGUAGE_NAMES, sourceLanguage, workspaceText } from "./workspace-language.ts";
 
@@ -42,7 +43,7 @@ function Kbd({ label }: { label: string }) {
   return <>{text}<kbd>{shortcut}</kbd></>;
 }
 
-function Header({ view, t }: { view: WorkspaceView; t: (s: string) => string }) {
+function Header({ view, t, avatarVisible }: { view: WorkspaceView; t: (s: string) => string; avatarVisible: boolean | undefined }) {
   return <header className="app-header">
     <div className="header-inner">
       <h1 className="brand"><span className="brand-mark" aria-hidden="true"><span className="brand-eq"><i></i><i></i><i></i></span></span>{t("청음")}<span className="brand-description">{t("공공서비스 음성 도우미")}</span></h1>
@@ -51,6 +52,7 @@ function Header({ view, t }: { view: WorkspaceView; t: (s: string) => string }) 
         <span className="mode-detail">{t("모의 신청에는 예시 정보만 사용해 주세요. 실제 접수는 이루어지지 않아요.")}</span>
       </div>
       <div className="toolbar" role="group" aria-label={t("도구")}>
+        {avatarVisible !== undefined && <button type="button" className="header-button" onClick={() => void window.cheongeumDesktop?.avatarVisible?.(!avatarVisible)}>{t(avatarVisible ? "마스코트 닫기" : "마스코트 다시 열기")}</button>}
         <button type="button" className="header-button" id="open-settings" hidden={!view.openSettings} onClick={() => void openSettings()}>{t("이용 설정")}</button>
         <button type="button" className="header-button contrast-button" id="contrast-toggle" title={t("고대비 전환")} aria-pressed={view.contrast.pressed} onClick={toggleContrast}>{view.contrast.label}</button>
         <button type="button" className="header-button stop" id="stop-all" onClick={() => void stopAll()}>{t("멈춰")}<span className="sr-only"> {t("(모든 동작 중단)")}</span></button>
@@ -355,6 +357,9 @@ export function App() {
   const lang = view.lang;
   const t = (s: string) => workspaceText(s, lang);
   const [researchStatus, setResearchStatus] = useState("");
+  useEffect(() => {
+    if (view.workspaceOwner !== undefined) return watchResearch(view.workspaceOwner, deliverResearch);
+  }, [view.workspaceOwner]);
   const { thread, log, unread, jumpToLatest } = useFollowThread(ui.messages.length);
   const layout = useRef<HTMLDivElement>(null);
   const layoutTop = useRef<number | undefined>(undefined);
@@ -396,7 +401,7 @@ export function App() {
 
   return <div id="app" className={view.appClass} data-stage={view.stage}>
     <a className="skip-link" href="#command">{t("명령 입력으로 바로가기")}</a>
-    <Header view={view} t={t}/>
+    <Header view={view} t={t} avatarVisible={ui.avatarVisible}/>
     <div className="sr-only" aria-live="assertive" id="announce"><LiveText sequence={ui.announcement.seq} text={ui.announcement.text}/></div>
     <SettingsDialog dialog={ui.settings} continuing={ui.sessionId !== undefined}/>
     <FirstRunDialog machine={firstRun}/>
@@ -423,6 +428,7 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
+              <span className="sr-only" role="status" aria-atomic="true">{view.conversation.phase === "thinking" ? t("생각 중") : ""}</span>
               <p className={`phase phase-${view.conversation.phase}`} id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>

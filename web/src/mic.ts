@@ -4,7 +4,7 @@ import { timing } from "./perf.ts";
 import { getSpeechLang, audioContext } from "./audio.ts";
 import clapWorkletUrl from "./clap-worklet.ts?worker&url";
 import pcmWorkletUrl from "./pcm-worklet.ts?worker&url";
-import { isSpeakingOnDevice, onSpeaking } from "./speaker.ts";
+import { isPrivateReadback, onSpeaking } from "./speaker.ts";
 
 /** 실시간 받아쓰기 연결 하나(api.liveAudio). 보낸 소리의 받아쓰기는 서버에 남고 여기에는 영수증만 온다. */
 export interface LiveAudio {
@@ -26,7 +26,7 @@ async function pcmInput(stream: MediaStream, captureChanged?: () => void): Promi
   const context = new AudioContext({ sampleRate: 24000 });
   // Mute at capture so dictation, barge-in pre-roll, and existing uploads all receive silence.
   const syncMic = () => {
-    for (const track of stream.getAudioTracks()) track.enabled = !isSpeakingOnDevice();
+    for (const track of stream.getAudioTracks()) track.enabled = !isPrivateReadback();
     captureChanged?.();
   };
   const stopWatching = onSpeaking(syncMic);

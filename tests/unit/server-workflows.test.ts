@@ -16,6 +16,25 @@ function folder() {
   return dir;
 }
 const databases = [["sqlite", ""], ["postgres", process.env.CHEONGEUM_TEST_DATABASE_URL ?? ""]] as const;
+it("끝난 조사의 음성 인수증은 해당 작업이 전달될 때까지 재시작 후에도 남는다", async () => {
+  const [store] = await database("");
+  const id = await store.enqueue(randomUUID(), "기관 안내", "ko");
+  const pending = await store.pendingDeliveries();
+  expect(pending).toEqual([{id, token: expect.any(String), language: "ko", state: "queued", result: null}]);
+  const token = pending[0]!.token;
+  await store.heard(id, token);
+  expect(await store.pendingDeliveries()).toEqual(pending);
+  const job = await store.claim();
+  expect(await store.finish(job!, "failed")).toBe(true);
+  const resumed = await WorkflowStore.open(store.path, store.owner);
+  const finished = [{...pending[0], state: "failed"}];
+  expect(await resumed.pendingDeliveries()).toEqual(finished);
+  await resumed.heard(id, randomUUID());
+  expect(await resumed.pendingDeliveries()).toEqual(finished);
+  await resumed.heard(id, token);
+  await resumed.heard(id, token);
+  expect(await resumed.pendingDeliveries()).toEqual([]);
+});
 async function database(dsn: string) {
   const dir = folder();
   const path = join(dir, "queue.db");
@@ -250,6 +269,7 @@ describe("research worker", () => {
       expect(await other.answer(id, 2, "서울")).toBe(false);
       expect(await reopened.answer(id, 1, "서울")).toBe(false);
       expect(await reopened.answer(id, 2, "서울")).toBe(true);
+      expect((await reopened.pendingDeliveries())[0]).toMatchObject({state: "queued", result: null});
       expect(await rival.answer(id, 2, "부산")).toBe(false);
       const resumed = await reopened.claim();
       if (!resumed) throw new Error("Expected resumed job");
@@ -257,6 +277,7 @@ describe("research worker", () => {
         plan: { steps: [savedPlan.steps[0], { requirement: "나 제도의 마감일", attempts: 1, clarification: "서울" }] },
       });
       expect(await reopened.cancel(id)).toBe(true);
+      expect((await reopened.pendingDeliveries())[0]).toMatchObject({state: "cancelled", result: null});
       expect(await reopened.progress(resumed)).toBeUndefined();
       expect(await reopened.deleteJob(id)).toBe(true);
     } finally {

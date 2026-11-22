@@ -12,8 +12,10 @@ import type { SessionState } from "./turn.ts";
 declare const redacted: unique symbol;
 export type Redacted = string & { readonly [redacted]: true };
 export interface ModelIntentContext {
+  avatarControl?: boolean;
   state: SessionState;
   awaitingFieldId?: Redacted;
+  need?: Readonly<Record<string, Redacted>>;
 }
 
 type SafeJson = Redacted | SessionState | boolean | number | null | readonly SafeJson[] | { readonly [key: string]: SafeJson };

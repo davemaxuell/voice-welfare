@@ -1,12 +1,12 @@
 // ① 마이크 녹음과 핸즈프리 VAD. 받아쓰기는 서버의 음성 API가 맡는다.
 import { audioContext } from './audio.js';
-import { isSpeakingOnDevice, onSpeaking } from './speaker.js';
+import { isPrivateReadback, onSpeaking } from './speaker.js';
 // The hardware stream is resampled by Web Audio before the worklet packs it for Realtime.
 async function pcmInput(stream) {
     const context = new AudioContext({ sampleRate: 24000 });
     // Mute at capture so dictation, barge-in pre-roll, and existing uploads all receive silence.
     const syncMic = () => {
-        for (const track of stream.getAudioTracks()) track.enabled = !isSpeakingOnDevice();
+        for (const track of stream.getAudioTracks()) track.enabled = !isPrivateReadback();
     };
     const stopWatching = onSpeaking(syncMic);
     syncMic();

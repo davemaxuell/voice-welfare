@@ -4,6 +4,7 @@ import { getSpeechLang } from "./audio.ts";
 import { z } from "zod";
 import { LangSchema, SessionStateSchema, type Lang } from "../../src/core/turn.ts";
 import type { LiveAudio } from "./mic.ts";
+import { TRANSCRIPTION_DEADLINE_MS } from "../../src/voice/recovery.ts";
 
 const text = z.string();
 const opt = <T extends z.ZodType>(schema: T) => schema.nullish().transform(value => value ?? undefined);
@@ -52,6 +53,7 @@ export const TurnSchema = z.object({
   localSpeechOnly: opt(z.literal(true)), lang: LangSchema.default("ko"), actions: z.array(ExecutedSchema).default([]),
   observation: opt(ObservationSchema), verification: opt(z.object({ fieldValueMatches: opt(z.boolean()), receipt: opt(text) })),
   pendingConfirmation: opt(PendingSchema), authHandoff: opt(AuthHandoffSchema), answerCard: opt(AnswerCardSchema),
+  researchDelivery: opt(z.enum(["queued", "outcome"])),
   accessMode: opt(z.enum(["full", "read-only", "none"])), sources: z.array(SourceSchema).default([]), speechPrefs: opt(SpeechPrefsSchema),
   offeredChoices: opt(z.array(z.object({ key: text, label: text }))), publicSuggestions: opt(z.array(text)),
   introScript: opt(z.array(z.object({ text, pose: z.enum(INTRO_POSES), ask: opt(z.boolean()) }))),
@@ -119,15 +121,17 @@ export class ApiError extends Error {
   readonly kind: ErrorKind;
   readonly code: string | undefined;
   readonly status: number | undefined;
-  constructor(kind: ErrorKind, code?: string, status?: number) {
+  readonly retryAfterMs: number | undefined;
+  constructor(kind: ErrorKind, code?: string, status?: number, retryAfterMs?: number) {
     super(workspaceText(errors[kind], getSpeechLang()));
-    this.kind = kind; this.code = code; this.status = status;
+    this.kind = kind; this.code = code; this.status = status; this.retryAfterMs = retryAfterMs;
   }
 }
 export const errorCode = (error: unknown) => error instanceof ApiError ? error.code : undefined;
 export const errorStatus = (error: unknown) => error instanceof ApiError ? error.status : undefined;
 export const errorMessage = (error: unknown) => workspaceText(errors[error instanceof ApiError ? error.kind : "server"], getSpeechLang());
 let report: ((path: string, error?: ApiError, sessionId?: string) => void) | undefined;
+let voiceRestored: (() => void) | undefined;
 
 let writer: string | undefined;
 let requestSeq = 0;
@@ -137,16 +141,16 @@ function headers(values: Record<string, string> = {}): Record<string, string> {
 }
 
 async function failure(res: Response): Promise<never> {
-  const body = z.object({ error: z.string().optional() })
+  const body = z.object({ error: z.string().optional(), retryAfterMs: z.number().nonnegative().optional() })
     .catch({}).parse(await res.json().catch(() => ({})));
   const expired = res.status === 410 || body.error === "CHOICE_EXPIRED" || body.error === "NO_SESSION";
-  throw new ApiError(expired ? "expired" : "server", body.error, res.status);
+  throw new ApiError(expired ? "expired" : "server", body.error, res.status, body.retryAfterMs);
 }
 
 // 응답 본문까지 같은 기한을 적용한다. 사용자가 직접 취소한 파일 작업은 연결 장애로 표시하지 않는다.
 async function request<T>(path: string, init: RequestInit, read: (response: Response) => Promise<T>, sessionId?: string): Promise<T> {
   const deadline = new AbortController();
-  const longRequest = path.includes("/turn") || path.includes("/recording") || path.includes("/confirm") || path.includes("/choice") || path.includes("/audio/stop");
+  const longRequest = path.includes("/turn") || path.includes("/recording") || path.includes("/confirm") || path.includes("/choice") || path.includes("/audio/");
   const timer = setTimeout(() => deadline.abort(), longRequest ? 90_000 : 12_000);
   const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
   try {
@@ -172,7 +176,8 @@ async function call<T>(schema: z.ZodType<T>, path: string, init: CallInit = {}, 
 }
 const post = (body?: unknown): CallInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
-const ReceiptSchema = z.object({ receipt: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
+const ReceiptSchema = z.object({ receipt: z.string().optional(), message: z.string().optional(), error: z.string().optional(),
+  status: z.number().optional(), retryAfterMs: z.number().optional(), voiceRecovered: z.boolean().optional() });
 
 // The renderer only receives a one-use receipt. Transcript text stays on the local server.
 function liveAudio(sessionId: string): LiveAudio {
@@ -198,8 +203,11 @@ function liveAudio(sessionId: string): LiveAudio {
   socket.onmessage = ({ data }: MessageEvent<unknown>) => {
     try {
       const msg = ReceiptSchema.parse(JSON.parse(String(data)));
-      if (msg.receipt !== undefined && msg.receipt.length > 0) resolve(msg.receipt);
-      else reject(new ApiError("server", msg.error));
+      if (msg.receipt !== undefined && msg.receipt.length > 0) {
+        if (msg.voiceRecovered === true) voiceRestored?.();
+        resolve(msg.receipt);
+      }
+      else reject(new ApiError("server", msg.error, msg.status, msg.retryAfterMs));
     } catch { lost(); }
   };
   socket.onerror = lost;
@@ -211,7 +219,7 @@ function liveAudio(sessionId: string): LiveAudio {
       else if (socket.readyState === WebSocket.CONNECTING) pending.push(frame);
     },
     commit() {
-      if (!committed && !cancelled) receiptTimer = setTimeout(() => { reject(new ApiError("timeout")); socket.close(); }, 30_000);
+      if (!committed && !cancelled) receiptTimer = setTimeout(() => { reject(new ApiError("timeout")); socket.close(); }, TRANSCRIPTION_DEADLINE_MS);
       if (!committed && !cancelled && socket.readyState === WebSocket.OPEN) socket.send("commit");
       committed = true;
       return receipt;
@@ -234,6 +242,7 @@ const saved = z.object({ saved: z.boolean() });
 
 export const api = {
   onConnection: (listener: NonNullable<typeof report>) => { report = listener; },
+  onVoiceRestored: (listener: () => void) => { voiceRestored = listener; },
   parseTurn: (raw: unknown) => TurnSchema.parse(raw),
   workspace: (id: string, path = "", method = "GET", data?: unknown) => call(z.unknown(), `/api/session/${sid(id)}/workspace${path}`,
     { method, body: data !== undefined ? JSON.stringify(data) : undefined }),
@@ -258,6 +267,10 @@ export const api = {
   resume: (id: string) => call(CheckpointSchema, `/api/session/${id}/resume`, post(), true),
   wake: (id: string, stopGeneration: number) => call(z.object({ state: SessionStateSchema }), `/api/session/${id}/wake`, post({ stopGeneration }), true),
   heartbeat: (id: string) => call(ok, `/api/session/${id}/heartbeat`),
+  researchOutcomes: (id: string) => call(z.object({working: z.boolean(), outcomes: z.array(z.object({
+    turnId: text, speech: text, lang: LangSchema,
+  }))}), `/api/session/${sid(id)}/research-outcomes`),
+  heardResearch: (id: string, turnId: string) => call(ok, `/api/session/${sid(id)}/research-outcomes/${encodeURIComponent(turnId)}`, {method: "DELETE"}),
   sessionState: (id: string) => call(z.object({ state: SessionStateSchema, stopGeneration: opt(z.number()),
     pendingConfirmation: opt(PendingSchema), authHandoff: opt(AuthHandoffSchema), turnId: opt(text),
     offeredChoices: opt(z.array(z.object({ key: text, label: text }))) }), `/api/session/${sid(id)}/state`),
@@ -285,8 +298,9 @@ export const api = {
     }, async res => z.object({ stopped: z.boolean(), result: opt(TurnSchema) }).parse(await res.json()), sessionId);
   },
   /** rate: 말 빠르기 설정(speechPrefs.rate). 서버 음성도 이 빠르기로 합성한다. */
-  async speak(chunk: string, lang: Lang, rate: number) {
-    return request("/api/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: chunk, lang, rate }) }, res => res.blob());
+  async speak(chunk: string, lang: Lang, rate: number, signal?: AbortSignal, absoluteSpeed?: number) {
+    return request("/api/audio/speak", { method: "POST", headers: { "Content-Type": "application/json" }, signal: signal ?? null,
+      body: JSON.stringify({ text: chunk, lang, rate, absoluteSpeed }) }, res => res.blob());
   },
   createSession: (recoverable = false) => call(SessionSchema, "/api/session", post(recoverable ? { recovery: true } : { attached: true })),
   turn: (sessionId: string, message: string, actionId = "") => call(TurnSchema, "/api/turn", post({ sessionId, text: message, actionId, clientPlatform: "pc" }), true, sessionId),

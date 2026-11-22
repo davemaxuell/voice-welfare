@@ -3,6 +3,9 @@ import { expect, it } from "vitest";
 import { z } from "zod";
 import type { LlmRequest } from "../../src/core/llm.ts";
 import { redactText } from "../../src/safety/privacy.ts";
+import { translateIn } from "../../src/language/i18n.ts";
+import { planWithLlm } from "../../src/understanding/llm_planner.ts";
+import { reviewBeforeOutput, reviewEvidence } from "../../src/orchestrator/task_review.ts";
 import { AGENCY_CATALOG, DECISION_SCHEMA, PublicTask, RESEARCH_SCHEMA, decide, parseDecision, reviewCompletion } from "../../src/orchestrator/public_task.ts";
 
 const oracle = z.object({
@@ -16,7 +19,9 @@ const oracle = z.object({
 const expectedCatalog = {...z.record(z.string(), z.array(z.string())).parse(oracle.catalog), 하이코리아: []};
 function withCurrentAgencies(snapshot: unknown) {
   const schema = z.looseObject({properties: z.record(z.string(), z.unknown())}).parse(snapshot);
-  return {...schema, properties: {...schema.properties, agency: {type: ["string", "null"], enum: [...Object.keys(expectedCatalog), null]}}};
+  const facts = z.looseObject({items: z.looseObject({enum: z.array(z.string())})}).parse(schema.properties.requestedFacts);
+  return {...schema, properties: {...schema.properties, agency: {type: ["string", "null"], enum: [...Object.keys(expectedCatalog), null]},
+    requestedFacts: {...facts, items: {...facts.items, enum: [...facts.items.enum, "page_title"]}, description: DECISION_SCHEMA.properties.requestedFacts.description}}};
 }
 
 function fake(reply: unknown) {
@@ -26,14 +31,15 @@ function fake(reply: unknown) {
 const signal = new AbortController().signal;
 
 it("개인 탐색과 한 단계 명령은 앞에서 실행하는 계획에만 추가한다", () => {
-  const {command, outcome, ...properties} = DECISION_SCHEMA.properties;
+  const {command, outcome, needUpdate, ...properties} = DECISION_SCHEMA.properties;
+  expect(needUpdate.properties.changes.items.properties.aspect.enum).toContain("region");
   expect(command.properties.type.enum).toContain("PREV");
   expect(outcome.anyOf[0]).toMatchObject({enum: ["answer", "arrival"]});
   const additions = new Set(["inspect_personal", "browser_command"]);
   expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command"]);
   expect(properties.agency.anyOf[0]).toMatchObject({type: "string"});
   expect({...DECISION_SCHEMA, properties: {...properties, agency: RESEARCH_SCHEMA.properties.agency, kind: {...properties.kind, enum: properties.kind.enum.filter(k => !additions.has(k))}},
-    required: DECISION_SCHEMA.required.filter(k => k !== "command" && k !== "outcome")}).toEqual(withCurrentAgencies(oracle.schema));
+    required: DECISION_SCHEMA.required.filter(k => !["command", "outcome", "needUpdate"].includes(k))}).toEqual(withCurrentAgencies(oracle.schema));
   expect(RESEARCH_SCHEMA).toEqual(withCurrentAgencies(oracle.research));
   expect(AGENCY_CATALOG).toEqual(expectedCatalog);
 });
@@ -67,6 +73,32 @@ it("keeps a pasted private URL local and grounds uncatalogued institution names 
   expect((await decide(personal("Cedar Civic Office").llm, redactText(ask), "en", new PublicTask(), options))?.agency).toBe("Cedar Civic Office");
   expect(await decide(personal("Invented Office").llm, redactText(ask), "en", new PublicTask(), options)).toBeUndefined();
 });
+it.each([
+  ["https://portal.example/a/private-row?key=content#member", "https://portal.example"],
+  ["127.0.0.1:5174/a/private-row?key=content#member", "http://127.0.0.1:5174"],
+  ["portal.example?key=content#member", "https://portal.example"],
+])("keeps the local address %s out of translation, fallback planning and source review", async (address, origin) => {
+  const raw = address.startsWith("https://") ? address : origin + address.slice(new URL(origin).host.length);
+  const utterance = redactText(`Open ${address} and read the title`);
+  const translator = fake({text: `${origin}에서 제목을 읽어 줘`});
+  const translated = await translateIn(translator.llm, utterance, "en", signal);
+  expect(translated).toContain(raw);
+  const goal = fake({steps: [{type: "GOAL", site: origin, topic: "제목을 읽어 줘"}]});
+  const step = await planWithLlm(goal.llm, redactText(translated!), {state: "BROWSING"}, [], {signal});
+  expect(step?.[0]).toMatchObject({type: "GOAL", goal: expect.stringContaining(raw)});
+  const request = `Open ${origin} and read the title`;
+  const title = "Cedar Archive";
+  const review = fake({answer: title, checks: [{request, kind: "document_title", citations: [{id: 0, quote: title}]}], nextRoute: null});
+  const verdict = await reviewBeforeOutput(review.llm, utterance,
+    [reviewEvidence("page", `${new URL(raw).origin}${new URL(raw).pathname} · ${title}`, {documentTitle: title, pageKey: "local", sourceUrls: [raw]})],
+    signal, {requirements: [utterance]});
+  expect(verdict.status).toBe("complete");
+  for (const call of [...translator.calls, ...goal.calls, ...review.calls]) {
+    expect(call.user).toContain(origin);
+    expect(call.user).not.toMatch(/private-row|key=content|#member/u);
+  }
+});
+
 it("a task carries only what a continuation keeps", () => {
   const task = new PublicTask({ agency: "정부24", subject: "주민등록등본", goal: "등본 서류", facts: ["documents"], exclusions: ["login"], searchMode: "quiet" });
   const raw = (fields: Record<string, unknown>) => z.record(z.string(), z.unknown()).parse({ ...z.record(z.string(), z.unknown()).parse(oracle.cases.find), ...fields });

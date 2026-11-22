@@ -1,7 +1,7 @@
 // WebRTC carries native microphone and speaker audio. The loopback websocket
 // authenticates the offer and delivers results from the application's worker.
 import { audioContext } from './audio.js';
-import { isSpeaking, serverTts } from './speaker.js';
+import { isPrivateReadback, isSpeaking, serverTts } from './speaker.js';
 
 // 청음이 읽는 동안 GPT-Live로 가는 마이크는 꺼 둔다(청음 자신의 목소리가 요청이 되면 안 된다).
 // 그래서 읽는 말을 끊는 소리는 mic.js watchBargeIn처럼 여기서 판단한다: 스피커 소리보다 큰 소리가 300ms.
@@ -37,7 +37,7 @@ export class LiveConversation {
     this.audio = new Audio();
     this.audio.autoplay = true;
     this.enabled = true;
-    this.localSpeech = isSpeaking();
+    this.localSpeech = isSpeaking() || isPrivateReadback();
     this.paused = false;
     this.closed = false;
     this.interrupted = false;
@@ -163,15 +163,17 @@ export class LiveConversation {
   }
 
   updateAudio() {
-    this.audio.muted = !this.enabled || this.paused || this.interrupted || !!this.localSpeech;
-    for (const track of this.stream?.getAudioTracks() ?? []) track.enabled = !this.paused && !this.localSpeech;
+    this.audio.muted = !this.enabled || this.paused || this.interrupted || !!this.localSpeech || isPrivateReadback();
+    for (const track of this.stream?.getAudioTracks() ?? []) track.enabled = !this.paused && !this.localSpeech && !isPrivateReadback();
   }
 
-  setLanguage(lang) {
-    if (this.language === lang || this.channel?.readyState !== 'open' || !['ko', 'en', 'ja', 'zh'].includes(lang)) return;
+  setLanguage(lang, speed) {
+    if ((this.language === lang && this.speed === speed) || this.channel?.readyState !== 'open' || !['ko', 'en', 'ja', 'zh'].includes(lang)) return;
     this.language = lang;
+    this.speed = speed;
     this.channel.send(JSON.stringify({ type: 'session.instructions.append', event_id: crypto.randomUUID(),
-      delegation_id: null, content: 'The application selected reply language ' + lang + '. Use it for subsequent speech.' }));
+      delegation_id: null, content: 'The application selected reply language ' + lang + '. Use it for subsequent speech.'
+        + (speed === undefined ? '' : ' Speak at ' + speed + ' times normal speed.') }));
   }
 
   interrupt() {

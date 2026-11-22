@@ -16,6 +16,7 @@ from websockets.asyncio.client import connect
 
 from cheongeum.core.llm import REASONING_EFFORT_OVERRIDE
 from cheongeum.core.model_stack import STACK
+from cheongeum.core.voice_profile import VOICE_PROFILE, speech_pace
 from cheongeum.server.recovery import RequestConflict
 from cheongeum.server.request_policy import TURN_TEXT_LIMIT, origin_refusal
 from cheongeum.understanding.rules import is_progress_question, is_stop_utterance
@@ -58,14 +59,17 @@ def _effort_choice(event: dict) -> str | None:
 
 
 class LiveProvider:
-    def __init__(self, stt):
+    def __init__(self, stt, tts=None):
         self.url = stt.base_url.rstrip("/") + "/live/sessions"
         self.headers = {"Authorization": f"Bearer {stt.api_key}"}
         self.model = stt.edge_model
+        self.voice = getattr(tts, "voice", VOICE_PROFILE.voice)
+        self.instructions = getattr(tts, "instructions", VOICE_PROFILE.instructions)
 
     async def offer(self, sdp, session, speed):
         config = {
             "model": self.model,
+            "audio": {"output": {"voice": self.voice}},
             "delegation": {
                 "type": "decisions",
                 "decisions": {
@@ -100,7 +104,7 @@ class LiveProvider:
                 "Voice and language\n"
                 f"Start quietly and let the user finish speaking. Use the app's selected reply language ({session.lang}) "
                 "until the app changes it. Keep official Korean names when the speaker mixes languages. "
-                f"Speak clearly and briskly, about {speed:g} times normal speed. "
+                f"{self.instructions} Speak at {speed:g} times normal speed. "
                 "Use short, natural sentences and plain words. In Korean, use polite conversational speech. "
                 "Name the item you mean so the user can follow without seeing the screen. "
                 f"The application state at the start of this call is {session.state}.\n\n"
@@ -350,8 +354,10 @@ class VoiceEdge:
                 action = (session.dialogue.confirmation or {}).get("actionId", "")
                 if hello.get("approvalId", "") != action:
                     action = ""
-                provider = self.provider(stt)
-                live_id, answer = await provider.offer(sdp, session, getattr(audio.tts, "speed", 1.35))
+                provider = self.provider(stt, audio.tts)
+                base = getattr(audio.tts, "speed", None) or VOICE_PROFILE.speed
+                pace = speech_pace(getattr(session, "speech_rate", None)) or 1
+                live_id, answer = await provider.offer(sdp, session, min(4, max(0.25, base * pace)))
                 async with provider.attach(live_id) as upstream:
                     try:
                         current()

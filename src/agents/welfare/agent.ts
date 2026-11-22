@@ -691,7 +691,7 @@ export class WelfareInformationAgent extends WelfareLinks {
     if (service?.dataOrigin !== 'official-api' || signal.aborted) return undefined;
     const fields: Record<PublicFact, string[]> = {
       documents: ['documents','forms'], eligibility: ['target','criteria'], amount: ['benefit'], procedure: ['applySteps','applyMethod'],
-      contact: ['contacts'], location: ['contacts'], other: ['summary','target','benefit','applyMethod'], dates: [],
+      contact: ['contacts'], location: ['contacts'], other: ['summary','target','benefit','applyMethod'], dates: [], page_title: [],
     };
     const chunks = chunkService(service);
     const evidence = new PublicEvidence(facts);

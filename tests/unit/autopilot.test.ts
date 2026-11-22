@@ -97,9 +97,10 @@ it("계획 중 예상하지 못한 예외에서는 조작 목록을 읽거나 �
 });
 
 it("모델이 응답하지 않아도 시간 예산이 끝나면 기다리기를 멈춘다", async () => {
-  // Python 77aad3e: 시간 안에 답하지 않은 결정은 '정하지 못했어요'로 끝난다.
   const result = await pilot(() => new Promise(() => {}), { timeBudgetMs: 30 }).run("알려줘", context());
-  expect([result.status, result.speech]).toEqual(["failed", "다음에 무엇을 할지 정하지 못했어요. 조금 더 구체적으로 말씀해 주시겠어요?"]);
+  expect(result.status).toBe("limit");
+  expect(result.speech).toContain("화면까지 확인했어요");
+  expect(result.speech).toContain("링크 목록");
 });
 
 it("실패한 누름의 진행 알림에는 화면 글이 들어가지 않고 성공했다고 하지 않는다", async () => {
@@ -136,9 +137,9 @@ it("실패한 누름의 진행 알림에는 화면 글이 들어가지 않고 �
   const result = await auto.run("신청 눌러줘", context(), step => progress.add(stepSentence(step, "", "")));
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(result.steps[0]).toMatchObject({ action: "click", ok: false, target: "신청" });
-  expect(progress.latest).toBe("'신청'을 누르려고 했어요.");
+  expect(progress.latest).toBe("요청한 결과를 확인하지 못했어요.");
   expect(users.join("")).not.toContain(secret);
-  expect(users.some(user => JSON.parse(user).ok === false && JSON.parse(user).action === "click")).toBe(true);
+  expect(users.some(user => JSON.parse(user).phase === "step" && JSON.parse(user).action === "click")).toBe(false);
   expect(progress.snapshot().activity).not.toBe("복지로를 열었어요.");
 });
 

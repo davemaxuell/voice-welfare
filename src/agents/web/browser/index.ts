@@ -28,6 +28,7 @@ import { stagehandDriver } from "./stagehand_driver.ts";
 import { framesOf } from "./frame_controls.ts";
 import { embeddedElement, isEmbeddedRef } from "./embedded_element.ts";
 import { restingCursor } from "./rest_cursor.ts";
+import { isHeaded, markHeaded, maximizeWindow, trackTabs } from "./windows.ts";
 
 const waitingHtml = readFileSync(browserAsset("waiting.html"), "utf8");
 // Native Node erases the types on import. Bundled Electron uses these same self-contained function bodies.
@@ -116,14 +117,24 @@ async function launchForDriver<T extends Browser | BrowserContext>(driver: Brows
 
 export function launchBrowser(headless: boolean, slowMoMs = 0, driver = browserDriver()): Promise<Browser> {
   const channel = driver === "stagehand" || (process.env.CHEONGEUM_DESKTOP_RUNTIME ?? "") !== "" ? "chromium" : undefined;
-  return launchForDriver(driver, extra => chromium.launch({ channel, headless, slowMo: slowMoMs, ...extra }));
+  return launchForDriver(driver, async extra => {
+    const browser = await chromium.launch({ channel, headless, slowMo: slowMoMs, ...extra,
+      args: headless ? extra.args : [...extra.args ?? [], "--start-maximized"] });
+    if (!headless) markHeaded(browser);
+    return browser;
+  });
 }
 
 export function launchChromeProfile(userDataDir: string, slowMoMs = 0, driver = browserDriver(),
   options: { channel?: "chrome" | "chromium"; headless?: boolean } = {}): Promise<BrowserContext> {
-  return launchForDriver(driver, extra => chromium.launchPersistentContext(userDataDir, {
-    channel: "chrome", headless: false, viewport: null, locale: "ko-KR", slowMo: slowMoMs, acceptDownloads: true, ...options, ...extra,
-  }));
+  return launchForDriver(driver, async extra => {
+    const context = await chromium.launchPersistentContext(userDataDir, {
+      channel: "chrome", headless: false, viewport: null, locale: "ko-KR", slowMo: slowMoMs, acceptDownloads: true, ...options, ...extra,
+      args: options.headless === true ? extra.args : [...extra.args ?? [], "--start-maximized"],
+    });
+    if (options.headless !== true) markHeaded(context);
+    return context;
+  });
 }
 export async function closeLaunchedBrowser(resource: Browser | BrowserContext): Promise<void> {
   const browser = "contexts" in resource ? resource : resource.browser();
@@ -147,6 +158,7 @@ type Options = (
 ) & {
   allowedOrigins: readonly string[]; readOnlyWeb?: boolean; visualCursor?: boolean;
   driver?: BrowserDriver;
+  protectedTab?: (page: Page) => boolean;
   createPageDriver?: (page: Page, actionTimeoutMs: number) => PageDriver;
   actionTimeoutMs?: number; navigationTimeoutMs?: number; downloads?: DownloadSink;
 };
@@ -320,6 +332,10 @@ export class PlaywrightExecutionAdapter {
   readonly #targetDocuments = new WeakMap<ActionTarget, {page: Page; document: number | undefined; login?:string}>();
   readonly #loads = new Map<Page, PageLoad>();
   #onPage?: (page: Page) => void;
+  readonly #openers = new WeakMap<Page, Page>();
+  readonly #opening = new WeakSet<Page>();
+  #tabs?: ReturnType<typeof trackTabs>;
+  readonly #taskPages = new Set<Set<Page>>();
   #lifecycle = Promise.resolve();
 
   constructor(options: Options) {
@@ -339,6 +355,12 @@ export class PlaywrightExecutionAdapter {
   start(): Promise<void> {
     if (this.#closed) return Promise.reject(closedError());
     return this.#schedule(() => this.#start());
+  }
+  async withTask<T>(work: () => Promise<T>): Promise<T> {
+    const pages = new Set<Page>(this.page === undefined ? [] : [this.page]);
+    this.#taskPages.add(pages);
+    try { return await work(); }
+    finally { this.#taskPages.delete(pages); this.#tabs?.changed(); }
   }
   close(): Promise<void> {
     this.#closed = true;
@@ -364,17 +386,28 @@ export class PlaywrightExecutionAdapter {
     // 테스트용 Chromium: 세션마다 별도 컨텍스트(쿠키·저장소 분리). 실제 크롬: 공유 영구 프로필.
     this.#shared = context !== undefined;
     if (context === undefined && browser === undefined) throw new AdapterError("NOT_SUPPORTED", "어댑터가 시작되지 않았습니다.");
-    const ctx = context ?? await browser!.newContext({ locale: "ko-KR", viewport: { width: 1100, height: 860 }, acceptDownloads: true });
+    const ctx = context ?? await browser!.newContext({ locale: "ko-KR", viewport: isHeaded(browser) ? null : { width: 1100, height: 860 }, acceptDownloads: true });
     this.context = ctx;
     try {
       await this.#prepare(ctx);
       this.#onPage = page => {
         // 내 탭이 연 새 탭만 따라간다(공유 프로필의 다른 세션 탭은 무시)
+        this.#opening.add(page);
         void page.opener().then(opener => {
+          if (opener !== null) this.#openers.set(page, opener);
           if (this.context === ctx && opener !== null && opener === this.page) this.#attach(page);
-        }).catch(() => {});
+        }).catch(() => {}).finally(() => { this.#opening.delete(page); this.#tabs?.changed(); });
       };
       ctx.on("page", this.#onPage);
+      this.#tabs = trackTabs(ctx, page => {
+        if (this.page === page || this.#flights.has(page) || this.#opening.has(page) ||
+            [...this.#taskPages].some(pages => pages.has(page))) return true;
+        // 사용자가 인증하는 동안 새로 열린 본인 확인 팝업도 처음 인계한 탭에 속한다.
+        for (let source: Page | undefined = page; source !== undefined; source = this.#openers.get(source)) {
+          if (this.#options.protectedTab?.(source) === true) return true;
+        }
+        return false;
+      });
       const page = await withSharedTabs(ctx, async () => {
         const blank = ctx.pages().find(page => !claimed.has(page) && page.url() === "about:blank");
         const selected = blank ?? await ctx.newPage();
@@ -382,6 +415,7 @@ export class PlaywrightExecutionAdapter {
         return selected;
       });
       // 동의 전에는 아무 사이트도 열지 않는다. 빈 창 대신 이 창이 무엇인지 알려 주는 대기 화면을 보인다.
+      await maximizeWindow(page).catch(() => {});
       await page.setContent(waitingHtml).catch(() => {});
     } catch (error) { await this.#close(); throw error; }
   }
@@ -412,6 +446,8 @@ export class PlaywrightExecutionAdapter {
       }).catch(() => {});
     }
     this.page = page;
+    for (const pages of this.#taskPages) pages.add(page);
+    this.#tabs?.changed();
     claimed.add(page);
     const load: PageLoad = { method: "GET", fetching: new Map(), tab: randomUUID(), docSeq: 0 };
     this.#loads.set(page, load);
@@ -750,6 +786,7 @@ export class PlaywrightExecutionAdapter {
     } finally {
       if (flight !== undefined) {
         if (page !== undefined && this.#flights.get(page) === flight) this.#flights.delete(page);
+        this.#tabs?.changed();
         this.#noteNative(flight, action, inspection, grants);
       }
     }
@@ -1263,6 +1300,7 @@ export class PlaywrightExecutionAdapter {
     const ctx = this.context;
     if (ctx === undefined) return;
     this.context = undefined;
+    this.#tabs?.release();
     if (this.#onPage !== undefined) ctx.off("page", this.#onPage);
     try {
       if (!this.#shared) await ctx.close();

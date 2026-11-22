@@ -3,11 +3,12 @@ from dataclasses import dataclass, field
 
 from cheongeum.core.llm import OPENAI_BASE_URL
 from cheongeum.core.model_stack import STACK
+from cheongeum.core.voice_profile import VOICE_PROFILE
 from cheongeum.voice.live import LIVE_MODEL, LiveTranscriber
 from cheongeum.voice.stt import OpenAISttProvider, UnsupportedSttProvider
 from cheongeum.voice.tts import OpenAITtsProvider, UnsupportedTtsProvider
 
-DEFAULT_SPEED = 1.35
+DEFAULT_SPEED = VOICE_PROFILE.speed
 
 
 @dataclass
@@ -15,9 +16,9 @@ class VoiceConfig:
     apiKey: str | None = field(default=None, repr=False)
     baseUrl: str = OPENAI_BASE_URL
     sttModel: str = STACK.transcription
-    ttsModel: str = "gpt-4o-mini-tts"
-    ttsVoice: str = "coral"
-    ttsInstructions: str | None = None
+    ttsModel: str = VOICE_PROFILE.model
+    ttsVoice: str = VOICE_PROFILE.voice
+    ttsInstructions: str = VOICE_PROFILE.instructions
     ttsSpeed: float = DEFAULT_SPEED
     liveModel: str = STACK.voice
 

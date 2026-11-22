@@ -144,11 +144,11 @@ it("keeps only https excerpts on the allowed domains and hides their contacts", 
     { url: "https://www.gov.kr/blank", content: "   " }, "not a row"];
   const good = [{ url: "https://www.gov.kr:443/ok", content: " 문의 010-1234-5678 ", title: 5 }, { url: "https://gov.kr/second", content: "본문", title: "메일 a@b.kr" }];
   const excerpts = async (rows: unknown[]) =>
-    await new TavilySearch("key", undefined, undefined, { postJson: searchFake([{ results: rows }]).postJson }).excerpts("q", ["gov.kr"], signal());
+    await new TavilySearch("key", undefined, undefined, { postJson: searchFake([{ results: rows }]).postJson }).excerpts({query: "q", domains: ["gov.kr"]}, signal());
   expect(await excerpts([...bad.slice(0, 4), ...good, ...bad.slice(4)])).toEqual([
     { url: "https://www.gov.kr:443/ok", title: "www.gov.kr", text: "문의 [비공개]" }, { url: "https://gov.kr/second", title: "메일 [비공개]", text: "본문" }]);
   expect(await excerpts([...bad.slice(0, 6), ...good])).toEqual([]);
-  expect(await new TavilySearch("key", undefined, undefined, { postJson: searchFake([{ results: "x" }]).postJson }).excerpts("q", ["gov.kr"], signal())).toBeUndefined();
+  expect(await new TavilySearch("key", undefined, undefined, { postJson: searchFake([{ results: "x" }]).postJson }).excerpts({query: "q", domains: ["gov.kr"]}, signal())).toBeUndefined();
   expect(splitUrl("https://[FE80::1%Eth0]:443/").hostname).toBe("fe80::1%Eth0");
   expect(() => urlPort("70000")).toThrow(RangeError);
 });
