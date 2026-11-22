@@ -182,10 +182,17 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
       const inputValue = () => call(signal, () => tab.locator(safeSelector).inputValue(opts));
       const selectedLabel = () => call(signal, async () => strip(await tab.locator(selector + " option:checked").textContent(opts)));
       const isChecked = () => call(signal, () => locator.isChecked(opts));
-      async function evalHandle<T>(work: () => Promise<JSHandle<T>>): Promise<JSHandle<T>> {
+      async function evalHandle<T>(work: () => Promise<JSHandle<T>>, cleanup?: (handle: JSHandle<T>) => Promise<unknown>): Promise<JSHandle<T>> {
         const promise = work();
         try { return await call(signal, () => promise); }
-        catch (error) { void promise.then(handle => handle.dispose()).catch(() => {}); throw error; }
+        catch (error) {
+          void promise.then(async handle => {
+            try { await cleanup?.(handle); }
+            catch { /* 중단 뒤 정리 실패는 무시하고 핸들만 해제한다. */ }
+            finally { await handle.dispose().catch(() => {}); }
+          }).catch(() => {});
+          throw error;
+        }
       }
       async function trusted(work: (node: ElementHandle<HTMLElement | SVGElement>) => Promise<void>, evidence: ClickEvidence = {}, keyboard = false) {
         signal.throwIfAborted();
@@ -194,7 +201,10 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
         // 기다리다 문서가 바뀌어도 같은 셀렉터로 새 문서의 요소를 다시 잡지 않는다.
         const node = await call(signal, () => hostLocator.elementHandle({ timeout, signal }));
         try {
-          const check = await evalHandle(() => page.evaluateHandle<ReturnType<typeof installInputCheck>>(script));
+          const check = await evalHandle(
+            () => page.evaluateHandle<ReturnType<typeof installInputCheck>>(script),
+            handle => handle.evaluate(cleanup => cleanup?.()),
+          );
           try {
             if (!await call(signal, () => check.evaluate(armed => typeof armed === "function"))) throw new AdapterError("VERIFY_FAILED");
             await call(signal, () => work(node));
@@ -238,8 +248,10 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
           if (await call(signal, () => tab.locator(safeSelector).count(opts)) !== 1) throw new AdapterError("NOT_SUPPORTED");
           const token = "cheongeum-" + randomUUID();
           const read = await evalHandle(() => page.evaluateHandle<ReadBound>(readBound));
-          const handle = await evalHandle(() => hostLocator.evaluateHandle(armFill, { token, value, ref, read, safeSelector }, { timeout, signal }))
-            .finally(() => read.dispose().catch(() => {}));
+          const handle = await evalHandle(
+            () => hostLocator.evaluateHandle(armFill, { token, value, ref, read, safeSelector }, { timeout, signal }),
+            armed => armed.evaluate(revoke => revoke()),
+          ).finally(() => read.dispose().catch(() => {}));
           const cancel = () => { void handle.evaluate(revoke => revoke()).catch(() => {}); };
           signal.addEventListener("abort", cancel, { once: true });
           let applied = false;
@@ -259,9 +271,11 @@ export function stagehandDriver(page: Page, timeout: number): PageDriver {
           const token = "cheongeum-" + randomUUID();
           const option = await bindOption(target, expected, label, signal);
           const read = await evalHandle(() => page.evaluateHandle<ReadBound>(readBound));
-          const handle = await evalHandle(() => hostLocator.evaluateHandle(armSelect,
-            {read, safeSelector, token, label, choices: option.reader, approved: option.token}, { timeout, signal }))
-            .finally(() => read.dispose().catch(() => {}));
+          const handle = await evalHandle(
+            () => hostLocator.evaluateHandle(armSelect,
+              {read, safeSelector, token, label, choices: option.reader, approved: option.token}, { timeout, signal }),
+            armed => armed.evaluate(clear => clear?.()),
+          ).finally(() => read.dispose().catch(() => {}));
           const revoke = () => handle.evaluate(clear => clear?.() ?? false).catch(() => false);
           const cancel = () => { void revoke(); };
           signal.addEventListener("abort", cancel, { once: true });
