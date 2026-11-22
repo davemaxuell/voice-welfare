@@ -98,6 +98,13 @@ function WelcomePanel({ view, t, onStarter }: { view: WorkspaceView; t: (s: stri
   </section>;
 }
 
+/** 같은 안내도 다시 전달되도록 한 번의 변경으로 내용을 바꾼다. */
+function LiveText({ text, sequence }: { text: string; sequence: number }) {
+  const element = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => { element.current?.replaceChildren(document.createTextNode(text)); }, [text, sequence]);
+  return <span ref={element}/>;
+}
+
 function Message({ m }: { m: LogEntry }) {
   const who = <span className="who">{m.who}</span>;
   return <li className={`msg ${m.role}`} data-id={m.id} lang={m.lang}>
@@ -138,9 +145,9 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <p className="hint" id="confirm-hint" lang={sourceLanguage(confirm?.hint)} hidden={confirm?.hint === undefined}>{confirm?.hint}</p>
       <div className="row">
         {/* 새 카드면 단추를 새로 만든다: 이전 카드에서 누르고 있던 손가락·키가 새 승인을 누르지 않게 */}
-        <button type="button" className="primary" id="confirm-yes" key={`yes-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={() => void choose(view.confirmCard, "approve")}>{confirm?.approveLabel ?? t("이 동작 승인")}</button>
+        <button type="button" className="primary" id="confirm-yes" key={`yes-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={e => void choose(view.confirmCard, "approve", e.detail === 0)}>{confirm?.approveLabel ?? t("이 동작 승인")}</button>
         <button type="button" id="confirm-edit" hidden={confirm?.edit !== true} onClick={focusCommand}>{t("수정하기")}</button>
-        <button type="button" id="confirm-no" key={`no-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={() => void choose(view.confirmCard, "reject")}>{t("거절")}</button>
+        <button type="button" id="confirm-no" key={`no-${view.confirmCard}`} disabled={view.decisionDisabled} onClick={e => void choose(view.confirmCard, "reject", e.detail === 0)}>{t("거절")}</button>
       </div>
     </div>
     <div className="decision auth" id="auth-panel" role="region" aria-labelledby="auth-title" hidden={auth === undefined} data-card={auth?.cardId ?? ""}>
@@ -158,7 +165,7 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
       <p>{t("실제 접수가 아니며 어떤 기관에도 전송되지 않았어요.")}</p>
     </div>
-    <p className="error" role="alert" id="error" hidden={view.error === undefined}><span key={ui.errorSeq}>{view.error}</span></p>
+    <p className="error" role={ui.backgroundMic === "speech" && ui.tts ? undefined : "alert"} id="error" hidden={view.error === undefined}><LiveText sequence={ui.errorSeq} text={view.error ?? ""}/></p>
     <div className="typing" id="typing" aria-hidden="true" hidden={!view.command.typing}><span className="typing-avatar"></span><span className="typing-dots"><i></i><i></i><i></i></span></div>
   </>;
 }
@@ -185,17 +192,19 @@ function AnswerPanel({ view, t }: { view: WorkspaceView; t: (text: string) => st
 function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s: string) => string }) {
   const input = useRef<HTMLInputElement>(null);
   const { command: c, conversation: conv } = view;
+  const keyboardSubmit = useRef(false);
   useEffect(() => { if (ui.commandReset > 0 && input.current !== null) input.current.value = ""; }, [ui.commandReset]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const el = input.current;
-    if (el !== null && submitCommand(el.value)) el.value = "";
+    if (el !== null && submitCommand(el.value, keyboardSubmit.current)) el.value = "";
+    keyboardSubmit.current = false;
   };
   return <form className="command-form" id="command-form" onSubmit={submit}>
     <label className="sr-only" htmlFor="command">{t("명령 입력 (말하듯이 입력하세요)")}</label>
     <div className="composer">
       <input id="command" ref={input} placeholder={t("청음에게 물어보세요")} autoComplete="off" aria-describedby="command-help" disabled={c.disabled} onInput={e => commandInput(e.currentTarget.value)}/>
-      <button type="submit" className="primary send" id="send" title={t("보내기")} disabled={c.sendDisabled} aria-busy={c.busy}>{c.sendLabel}</button>
+      <button type="submit" className="primary send" id="send" onClick={e => { keyboardSubmit.current = e.detail === 0; }} title={t("보내기")} disabled={c.sendDisabled} aria-busy={c.busy}>{c.sendLabel}</button>
     </div>
     <div className="voice-actions">
       <button type="button" className="voice-start" id="conv-start" aria-label={t("대화 시작 (Enter)")} hidden={!conv.startShown} disabled={conv.startDisabled} onClick={() => void startConversation()}><Kbd label={t("대화 시작 (Enter)")}/></button>
@@ -217,7 +226,7 @@ export function StatusPanel({ view, t }: { view: WorkspaceView; t: (s: string) =
     <h2 id="status-title"><span className="panel-icon status-icon" aria-hidden="true"></span>{t("현재 작업")}</h2>
     <progress id="step-progress" aria-label={t("신청 진행률")} hidden={s.progress === undefined} max={s.progress?.max} value={s.progress?.value} ref={progress}></progress>
     <dl className="status work-status">
-      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)} aria-live="polite">{s.activity}</dd></div>
+      <div className="st-activity-row" hidden={s.activity == null || s.activity.length === 0}><dt>{t("지금")}</dt><dd id="st-activity" lang={sourceLanguage(s.activity ?? undefined)}>{s.activity}</dd></div>
       <div className="st-state-row"><dt>{t("진행 상태")}</dt><dd><span id="st-state" data-state={s.state}>{s.stateLabel}</span></dd></div>
       <div className="st-step-row" hidden={s.step === undefined}><dt>{t("신청 단계")}</dt><dd id="st-step" lang={sourceLanguage(s.step)}>{s.step ?? t("없음")}</dd></div>
       <div className="st-title-row" hidden={s.title === undefined}><dt>{t("현재 화면")}</dt><dd id="st-title" lang={sourceLanguage(s.title)}>{s.title ?? t("아직 열지 않음")}</dd></div>
@@ -324,7 +333,7 @@ export function App() {
   return <div id="app" className={view.appClass} data-stage={view.stage}>
     <a className="skip-link" href="#command">{t("명령 입력으로 바로가기")}</a>
     <Header view={view} t={t}/>
-    <div className="sr-only" aria-live="assertive" id="announce"><span key={ui.announcement.seq}>{ui.announcement.text}</span></div>
+    <div className="sr-only" aria-live="assertive" id="announce"><LiveText sequence={ui.announcement.seq} text={ui.announcement.text}/></div>
     <SettingsDialog dialog={ui.settings} continuing={ui.sessionId !== undefined}/>
     <FirstRunDialog machine={firstRun}/>
     <section id="intro-card" className="intro-card" aria-label={t("청음 소개")} hidden={view.intro === undefined}>
@@ -350,7 +359,7 @@ export function App() {
           <section aria-labelledby="conv-title" className="panel conversation">
             <div className="conversation-header">
               <h2 id="conv-title"><span className="portrait" aria-hidden="true"></span>{t("청음과의 대화")}</h2>
-              <p className={`phase phase-${view.conversation.phase}`} aria-live="polite" id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
+              <p className={`phase phase-${view.conversation.phase}`} id="phase"><span className="phase-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="phase-label" hidden={!view.conversation.showPhase}>{view.conversation.phaseLabel}</span>{view.conversation.showPhase && <span aria-hidden="true"> · </span>}<span id="capture-label">{view.conversation.captureLabel}</span><span aria-hidden="true"> · </span><span id="task-label">{view.conversation.taskLabel}</span></p>
               <p id="live-caption" lang={sourceLanguage(view.conversation.caption)} hidden={view.conversation.caption.length === 0}>{view.conversation.caption}</p>
             </div>
             <div className="thread" id="thread" ref={thread}>
@@ -360,7 +369,7 @@ export function App() {
             </div>
             <CommandForm view={view} ui={ui} t={t}/>
             <details className="examples-disclosure"><summary>{t("예시 명령 보기")}</summary><ul className="examples" id="examples">
-              {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={() => void send(t(ex))}>{t(ex)}</button></li>)}
+              {EXAMPLES.map(ex => <li key={ex}><button type="button" disabled={view.command.examplesDisabled} onClick={e => void send(t(ex), { keyboard: e.detail === 0 })}>{t(ex)}</button></li>)}
             </ul></details>
             <RecordingReview owner={view.recordingOwner} lang={lang}/>
           </section>

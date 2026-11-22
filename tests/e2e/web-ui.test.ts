@@ -222,13 +222,16 @@ it("test_command_focus_and_value_survive_rerender", async () => {
 });
 
 /** 화면 낭독기는 aria-live 영역의 DOM이 바뀔 때만 읽는다. 그 바뀜을 센다. */
-async function watchLiveRegion(id: string) {
-  await page.evaluate(id => {
+async function watchLiveRegion(id: string, repliesOnly = false) {
+  await page.evaluate(({ id, repliesOnly }) => {
     const w = window as unknown as { __mutations: Record<string, number> };
     w.__mutations = { ...w.__mutations, [id]: 0 };
-    new MutationObserver(records => { w.__mutations[id] = (w.__mutations[id] ?? 0) + records.length; })
+    new MutationObserver(records => {
+      const count = repliesOnly ? records.filter(r => [...r.addedNodes].some(n => n instanceof Element && n.matches("li.assistant"))).length : records.length;
+      w.__mutations[id] = (w.__mutations[id] ?? 0) + count;
+    })
       .observe(document.getElementById(id)!, { childList: true, characterData: true, subtree: true });
-  }, id);
+  }, { id, repliesOnly });
   return {
     count: () => page.evaluate(id => (window as unknown as { __mutations: Record<string, number> }).__mutations[id] ?? 0, id),
     reset: () => page.evaluate(id => { (window as unknown as { __mutations: Record<string, number> }).__mutations[id] = 0; }, id),
@@ -241,11 +244,13 @@ it("test_repeated_announcement_reaches_screen_reader", async () => {
   await browserExpect(state()).toHaveText("신청서 작성 중", turnTimeout);
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
   const announce = await watchLiveRegion("announce");
+  const replies = await watchLiveRegion("log", true);
+  await browserExpect(page.getByRole("log", { name: "대화 기록" })).toHaveAttribute("aria-live", "polite");
   await send("이름은 김하늘");
   await browserExpect(page.locator("#fields")).toContainText("입력됨: 김하늘", turnTimeout);
   await browserExpect(page.locator("#send")).toBeEnabled(turnTimeout);
-  await browserExpect(page.locator("#announce")).toHaveText("상태: 신청서 작성 중");
-  expect(await announce.count()).toBeGreaterThan(0);
+  expect(await replies.count()).toBe(1);
+  expect(await announce.count()).toBe(0);
   await announce.reset();
   await page.getByRole("button", { name: "고대비 꺼짐" }).click();
   await browserExpect(page.locator("#app")).toHaveClass("app high-contrast");
@@ -262,7 +267,7 @@ it("test_repeated_error_reaches_screen_reader", async () => {
   await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
   const alert = await watchLiveRegion("error");
   await select.selectOption("zh");
-  await browserExpect.poll(alert.count).toBeGreaterThan(0);
+  await browserExpect.poll(alert.count).toBe(1);
   await browserExpect(page.locator("#error")).toHaveText("언어를 바꾸지 못했습니다.");
 });
 
@@ -375,6 +380,35 @@ const progressRoute = "**/api/session/*/progress";
 const finishedStep = "연습 누리집에서 안내를 확인했어요.";
 const finishedReport = { running: true, seq: 17, spoken: true, activity: finishedStep, activitySpoken: true, activitySeq: 17 };
 
+it("실시간 대화의 음성을 꺼도 새 진행 문장은 대화 기록에 한 번 남는다", async () => {
+  const native = await startUi(true, { REQUIRE_CONSENT: "false", PRACTICE_MODE: "false" });
+  try {
+    await page.route("**/api/health", async route => {
+      const response = await route.fetch();
+      await route.fulfill({ json: { ...await response.json(), voiceEdge: "연습" } });
+    });
+    await page.route(url => url.pathname === "/src/voice-edge.ts", route => route.fulfill({
+      contentType: "text/javascript",
+      body: `export class LiveConversation {
+        constructor(_, callbacks) { this.callbacks = callbacks; }
+        async start() {
+          this.callbacks.activity("연습 화면을 열었어요.");
+          this.callbacks.activity("연습 화면을 열었어요.");
+        }
+        stop() {} updateAudio() {} setLanguage() {}
+      }`,
+    }));
+    await page.goto(native.url);
+    await browserExpect(page.locator("#send")).toBeEnabled();
+    await page.locator("#tts-toggle").click();
+    await page.locator("#conv-start").click();
+    await browserExpect(page.locator("#st-activity")).toHaveText("연습 화면을 열었어요.");
+    await browserExpect(page.getByRole("log").locator(".assistant").filter({ hasText: "연습 화면을 열었어요." })).toHaveCount(1);
+  } finally {
+    await native.close();
+  }
+});
+
 function holdNext(pattern: string) {
   return new Promise<Route>((resolve, reject) => {
     page.route(pattern, route => { resolve(route); }, { times: 1 }).catch(reject);
@@ -440,8 +474,32 @@ it("같은 세션의 두 번째 요청에서는 지난 단계 문장을 다시 �
   await consent();
   const firstProgress = holdNext(progressRoute);
   const firstTurn = await heldTurn();
+  const announcement = await watchLiveRegion("announce");
+  const replies = await watchLiveRegion("log", true);
+  const regions = await page.evaluateHandle(step => {
+    const selectors = ["[role=log]", "#error", "#st-activity", "#mic-check-result", "#announce", "#intro-text", "#phase",
+      "#first-run-live", "#recording-status", "#setup-error", "#workflow-feedback", "#status"];
+    return selectors.map(selector => {
+      const node = document.querySelector(selector);
+      const live = node?.getAttribute("aria-live") ?? node?.getAttribute("role");
+      const row = { selector, writes: 0, active: live != null && live !== "off" };
+      if (node !== null) new MutationObserver(records => {
+        for (const record of records) {
+          const written = record.type === "characterData" ? [record.target] : [...record.addedNodes];
+          if (written.some(item => item.textContent?.includes(step) === true)) row.writes++;
+        }
+      }).observe(node, { childList: true, characterData: true, subtree: true });
+      return row;
+    });
+  }, finishedStep);
   await afterProgress(await firstProgress);
   await browserExpect.poll(() => spoken.filter(text => text === finishedStep)).toHaveLength(1);
+  const counts = await regions.jsonValue();
+  expect(counts.filter(row => row.active && row.writes > 0).map(row => row.selector)).toEqual(["[role=log]"]);
+  console.info("진행 안내 관찰", { regions: counts, speechRequests: spoken.filter(text => text === finishedStep).length });
+  expect(await replies.count()).toBe(1);
+  expect(await announcement.count()).toBe(0);
+  await browserExpect(page.locator("#st-activity")).not.toHaveAttribute("aria-live", "polite");
   await firstTurn.continue();
   await browserExpect(page.locator("#send")).toBeEnabled();
   const secondProgress = holdNext(progressRoute);

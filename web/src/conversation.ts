@@ -1,7 +1,7 @@
 import { timing, type TimingPoint } from "./perf.ts";
 // 청음 대화 창의 상태와 동작(Python app.js). 화면은 App.tsx가 이 상태(snapshot)를 그린다.
 // 입력란·버튼은 다시 만들지 않으므로 포커스가 유지된다(화면낭독기 사용자를 위해).
-import { LangSchema, STATE_LABELS_KO, type Lang } from "../../src/core/turn.ts";
+import { LangSchema, type Lang } from "../../src/core/turn.ts";
 import {
   api, errorCode, errorMessage, errorStatus, type Health, type Session, type Settings, type SettingsInput, type Turn,
 } from "./api.ts";
@@ -139,7 +139,7 @@ export interface SettingsDialog {
 }
 
 /** 화면 상태(바뀌면 App이 해당 부분만 다시 그린다) */
-let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: Lang | undefined; settingsSeq: number; commandReset: number; consentDetailsOpen: number; errorSeq: number } = {
+let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: Lang | undefined; settingsSeq: number; commandReset: number; consentDetailsOpen: number; errorSeq: number; backgroundMic?: "speech" | "text" | undefined } = {
   sessionId: undefined,
   state: "IDLE",
   last: undefined,
@@ -288,16 +288,20 @@ function render() {
 
 function set(patch: Partial<typeof ui>) {
   if (patch.busy === true || patch.phase === "hearing" || patch.phase === "thinking") desk.message = null;
+  if (patch.lang !== undefined && patch.lang !== ui.lang && patch.announcement === undefined) {
+    patch = { ...patch, announcement: { text: "", seq: ui.announcement.seq } };
+  }
   ui = { ...ui, ...patch };
   render();
 }
 
-function announce(text: string) {
-  set({ announcement: { text, seq: ui.announcement.seq + 1 } });
+function announce(text: string, channel: "status" | "transcript" = "status", lang = ui.lang) {
+  if (channel === "transcript") push({ role: "assistant", text, lang });
+  else set({ announcement: { text, seq: ui.announcement.seq + 1 } });
 }
 
-function setError(message: string) {
-  set({ error: message, errorSeq: ui.errorSeq + 1 });
+function setError(message: string, backgroundMic?: "speech" | "text") {
+  set({ error: message, errorSeq: ui.errorSeq + 1, backgroundMic });
 }
 
 let focusSeq = 0;
@@ -346,14 +350,17 @@ function publishDesktop() {
     card: desk.card,
     pending: desk.card !== undefined && desk.consumed.has(desk.card.id),
   });
-  const text = JSON.stringify(view);
+  const snapshot = { ...view, micDiagnostic: view.mode === "problem" && ui.backgroundMic !== undefined ? ui.error : undefined };
+  const text = JSON.stringify(snapshot);
   if (text === desk.sent) return;
   desk.sent = text;
-  desktop.publish({ instance: desk.instance, revision: ++desk.revision, ...view });
+  desktop.publish({ instance: desk.instance, revision: ++desk.revision, ...snapshot });
 }
 
 function setPhase(p: Phase) {
-  if (ui.phase !== p) set({ phase: p });
+  if (ui.phase === p) return;
+  set({ phase: p });
+  if (p === "listening") announce(t("듣고 있습니다. 말씀하세요."));
 }
 
 function desktopNotice(text: string | null) {
@@ -459,16 +466,15 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     activity: r.intentType === "PROGRESS" ? ui.activity : null });
   if (isConsent) {
     recordConsent(ui.consent === "granted" ? r.speech : undefined, r.lang);
-    if (ui.consent !== "granted") push({ role: "assistant", text: r.speech, lang: r.lang });
+    if (ui.consent !== "granted") announce(r.speech, "transcript", r.lang);
   } else {
     push({ role: "user", text: trace?.controlLabel ?? r.userUtterance });
-    push({ role: "assistant", text: r.speech, lang: r.lang });
+    announce(r.speech, "transcript", r.lang);
   }
   timing?.measure(trace?.sent, "result-applied");
   timing?.afterPaint(trace?.capture, "transcript-shown");
   timing?.afterPaint(stop, "stopped-state-paint", () =>
     r.turnId === ui.last?.turnId && document.getElementById("st-state")?.dataset.state === "STOPPED");
-  announce(workspaceText("상태", ui.lang) + ": " + workspaceText(STATE_LABELS_KO[r.state], ui.lang));
   const kind = stopped && !sleepOnStop ? undefined : transitionCue(prevState, r.state);
   if (kind !== undefined && !(kind === "stopped" && Date.now() - stopCuedAt < STOP_CUE_WINDOW_MS)) await cue(kind);
   if (r.turnId !== ui.last?.turnId || (stopped && wake !== desk.wakeCount)) return;
@@ -481,10 +487,6 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     // 본인인증 인계: 안내 한 번만 말하고 TTS를 멈춰 화면 낭독기가 입력 칸을 읽게 한다
     if (r.state === "AUTH_HANDOFF") void speakTurn(r).then(() => stopSpeaking());
     else void speakTurn(r);
-  }
-  if (r.state === "WAITING_FOR_USER_CONFIRMATION" && r.turnId === ui.last?.turnId) {
-    // 제목만 보이는 자리에 멈추지 않게 카드 끝(승인 버튼)까지 보인다
-    focus("confirm-title", { scroll: "confirm-panel" });
   }
 }
 
@@ -612,7 +614,6 @@ export async function startConversation() {
   if (!ui.voiceMode.stt) {
     const fallback = t("지금은 연속 음성 대화를 사용할 수 없어요. {help}", { help: dictationHelp(ui.lang) });
     setError(fallback);
-    if (ui.tts) speak(fallback);
     return;
   }
   if (ui.consent !== "granted") {
@@ -631,8 +632,9 @@ export async function startConversation() {
       offer: (socket, sdp) => api.voiceOffer(socket, sdp, approvalId), phase: setPhase, notice: setError,
       captureChanged,
       activity(text) {
-        if (ticket !== conversationStarts) return;
+        if (ticket !== conversationStarts || ui.activity === text) return;
         set({ activity: text });
+        announce(text, "transcript");
       },
       caption(event) {
         if (ticket !== conversationStarts || event.delta === undefined || event.delta.length === 0) return;
@@ -672,7 +674,6 @@ export async function startConversation() {
         if (ticket !== conversationStarts) return;
         endConversation(false);
         setError(message);
-        announce(message);
       },
     });
     edge = startingLoop = current;
@@ -696,6 +697,14 @@ export async function startConversation() {
   startingLoop = current;
   const micTrouble =
     t("마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.");
+  function reportMicTrouble(ended: boolean) {
+    const background = BACKGROUND && desktop?.isDesktop === true;
+    const speakError = background && ended && ui.tts && ui.voiceMode.tts;
+    setError(micTrouble, background ? speakError ? "speech" : "text" : undefined);
+    if (ended) void cue("problem").then(() => {
+      if (speakError && ui.error === micTrouble) void speakAndWait(micTrouble);
+    });
+  }
   try {
     // 저장된 마이크가 없으면 권한을 받은 뒤 내장 마이크를 골라 다시 연다(아이폰 연속성 마이크 회피).
     await current.start(ui.micId);
@@ -715,9 +724,7 @@ export async function startConversation() {
     startingLoop = undefined;
     microphoneTrouble = true;
     setPhase("off");
-    setError(micTrouble);
-    announce(micTrouble);
-    void cue("problem").then(() => speakAndWait(micTrouble));
+    reportMicTrouble(true);
     return;
   }
   if (ticket !== conversationStarts) {
@@ -733,12 +740,10 @@ export async function startConversation() {
       else captureChanged();
       return;
     }
-    setError(micTrouble);
-    announce(micTrouble);
+    reportMicTrouble(reason === "ended");
     // 잠깐 끊김(mute)은 다시 연결될 수 있으니 대화를 끝내지 않는다. 장치가 아예 사라졌을 때만 끝낸다.
     if (reason === "ended") {
       endConversation(false);
-      void cue("problem").then(() => speakAndWait(micTrouble));
     }
   };
   void current.startClapDetector(() => talkNow(), ui.micId);
@@ -754,7 +759,6 @@ export async function startConversation() {
   let missed = 0;
   while (loop === current && conversationOn) {
     setPhase("listening");
-    announce(t("듣고 있습니다. 말씀하세요."));
     await cue("listen");
     // 승인은 듣기 시작할 때 있던 결정에만 묶는다(듣는 사이에 새로 뜬 승인을 '응'으로 하지 않게)
     const asked = ui.last?.pendingConfirmation?.actionId ?? "";
@@ -776,7 +780,6 @@ export async function startConversation() {
       const stopWatch = current.watchBargeIn(() => {
         barged = true;
         stopSpeaking();
-        announce(t("말씀을 들을게요."));
       });
       await speakTurn(r);
       stopWatch();
@@ -908,8 +911,7 @@ function trackProgress(voice?: VoiceLoop) {
       const next = progressUpdate(report, session.spoken);
       if (next.speak === undefined) return;
       session.spoken = next.seq;
-      push({ role: "assistant", text: next.speak });
-      announce(next.speak);
+      announce(next.speak, "transcript");
       void sayWhileBusy({ speech: next.speak }, voice);
     },
   });
@@ -1116,12 +1118,13 @@ function startReminders() {
 const insideCommandArea = (el: Element | null) =>
   el !== null && (document.getElementById("command-form")?.contains(el) === true || document.getElementById("examples")?.contains(el) === true);
 
-export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "", controlLabel?: string) {
+export async function send(text: string, options: { actionId?: string; controlLabel?: string | undefined; keyboard?: boolean } = {}) {
   const t = text.trim();
   if (t.length === 0 || ui.sessionId === undefined || ui.recovery !== undefined) return;
   if (!await readyForInput()) return;
   const origin = document.activeElement;
-  const fromForm = insideCommandArea(origin);
+  const { actionId = ui.last?.pendingConfirmation?.actionId ?? "", controlLabel } = options;
+  const fromForm = options.keyboard === true && insideCommandArea(origin);
   if (reminderNight && REMINDER_NOW.test(t)) {
     const { text: due } = await api.reminders(ui.sessionId).catch(() => ({ text: undefined }));
     if (due != null && due.length > 0) {
@@ -1147,7 +1150,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
     set({ busy: false });
     if (fromForm && stop === stoppedGeneration && ui.recovery === undefined && ui.sessionId !== undefined &&
         (document.activeElement === origin || document.activeElement === document.body)) {
-      if (ui.state === "WAITING_FOR_USER_CONFIRMATION") focus("confirm-title");
+      if (ui.state === "WAITING_FOR_USER_CONFIRMATION") focus("confirm-title", { scroll: "confirm-panel" });
       else if (ui.last?.authHandoff?.status === "waiting") focus("auth-done");
       else focus("command");
     }
@@ -1166,12 +1169,12 @@ export function stageStarter() {
 }
 
 /** 입력란 보내기. 보냈으면 true(입력란을 비운다). */
-export function submitCommand(value: string) {
+export function submitCommand(value: string, keyboard: boolean) {
   const text = value.trim();
   if (text.length === 0 || ui.sessionId === undefined || ui.busy || ui.recovery !== undefined) return false;
   const actionId = commandActionId ?? "";
   commandActionId = undefined;
-  void send(text, actionId);
+  void send(text, { actionId, keyboard });
   return true;
 }
 
@@ -1291,7 +1294,7 @@ const insideDecision = (el: Element | null) =>
  * 카드의 선택지 하나를 실행한다(대화 창 버튼·아바타 버튼 공용). 보여 준 카드 번호가 지금 카드가 아니면 실행하지 않는다.
  * 같은 카드는 한 번만: 기다리기 전에 표시해 두므로 두 번 누르기와 동시에 온 다른 화면의 선택이 둘 다 나가지 않는다.
  */
-export async function choose(choiceSetId: string, key: string) {
+export async function choose(choiceSetId: string, key: string, keyboard = false) {
   const card = desk.card;
   if (card === undefined || card.id !== choiceSetId) {
     notice(t("선택지가 바뀌었어요. 지금 안내를 다시 확인해 주세요."));
@@ -1305,7 +1308,7 @@ export async function choose(choiceSetId: string, key: string) {
     return;
   }
   const origin = document.activeElement;
-  const fromDecision = insideDecision(origin);
+  const fromDecision = insideDecision(origin) && (card.kind !== "approval" || keyboard);
   const held = holdCard();
   if (held === undefined) return;
   try {
@@ -1321,7 +1324,7 @@ export function authChoice(cardId: string, key: "auth-done" | "auth-cancel", via
   if (viaCard) return choose(cardId, key);
   const done = key === "auth-done";
   const label = done ? t("직접 확인을 마쳤어요") : t("인증 취소");
-  return send(done ? "다 했어" : "인증 취소", undefined, ui.lang === "ko" ? undefined : label);
+  return send(done ? "다 했어" : "인증 취소", { controlLabel: ui.lang === "ko" ? undefined : label });
 }
 
 /** 지금 카드를 '보내는 중'으로 잡는다(이미 잡혀 있으면 undefined). 음성 한 턴도 카드를 잡아 버튼과 함께 나가지 않게 한다. */
@@ -1343,8 +1346,7 @@ function releaseCard(id: string | undefined) {
 
 /** 짧은 알림: 기록에 남기고 소리로도 알린다. */
 function notice(text: string) {
-  push({ role: "assistant", text });
-  announce(text);
+  announce(text, "transcript");
   if (ui.tts) speak(text);
 }
 
