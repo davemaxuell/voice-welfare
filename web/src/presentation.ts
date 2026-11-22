@@ -1,10 +1,29 @@
 import type { DecisionInput } from "./companion.ts";
-import { captureKeys, phaseKeys, taskKeys } from "./workspace-language.ts";
+import { captureKeys, issueActions, issueText, phaseKeys, taskKeys } from "./workspace-language.ts";
 
 export type Capture = keyof typeof captureKeys;
 export type Phase = keyof typeof phaseKeys;
 export type Task = keyof typeof taskKeys;
-type Mode = "starting" | "ended" | "consent" | "auth-handoff" | "choice" | "problem" | "ready" | "working" | "speaking" | "listening";
+type Mode = "starting" | "ended" | "consent" | "auth-handoff" | "choice" | "problem" | "ready" | "working" | "speaking" | "listening" | "offline";
+
+export { issueActions };
+export type IssueAction = keyof typeof issueActions;
+export const issues = {
+  offline: [issueText.offline, ["reconnect"]],
+  timeout: [issueText.timeout, ["check", "type"]],
+  lostTurn: [issueText.lostTurn, ["check", "type"]],
+  cancelFailed: [issueText.cancelFailed, ["stop"]],
+  micDenied: [issueText.micDenied, ["microphone", "type"]],
+  micLost: [issueText.micLost, ["microphone", "type"]],
+  voiceDown: [issueText.voiceDown, ["type"]],
+  localVoiceUnavailable: [issueText.localVoiceUnavailable, ["type"]],
+  turnFailed: [issueText.turnFailed, ["type"]],
+  languageFailed: [issueText.languageFailed, []],
+  expired: [issueText.expired, ["check", "type"]],
+  blocked: [issueText.blocked, ["type"]],
+  consentRequired: [issueText.consentRequired, ["type"]],
+} as const satisfies Record<string, readonly [string, readonly IssueAction[]]>;
+export type IssueKey = keyof typeof issues;
 
 export interface PresentationInput extends DecisionInput {
   contrast?: boolean;
@@ -14,6 +33,8 @@ export interface PresentationInput extends DecisionInput {
   speaking?: boolean;
   capture?: Capture;
   stopping?: boolean;
+  offline?: boolean;
+  cancelUnconfirmed?: boolean;
   sleeping?: boolean;
   error?: string | undefined;
   card?: { kind: "approval" | "offer" | "consent" } | undefined;
@@ -21,6 +42,8 @@ export interface PresentationInput extends DecisionInput {
 
 function taskOf(ui: PresentationInput): Task {
   if (ui.stopping === true) return "stopping";
+  if (ui.cancelUnconfirmed === true) return "stopped";
+  if (ui.offline === true) return "offline";
   if (ui.last?.authHandoff?.status === "waiting") return "auth_handoff";
   if (ui.card?.kind === "approval") return "awaiting_approval";
   if (ui.card !== undefined) return "awaiting_choice";
@@ -31,6 +54,7 @@ function taskOf(ui: PresentationInput): Task {
 }
 
 function modeOf(ui: PresentationInput, task: Task, playing: boolean): Mode {
+  if (task === "offline") return "offline";
   if (ui.sessionId === undefined && (ui.error === undefined || ui.error.length === 0)) return ui.consent === "loading" ? "starting" : "ended";
   if (ui.consent === "ask" || ui.consent === "intro") return "consent";
   switch (task) {

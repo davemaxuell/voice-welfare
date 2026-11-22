@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type FormEvent } from "react";
 import { LangSchema } from "../../src/core/turn.ts";
 import {
-  answerConsent, answerRecovery, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
+  answerConsent, answerRecovery, actOnIssue, authChoice, checkMic, chooseSession, choose, commandInput, endConversation, endSession, firstRun,
   focusCommand, hearConsent, openSettings, selectLanguage, selectMic, send, setConversationMode, skipIntro, snapshot, soundCheck, speakConsent,
   speakResearch, stageStarter, startConversation, stopAll, stopSpeaking, submitCommand, subscribe, talkNow, toggleContrast, toggleMic, toggleTts,
   type Snapshot,
@@ -165,7 +165,10 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
       <p>{t("실제 접수가 아니며 어떤 기관에도 전송되지 않았어요.")}</p>
     </div>
-    <p className="error" role={ui.backgroundMic === "speech" && ui.tts ? undefined : "alert"} id="error" hidden={view.error === undefined}><LiveText sequence={ui.errorSeq} text={view.error ?? ""}/></p>
+    <div className="error" id="error" role={ui.backgroundMic === "speech" && ui.tts ? undefined : "alert"} hidden={view.error === undefined}>
+      <LiveText sequence={ui.errorSeq} text={view.error?.text ?? ""}/>
+      {view.error?.actions.map(action => <button key={action.key} type="button" onClick={() => void actOnIssue(action.key)}>{action.label}</button>)}
+    </div>
     <div className="typing" id="typing" aria-hidden="true" hidden={!view.command.typing}><span className="typing-avatar"></span><span className="typing-dots"><i></i><i></i><i></i></span></div>
   </>;
 }
@@ -197,8 +200,12 @@ function CommandForm({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const el = input.current;
-    if (el !== null && submitCommand(el.value, keyboardSubmit.current)) el.value = "";
+    const keyboard = keyboardSubmit.current;
     keyboardSubmit.current = false;
+    if (el !== null) {
+      const draft = el.value;
+      submitCommand(draft, keyboard, () => { if (el.value === draft) el.value = ""; });
+    }
   };
   return <form className="command-form" id="command-form" onSubmit={submit}>
     <label className="sr-only" htmlFor="command">{t("명령 입력 (말하듯이 입력하세요)")}</label>
@@ -260,6 +267,14 @@ function SoundPanel({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (s:
       </select>
     </label>
     <button type="button" className="voice-switch" id="tts-toggle" aria-pressed={view.tts.pressed} disabled={view.tts.disabled} onClick={toggleTts}>{view.tts.label}</button>
+    <dialog id="microphone-settings" aria-labelledby="microphone-settings-title">
+      <h2 id="microphone-settings-title">{t("마이크 설정")}</h2>
+      <p>{t("기기의 개인정보 설정과 브라우저에서 청음의 마이크 사용을 허용한 뒤 마이크 확인을 눌러 주세요.")}</p>
+      {ui.mics.length > 0 && <label className="setting-row">{t("마이크 선택")}<select value={view.micId} onChange={e => selectMic(e.currentTarget.value)}>
+        {ui.mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+      </select></label>}
+      <form method="dialog"><button type="submit" onClick={() => void checkMic()}>{t("마이크 확인")}</button><button type="submit">{t("닫기")}</button></form>
+    </dialog>
     <div className="audio-tools">
       <button type="button" id="mic-check" disabled={view.micCheckDisabled} onClick={() => void checkMic()}>{t("마이크 확인")}</button>
       <button type="button" id="sound-check" disabled={view.soundCheckDisabled} onClick={soundCheck}>{t("소리 확인")}</button>
