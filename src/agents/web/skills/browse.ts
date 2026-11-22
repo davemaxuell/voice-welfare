@@ -23,7 +23,7 @@ import { KNOWN_SITES, goalSiteRequest, publicServiceSite, resolveSite, siteLabel
 import { ExecContext, type PageView, type WebAction, type WebExecutionAgent, type WebOutcome } from "../agent.ts";
 import { fingerprint } from "../approval.ts";
 import { accessBlocked, authPageKind, firstFillField, passwordFields, stillNeedsAuth, verificationApp } from "../auth_page.ts";
-import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint } from "../autopilot.ts";
+import { Autopilot, type AutopilotOptions, type AutopilotStep, type BrowseCheckpoint, type GoalContinuation } from "../autopilot.ts";
 import { PAGE_KIND_LABEL, digestPage, pageTextForLlm } from "../digest.ts";
 import { DocumentLimit } from "../docs.ts";
 import { answerFile, readForUpload } from "../file_answer.ts";
@@ -111,6 +111,7 @@ interface GuideLinks {
 interface GoalOptions {
   publicTask?: PublicLookup;
   journey?: BrowserJourney;
+  continuation?: GoalContinuation;
   privateValues?: readonly string[];
   agency?: string;
   entryOrigin?: string;
@@ -952,9 +953,10 @@ export class BrowseSkill {
     const vision = this.deps.visionLlm;
     const orientWith = offerVisual && vision !== undefined ? (question: string, url: string, run: ExecContext, log: WebAction[]) => orientScreen(this.web, vision, question, url, run, log) : undefined;
     const pilot = new Autopilot(this.web, model, {searchUrl: query => this.searchUrl(query), resolveSite: name => resolveSite(name, sites)?.url,
-      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: maxSteps === undefined ? undefined : maxSteps * 12_000,
+      scanner: this.deps.scanner, recoveryLlm: this.deps.recoveryLlm, discoverPortal: this.deps.findPortal, offerVisual, orient: orientWith, maxSteps, timeBudgetMs: maxSteps === undefined || options.continuation ? undefined : maxSteps * 12_000,
       progress: this.progress, activityLlm: this.deps.webLlm, milestoneText: key => PERSONAL_BROWSE_TEXT[key][this.#replyLanguage()]});
     this.progress.start();
+    if (options.continuation && checkpoint) this.progress.milestone("goal-continued", "이어서 요청하신 일을 진행할게요.");
     let result;
     try {
       const conversation: Record<string, unknown> = personal ? {} : {...this.#planningContext?.(goal, siteUrl), ...publicTask?.context()};
@@ -962,11 +964,11 @@ export class BrowseSkill {
       const relatedSites = (links?.relatedSites ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       const forms = (links?.forms ?? []).slice(0, 4).map(({name, url}) => ({name, url}));
       if (relatedSites.length > 0 || forms.length > 0) conversation.officialLinks = {...(relatedSites.length > 0 ? {relatedSites} : {}), ...(forms.length > 0 ? {forms} : {})};
-      result = await this.web.withInspection(ctx, () => pilot.run(goal, new ExecContext({...ctx, actor: "goal"}), step => {
+      result = await this.web.withInspection(ctx, () => pilot.run(goal, new ExecContext({...ctx, actor: "goal", approvedGoalRefs: options.continuation?.approvedRefs}), step => {
         const before = here;
         if (hasText(step.url)) here = step.url;
         if (!personal) this.progress.add(stepSentence(step, siteLabel(before, sites), siteLabel(here, sites)));
-      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, visualControl, journey, privateValues: options.privateValues,
+      }, {siteUrl, startUrl: continuePage === true ? undefined : startUrl ?? (agency ? siteUrl : undefined), conversation, checkpoint, continuation: options.continuation, visualControl, journey, privateValues: options.privateValues,
         retryPublicEntry: blockedPublicPage,
         discoveryAgency: personal && !hasText(siteUrl) ? options.agency : undefined,
         inspectionOutcome: options.inspectionOutcome, replyLanguage: this.#replyLanguage(),
@@ -1006,7 +1008,7 @@ export class BrowseSkill {
       if (personal) return {...this.askClick(result.pending, view, "", result.actions, undefined, undefined, this.#replyLanguage()), ...review};
       // 하는 동안 묻지 않고 닫은 안내 팝업이 있으면 무엇이라고 했는지 먼저 한 번 알린다.
       const closed = noticeSpeech(result.notices ?? []);
-      const lead = `${closed.length > 0 ? closed + " " : ""}'${goal}'라고 하신 일을 하다가 `;
+      const lead = `${closed.length > 0 ? closed + " " : ""}'${options.continuation?.request ?? goal}'라고 하신 일을 하다가 `;
       // 하다가 사이트가 confirm() 창으로 물었다: 대신 답해도 되는 질문이면 진행할지 묻고, 아니면 직접 하시도록 알린다.
       if (result.native !== undefined) return {...this.askNative(result.pending, result.native, view, lead, result.actions), ...review};
       if (result.pending.target?.name === this.web.profile.buttons.submit && isFormOpen(view)) {
@@ -1094,7 +1096,7 @@ export class BrowseSkill {
     return undefined;
   }
 
-  async recognizeAuthPage(result: Draft, before: PageView | undefined, ctx: ExecContext): Promise<Draft> {
+  async recognizeAuthPage(result: Draft, before: Pick<PageView, "url"> | undefined, ctx: ExecContext): Promise<Draft> {
     if (!result.view || this.dialogue.authWaiting || result.state === "STOPPED" || ctx.signal.aborted) return result;
     const view = {...result.view, pageId: this.web.profile.classify(result.view.url)};
     if (!stillNeedsAuth(view)) return accessBlocked(view) ? this.blockedAuth(view, result.actions) : result;

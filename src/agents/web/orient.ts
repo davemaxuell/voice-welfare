@@ -1,14 +1,15 @@
 // 화면 사진 한 장으로 지금 어느 화면인지, 어떤 메뉴가 보이는지 알아본다. 실행은 웹 에이전트와 Autopilot이 맡는다.
 // 사진 속 글과 모델의 답은 모두 비신뢰 자료다. 정해진 틀의 짧은 이름만 받고, 화면 글에서 읽은 조작과 맞는 것만 누를 수 있다고 본다.
-import { createHash } from "node:crypto";
 import { redactedJson } from "../../core/llm.ts";
 import { strip } from "../../core/text.ts";
 import { REDACTED, redactPictureText } from "../../safety/privacy.ts";
 import { clickTier, guardPatterns, isActionName } from "../../safety/guard.ts";
 import { ExecContext, type ControlWindow, type WebAction, type WebExecutionAgent } from "./agent.ts";
 import { controlNames, safeVisualControl, type VisionModel } from "./visual_step.ts";
-import type { WebObservation } from "./view.ts";
+import { screenKey } from "./view.ts";
 import { planShot, ShotRefusal } from "./shot.ts";
+
+export { screenKey };
 
 type OrientationBinding = Pick<ControlWindow["items"][number], "ref" | "role" | "context"> & {url: string};
 
@@ -20,13 +21,6 @@ export interface Orientation {
   readonly imageOnly: readonly string[];
   readonly positions?: ReadonlyMap<string, string>;
   readonly bindings?: ReadonlyMap<string, OrientationBinding>;
-}
-
-/** 같은 주소에서도 제목과 메뉴 상태로 화면을 구별한다. 저절로 바뀌는 본문은 비교에서 뺀다. */
-export function screenKey(view: WebObservation): string {
-  const outline = view.outline;
-  return createHash("sha256").update(JSON.stringify([view.url, view.title, outline?.headings,
-    outline?.items?.map(item => [item.name, item.role, item.expanded, item.selected, item.disabled])])).digest("hex");
 }
 
 const KNOWN_LIMIT = 40;

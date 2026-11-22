@@ -120,7 +120,7 @@ export class SessionReplies {
       }
     }
     if (route === "welfare") return this.policyQuestion(utterance, turn);
-    if (route === "web_task") return withResume(await s.browse.runGoal(utterance, turn.ctx));
+    if (route === "web_task") return withResume(await s.review.goal(utterance, turn));
     if (route === "web_search" && typeof out.searchQuery === "string" && out.searchQuery.length > 0) {
       return withResume(await s.browse.webAnswer(utterance, redactText(out.searchQuery), turn.ctx));
     }

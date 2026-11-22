@@ -1254,11 +1254,13 @@ export class SessionOrchestrator {
     if (forced === undefined && intent === "UNKNOWN" && doneReply(text)) intent = "AUTH_DONE";
     turn.intentType = intent;
     const handoff = d.authHandoff;
-    if (intent === "AUTH_DONE") {
-      d.clearApproval();
-      const waiting = this.authReview;
+    const waiting = this.authReview;
+    const sameGoal = waiting !== undefined && handoff?.id === waiting[0] && waiting[1].continuation !== undefined;
+    if (sameGoal) turn.ctx = waiting[1].context(turn.ctx);
+    if (intent === "AUTH_DONE" || (sameGoal && intent === "APPROVE" && loginSubmit())) {
+      if (intent === "AUTH_DONE") d.clearApproval();
       const journey = handoff?.id === waiting?.[0] ? waiting?.[1].journey : undefined;
-      const result = await this.browse.authDone(turn.ctx, inspection ? journey : undefined);
+      const result = intent === "AUTH_DONE" ? await this.browse.authDone(turn.ctx, inspection ? journey : undefined) : await this.application.approve(turn);
       if (waiting !== undefined && handoff?.id === waiting[0] && handoff.status === "completed") {
         this.authReview = undefined;
         journey?.resumeAfterAuth();
@@ -1681,7 +1683,7 @@ export class SessionOrchestrator {
       case "DESCRIBE_SCREEN": return this.replies.describeScreen(turn, exclusions, confirmPicture);
       case "ABOUT_SITE": return this.browse.aboutSite();
       case "REPHRASE": return this.replies.rephrase(turn);
-      case "GOAL": return this.browse.runGoal(intent.goal, ctx);
+      case "GOAL": return this.review.goal(intent.goal, turn, exclusions);
       case "DISCOVER": return this.replies.discover(turn);
       case "FIND_PLACE": return this.replies.findPlace(turn);
       case "SERVICE_DETAIL": return this.replies.welfareReply(welfare.serviceDetail(intent.service), "discover");
