@@ -17,7 +17,7 @@ import { PROFILE_ORDER, parseProfileAnswer, profileQuestion, type ProfileSlot, t
 import { OpenData, type PlaceFinder } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
 import { CHOICE_TURNS, choiceLabel, type ChoiceKey } from "../core/choices.ts";
-import { DialogueState } from "../core/dialogue.ts";
+import { DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
 import { ackKind, agree, approval, authInputDone, cancelReply, doneReply, foreignApproval, wholeRejection } from "../core/lexicon.ts";
@@ -32,7 +32,7 @@ import { AGENT_IDS, LANGS, draft, parseTurnResult, type Draft, type HumanAuthHan
   type SourceCitation, type TraceEntry, type TurnResult } from "../core/turn.ts";
 import { tryUrl } from "../core/url.ts";
 import { recheck } from "../agents/web/approval.ts";
-import { approvalAction, approvalNarration, approvalPresentation, type ApprovalNotice, type ClickPresentation, FIXED, detectLangSwitch, detectScriptLang, translateIn, translateOut } from "../language/i18n.ts";
+import { approvalAction, approvalNarration, approvalPresentation, type ApprovalNotice, type ClickPresentation, FIXED, detectLangSwitch, detectScriptLang, parseForeignFieldFill, translateIn, translateOut } from "../language/i18n.ts";
 import { ActionLog, localDay } from "../personal/action_log.ts";
 import { dueReminder, foreignVaultSave, parsePersonalCommand } from "../personal/commands.ts";
 import { PersonalDialogue, vaultReply } from "../personal/dialogue.ts";
@@ -117,7 +117,7 @@ export interface Turn {
   original?: Redacted;
   fromVoice: boolean; linkQuestion: boolean; staleLinkOffer: boolean;
   progressReply: string; researchState: string; researchEvidence: string;
-  initialApprovalId?: string; approvalNotice?: ApprovalNotice;
+  initialApprovalId?: string; initialApproval?: Approval; approvalNotice?: ApprovalNotice;
 }
 export interface TurnOptions {
   approvalId?: string;
@@ -749,7 +749,7 @@ export class SessionOrchestrator {
     const trace: TraceEntry[] = [];
     const id = randomUUID();
     return {
-      id, text, intentType: "NONE", initialApprovalId: this.dialogue.confirmation?.actionId, started, epoch, trace, fromVoice: false, linkQuestion: false, staleLinkOffer: false,
+      id, text, intentType: "NONE", initialApprovalId: this.dialogue.confirmation?.actionId, initialApproval: this.dialogue.approval, started, epoch, trace, fromVoice: false, linkQuestion: false, staleLinkOffer: false,
       progressReply: "", researchState: "incomplete", researchEvidence: "",
       ctx: new ExecContext({
         signal: this.#controller.signal, approvals: this.#approvals,
@@ -810,6 +810,14 @@ export class SessionOrchestrator {
     }
     if (this.linkOfferId.length > 0 && !d.hasPendingInteraction && this.publicTask.question.length === 0 && agree(text) !== undefined) {
       return this.localize(await this.#korean(text, sensitive, undefined, undefined, { fromVoice, staleLinkOffer }));
+    }
+    if (!d.expectsConfirmation && !this.#secretHint) {
+      const labels = (this.web.currentView?.fields ?? []).filter(f => f.visible && !f.sensitive).map(f => f.label);
+      const localFill = parseForeignFieldFill(text, lang, labels);
+      if (localFill !== undefined) {
+        return this.localize(await this.#korean(redactText("[입력 요청]"), sensitive,
+          { type: "FILL", fills: [localFill] }, text, { fromVoice, staleLinkOffer }));
+      }
     }
     // 외국어 공공업무는 원문에서 바로 판단한다. 별도 입력 번역으로 기관·부정·요구사항을 잃지 않는다.
     if (this.planner.canPlan(text, sensitive) && !this.#secretHint) {
@@ -1277,7 +1285,7 @@ export class SessionOrchestrator {
       if (previous.url !== out.view.url || recheck(previous.fingerprint, out.view, actions)[1] !== undefined) turn.approvalNotice = "changed";
     } else if (next !== undefined && "fingerprint" in next && next.action === previous.action &&
         next.confirmation.actionId !== previous.confirmation.actionId && out.state === "WAITING_FOR_USER_CONFIRMATION") {
-      if (this.clock() >= expiresAt && out.actions === undefined) turn.approvalNotice = "expired";
+      if (this.clock() >= expiresAt && (out.actions?.length ?? 0) === 0) turn.approvalNotice = "expired";
       else if (out.actions?.some(a => a.result?.ok === false) === true) turn.approvalNotice = "unverified";
     }
     return out;
@@ -1289,8 +1297,10 @@ export class SessionOrchestrator {
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
     const pending = d.approval;
+    const renewedSame = turn.intentType === "APPROVE" && pending !== undefined && turn.initialApproval !== undefined &&
+      "action" in pending && "action" in turn.initialApproval && pending.action === turn.initialApproval.action;
     const newRequest = (pending !== undefined || d.vaultConfirm?.kind === "vault-clear") && d.confirmation?.actionId !== turn.initialApprovalId &&
-      out.state === "WAITING_FOR_USER_CONFIRMATION" && turn.intentType !== "APPROVE";
+      out.state === "WAITING_FOR_USER_CONFIRMATION" && !renewedSame;
     if (newRequest && pending?.kind === "click") {
       this.#clickPresentations.set(pending.action, {
         title: hasText(out.view?.title) ? out.view.title : pending.confirmation.site,
