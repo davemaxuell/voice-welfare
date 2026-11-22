@@ -1,5 +1,11 @@
 /** 데스크톱 메인 프로세스와 로컬 서비스(유틸리티 프로세스) 사이의 메시지. */
 
+import type { Lang } from "../../../src/core/turn.ts";
+
+export function isDesktopLanguage(value: unknown): value is Lang {
+  return value === "ko" || value === "en" || value === "zh" || value === "ja";
+}
+
 export interface ShutdownMessage {
   readonly type: "shutdown";
 }

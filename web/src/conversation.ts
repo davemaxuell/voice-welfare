@@ -1,7 +1,7 @@
 import { timing, type TimingPoint } from "./perf.ts";
 // 청음 대화 창의 상태와 동작(Python app.js). 화면은 App.tsx가 이 상태(snapshot)를 그린다.
 // 입력란·버튼은 다시 만들지 않으므로 포커스가 유지된다(화면낭독기 사용자를 위해).
-import { STATE_LABELS_KO, type Lang } from "../../src/core/turn.ts";
+import { LangSchema, STATE_LABELS_KO, type Lang } from "../../src/core/turn.ts";
 import {
   api, errorCode, errorMessage, errorStatus, type Health, type Session, type Settings, type SettingsInput, type Turn,
 } from "./api.ts";
@@ -18,14 +18,46 @@ import { LiveConversation } from "./voice-edge.ts";
 import {
   consentText as consentTextFor, dictationHelp, GREETINGS, progressUpdate, type CardView, type Env, type LogEntry, type Phase, type Recovery, type UiState,
 } from "./view.ts";
-import { workspaceText } from "./workspace-language.ts";
+import { loadWorkspaceLanguage, workspaceText } from "./workspace-language.ts";
 
 const BACKGROUND = new URLSearchParams(location.search).get("background") === "1";
 const env: Env = { background: BACKGROUND, mac: /Mac/.test(navigator.platform) };
 
 /** 데스크톱 앱(Electron)에서 실행 중이면 preload가 넣어 준다. 소리 자동재생이 허용되어 있다. */
 const desktop = window.cheongeumDesktop;
+let desktopLanguage = desktop === undefined ? undefined : LangSchema.safeParse(new URLSearchParams(location.search).get("desktopLang")).data;
 
+function syncDesktopLanguage(lang: Lang) {
+  if (desktop === undefined) return;
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("desktopLang") !== lang) {
+      url.searchParams.set("desktopLang", lang);
+      history.replaceState(history.state, "", url.href);
+    }
+  } catch { /* 주소 갱신 불가 환경 무시 */ }
+}
+
+const TRANSLATE_FAIL_PREFIXES: readonly string[] = [
+  "(Translation could not be verified, so here is the original Korean.)",
+  "（无法确认翻译是否准确，以下为韩语原文。）",
+  "（翻訳を確認できなかったため、韓国語の原文をお伝えします。）",
+];
+
+function responseLanguage(r: Turn): Lang {
+  if (r.semanticAction === "set-language") return r.lang;
+  if (ui.requestedLanguage !== undefined) return ui.requestedLanguage;
+  if (r.lang === "ko" && ui.lang !== "ko" && (r.localSpeechOnly === true ||
+      TRANSLATE_FAIL_PREFIXES.some(prefix => r.speech.startsWith(prefix)))) {
+    return ui.lang;
+  }
+  return r.lang;
+}
+
+const REMINDER_NOW = /^(?:지금|now|现在|今)[.!。！?？ ]*$/iu;
+const REMINDER_MORNING = /^(?:아침|morning|早上|朝)[.!。！?？ ]*$/iu;
+
+const t = (text: string, values?: Readonly<Record<string, string | number>>) => workspaceText(text, ui.lang, values);
 const consentText = (lang: string = ui.lang) => consentTextFor(ui, env, lang);
 
 // 서버 음성 설정을 받아 오기 전에는 동의 안내를 읽지 않는다(어디로 전송되는지가 바뀌므로)
@@ -40,11 +72,11 @@ export const firstRun = createFirstRun({
     return serverTts.speak(text, (chunk, speed) => api.speak(chunk, langOf(lang), speed), 0, rate);
   },
   stopSpeaking: () => serverTts.cancel(),
-  onSaved: () => refreshHealth(),
+  onSaved: () => { desktopLanguage = undefined; return refreshHealth(); },
   onConsentReady: async () => {
     firstRun.finish();
     // '설정 다시 해줘'로 연 경우는 대화가 이미 있다: 저장한 설정은 서버가 열린 대화에 넘긴다
-    if (ui.sessionId !== undefined) announce("이용 설정을 저장했어요.");
+    if (ui.sessionId !== undefined) announce(t("이용 설정을 저장했어요."));
     else await chooseSession();
   },
   loadManifest: async () => {
@@ -110,7 +142,7 @@ let ui: UiState & { settings?: SettingsDialog | undefined; requestedLanguage?: L
   sessionId: undefined,
   state: "IDLE",
   last: undefined,
-  lang: "ko",
+  lang: desktopLanguage ?? "ko",
   busy: false,
   hasTurn: false,
   practiceMode: false,
@@ -254,11 +286,11 @@ function focus(id: string, extra: { scroll?: string; fallback?: string } = {}) {
 function push(m: Omit<LogEntry, "id" | "who">) {
   const id = `${Date.now()}-${messageSeq++}`;
   const who = workspaceText(m.role === "user" ? "나" : m.role === "assistant" ? "청음" : "안내", ui.lang) + ": ";
-  set({ messages: [...ui.messages, { ...m, id, who }] });
+  set({ messages: [...ui.messages, { lang: ui.lang, ...m, id, who }] });
   return id;
 }
 
-function recordConsent(reply?: string) {
+function recordConsent(reply?: string, lang = ui.lang) {
   if (!ui.messages.some(m => m.consentRecord !== undefined)) {
     push({
       role: "assistant", summary: workspaceText("시작 안내와 동의 기록", ui.lang), text: consentText(),
@@ -266,7 +298,7 @@ function recordConsent(reply?: string) {
     });
   }
   if (reply !== undefined && reply.length > 0) {
-    set({ messages: ui.messages.map(m => m.consentRecord === undefined ? m : { ...m, consentRecord: { ...m.consentRecord, outcomes: [...m.consentRecord.outcomes, reply] } }) });
+    set({ messages: ui.messages.map(m => m.consentRecord === undefined ? m : { ...m, consentRecord: { ...m.consentRecord, outcomes: [...m.consentRecord.outcomes, { text: reply, lang }] } }) });
   }
 }
 
@@ -348,11 +380,18 @@ async function readyForInput() {
 
 // ---------------------------------------------------------------- 응답·음성
 
-type TurnTiming = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint };
-async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnTiming) {
+type TurnOptions = { sent?: TimingPoint; capture?: TimingPoint; stop?: TimingPoint; controlLabel?: string };
+async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, trace?: TurnOptions) {
   let r = result;
   const prevTurn = ui.last?.turnId;
   if (ui.sessionId === undefined || r.sessionId !== ui.sessionId || prevTurn === r.turnId) return;
+  const language = responseLanguage(r);
+  if (language !== ui.lang) {
+    const generation = stoppedGeneration;
+    await loadWorkspaceLanguage(language);
+    if (generation !== stoppedGeneration || r.sessionId !== ui.sessionId || ui.last?.turnId !== prevTurn) return;
+  }
+  syncDesktopLanguage(language);
   if (r.intentType === "READ_START_GUIDE") r = { ...r, speech: consentText(r.lang) };
   if (r.intentType === "SETUP_RESTART") {
     // 처음 설정 화면이 녹음한 문장을 틀므로 응답은 말하지 않는다
@@ -384,8 +423,8 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
     recording = undefined;
     set({ listening: false });
   }
-  setSpeechLang(r.lang);
-  edge?.setLanguage(r.lang);
+  setSpeechLang(language);
+  edge?.setLanguage(language);
   if (r.speechPrefs !== undefined) applySpeechPrefs(r.speechPrefs);
   // 새 응답: 남아 있는 결정이어도 새 카드 번호로(이전 화면에서 누른 버튼은 무효)
   desk.card = undefined;
@@ -393,13 +432,13 @@ async function applyResult(result: Turn, speakIt = true, sleepOnStop = true, tra
   desk.message = desktopNotice(turnNotice(r));
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
-  set({ last: r, state: r.state, lang: r.lang, hasTurn, activity: r.intentType === "PROGRESS" ? ui.activity : null });
+  set({ last: r, state: r.state, lang: language, hasTurn, activity: r.intentType === "PROGRESS" ? ui.activity : null });
   if (isConsent) {
-    recordConsent(ui.consent === "granted" ? r.speech : undefined);
-    if (ui.consent !== "granted") push({ role: "assistant", text: r.speech });
+    recordConsent(ui.consent === "granted" ? r.speech : undefined, r.lang);
+    if (ui.consent !== "granted") push({ role: "assistant", text: r.speech, lang: r.lang });
   } else {
-    push({ role: "user", text: r.userUtterance });
-    push({ role: "assistant", text: r.speech });
+    push({ role: "user", text: trace?.controlLabel ?? r.userUtterance });
+    push({ role: "assistant", text: r.speech, lang: r.lang });
   }
   timing?.measure(trace?.sent, "result-applied");
   timing?.afterPaint(trace?.capture, "transcript-shown");
@@ -470,15 +509,15 @@ export function stopSpeaking() {
   if (edge !== undefined && ui.phase === "speaking") edge.interrupt();
 }
 
-async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speechPrefs.rate) {
+async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speechPrefs.rate, lang = getSpeechLang()) {
   if (!ui.tts || !ui.voiceMode.tts) return;
   try {
-    const result = await serverTts.speak(text, (chunk, speed) => api.speak(chunk, getSpeechLang(), speed), fromChunk, rate);
-    if (result === "blocked") setError("소리를 재생하려면 화면을 한 번 누른 뒤 소리 확인을 선택해 주세요.");
+    const result = await serverTts.speak(text, (chunk, speed) => api.speak(chunk, lang, speed), fromChunk, rate);
+    if (result === "blocked") setError(t("소리를 재생하려면 화면을 한 번 누른 뒤 소리 확인을 선택해 주세요."));
   } catch (error) {
     const code = errorCode(error);
     if (code === "VOICE_KEY" || code === "VOICE_LIMIT") desktop?.showSetup?.();
-    setError(code !== undefined && code.length > 0 ? errorMessage(error) : "음성 API 안내를 재생하지 못했어요. 연결을 확인해 주세요. 안내는 화면에서도 읽을 수 있어요.");
+    setError(code !== undefined && code.length > 0 ? errorMessage(error) : t("음성 API 안내를 재생하지 못했어요. 연결을 확인해 주세요. 안내는 화면에서도 읽을 수 있어요."));
   }
 }
 
@@ -486,7 +525,7 @@ const speakAndWait = (text: string) => speakAndWaitFrom(text);
 
 type Spoken = Pick<Turn, "speech"> & Partial<Pick<Turn, "localSpeechOnly" | "lang">>;
 async function speakTurn(result: Spoken, text = result.speech) {
-  if (result.localSpeechOnly !== true) return speakAndWait(text);
+  if (result.localSpeechOnly !== true) return speakAndWaitFrom(text, 0, speechPrefs.rate, result.lang ?? getSpeechLang());
   if (!ui.tts) return;
   const status = await speakOnDevice(text, result.lang ?? "ko");
   if (status === "unavailable") {
@@ -547,13 +586,13 @@ export async function startConversation() {
   const ticket = ++conversationStarts;
   if (!await readyForInput() || ticket !== conversationStarts || ui.last?.authHandoff?.status === "waiting") return;
   if (!ui.voiceMode.stt) {
-    const fallback = `지금은 연속 음성 대화를 사용할 수 없어요. ${dictationHelp(ui.lang)}`;
+    const fallback = t("지금은 연속 음성 대화를 사용할 수 없어요. {help}", { help: dictationHelp(ui.lang) });
     setError(fallback);
     if (ui.tts) speak(fallback);
     return;
   }
   if (ui.consent !== "granted") {
-    setError("동의하지 않으셔서 음성 대화를 시작하지 않습니다. 복지 제도 질문은 텍스트로 입력할 수 있습니다.");
+    setError(t("동의하지 않으셔서 음성 대화를 시작하지 않습니다. 복지 제도 질문은 텍스트로 입력할 수 있습니다."));
     return;
   }
   void preloadCues().catch(() => undefined);
@@ -629,7 +668,7 @@ export async function startConversation() {
   current.ignore = () => desk.speaking;
   startingLoop = current;
   const micTrouble =
-    "마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.";
+    t("마이크 연결이 끊겼거나 소리가 들어오지 않습니다. 아이폰 등 다른 기기 마이크가 선택돼 있을 수 있어요. 아래 마이크 선택에서 이 컴퓨터의 마이크를 고른 뒤 대화를 다시 시작해 주세요.");
   try {
     // 저장된 마이크가 없으면 권한을 받은 뒤 내장 마이크를 골라 다시 연다(아이폰 연속성 마이크 회피).
     await current.start(ui.micId);
@@ -680,7 +719,7 @@ export async function startConversation() {
   let missed = 0;
   while (loop === current && conversationOn) {
     setPhase("listening");
-    announce("듣고 있습니다. 말씀하세요.");
+    announce(t("듣고 있습니다. 말씀하세요."));
     await cue("listen");
     // 승인은 듣기 시작할 때 있던 결정에만 묶는다(듣는 사이에 새로 뜬 승인을 '응'으로 하지 않게)
     const asked = ui.last?.pendingConfirmation?.actionId ?? "";
@@ -702,7 +741,7 @@ export async function startConversation() {
       const stopWatch = current.watchBargeIn(() => {
         barged = true;
         stopSpeaking();
-        announce("말씀을 들을게요.");
+        announce(t("말씀을 들을게요."));
       });
       await speakTurn(r);
       stopWatch();
@@ -743,7 +782,7 @@ export async function startConversation() {
         setPhase("speaking");
         await cue("problem");
         if (++missed >= 2) {
-          await speakAndWait("마이크에서 말씀을 구분하기 어려워 듣기를 잠시 멈췄어요. 준비되면 대화 시작을 눌러 주세요.");
+          await speakAndWait(t("마이크에서 말씀을 구분하기 어려워 듣기를 잠시 멈췄어요. 준비되면 대화 시작을 눌러 주세요."));
           break;
         }
         await speakAndWait(message);
@@ -752,7 +791,7 @@ export async function startConversation() {
       setError(message);
       if (++failures >= 3) {
         await cue("problem");
-        await speakAndWait("문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요.");
+        await speakAndWait(t("문제가 계속되어 대화 모드를 끝냅니다. 텍스트로 입력해 주세요."));
         break;
       }
     }
@@ -877,7 +916,7 @@ function listenForStopWhileBusy(voice: VoiceLoop) {
         if (r.stopped) {
           const stop = timing?.confirmedStop(sentAt);
           cueStopped();
-          announce("멈출게요.");
+          announce(t("멈출게요."));
           if (r.result !== undefined) await applyResult(r.result, true, true, { stop });
           break;
         } else if (on && r.result !== undefined) {
@@ -906,8 +945,8 @@ export function talkNow() {
   if (ui.consent === "ask") { void answerConsent(true); return; }
   if (!conversationOn && ui.last?.authHandoff?.status === "waiting") {
     // 인증 중에는 마이크를 켜지 않는다(비밀번호를 듣지 않게). 조용히 무시하지 않고 다음에 할 일을 알린다.
-    const label = desk.card?.choices.find((c) => c.key === "auth-done")?.label ?? "로그인했어요";
-    notice(`지금은 사이트에서 직접 로그인하는 중이라 마이크를 꺼 두었어요. 마치면 컨트롤, 시프트, K를 누르고 '${label}'를 고르세요.`);
+    const label = desk.card?.choices.find((c) => c.key === "auth-done")?.label ?? t("로그인했어요");
+    notice(t("지금은 사이트에서 직접 로그인하는 중이라 마이크를 꺼 두었어요. 마치면 컨트롤, 시프트, K를 누르고 '{label}'를 고르세요.", { label }));
     return;
   }
   if (!conversationOn) {
@@ -917,7 +956,7 @@ export function talkNow() {
   if (edge !== undefined && ui.phase === "thinking") { void stopAll(); return; }
   if (ui.phase === "speaking") {
     stopSpeaking();
-    announce("안내를 멈췄습니다. 말씀하세요.");
+    announce(t("안내를 멈췄습니다. 말씀하세요."));
   } else if (ui.phase === "hearing") {
     loop?.endUtterance();
   } else if (ui.phase === "thinking") {
@@ -1018,19 +1057,20 @@ function startReminders() {
     const night = hour >= 22 || hour < 7;
     if (night && !reminderNight) {
       reminderNight = true;
-      desk.message = desktopNotice(workspaceText("기한 알림이 있어요. 지금 들을까요, 아침에 들을까요?", ui.lang));
+      const reminder = t("기한 알림이 있어요. 지금 들을까요, 아침에 들을까요?");
+      desk.message = desktopNotice(reminder);
       publishDesktop();
-      push({ role: "assistant", text: `기한 알림이 있어요. 지금 들을까요, 아침에 들을까요?` });
+      push({ role: "assistant", text: reminder });
       await cue("reminder");
-      await speakAndWait("기한 알림이 있어요. 지금 들으려면 '지금', 아침에 들으려면 '아침'이라고 해 주세요.");
+      await speakAndWait(t("기한 알림이 있어요. 지금 들으려면 '지금', 아침에 들으려면 '아침'이라고 해 주세요."));
       return;
     }
     reminderSeen = signature;
     desk.message = desktopNotice(workspaceText("기한 알림이 있어요. 저를 눌러 확인해 주세요.", ui.lang));
     publishDesktop();
-    push({ role: "assistant", text: `알림: ${text}` });
+    push({ role: "assistant", text: t("알림: {message}", { message: text }) });
     await cue("reminder");
-    void speakAndWait(`알림이에요. ${text} 들으셨으면 '알겠어'라고 해 주세요.`);
+    void speakAndWait(t("알림이에요. {message} 들으셨으면 '알겠어'라고 해 주세요.", { message: text }));
   };
   void check();
   reminderTimer = setInterval(() => void check(), 60 * 60 * 1000);
@@ -1041,13 +1081,13 @@ function startReminders() {
 const insideCommandArea = (el: Element | null) =>
   el !== null && (document.getElementById("command-form")?.contains(el) === true || document.getElementById("examples")?.contains(el) === true);
 
-export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "") {
+export async function send(text: string, actionId = ui.last?.pendingConfirmation?.actionId ?? "", controlLabel?: string) {
   const t = text.trim();
   if (t.length === 0 || ui.sessionId === undefined || ui.recovery !== undefined) return;
   if (!await readyForInput()) return;
   const origin = document.activeElement;
   const fromForm = insideCommandArea(origin);
-  if (reminderNight && /^지금[.! ]*$/.test(t)) {
+  if (reminderNight && REMINDER_NOW.test(t)) {
     const { text: due } = await api.reminders(ui.sessionId).catch(() => ({ text: undefined }));
     if (due != null && due.length > 0) {
       reminderSeen = `${new Date().toDateString()}|${due}`;
@@ -1056,7 +1096,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
     }
     return;
   }
-  if (reminderNight && /^아침[.! ]*$/.test(t)) return;
+  if (reminderNight && REMINDER_MORNING.test(t)) return;
   const stop = stoppedGeneration;
   const input = timing?.begin("input-received");
   set({ busy: true, error: undefined });
@@ -1064,7 +1104,7 @@ export async function send(text: string, actionId = ui.last?.pendingConfirmation
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.turn(ui.sessionId, t, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1136,7 +1176,7 @@ async function stopSession() {
     const stillSleeping = wake === desk.wakeCount;
     if (!stillSleeping && ui.last !== previousTurn) return;
     if (ui.recovery !== undefined) announce(result.speech);
-    else await applyResult(result, stillSleeping, stillSleeping, { stop: requested });
+    else await applyResult(result, stillSleeping, stillSleeping, { stop: requested, controlLabel: t("[멈춤 버튼]") });
   } catch (e) {
     if (stop !== stoppedGeneration || wake !== desk.wakeCount) return;
     desk.sleeping = false;
@@ -1154,7 +1194,7 @@ async function confirm(approve: boolean, actionId: string) {
   const sent = timing?.measure(input, "turn-sent");
   try {
     const result = await whileBusy(api.confirm(ui.sessionId, approve, actionId));
-    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent });
+    if (stop === stoppedGeneration) await applyResult(result, true, true, { sent, controlLabel: approve ? t("[승인 버튼]") : t("[거절 버튼]") });
   } catch (e) {
     timing?.measure(sent, "turn-failed");
     setError(errorMessage(e));
@@ -1173,7 +1213,10 @@ async function chooseOffer(card: Extract<Decision, { kind: "offer" }>, key: stri
     const handoffId = card.ref.handoffId;
     const body = { turnId: card.ref.turnId, key, ...(handoffId !== undefined && handoffId.length > 0 ? { handoffId } : {}) };
     const result = await whileBusy(api.choice(ui.sessionId, body));
-    if (stop === stoppedGeneration && generation === sessionGeneration) await applyResult(result);
+    if (stop === stoppedGeneration && generation === sessionGeneration) {
+      const label = key === "auth-cancel" ? t("인증 취소") : card.choices.find(choice => choice.key === key)?.label;
+      await applyResult(result, true, true, { controlLabel: ui.lang === "ko" ? undefined : label });
+    }
   } catch (e) {
     if (errorCode(e) !== "CHOICE_EXPIRED") setError(errorMessage(e));
     else {
@@ -1208,7 +1251,7 @@ const insideDecision = (el: Element | null) =>
 export async function choose(choiceSetId: string, key: string) {
   const card = desk.card;
   if (card === undefined || card.id !== choiceSetId) {
-    notice("선택지가 바뀌었어요. 지금 안내를 다시 확인해 주세요.");
+    notice(t("선택지가 바뀌었어요. 지금 안내를 다시 확인해 주세요."));
     return;
   }
   const offered = card.choices.some((c) => c.key === key && c.open === undefined);
@@ -1229,7 +1272,9 @@ export async function choose(choiceSetId: string, key: string) {
 /** 인증 카드의 단추: 서버가 제안한 선택지가 있으면 그것을, 없으면(이전 작업을 다시 연결한 뒤) 같은 뜻의 말을 보낸다. */
 export function authChoice(cardId: string, key: "auth-done" | "auth-cancel", viaCard: boolean) {
   if (viaCard) return choose(cardId, key);
-  return send(key === "auth-done" ? "다 했어" : "인증 취소");
+  const done = key === "auth-done";
+  const label = done ? t("직접 확인을 마쳤어요") : t("인증 취소");
+  return send(done ? "다 했어" : "인증 취소", undefined, ui.lang === "ko" ? undefined : label);
 }
 
 /** 지금 카드를 '보내는 중'으로 잡는다(이미 잡혀 있으면 undefined). 음성 한 턴도 카드를 잡아 버튼과 함께 나가지 않게 한다. */
@@ -1280,7 +1325,7 @@ export async function toggleMic() {
     const generation = stoppedGeneration;
     recording = undefined;
     set({ listening: false, busy: true });
-    announce("인식 중입니다.");
+    announce(t("인식 중입니다."));
     const audio = await rec.stop();
     const capture = timing?.begin("capture-end");
     void cue("done");
@@ -1311,9 +1356,9 @@ export async function toggleMic() {
     }
     recording = Object.assign(rec, { asked });
     set({ listening: true });
-    announce("듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요.");
+    announce(t("듣는 중입니다. 말씀을 마치면 버튼을 다시 누르세요."));
   } catch {
-    setError("마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요.");
+    setError(t("마이크를 사용할 수 없습니다. 브라우저 마이크 권한을 확인하거나 텍스트로 입력하세요."));
   } finally {
     openingMic = false;
   }
@@ -1384,12 +1429,12 @@ export async function selectLanguage(lang: Lang) {
   const current = () => request === languageRequest && sid === ui.sessionId;
   set({ requestedLanguage: lang });
   try {
-    const r = await api.language(sid, lang);
+    const [r] = await Promise.all([api.language(sid, lang), loadWorkspaceLanguage(lang)]);
     if (!current()) return;
-    await applyResult(r, !conversationOn);
+    await applyResult(r, !conversationOn, true, { controlLabel: workspaceText("[언어 선택]", lang) });
     if (conversationOn && current()) await speakTurn(r);
   } catch (err) {
-    if (current()) setError(err instanceof Error ? err.message : "언어를 바꾸지 못했습니다.");
+    if (current()) setError(err instanceof Error ? err.message : t("언어를 바꾸지 못했습니다."));
   } finally {
     if (current()) set({ requestedLanguage: undefined });
   }
@@ -1513,10 +1558,11 @@ export async function endSession() {
   tabStore(RECOVERY_KEY, null);
   tabStore(PROGRESS_KEY, null);
   closeRecovery();
-  setSpeechLang("ko");
+  if (desktop !== undefined) desktopLanguage = ui.lang;
+  setSpeechLang(desktopLanguage ?? "ko");
   commandActionId = undefined;
   set({
-    sessionId: undefined, state: "IDLE", last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: "ko", requestedLanguage: undefined,
+    sessionId: undefined, state: "IDLE", last: undefined, hasTurn: false, busy: false, listening: false, consent: undefined, lang: desktopLanguage ?? "ko", requestedLanguage: undefined,
     messages: [], activity: null, commandReset: ui.commandReset + 1, sessionNew: true,
   });
   focus("session-new");
@@ -1552,15 +1598,17 @@ export async function answerRecovery(yes: boolean) {
     desk.sleeping = checkpoint.state === "STOPPED";
     desk.stopGeneration = checkpoint.stopGeneration ?? null;
     closeRecovery();
+    await loadWorkspaceLanguage(checkpoint.lang ?? "ko");
     setSpeechLang(checkpoint.lang ?? "ko");
+    syncDesktopLanguage(checkpoint.lang ?? "ko");
     set({ state: checkpoint.state, lang: checkpoint.lang ?? "ko",
       last: { authHandoff: checkpoint.authHandoff, turnId: checkpoint.turnId, offeredChoices: checkpoint.offeredChoices }, hasTurn: true });
     tabStore(PROGRESS_KEY, String(checkpoint.progressSeq ?? 0));
     const consent = checkpoint.consent === "pending" ? "ask" : checkpoint.consent;
     setConsent(consent);
-    const step = checkpoint.step !== undefined && checkpoint.step !== 0 ? `연습 신청서 ${checkpoint.step}단계예요. ` : "";
-    const approval = checkpoint.approvalKind !== undefined && checkpoint.approvalKind.length > 0 ? "실행할 동작을 다시 요청하고 새로 확인해 주세요. " : "";
-    const message = `${step.length > 0 ? step : "이전 작업에 연결했어요. "}${approval}음성 입력을 쓰려면 마이크를 다시 켜 주세요.`;
+    const step = checkpoint.step !== undefined && checkpoint.step !== 0 ? t("연습 신청서 {step}단계예요.", { step: checkpoint.step }) : "";
+    const approval = checkpoint.approvalKind !== undefined && checkpoint.approvalKind.length > 0 ? t("실행할 동작을 다시 요청하고 새로 확인해 주세요.") : "";
+    const message = [step.length > 0 ? step : t("이전 작업에 연결했어요."), approval, t("음성 입력을 쓰려면 마이크를 다시 켜 주세요.")].filter(Boolean).join(" ");
     push({ role: "assistant", text: message });
     if (ui.tts) speak(message);
     focus("command");
@@ -1589,14 +1637,15 @@ export async function chooseSession() {
           await new Promise(resolve => setTimeout(resolve, 150));
         }
       }
-      if (restored === undefined) throw new Error("복구하지 못했어요.");
+      if (restored === undefined) throw new Error(t("복구하지 못했어요."));
+      desktopLanguage = undefined;
       connect(restored);
-      showRecovery("resume", "이전 작업을 이어 할까요?", "이 탭에서 작업을 이어 할 수 있어요. 마이크는 꺼져 있습니다.", "이전 작업 이어하기", "이용 종료");
+      showRecovery("resume", t("이전 작업을 이어 할까요?"), t("이 탭에서 작업을 이어 할 수 있어요. 마이크는 꺼져 있습니다."), t("이전 작업 이어하기"), t("이용 종료"));
       return;
     } catch (error) {
       const status = errorStatus(error);
       if (status !== 404 && status !== 400) {
-        showRecovery("retry", "이전 작업에 연결하지 못했어요", errorMessage(error), "이전 작업 다시 연결", "새 작업 시작");
+        showRecovery("retry", t("이전 작업에 연결하지 못했어요"), errorMessage(error), t("이전 작업 다시 연결"), t("새 작업 시작"));
         return;
       }
     }
@@ -1604,7 +1653,7 @@ export async function chooseSession() {
   tabStore(RECOVERY_KEY, null);
   tabStore(PROGRESS_KEY, null);
   if (health?.recoveryAvailable === true && tabStore(RECOVERY_DECLINED) !== "1") {
-    showRecovery("new", "같은 탭 작업 복구", "개인 컴퓨터에서 작업을 이어갈 수 있게 할까요? 브라우저가 열려 있으면 연결이 끊긴 뒤 5분 동안 돌아올 수 있어요.", "복구 켜고 시작", "복구 없이 시작");
+    showRecovery("new", t("같은 탭 작업 복구"), t("개인 컴퓨터에서 작업을 이어갈 수 있게 할까요? 브라우저가 열려 있으면 연결이 끊긴 뒤 5분 동안 돌아올 수 있어요."), t("복구 켜고 시작"), t("복구 없이 시작"));
   } else {
     await openSession(false);
   }
@@ -1621,7 +1670,11 @@ async function initialize() {
     }
   } catch { /* 저장소 비활성 */ }
   render();
-  announce("청음을 준비하고 있어요.");
+  if (desktopLanguage !== undefined) {
+    await loadWorkspaceLanguage(desktopLanguage);
+    setSpeechLang(desktopLanguage);
+  }
+  announce(t("청음을 준비하고 있어요."));
   const health = await refreshHealth();
   if (health?.setupRequired === true) return firstRun.start(1);
   // 1단계를 저장한 뒤 앱을 닫았으면 소리 확인부터 한 번 이어 간다
@@ -1639,9 +1692,9 @@ function refreshHealth() {
       baseSpeed: h.voiceSpeed ?? 1.35,
       voiceMode: {
         known: true, stt: h.stt.supported, tts: h.tts.supported, edge: h.voiceEdge, llmRoles: h.llmRoles ?? {},
-        label: [h.voiceEdge !== undefined && h.voiceEdge.length > 0 ? "실시간 대화 " + h.voiceEdge : "",
-          h.stt.supported ? "받아쓰기 " + (h.stt.liveModel ?? h.stt.provider) : "",
-          h.tts.supported ? "음성 안내 " + h.tts.provider : ""].filter(part => part.length > 0).join(" · "),
+        label: "",
+        sttProvider: h.stt.supported ? h.stt.liveModel ?? h.stt.provider : undefined,
+        ttsProvider: h.tts.supported ? h.tts.provider : undefined,
       },
       tts: h.tts.supported,
     });
@@ -1690,15 +1743,18 @@ export async function saveSettings(values: SettingsInput, autostart: boolean | u
   set({ settings: { ...dialog, saving: true } });
   try {
     await api.saveSettings(values);
+    desktopLanguage = undefined;
     if (desktop?.setAutoStart !== undefined && autostart !== undefined) desktop.setAutoStart(autostart);
     set({ settings: undefined });
     await refreshHealth();
     if (ui.sessionId !== undefined) {
       if (values.language !== dialog.prefs?.language) {
+        await loadWorkspaceLanguage(values.language);
         setSpeechLang(values.language);
+        syncDesktopLanguage(values.language);
         set({ lang: values.language });
       }
-      announce("이용 설정을 저장했어요.");
+      announce(t("이용 설정을 저장했어요."));
     } else {
       await chooseSession();
     }
@@ -1714,12 +1770,23 @@ async function openSession(recovery: boolean) {
   try {
     const s = await api.createSession(recovery);
     connect(s);
-    setSpeechLang(s.lang ?? "ko");
-    set({ lang: s.lang ?? "ko" });
+    let language = s.lang ?? "ko";
+    if (desktopLanguage !== undefined && desktopLanguage !== language) {
+      const preferred = desktopLanguage;
+      await api.language(s.sessionId, preferred);
+      if (ui.sessionId !== s.sessionId) return;
+      language = preferred;
+    }
+    desktopLanguage = undefined;
+    await loadWorkspaceLanguage(language);
+    if (s.sessionId !== ui.sessionId) return;
+    setSpeechLang(language);
+    syncDesktopLanguage(language);
+    set({ lang: language, announcement: { text: workspaceText("청음을 준비하고 있어요.", language), seq: ui.announcement.seq } });
     if (s.speechPrefs !== undefined) applySpeechPrefs(s.speechPrefs);
     if (!s.consentRequired) {
       setConsent("granted");
-      announce("청음이 준비됐어요.");
+      announce(t("청음이 준비됐어요."));
       return;
     }
     let first = s.firstStartupGuide;
@@ -1735,7 +1802,7 @@ async function openSession(recovery: boolean) {
       if (desktop !== undefined) void hearConsent();
     }
   } catch (e) {
-    setError(`세션을 시작하지 못했습니다. ${errorMessage(e)}`);
+    setError(t("세션을 시작하지 못했습니다. {reason}", { reason: errorMessage(e) }));
     set({ sessionNew: true });
     focus("session-new");
   }

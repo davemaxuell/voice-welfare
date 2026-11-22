@@ -1,8 +1,10 @@
+import { LANGS, type Lang } from "../../src/core/turn.ts";
+import { TEXT } from "./first-run-text.ts";
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import type { FirstRun, FirstRunChoice } from "./first-run.ts";
 
-function ChoiceButton({ choice }: { choice: FirstRunChoice }) {
-  return <button type="button" className="first-run-choice" onClick={choice.act}><kbd>{choice.kbd}</kbd> {choice.label}</button>;
+function ChoiceButton({ choice, lang }: { choice: FirstRunChoice; lang?: Lang | undefined }) {
+  return <button type="button" lang={lang} className="first-run-choice" onClick={choice.act}><kbd>{choice.kbd}</kbd> {choice.label}</button>;
 }
 
 /** 첫 실행 설정 대화 상자. 단계와 키는 first-run.ts가 정하고 여기서는 그리기만 한다. */
@@ -39,12 +41,14 @@ export function FirstRunDialog({ machine }: { machine: FirstRun }) {
     target?.focus();
   }, [view.focus, view.step]);
 
+  const languagePrompts = view.step === "language" ? view.choices.map((choice, i) =>
+    <span key={choice.kbd} lang={LANGS[i]}>{i > 0 ? " · " : ""}{choice.label}</span>) : undefined;
   return <dialog id="first-run" aria-labelledby="first-run-title" ref={dialog} lang={view.dialogLang} onCancel={e => e.preventDefault()}>
-    <p className="first-run-brand" id="first-run-title">청음 처음 설정</p>
+    <p className="first-run-brand" id="first-run-title">{TEXT[view.dialogLang].title}</p>
     <div id="first-run-steps">
       {view.step !== null && <section className="first-run-step" data-step={view.step} key={view.shown} ref={section}>
         <h2 tabIndex={-1}>{view.title}</h2>
-        <p className="first-run-text">{view.text}</p>
+        <p className="first-run-text">{languagePrompts ?? view.text}</p>
         {view.keyForm !== undefined && <>
           <form className="first-run-form" onSubmit={e => { e.preventDefault(); void machine.submitKey(keyInput.current?.value ?? ""); }}>
             <input id="first-run-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} aria-label={view.keyForm.label} ref={keyInput}/>
@@ -54,7 +58,7 @@ export function FirstRunDialog({ machine }: { machine: FirstRun }) {
             <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">{view.keyForm.help.link}</a> · {view.keyForm.help.limit}
           </p>}
         </>}
-        {view.choices.length > 0 && <div className="first-run-choices">{view.choices.map(c => <ChoiceButton key={c.kbd} choice={c}/>)}</div>}
+        {view.choices.length > 0 && <div className="first-run-choices">{view.choices.map((c, i) => <ChoiceButton key={c.kbd} choice={c} lang={view.step === "language" ? LANGS[i] : undefined}/>)}</div>}
         {view.ready !== undefined && <div className="first-run-choices"><ChoiceButton choice={view.ready}/></div>}
         {view.guardian !== undefined && <div className="first-run-choices">
           <form className="first-run-form first-run-guardian" onSubmit={e => {
@@ -72,6 +76,6 @@ export function FirstRunDialog({ machine }: { machine: FirstRun }) {
         {view.soundHelp !== undefined && <p className="hint first-run-sound-help">{view.soundHelp}</p>}
       </section>}
     </div>
-    <p className="sr-only" id="first-run-live" aria-live="polite"><span key={view.live.seq}>{view.live.text}</span></p>
+    <p className="sr-only" id="first-run-live" aria-live="polite"><span key={view.live.seq}>{view.live.text === view.text ? languagePrompts ?? view.live.text : view.live.text}</span></p>
   </dialog>;
 }
