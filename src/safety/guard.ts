@@ -40,10 +40,22 @@ export type InspectionControl =
   | { kind: "navigation"; href: string; signature: string }
   | { kind: "disclosure" | "ambiguous" | "blocked"; href?: string; signature: string };
 
+export interface InspectionSearchEvidence {
+  url: string; destination: string; parameter: string; signature: string;
+  field?: { ref: string; name: string };
+}
+
 export type InspectionBinding =
   | { kind: "start" | "back"; url: string }
   | { kind: "control"; url: string; ref: string; control: InspectionControl }
-  | { kind: "search"; url: string; fieldId: string; destination: string; parameter: string; signature: string };
+  | ({ kind: "search"; fieldId: string } & InspectionSearchEvidence);
+
+/** 칸 id와 검색 역할만 지정하거나, 양식과 함께 관찰한 바로 그 칸을 지정해야 한다. */
+export function matchesInspectionSearchTarget(target: Action["target"], fieldId: string, field?: InspectionSearchEvidence["field"]): boolean {
+  if (target?.role !== "searchbox" || target.fieldId !== fieldId) return false;
+  const keys = Object.keys(target).length;
+  return keys === 2 || (keys === 5 && field !== undefined && target.ref === field.ref && target.name === field.name && target.label === field.name);
+}
 
 export const guardPatterns = {
   secretLabel: /(비밀\p{White_Space}*번호|password|OTP|인증\p{White_Space}*번호|주민\p{White_Space}*(등록)?\p{White_Space}*번호|계좌|카드\p{White_Space}*번호)/iu,
@@ -280,8 +292,8 @@ export class PolicyGuard {
       return deny("DENIED_SECRET", "민감 정보는 사이트에서 직접 입력해 주세요.");
     }
     if (type === "press") {
-      if (proof?.kind !== "search" || proof.url !== ctx.currentUrl || target?.fieldId !== proof.fieldId ||
-        target.role !== "searchbox" || Object.keys(target).length !== 2 || action.url !== proof.destination ||
+      if (proof?.kind !== "search" || proof.url !== ctx.currentUrl || !matchesInspectionSearchTarget(target, proof.fieldId, proof.field) ||
+        action.url !== proof.destination ||
         !hasText(value) || [...value].length > 100 || detectSensitive(value).hasSecretValue || redactPictureText(value) !== value ||
         !searchParameter.test(proof.parameter) || secretParameter.test(proof.parameter) || endpointParameter.test(proof.parameter) ||
         !isInspectionUrl(proof.destination) || URL.parse(proof.destination)?.origin !== URL.parse(proof.url)?.origin) return refused();

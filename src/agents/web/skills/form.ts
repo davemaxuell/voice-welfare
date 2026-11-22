@@ -65,7 +65,9 @@ export class FormSkill {
       if (!field) return draft(this.dialogue.state, "clarify", `'${f.fieldMention}' 칸을 화면에서 찾지 못했어요. '화면 설명해줘'라고 하시면 입력 칸을 알려 드려요.`, {view});
       if (found.length > 1) return draft(this.dialogue.state, "clarify",
         `'${f.fieldMention}'에 맞는 칸이 여러 개예요: ${found.slice(0, 4).map(x => x.label).join(", ")}. 정확한 칸 이름을 말씀해 주세요.`, {view});
-      actions.push(this.web.buildAssistAction(field, f.value));
+      const action = this.web.buildAssistAction(field, f.value);
+      if (!await this.web.observedAction(action, ctx.signal)) return draft(this.dialogue.state, "clarify", "입력 칸이 바뀌었어요. 채울 칸을 다시 말씀해 주세요.", {view});
+      actions.push(action);
       values.push({label: speakLabel(field.label), value: f.value});
     }
     const [first, ...rest] = actions;
@@ -212,6 +214,7 @@ export class FormSkill {
     const out = await this.web.goToFinalStep(ctx);
     if (out.status !== "ok" || !out.view) return this.#afterStepMove(out, "prepare-submit");
     const action = this.web.buildSubmitAction();
+    if (!await this.web.observedAction(action, ctx.signal)) return draft(this.formState(), "clarify", "접수 단추가 바뀌었어요. 검토 화면을 다시 확인해 주세요.", {view: out.view});
     const preview = this.web.previewPolicy(action, ctx);
     const values = this.#reviewValues(out.view);
     const listed = values.map(v => `${v.label}: ${v.value}`).join(". ");

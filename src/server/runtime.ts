@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import type { Browser, BrowserContext } from "playwright";
 import { WebExecutionAgent } from "../agents/web/agent.ts";
 import { launchBrowser, launchChromeProfile, PlaywrightExecutionAdapter } from "../agents/web/browser/index.ts";
+import { browserDriver } from "../agents/web/browser/stagehand_browser.ts";
 import { DownloadStore } from "../agents/web/downloads.ts";
 import { createMockWelfareProfile, fieldVocabulary } from "../agents/web/profile.ts";
 import { WelfareInformationAgent } from "../agents/welfare/agent.ts";
@@ -108,6 +109,7 @@ export function loadConfig(env: Env = process.env) {
     pilotProfile,
     dataDir: pilotProfile === "personal" ? blank(env.CHEONGEUM_DATA_DIR) : undefined,
     personalDataDir: blank(env.CHEONGEUM_DATA_DIR),
+    browserDriver: browserDriver(env.BROWSER_DRIVER ?? "playwright"),
     browserMode: pilotProfile === "personal" && env.BROWSER_MODE === "chrome" ? ("chrome" as const) : ("chromium" as const),
     chromeProfileDir: blank(env.CHROME_PROFILE_DIR) ?? join(homedir(), ".cheongeum", "chrome-profile"),
     readOnlyWeb: env.READ_ONLY_WEB !== "false",
@@ -277,7 +279,7 @@ export class AgentRuntime {
   }
   private getBrowser(background = false) {
     const slot = background && !this.config.headless ? "workerBrowser" : "browser";
-    const opening = this[slot] ??= launchBrowser(background || this.config.headless, background ? 0 : this.config.slowMoMs)
+    const opening = this[slot] ??= launchBrowser(background || this.config.headless, background ? 0 : this.config.slowMoMs, this.config.browserDriver)
       .then(browser => {
         browser.once("disconnected", () => { if (this[slot] === opening) this[slot] = undefined; });
         return browser;
@@ -288,7 +290,7 @@ export class AgentRuntime {
     return opening;
   }
   openChrome() {
-    this.chrome ??= launchChromeProfile(this.config.chromeProfileDir, this.config.slowMoMs)
+    this.chrome ??= launchChromeProfile(this.config.chromeProfileDir, this.config.slowMoMs, this.config.browserDriver)
       .then((c) => {
         c.once("close", () => {
           this.chrome = undefined;
@@ -321,7 +323,7 @@ export class AgentRuntime {
       }
       return await this.getBrowser(background);
     };
-    const adapter = new PlaywrightExecutionAdapter({ browserSource: source,
+    const adapter = new PlaywrightExecutionAdapter({ browserSource: source, driver: cfg.browserDriver,
       allowedOrigins, readOnlyWeb, visualCursor: cfg.visualCursor && !background, downloads });
     try {
       if (background || cfg.practiceMode || (cfg.headless && this.browserMode() !== "chrome")) await adapter.start();

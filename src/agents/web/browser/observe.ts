@@ -1,8 +1,10 @@
-import type { DialogInfo, NoticeFacts, Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
+import type { ActionTarget, DialogInfo, NoticeFacts, Observation, ObservedField, InteractiveItem, ScreenOutline, ScreenTarget } from "../../../core/actions.ts";
 import type { InspectionControl } from "../../../safety/guard.ts";
 
 export interface ControlQuery {
   text?: string; offset?: number; limit?: number; ref?: string | null; refs?: readonly string[]; exact?: boolean;
+  /** 실행할 대상을 청음이 관찰한 역할·이름 또는 칸 정보로 정확히 찾는다. */
+  target?: ActionTarget;
   inspection?: boolean; destination?: string; searchField?: string;
   /** ref로 찾은 항목이 팝업 안에 있으면 그 팝업의 사실(notice)을 새로 읽어 함께 돌려준다. */
   notice?: boolean;
@@ -12,6 +14,7 @@ type RefElement = HTMLElement | SVGElement;
 // shadows는 페이지 안에서 알 수 없다(닫힌 shadow root는 스크립트에 보이지 않는다). 어댑터가 브라우저의 DOM 정보로 채운다.
 type PageNotice = Omit<NoticeFacts, "shadows">;
 type Item = InteractiveItem & { context?: string; inspection?: InspectionControl; notice?: PageNotice; planSignature?: string };
+type BoundItem = Omit<Item, "role"> & { role: string; fieldId: string };
 type RawObservation = Omit<Observation, "platform" | "capturedAt" | "outline"> &
   { outline?: Omit<ScreenOutline, "screenTarget"> & { screenTarget: ScreenTarget | null } };
 declare global {
@@ -58,6 +61,16 @@ export function observePage(query: ControlQuery | null = null) {
     refs.set(el, { ref, href, context });
     return ref;
   };
+  const fieldLabel = (c: Control) => first(text(c.labels?.[0]),
+    (c.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean).map(id => {
+      const label = document.getElementById(id);
+      const privateField = 'input, textarea, select, [contenteditable]';
+      return label && !label.closest(privateField) && !label.querySelector(privateField) ? text(label) : '';
+    }).join(' ').trim(),
+      c.getAttribute('aria-label'), c.getAttribute('title'), c.getAttribute('placeholder'), c.name, '이름 없는 입력란');
+  const sensitiveField = (c: Control) => c.type === 'password' ||
+    c.autocomplete.toLowerCase().split(/\s+/).some(token => ['one-time-code', 'current-password', 'new-password'].includes(token));
+  const fieldRef = (c: Control, name: string) => refOf(c, JSON.stringify([idOf(c), name, c.type, sensitiveField(c)]));
   if (query?.searchField !== undefined) {
     const id = CSS.escape(query.searchField);
     const matches = Array.from(document.querySelectorAll('[id="' + id + '"], [data-cheongeum-id="' + id + '"]')).filter(isVisible);
@@ -71,18 +84,54 @@ export function observePage(query: ControlQuery | null = null) {
         !(control(other) || other instanceof HTMLButtonElement) || other.name.length === 0 ||
         other.matches(':disabled') || ['submit', 'button', 'reset'].includes(other.type));
     if (!valid) return { url: location.href };
-    // Bind the live form instance as well as the field, method, and parameter.
-    return { url: location.href, destination: form.action, parameter: el.name,
-      signature: JSON.stringify([refOf(el), refOf(form), el.type, el.name, form.action, form.method]) };
+    const name = fieldLabel(el).slice(0, 80);
+    const ref = fieldRef(el, name);
+    return { url: location.href, destination: form.action, parameter: el.name, field: { ref, name },
+      signature: JSON.stringify([ref, refOf(form), el.type, el.name, form.action, form.method]) };
   }
-  const controls = query ? [] : Array.from(document.querySelectorAll<Control>('input, select, textarea'))
-    .filter((c) => c.type !== 'hidden' && c.type !== 'submit' && c.type !== 'button' && c.type !== 'image' && c.type !== 'reset')
+  const isField = (el: Element): el is Control => control(el) && !['hidden', 'submit', 'button', 'image', 'reset'].includes(el.type);
+  const searchField = (c: Control, label: string) => !sensitiveField(c) && (c.type === 'search' || c.getAttribute('role') === 'searchbox' ||
+    /검색|search|query|keyword/i.test([label, c.getAttribute('placeholder'), c.name, c.id].join(' ')));
+  const target = query?.target;
+  const marked = target?.testId === undefined ? undefined
+    : Array.from(document.querySelectorAll('[data-testid="' + CSS.escape(target.testId) + '"]')).filter(isVisible);
+  const fieldRole = (c: Control) => {
+    if (c instanceof HTMLSelectElement) return c.multiple || c.size > 1 ? 'listbox' : 'combobox';
+    if (c.type === 'number') return 'spinbutton';
+    if (c.type === 'range') return 'slider';
+    if (c.type === 'search') return 'searchbox';
+    if (['text', 'textarea', 'tel', 'url', 'email'].includes(c.type)) return c.getAttribute('role') === 'combobox' ? 'combobox' : 'textbox';
+    return c.type;
+  };
+  if (target && (target.fieldId !== undefined || target.label !== undefined ||
+    ['textbox', 'searchbox', 'listbox', 'combobox', 'checkbox', 'radio', 'spinbutton', 'slider'].includes(target.role ?? '') ||
+    marked?.some(isField) === true)) {
+    // 조회 중에는 칸의 값을 읽지 않는다. 이름과 id를 함께 받은 경우에는 같은 칸에 둘 다 맞아야 한다.
+    const candidates = marked ?? Array.from(document.querySelectorAll('input, select, textarea')).filter(isVisible);
+    if (marked?.some(el => !isField(el)) === true && marked.some(isField)) return {url: location.href, items: [], more: true};
+    const matches = candidates.filter(isField).flatMap(c => {
+      if (target.fieldId !== undefined && target.fieldId !== c.id && target.fieldId !== c.dataset.cheongeumId) return [];
+      const label = fieldLabel(c);
+      const name = label.slice(0, 80);
+      if (target.role === 'searchbox' && !searchField(c, label)) return [];
+      const role = target.role === 'searchbox' ? 'searchbox' : fieldRole(c);
+      if ((target.label !== undefined && target.label !== name) || (target.name !== undefined && target.name !== name) ||
+        (target.role !== undefined && target.role !== role)) return [];
+      return [{c, role, name}];
+    });
+    const offset = query?.offset ?? 0;
+    const match = matches[offset];
+    const items: BoundItem[] = match === undefined ? [] : [{role: match.role, name: match.name, fieldId: idOf(match.c), region: 'other', disabled: disabled(match.c),
+      ref: fieldRef(match.c, match.name)}];
+    return {url: location.href, items, more: matches.length > offset + 1};
+  }
+  const controls = query ? [] : Array.from(document.querySelectorAll<Control>('input, select, textarea')).filter(isField)
     .filter((c) => c.id.length > 0 || isVisible(c))
     .slice(0, 60);
   const fields = controls.map((c) => {
     const isSelect = c instanceof HTMLSelectElement;
     const type = isSelect ? 'select' : (c.tagName === 'TEXTAREA' ? 'textarea' : first(c.type, 'text'));
-    const sensitive = type === 'password' || c.getAttribute('autocomplete') === 'one-time-code';
+    const sensitive = sensitiveField(c);
     const isCheck = c instanceof HTMLInputElement && (type === 'checkbox' || type === 'radio');
     let value = '';
     if (isSelect) value = c.value !== '' && c.selectedIndex >= 0 ? text(c.options[c.selectedIndex]) : '';
@@ -91,8 +140,7 @@ export function observePage(query: ControlQuery | null = null) {
     const errId = c.getAttribute('aria-errormessage');
     const errEl = errId !== null && errId.length > 0 ? document.getElementById(errId) : null;
     const invalid = c.getAttribute('aria-invalid') === 'true';
-    const label = (c.labels?.length ?? 0) > 0 ? text(c.labels?.[0])
-      : first(c.getAttribute('aria-label'), c.getAttribute('title'), c.getAttribute('placeholder'), c.name, '이름 없는 입력란');
+    const label = fieldLabel(c);
     const field: ObservedField = {
       fieldId: idOf(c),
       label: label.slice(0, 80),
@@ -104,9 +152,7 @@ export function observePage(query: ControlQuery | null = null) {
       invalid,
       sensitive,
     };
-    const role = c.getAttribute('role');
-    const hay = [label, c.getAttribute('placeholder'), c.name, c.id].join(' ');
-    if (!sensitive && (type === 'search' || role === 'searchbox' || role === 'combobox' && /검색|search|query/i.test(hay) || /검색|search|query|keyword/i.test(hay))) field.searchable = true;
+    if (searchField(c, label)) field.searchable = true;
     if (invalid && errEl && text(errEl).length > 0) field.error = text(errEl);
     const hint = (c.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
       .map((id) => document.getElementById(id)).filter((el) => el !== null && el !== errEl && isVisible(el)).map(text).join(' ');
@@ -424,8 +470,8 @@ export function observePage(query: ControlQuery | null = null) {
   let matching = 0;
   const needle = (query?.text ?? '').trim().toLocaleLowerCase().replace(/\s+/g, '');
   const requestedRefs = query?.ref !== undefined && query.ref !== null && query.ref.length > 0 ? [query.ref] : query?.refs;
-  const candidates = requestedRefs === undefined ? (body ? body.getElementsByTagName('*') : [])
-    : requestedRefs.length === 0 ? [] : document.querySelectorAll(requestedRefs.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(','));
+  const candidates = marked ?? (requestedRefs === undefined ? (body ? body.getElementsByTagName('*') : [])
+    : requestedRefs.length === 0 ? [] : document.querySelectorAll(requestedRefs.map(ref => '[data-cheongeum-ref="' + CSS.escape(ref) + '"]').join(',')));
   for (const el of candidates) {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
     const standard = el.matches(CANDIDATE);
@@ -443,10 +489,11 @@ export function observePage(query: ControlQuery | null = null) {
     if (!isVisible(el)) continue;
     const name = nameOf(el);
     if (name.length === 0) continue;
+    if (target?.role !== undefined && target.role !== role || target?.name !== undefined && target.name !== name) continue;
     if (query?.destination !== undefined && (!(el instanceof HTMLAnchorElement) || el.href !== query.destination)) continue;
     let context = '';
     if (query) {
-      if (disabled(el) || el.getAttribute('aria-disabled') === 'true') continue;
+      if (target === undefined && (disabled(el) || el.getAttribute('aria-disabled') === 'true')) continue;
       // 같은 '자세히 보기' 링크를 어느 제도·표 행에 속하는지로 구분한다. 입력값은 읽지 않는다.
       const row = el.closest('li, tr, article, [role="row"], [role="listitem"]');
       if (row && !row.closest(pictureMask)) {

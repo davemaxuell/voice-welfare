@@ -198,6 +198,8 @@ export class ApplicationCommands {
     const { reviewedTask: _reviewed, ...asked } = approval;
     const checked = structuredClone(asked);
     const actions = checked.kind === "assist" ? checked.actions : [checked.action];
+    const originals = asked.kind === "assist" ? asked.actions : [asked.action];
+    actions.forEach((copy, index) => s.web.copyObservedTarget(originals[index]!, copy));
     const [now, rechecked] = recheck(checked.fingerprint, view, actions);
     const bindRecord = kind === "assist" || approval.reviewedTask !== undefined || (kind === "click" && !s.web.isApprovedUrl(approval.url ?? ""));
     const changed = bindRecord && approval.url !== view.url ? "여쭤본 뒤에 화면 주소가 바뀌었어요." : rechecked;

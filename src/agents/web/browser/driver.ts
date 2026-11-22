@@ -2,6 +2,7 @@ import type { Locator, Page } from "playwright";
 import { z } from "zod";
 import type { ActionTarget, ExecutionErrorCode } from "../../../core/actions.ts";
 import { strip } from "../../../core/text.ts";
+import type { ClickEvidence } from "./stagehand_driver.ts";
 import { observePage, type ControlQuery } from "./observe.ts";
 
 const InspectionControlSchema = z.union([
@@ -18,9 +19,12 @@ const ControlItemSchema = z.looseObject({
   ref: z.string(), role: z.string(), name: z.string(), region: z.string(), disabled: z.boolean(),
   context: z.string().optional(), pictureMasked: z.boolean().optional(), inspection: InspectionControlSchema.optional(),
   notice: NoticeFactsSchema.optional(), planSignature: z.string().optional(),
+  fieldId: z.string().optional(),
 });
 const ControlWindowSchema = z.object({ url: z.string(), items: z.array(ControlItemSchema), more: z.boolean() });
-const InspectionSearchSchema = z.object({ url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string() });
+const InspectionSearchSchema = z.object({
+  url: z.string(), destination: z.string(), parameter: z.string(), signature: z.string(), field: z.object({ ref: z.string(), name: z.string() }),
+});
 export type ControlItem = z.infer<typeof ControlItemSchema>;
 export type ControlWindow = z.infer<typeof ControlWindowSchema>;
 
@@ -38,7 +42,7 @@ export interface ResolvedElement {
   cursorBox(hover: boolean): Promise<{ x: number; y: number; width: number; height: number } | null | undefined>;
   waitForClick(): Promise<void>;
   toggleDisclosure(): Promise<void>;
-  click(): Promise<void>;
+  click(evidence?: ClickEvidence): Promise<void>;
   focus(): Promise<void>;
   press(key: string): Promise<void>;
   fill(value: string): Promise<void>;
@@ -56,6 +60,8 @@ export interface PageDriver {
   observe(signal: AbortSignal): Promise<z.infer<typeof PageObservationSchema>>;
   controlWindow(query: ControlQuery): Promise<ControlWindow>;
   inspectionSearch(fieldId: string): Promise<InspectionSearch | undefined>;
+  /** 정책 검사에 사용할 현재 요소의 ref·역할·이름을 구한다. 입력 칸에는 칸 id도 남긴다. */
+  bindTarget?(target: ActionTarget, signal: AbortSignal, optionLabel?: string): Promise<ActionTarget>;
   resolve(target: ActionTarget, signal: AbortSignal): Promise<ResolvedElement>;
   scroll(signal: AbortSignal): Promise<void>;
   hasVisibleLink(name: string, signal: AbortSignal): Promise<boolean>;
@@ -72,98 +78,106 @@ export async function optional<T>(signal: AbortSignal, work: () => Promise<T>): 
 }
 
 export const browserPatterns = { attributeQuotes: /["\\]/gu, spaces: /\p{White_Space}+/gu };
-const cssEscape = (value: string) => value.replace(browserPatterns.attributeQuotes, ch => "\\" + ch);
+export const cssEscape = (value: string) => value.replace(browserPatterns.attributeQuotes, ch => "\\" + ch);
 const observeFunction = observePage.toString();
 // 일부 포털은 브라우저 드라이버가 객체를 돌려받을 때 쓰는 내장 함수를 바꿔 둔다. 관찰은 글(JSON)로 받는다.
 const observeJson = `JSON.stringify((${observeFunction})())`;
 const controlsJson = (query: ControlQuery) => `JSON.stringify((${observeFunction})(${JSON.stringify(query)}))`;
 
-export function playwrightDriver(page: Page, timeout: number): PageDriver {
-  function element(loc: Locator, signal: AbortSignal): ResolvedElement {
-    const opts = { timeout, signal };
-    const fieldType = () => call(signal, () => loc.getAttribute("type", { signal }));
-    const inputValue = () => call(signal, () => loc.inputValue(opts));
-    const selectedLabel = async () => strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "");
-    const isChecked = () => call(signal, () => loc.isChecked(opts));
-    return {
-      fieldType, inputValue, selectedLabel, isChecked,
-      scroll: () => call(signal, () => loc.scrollIntoViewIfNeeded({ signal })),
-      async cursorBox(hover) {
-        await optional(signal, () => loc.scrollIntoViewIfNeeded({ timeout: 2000, signal }));
-        if (hover) await call(signal, () => loc.hover(opts));
-        return optional(signal, () => loc.boundingBox({ signal }));
-      },
-      waitForClick: () => call(signal, () => loc.click({ ...opts, trial: true })),
-      toggleDisclosure: () => call(signal, () => loc.evaluate(element => {
-        const details = element.parentElement;
-        if (!(details instanceof HTMLDetailsElement) || details.querySelector(":scope > summary") !== element) {
-          throw new Error("Disclosure changed");
-        }
-        details.open = !details.open;
-      })),
-      click: () => call(signal, () => loc.click(opts)),
-      focus: () => call(signal, () => loc.focus(opts)),
-      press: key => call(signal, () => loc.press(key, opts)),
-      fill: value => call(signal, () => loc.fill(value, opts)),
-      select: async label => { await call(signal, () => loc.selectOption({ label }, opts)); },
-      check: checked => call(signal, () => loc.setChecked(checked, opts)),
-      async read() {
-        const type = await fieldType();
-        if (type === "password") return "";
-        if (type === "checkbox") return await isChecked() ? "예" : "아니오";
-        const hasOptions = await call(signal, () => loc.locator("option").count()) > 0;
-        const value = await inputValue();
-        return hasOptions && value.length > 0 ? selectedLabel() : value;
-      },
-    };
-  }
+export function playwrightElement(loc: Locator, signal: AbortSignal, timeout: number): ResolvedElement {
+  const opts = { timeout, signal };
+  const fieldType = () => call(signal, () => loc.getAttribute("type", { signal }));
+  const inputValue = () => call(signal, () => loc.inputValue(opts));
+  const selectedLabel = async () => strip(await call(signal, () => loc.locator("option:checked").textContent(opts)) ?? "");
+  const isChecked = () => call(signal, () => loc.isChecked(opts));
+  return {
+    fieldType, inputValue, selectedLabel, isChecked,
+    scroll: () => call(signal, () => loc.scrollIntoViewIfNeeded({ signal })),
+    async cursorBox(hover) {
+      await optional(signal, () => loc.scrollIntoViewIfNeeded({ timeout: 2000, signal }));
+      if (hover) await call(signal, () => loc.hover(opts));
+      return optional(signal, () => loc.boundingBox({ signal }));
+    },
+    waitForClick: () => call(signal, () => loc.click({ ...opts, trial: true })),
+    toggleDisclosure: () => call(signal, () => loc.evaluate(element => {
+      const details = element.parentElement;
+      if (!(details instanceof HTMLDetailsElement) || details.querySelector(":scope > summary") !== element) {
+        throw new Error("Disclosure changed");
+      }
+      details.open = !details.open;
+    })),
+    click: () => call(signal, () => loc.click(opts)),
+    focus: () => call(signal, () => loc.focus(opts)),
+    press: key => call(signal, () => loc.press(key, opts)),
+    fill: value => call(signal, () => loc.fill(value, opts)),
+    select: async label => { await call(signal, () => loc.selectOption({ label }, opts)); },
+    check: checked => call(signal, () => loc.setChecked(checked, opts)),
+    async read() {
+      const type = await fieldType();
+      if (type === "password") return "";
+      if (type === "checkbox") return await isChecked() ? "예" : "아니오";
+      const hasOptions = await call(signal, () => loc.locator("option").count()) > 0;
+      const value = await inputValue();
+      return hasOptions && value.length > 0 ? selectedLabel() : value;
+    },
+  };
+}
 
+export async function playwrightTarget(page: Page, target: ActionTarget, signal: AbortSignal): Promise<Locator> {
+  signal.throwIfAborted();
+  if (target.ref !== undefined) {
+    const loc = page.locator('[data-cheongeum-ref="' + cssEscape(target.ref) + '"]').filter({ visible: true });
+    if (await call(signal, () => loc.count()) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
+    return loc;
+  }
+  let loc: Locator;
+  if (target.label !== undefined) loc = page.getByLabel(target.label, { exact: true });
+  else if (target.role !== undefined && target.name !== undefined) {
+    // 역할은 영문 소문자만 허용하고 이름은 정확히 일치하도록 직렬화한다.
+    if (!/^[a-z]+$/u.test(target.role)) throw new AdapterError("TARGET_NOT_FOUND");
+    loc = page.locator("role=" + target.role + "[name=" + JSON.stringify(target.name) + "s]");
+  } else if (target.testId !== undefined) loc = page.getByTestId(target.testId);
+  else if (target.fieldId !== undefined) {
+    const id = cssEscape(target.fieldId);
+    loc = page.locator('[id="' + id + '"], [data-cheongeum-id="' + id + '"]');
+  } else throw new AdapterError("TARGET_NOT_FOUND");
+  loc = loc.filter({ visible: true });
+  if (target.nth !== undefined) {
+    const nth = loc.nth(target.nth);
+    if (await call(signal, () => nth.count()) === 0) throw new AdapterError("TARGET_NOT_FOUND");
+    return nth;
+  }
+  let count = await call(signal, () => loc.count());
+  if (count === 0) {
+    await optional(signal, () => loc.first().waitFor({ state: "visible", timeout: 2000, signal }));
+    count = await call(signal, () => loc.count());
+  }
+  if (count === 0) throw new AdapterError("TARGET_NOT_FOUND");
+  if (count > 1) throw new AdapterError("AMBIGUOUS_TARGET");
+  return loc;
+}
+
+export function observeWith(evaluate: (script: string) => Promise<unknown>): Pick<PageDriver, "observe" | "controlWindow" | "inspectionSearch"> {
   return {
     async observe(signal) {
-      const text = z.string().parse(await call(signal, () => page.evaluate(observeJson)));
+      const text = z.string().parse(await call(signal, () => evaluate(observeJson)));
       return PageObservationSchema.parse(JSON.parse(text));
     },
     async controlWindow(query) {
-      return ControlWindowSchema.parse(JSON.parse(z.string().parse(await page.evaluate(controlsJson(query)))));
+      return ControlWindowSchema.parse(JSON.parse(z.string().parse(await evaluate(controlsJson(query)))));
     },
     async inspectionSearch(fieldId) {
       return InspectionSearchSchema.safeParse(JSON.parse(z.string().parse(
-        await page.evaluate(controlsJson({ searchField: fieldId })),
+        await evaluate(controlsJson({ searchField: fieldId })),
       ))).data;
     },
-    async resolve(target, signal) {
-      signal.throwIfAborted();
-      if (target.ref !== undefined) {
-        const loc = page.locator('[data-cheongeum-ref="' + cssEscape(target.ref) + '"]').filter({ visible: true });
-        if (await call(signal, () => loc.count()) !== 1) throw new AdapterError("AMBIGUOUS_TARGET");
-        return element(loc, signal);
-      }
-      let loc: Locator;
-      if (target.label !== undefined) loc = page.getByLabel(target.label, { exact: true });
-      else if (target.role !== undefined && target.name !== undefined) {
-        // 역할은 영문 소문자만 허용하고 이름은 정확히 일치하도록 직렬화한다.
-        if (!/^[a-z]+$/u.test(target.role)) throw new AdapterError("TARGET_NOT_FOUND");
-        loc = page.locator("role=" + target.role + "[name=" + JSON.stringify(target.name) + "s]");
-      } else if (target.testId !== undefined) loc = page.getByTestId(target.testId);
-      else if (target.fieldId !== undefined) {
-        const id = cssEscape(target.fieldId);
-        loc = page.locator('[id="' + id + '"], [data-cheongeum-id="' + id + '"]');
-      } else throw new AdapterError("TARGET_NOT_FOUND");
-      loc = loc.filter({ visible: true });
-      if (target.nth !== undefined) {
-        const nth = loc.nth(target.nth);
-        if (await call(signal, () => nth.count()) === 0) throw new AdapterError("TARGET_NOT_FOUND");
-        return element(nth, signal);
-      }
-      let count = await call(signal, () => loc.count());
-      if (count === 0) {
-        await optional(signal, () => loc.first().waitFor({ state: "visible", timeout: 2000, signal }));
-        count = await call(signal, () => loc.count());
-      }
-      if (count === 0) throw new AdapterError("TARGET_NOT_FOUND");
-      if (count > 1) throw new AdapterError("AMBIGUOUS_TARGET");
-      return element(loc, signal);
-    },
+  };
+}
+
+export function playwrightDriver(page: Page, timeout: number): PageDriver {
+  return {
+    ...observeWith(script => page.evaluate(script)),
+    async resolve(target, signal) { return playwrightElement(await playwrightTarget(page, target, signal), signal, timeout); },
     scroll: signal => call(signal, () => page.mouse.wheel(0, 600)),
     async hasVisibleLink(name, signal) {
       const byRole = page.getByRole("link", { name, exact: true }).filter({ visible: true });
