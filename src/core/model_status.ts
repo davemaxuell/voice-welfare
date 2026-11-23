@@ -30,7 +30,7 @@ const operations: { schemas: string[]; choices: Activity[] }[] = [
   { schemas: ["link_choice", "visual_navigation_control", "browse_step", "public_browse_step"], choices: ["controls", "page", "plan"] },
   { schemas: ["file_answer"], choices: ["file", "passage"] },
   { schemas: ["public_search_answer", "public_welfare_facts", "service_brief", "grounded_answer", "precheck"], choices: ["evidence", "passage", "answer"] },
-  { schemas: ["review_before_output", "personal_answer_check", "public_research_coverage"], choices: ["check", "passage"] },
+  { schemas: ["review_before_output", "personal_answer_check", "public_answer_check", "public_research_coverage"], choices: ["check", "passage"] },
   { schemas: ["translate_quote", "translate_in", "translate_out"], choices: ["translate", "wording"] },
   { schemas: ["speech_repair", "simple", "general_answer"], choices: ["answer", "wording"] },
 ];

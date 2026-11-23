@@ -164,6 +164,45 @@ it("test_partial_lookup_keeps_earlier_proof_and_names_the_missing_fact", async (
   expect(observed).toEqual([["documents", "amount"], ["amount"]]); expect(result.speech).toContain(source); expect(result.speech).toContain("금액 항목은 아직");
   expect(result.speech).not.toContain("무료"); expect(result.sources).toHaveLength(1);
 });
+it.each([
+  ["checked", true, "신분증과 신청서를 가지고 방문하시면 돼요."],
+  ["rejected", false, "신분증과 신청서를 가지고 방문하시면 돼요."],
+  ["unsupported-number", true, "신분증과 신청서, 수수료 400원을 가지고 방문하시면 돼요."],
+  ["partial", true, "신분증과 신청서를 가지고 방문하시면 돼요."],
+] as const)("test_public_lookup_speaks_the_plain_answer_only_after_checking_it_against_the_passages (%s)", async (variant, faithful, plain) => {
+  const {session, page} = await open();
+  const facts = variant === "partial" ? ["documents", "amount"] : ["documents"];
+  const model = new FakeLlm({public_service_decision: decision({requestedFacts: facts}), public_answer_check: {faithful},
+    public_browse_step: {action: "answer", target: null, answer: plain, claims: [{fact: "documents", passageId: null, quote: source}]}});
+  withLlm(session, model);
+  await page.route("https://www.gov.kr/**", r => r.fulfill({contentType: "text/html; charset=utf-8", body: "<title>정부24</title><main><p>" + source + "</p></main>"}));
+  const result = await session.handleTurn("정부24에서 등본 방문 발급 서류를 알려줘");
+  const spoken = variant === "checked" || variant === "partial";
+  expect(result.speech).toContain(spoken ? plain : source);
+  expect(result.speech.includes(source)).toBe(!spoken);
+  if (variant === "partial") expect(result.speech).toContain("금액 항목은 아직 확인하지 못했어요");
+  expect(result.sources).toHaveLength(1);
+  const check = model.calls.find(c => c.schemaName === "public_answer_check");
+  expect(check !== undefined).toBe(variant !== "unsupported-number");
+  if (check !== undefined) expect(JSON.parse(check.user)).toMatchObject({records: [source], explanation: plain});
+});
+it("test_public_lookup_drops_a_checked_answer_once_newer_passages_arrive", async () => {
+  const {session, page} = await open(), fee = "발급 수수료는 400원입니다.", early = "신분증과 신청서를 가지고 오시면 돼요.";
+  let steps = 0, checks = 0;
+  withLlm(session, new FakeLlm(({schemaName}) => {
+    if (schemaName === "public_service_decision") return decision({requestedFacts: ["documents", "amount"]});
+    if (schemaName === "public_answer_check") return {faithful: checks++ === 0};
+    if (schemaName !== "public_browse_step") return undefined;
+    return steps++ === 0 ? {action: "answer", target: null, answer: early, claims: [{fact: "documents", passageId: null, quote: source}]}
+      : {action: "answer", target: null, answer: "신분증과 신청서, 수수료 400원을 준비하세요.", claims: [{fact: "amount", passageId: null, quote: fee}]};
+  }));
+  await page.route("https://www.gov.kr/**", r => r.fulfill({contentType: "text/html; charset=utf-8", body: `<title>정부24</title><main><p>${source}</p><p>${fee}</p></main>`}));
+  const result = await session.handleTurn("정부24에서 등본 방문 발급 서류와 수수료를 알려줘");
+  expect(checks).toBe(2);
+  expect(result.speech).not.toContain(early);
+  expect(result.speech).toContain(source);
+  expect(result.speech).toContain(fee);
+});
 it("test_catalog_answers_compound_public_lookup_without_a_browser_or_another_model", async () => {
   const {session} = await open(), provider = session.deps.welfare.provider;
   const documents = "신청서와 신분증을 준비합니다.", benefit = "예시 대상에게 월 13만 원을 지급합니다.";

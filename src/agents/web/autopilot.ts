@@ -12,7 +12,7 @@ import { referenceOrigin, suppliedPage, tryUrl } from "../../core/url.ts";
 import type { PiiScanner } from "../../safety/pii_model.ts";
 import { REDACTED, publicDestinations, redactPictureText, redactText } from "../../safety/privacy.ts";
 import { OPEN_SITE_SEARCH } from "../../speech/phrasing.ts";
-import { PUBLIC_FACT_LABELS, type PublicFact, PublicEvidence, checkGrounding, quoteInSource } from "../../safety/verify.ts";
+import { PUBLIC_FACT_LABELS, type PublicFact, PublicEvidence, checkGrounding, faithfulToRecords, quoteInSource, smallNumbers, unsupportedNumbers } from "../../safety/verify.ts";
 import { ExecContext, type ControlWindow, type WebAction, type WebExecutionAgent, type PageView, type WebOutcome } from "./agent.ts";
 import { accessBlocked, authPageKind, stillNeedsAuth } from "./auth_page.ts";
 import { digestForLlm, digestPage, flatMain, textOffset, type PageDigest } from "./digest.ts";
@@ -265,7 +265,10 @@ page.passages의 각 행은 실제 공식 본문이다. missingFacts의 답이 �
 표나 목록에서 값의 뜻을 정하는 제목, 대상, 예외, 단위가 다른 행에 있으면 함께 선택한다. 항목명만 적힌 제목은 답이 아니다.
 같은 내용을 개요 표와 긴 법령 해설에서 중복 안내하면, 질문에 필요한 조건과 예외를 담은 짧은 표 행을 우선한다.
 연락처는 footer에서도 확인한다. 근거를 화면에서 찾았지만 해당 본문 행이 없을 때만 passageId=null로 두고 quote에 원문을 그대로 넣는다.
-모든 항목을 찾았으면 action=answer, answer=null. 일부만 찾았으면 그 근거도 보내고 나머지를 찾는 행동을 하나 선택한다.
+모든 항목을 찾았으면 action=answer를 고르고, answer에는 사용자의 질문에 대한 답을 결론부터 쉬운 존댓말 한국어 1~3문장으로 쓴다. 질문의 각 부분과 사용자가 말한 조건(하지 않겠다고 한 일 포함)을 빠뜨리지 않는다.
+answer는 고른 근거 행과 collectedFacts에 있는 내용만 쓴다. 근거의 조건·예외는 빼지 않고, 근거만으로 정할 수 없는 결과(받을 수 있는지 등)는 단정하지 말고 무엇을 더 확인해야 하는지 말한다.
+answer의 숫자는 근거에 적힌 그대로만 쓴다. 어려운 행정 용어는 쉬운 말로 풀고, 주소·표 머리글·출처 설명은 넣지 않는다.
+일부만 찾았으면 그 근거도 보내고 나머지를 찾는 행동을 하나 선택한다.
 collectedFacts는 먼저 본 공식 화면에서 확인한 인용이다. missingFacts는 정보의 종류만 나타낸다.
 여러 대상의 비교나 여러 조건이 있으면 같은 종류라도 대상별로 근거를 모은 뒤 answer를 선택한다.
 click은 현재 items의 정확한 이름, find는 본문 낱말, read_more는 다음 부분, search는 짧은 검색어, open_url은 기관 이름, back은 이전 화면이다.
@@ -566,6 +569,10 @@ export class Autopilot {
     let heldApproval: { action: string; target: string | undefined; url: string | undefined; outcome: WebOutcome } | undefined;
     // 묻지 않고 닫은 안내 팝업이 말한 내용은 사용자에게 한 번 알린다.
     const notices: NoticeSaid[] = [];
+    /** 공개 자료 조회에서 원문과 대조를 마친 가장 최근의 쉬운 말 답과 그때까지 모은 원문 문장 */
+    let checkedAnswer: { text: string; quotes: string } | undefined;
+    // 대조한 뒤 새 근거가 모였으면 그 답은 낡았다. 원문 문장을 그대로 읽는다.
+    const plainAnswer = () => checkedAnswer !== undefined && checkedAnswer.quotes === evidence?.quotes.join("\n") ? checkedAnswer.text : undefined;
     let scrubView: PageView | undefined;
     let scrub = personalScrubber(undefined, privateValues);
     const clean = (value: string) => {
@@ -683,7 +690,7 @@ export class Autopilot {
         options.continuation.pendingClickKey = more.pending?.target?.ref === undefined ? undefined : approvedClickKey(view, more.pending.target.ref);
       }
       if (evidence !== undefined && (status === "failed" || status === "limit") && evidence.passages.size > 0) {
-        [speech, sources] = evidence.result(seenTitle);
+        [speech, sources] = evidence.result(seenTitle, plainAnswer());
         if (evidence.missing.length === 0) speech = `요청하신 내용 중 일부만 확인했어요. ${speech}`;
         status = "partial";
       }
@@ -1060,6 +1067,8 @@ export class Autopilot {
           continue;
         }
         if (publicEntryRetry && action !== "search") return done("failed", "공개 안내 화면으로 가는 다른 경로를 찾지 못했어요.");
+        // 이번 결정이 근거로 든 문장 중 공식 화면에서 확인한 것(들려줄 문장 한도와 상관없이)
+        const cited: string[] = [];
         if (evidence !== undefined && Array.isArray(raw.claims)) {
           for (const claim of raw.claims.slice(0, 12)) {
             if (typeof claim !== "object" || claim === null || Array.isArray(claim)) continue;
@@ -1070,18 +1079,32 @@ export class Autopilot {
             if (fact === "page_title" || fact === "other" && quote === lastSafeTitle && typeof quote === "string") {
               if (ref == null && here !== undefined && seenText.has(here) && lastSafeTitle !== undefined &&
                   quote === lastSafeTitle && view?.title === lastSafeTitle) {
-                evidence.collect([claim], new Map([[here, lastSafeTitle]]), {observedRow: true});
+                cited.push(...evidence.collect([claim], new Map([[here, lastSafeTitle]]), {observedRow: true}));
               }
               continue;
             }
-            if (ref === null || ref === undefined) evidence.collect([claim], seenText);
+            if (ref === null || ref === undefined) cited.push(...evidence.collect([claim], seenText));
             else if (typeof ref === "number" && Number.isInteger(ref) && passages.has(ref) && here !== undefined && seenText.has(here)) {
-              evidence.collect([{ ...claim, quote: passages.get(ref) }], new Map([[here, seenText.get(here) ?? ""]]), { observedRow: true });
+              cited.push(...evidence.collect([{ ...claim, quote: passages.get(ref) }], new Map([[here, seenText.get(here) ?? ""]]), { observedRow: true }));
             }
           }
         }
+        if (evidence !== undefined && action === "answer" && text.length > 0 && isKoreanText(text) && !text.includes(REDACTED)) {
+          // 모델이 쉬운 말로 쓴 답은 숫자가 확인한 원문에 있고, 따로 물은 대조에서도 원문을 벗어나지 않을 때만 쓴다.
+          const records = [...new Set([...evidence.quotes, ...cited])];
+          const supported = smallNumbers([...records, goal].join(" "));
+          if (records.length > 0 && unsupportedNumbers(text, [...records, goal]).length === 0 && [...smallNumbers(text)].every(n => supported.has(n))) {
+            // 대조 모델에도 탐색 단계와 같은 목표 글(주소는 출처만, 개인 정보는 가림)만 보낸다.
+            const [spans] = await this.opts.scanner?.scan([supplied.text]) ?? [];
+            const within = AbortSignal.any([ctx.signal, AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now())))]);
+            if (await faithfulToRecords(this.llm, text, records, within, redactText(supplied.text, spans))) {
+              checkedAnswer = { text, quotes: evidence.quotes.join("\n") };
+            }
+          }
+          if (stopped()) return done("stopped", "멈췄어요.");
+        }
         if (evidence !== undefined && evidence.missing.length === 0 && action === "answer") {
-          const [speech, sources] = evidence.result(seenTitle);
+          const [speech, sources] = evidence.result(seenTitle, plainAnswer());
           return done("answered", speech, { sources });
         }
         if (action === "fail" && evidence !== undefined) return done("failed", evidence.result(seenTitle)[0]);
