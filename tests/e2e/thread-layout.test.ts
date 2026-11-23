@@ -52,6 +52,9 @@ it.each([{ width: 360, height: 740 }, { width: 1280, height: 800 }])("keeps the 
   await screen(page.locator("#welcome-panel")).toBeVisible();
   const command = page.locator("#command");
   await page.evaluate(() => window.scrollTo(0, 0));
+  const mascot = page.locator('#welcome-panel img[src="/avatar/still.png"]');
+  await screen(mascot).toBeInViewport({ ratio: 1 });
+  await mascot.evaluate(image => (image as HTMLImageElement).decode());
   await screen(command).toBeInViewport({ ratio: 1 });
   const readyTop = await command.evaluate(el => el.getBoundingClientRect().top);
   const starter = page.locator("#starter-actions button:visible").first();
