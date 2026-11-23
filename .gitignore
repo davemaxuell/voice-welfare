@@ -19,7 +19,7 @@ apps/desktop/dist/
 /.audit/pytest-of-user/
 /.audit/pilot-electron-bin/
 /.audit/pilot-electron-profile/
-# 작업 세션의 임시 파일(계획·명세는 docs/superpowers에 있음)·작업 기록용 git 묶음
+# 작업 세션의 임시 파일·작업 기록용 git 묶음
 .superpowers/
 .worktrees/
 .audit/evidence/*.bundle

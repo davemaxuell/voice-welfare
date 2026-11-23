@@ -6,7 +6,7 @@ This plan targets the November 21 TypeScript service, React/Vite UI and Electron
 
 ## Backend work for tasks that stop midway
 
-A delegated public lookup previously timed out after 105 seconds and restarted from its original question. The worker now renews its lease during a live lookup and has a separate five-minute research budget. The next priority is the foreground review loop. A failed middle action can discard the rest of an ordered plan, and a restarted public job still lacks a record of verified steps. [Long-running task design, OpenBot tool map and delivery tests](long-running-tasks.md) · [Worker](../../src/server/workflows.ts) · [Review loop](../../src/orchestrator/review_loop.ts)
+A delegated public lookup previously timed out after 105 seconds and restarted from its original question. The worker now renews its lease during a live lookup and has a separate five-minute research budget. The next priority is the foreground review loop. A failed middle action can discard the rest of an ordered plan, and a restarted public job still lacks a record of verified steps. Before enabling another search provider such as Parallel, compare field coverage, latency and cost on the same Korean HTML/PDF fixture set. [Worker](../../src/server/workflows.ts) · [Review loop](../../src/orchestrator/review_loop.ts)
 
 Start recording stop reasons and preserving unfinished steps alongside PRs 1 and 2. Use PR 1’s public evidence format for durable step checkpoints, and give PR 3’s inbox the resulting verified items and next decision. Recurring checks and parallel public research can then reuse the same execution and recovery rules.
 

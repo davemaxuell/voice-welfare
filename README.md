@@ -8,9 +8,7 @@
 
 청음은 Node.js 24 이상의 TypeScript 서비스입니다. Hono 서버가 대화와 브라우저 조작을 처리하고 React 화면을 제공합니다. 데스크톱 앱은 같은 서비스를 Electron의 Node 프로세스에서 실행합니다.
 
-- 아키텍처 그림과 구현 대조: [`docs/architecture-check.md`](docs/architecture-check.md)
 - [정보취약계층을 위한 OpenBot 활용 조사와 구현 계획](docs/openbot/README.md)
-- [데스크톱 UI 인수인계](docs/desktop-ui-handoff.md) · [파일럿 검증 결과](docs/pilot-engineering-results.md)
 
 ![아키텍처](docs/architecture.png)
 

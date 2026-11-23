@@ -1,6 +1,6 @@
 ﻿# How Cheongeum handles a request in desktop 0.4.0
 
-Cheongeum uses the voice, reasoning, visual, transcription and memory models from the reference stack. A local FastAPI session owns the current task and its permissions. The user can switch between speech and text, correct a service name, change languages, or stop an action. [Model registry](../src/cheongeum/core/model_stack.py) · [Reference stack](pickle_like_agent_model_stack.md)
+Cheongeum uses the voice, reasoning, visual, transcription and memory models from the reference stack. A local FastAPI session owns the current task and its permissions. The user can switch between speech and text, correct a service name, change languages, or stop an action. [Model registry](../src/cheongeum/core/model_stack.py)
 
 ## The path from speech to an answer
 
