@@ -272,8 +272,10 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 #welcome-panel { flex: none; min-width: 0; min-height: 0; overflow: clip; }
 #welcome-panel[aria-hidden="true"] { height: 0; visibility: hidden; opacity: 0; }
 .welcome-content { padding: clamp(1rem, 2.2vw, 1.65rem) var(--pad); border-bottom: 1px solid var(--line); }
+.welcome-greeting { display: grid; grid-template-columns: clamp(4rem, 9vw, 6.25rem) minmax(0, 1fr); align-items: center; gap: clamp(.5rem, 1vw, 1rem); }
+.welcome-greeting img { display: block; width: 100%; height: auto; }
 #welcome-title { margin: 0; font-size: clamp(1.35rem, 2.2vw, 1.85rem); line-height: 1.25; letter-spacing: -.035em; }
-.welcome-content > p { margin-top: .35rem; color: var(--muted); }
+.welcome-greeting p { margin-top: .35rem; color: var(--muted); }
 .starter-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .9rem; }
 .starter-actions button {
   justify-content: flex-start; gap: .4rem; min-width: 0; max-width: 100%; min-height: 44px; padding: .35rem .75rem .35rem .4rem;

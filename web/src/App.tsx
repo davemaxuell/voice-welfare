@@ -89,8 +89,13 @@ function ConsentPanel({ view, detailsOpen }: { view: WorkspaceView; detailsOpen:
 function WelcomePanel({ view, t, onStarter }: { view: WorkspaceView; t: (s: string) => string; onStarter: (request: string) => void }) {
   return <section id="welcome-panel" aria-labelledby="welcome-title" aria-hidden={view.stage !== "ready"} inert={view.stage !== "ready"}>
     <div className="welcome-content">
-      <h3 id="welcome-title">{t("무엇을 도와드릴까요?")}</h3>
-      <p>{t("필요한 공공서비스나 읽고 싶은 화면을 알려주세요.")}</p>
+      <div className="welcome-greeting">
+        <img src="/avatar/still.png" alt="" width={256} height={256}/>
+        <div>
+          <h3 id="welcome-title">{t("무엇을 도와드릴까요?")}</h3>
+          <p>{t("필요한 공공서비스나 읽고 싶은 화면을 알려주세요.")}</p>
+        </div>
+      </div>
       <div id="starter-actions" className="starter-actions" role="group" aria-label={t("요청 예시 선택")}>
         {view.starters.map(s => <button type="button" key={s.request} data-request={t(s.request)} data-consent={s.consent} hidden={s.hidden} disabled={s.disabled} onClick={() => onStarter(t(s.request))}>
           <span className={`choice-art ${s.art}`} aria-hidden="true"></span>{t(s.label)}
