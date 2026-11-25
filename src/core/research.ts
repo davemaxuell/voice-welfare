@@ -56,8 +56,6 @@ export interface ResearchOutcome<Source = { url?: string; title?: string | null;
   text?: string | null;
   sources?: readonly Source[];
   proof?: readonly z.infer<typeof ResearchProof>[];
-  /** 조사 전체에 하나만 붙던 자료 정보. 인용마다 `data`를 두기 전부터 쓰던 줄이라 한동안 함께 적는다. */
-  data?: SourceData;
   missing?: readonly string[];
   reason?: ResearchStop;
 }

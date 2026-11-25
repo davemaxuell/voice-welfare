@@ -1,6 +1,6 @@
 // 공공업무 요청을 세션에서 받는 자리: 판단(public_task.ts)을 묻고, 읽기 전용 조회나 검토를 거치는 일로 보낸다.
 import { randomUUID } from "node:crypto";
-import { citeWithData } from "../agents/welfare/answer_card.ts";
+import { answerAndNextStep, citeWithData } from "../agents/welfare/answer_card.ts";
 import type { BrowserJourney } from "../agents/web/journey.ts";
 import { BROWSE_TIME_BUDGET_MS } from "../agents/web/autopilot.ts";
 import { raceAbort } from "../core/abort.ts";
@@ -98,9 +98,8 @@ export class PublicPlanner {
       limited = turn.researchState === "partial";
     }
     const result = await s.localize(planned);
-    const card = result.answerCard;
-    return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${result.speech}` : result.speech, sources: result.sources,
-      ...(card === undefined ? {} : { data: { kind: card.dataKind, origin: card.dataOrigin, date: card.dataDate } }) }];
+    const found = result.answerCard === undefined ? result.speech : answerAndNextStep(result.answerCard);
+    return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${found}` : found, sources: result.sources }];
   }
 
   async #continueResearch(initial: ResearchPlan, turn: Turn, progress: ResearchProgress): Promise<ResearchReply> {

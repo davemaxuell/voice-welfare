@@ -239,6 +239,8 @@ it("저장한 조사의 두 항목이 같은 출처를 다른 기준일로 인�
   expect((await status())?.result?.sources).toEqual([first, {url: checked.url, data: {kind: "live", origin: "official-api", date: "2026-03-05"}}]);
 });
 
+const oneSolved = "신청서와 신분증을 준비합니다. 출처에서 해당 제도의 자세한 내용을 확인해 주세요.";
+
 it("한 번에 끝나는 저장 조사도 인용마다 자료 정보를 싣는다", async () => {
   const {app, runtime, post, session: newSession} = await service({}, {settings: true});
   runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
@@ -260,7 +262,10 @@ it("한 번에 끝나는 저장 조사도 인용마다 자료 정보를 싣는�
   const status = async () => savedJobs.parse(await (await app.request(base)).json()).jobs;
   await expect.poll(async () => (await status())[0]?.state, {timeout: 20_000}).toBe("completed");
   const data = {kind: "live", origin: "official-api", date: "2026년"};
-  expect((await status())[0]?.result).toMatchObject({sources: [{url: checked.url, data}], data});
+  const result = (await status())[0]?.result;
+  expect(result?.sources).toEqual([{url: checked.url, data}]);
+  expect(result?.data).toBeUndefined();
+  expect(result?.text).toBe(oneSolved);
 });
 
 it("인용마다 자료 정보를 두기 전에 저장한 기록은 조사 전체 줄 그대로 읽힌다", async () => {

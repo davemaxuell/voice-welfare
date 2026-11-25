@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { citeWithData } from "../../src/agents/welfare/answer_card.ts";
+import { answerAndNextStep, citeWithData, speakAnswerCard } from "../../src/agents/welfare/answer_card.ts";
 import { WelfareInformationAgent } from "../../src/agents/welfare/agent.ts";
 import { FixtureWelfareDataProvider, parseWelfareDetail, type WelfareDataProvider } from "../../src/agents/welfare/data/index.ts";
 import type { GroundedAnswerCard, SourceCitation } from "../../src/core/turn.ts";
@@ -50,4 +50,16 @@ it("공식 자료로 답한 카드의 출처는 그 답의 인용 목록에 이�
   const cited = citeWithData(answer!.card!, answer!.sources);
   expect(cited).toHaveLength(answer!.sources.length);
   expect(cited.find(item => item.url === answer!.card!.source.url)?.data).toMatchObject({ kind: "live", origin: "official-api", date: "2026년" });
+});
+
+it("저장하는 조사의 글은 답과 다음에 할 일만 담고 출처·기준일 문장은 담지 않는다", () => {
+  expect(answerAndNextStep(card())).toBe("신청서가 필요합니다. 출처에서 확인해 주세요.");
+  expect(answerAndNextStep(card({ answer: "신청서가 필요합니다.", nextAction: "보건복지상담센터 129에 문의해 주세요." }))).toBe("신청서가 필요합니다. 보건복지상담센터 129에 문의해 주세요.");
+  expect(answerAndNextStep(card({ answer: "서류는 신청서입니다" }))).toBe("서류는 신청서입니다. 출처에서 확인해 주세요.");
+  expect(answerAndNextStep(card({ answer: "무엇이 필요한가요?" }))).toBe("무엇이 필요한가요? 출처에서 확인해 주세요.");
+  expect(answerAndNextStep(card({ answer: "" }))).toBe("출처에서 확인해 주세요.");
+  expect(answerAndNextStep(card({ nextAction: "" }))).toBe("신청서가 필요합니다.");
+  expect(speakAnswerCard(card())).toBe("신청서가 필요합니다. 출처는 복지로 공식 자료이며, 공식 API 실시간 조회입니다. 자료 기준은 2026년. 확인일은 2026년 11월 24일입니다. 출처에서 확인해 주세요.");
+  expect(answerAndNextStep(card({ dataDate: "2026-11-18" }))).not.toContain("2026");
+  expect(answerAndNextStep(card({ answer: "Bring a form", nextAction: "Check the source." }))).toBe("Bring a form. Check the source.");
 });

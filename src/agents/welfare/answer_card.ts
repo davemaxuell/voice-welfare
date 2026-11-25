@@ -52,6 +52,14 @@ const translations = {
   ja: ["出典", "資料の基準日", "確認日", "記載なし", "公式APIの最新照会", "保存資料", "公開データ掲載の民間事業", "練習用の例"],
 } as const;
 
+function answerSentence(card: GroundedAnswerCard): string {
+  return `${card.answer}${card.answer.length > 0 && !".!?。！？".includes(card.answer.slice(-1)) ? "." : ""}`;
+}
+
+export function answerAndNextStep(card: GroundedAnswerCard): string {
+  return [answerSentence(card), card.nextAction].filter(part => part.length > 0).join(" ");
+}
+
 export function speakAnswerCard(card: GroundedAnswerCard, lang: "ko" | keyof typeof translations = "ko"): string {
   const checked = card.source.lastCheckedAt;
   let metadata: string;
@@ -64,6 +72,5 @@ export function speakAnswerCard(card: GroundedAnswerCard, lang: "ko" | keyof typ
     const label = card.dataOrigin === "fixture" ? fixture : {live, stored, "private-program": priv}[card.dataKind];
     metadata = `${source} ${card.source.title}. ${label}. ${day} ${card.dataDate ?? missing}. ${check} ${checked}.`;
   }
-  const stop = card.answer.length > 0 && !".!?。！？".includes(card.answer.slice(-1)) ? "." : "";
-  return `${card.answer}${stop} ${metadata} ${card.nextAction}`;
+  return `${answerSentence(card)} ${metadata} ${card.nextAction}`;
 }

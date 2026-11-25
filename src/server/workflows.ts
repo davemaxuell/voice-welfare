@@ -143,11 +143,10 @@ export async function publicResult(state: string, result: ResearchOutcome, scan?
     const quote = safeInput(item.quote, 1400, await spansOf(scan, item.quote));
     if (url !== undefined && quote !== undefined) proof.push({ quote, url });
   }
-  const data = await safeData(result.data, scan);
   if (state === "incomplete" && missing.length > 0) return [state, { text: "", sources: [], missing, reason: result.reason }];
   if (state !== "completed" && state !== "partial" && state !== "needs_input") return ["incomplete", undefined];
   return [state, { text, sources, ...(missing.length === 0 ? {} : { missing }), ...(proof.length === 0 ? {} : { proof }),
-    ...(data === undefined ? {} : { data }), ...(result.reason === undefined ? {} : { reason: result.reason }) }];
+    ...(result.reason === undefined ? {} : { reason: result.reason }) }];
 }
 function isTruthy(value: string | null | undefined): value is string {
   return value !== undefined && value !== null && value !== "";

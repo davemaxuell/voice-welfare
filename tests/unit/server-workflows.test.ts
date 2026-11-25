@@ -155,16 +155,9 @@ it.each<[string, unknown, unknown]>([
   expect(state).toBe("completed");
   expect(saved?.sources).toStrictEqual([expected === undefined ? cited : { ...cited, data: expected }]);
 });
-it("조사 전체에 하나만 적던 자료 정보도 기준 연도를 받고 같은 규칙으로 걸러 낸다", async () => {
-  const base = { text: "신청서를 준비하세요.", sources: [cited] };
-  const [, year] = await publicResult("completed", { ...base, data: { kind: "live", origin: "official-api", date: "2026년" } });
-  expect(year?.data).toStrictEqual({ kind: "live", origin: "official-api", date: "2026년" });
-  const [, odd] = await publicResult("completed", { ...base, data: { kind: "live", origin: "official-api", date: "2026-3-5" } });
-  expect(odd?.data).toStrictEqual({ kind: "live", origin: "official-api" });
-  const [, unsafe] = await publicResult("completed", { ...base, data: { kind: "live", origin: "문의 name@example.org" } });
-  expect(Object.keys(unsafe ?? {})).not.toContain("data");
-  const [, none] = await publicResult("completed", base);
-  expect(Object.keys(none ?? {})).not.toContain("data");
+it("조사 전체에 하나만 적던 자료 정보는 더 이상 저장하지 않는다", async () => {
+  const [, saved] = await publicResult("completed", { text: "신청서를 준비하세요.", sources: [cited], data: { kind: "live", origin: "official-api", date: "2026년" } } as ResearchOutcome);
+  expect(Object.keys(saved ?? {})).not.toContain("data");
 });
 it("canonical UUIDs accept Python's spellings", () => {
   const id = "12345678-1234-5678-1234-567812345678";
