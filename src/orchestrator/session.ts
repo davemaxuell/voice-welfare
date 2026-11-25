@@ -58,7 +58,7 @@ import { FirstRunGuide } from "./first_run.ts";
 import { spokenPlanNames } from "../agents/web/skills/known_plan.ts";
 import { PublicPlanner, type QuietAnswer } from "./public_plan.ts";
 import { PublicTask, publicDestinations, type PublicTurn } from "./public_task.ts";
-import { SavedResearch } from "./saved_research.ts";
+import { READING_PLACEHOLDER, SavedResearch } from "./saved_research.ts";
 import { SessionNeed } from "./session_need.ts";
 import { SessionReplies } from "./replies.ts";
 import { LIVE_DIFFICULTY, REVIEW_LIMITS, ReviewLoop, ReviewedTask, isDifficulty } from "./review_loop.ts";
@@ -118,7 +118,7 @@ export interface OrchestratorDeps {
 export type ModelRoles = Partial<Pick<OrchestratorDeps, "llm" | "goalLlm" | "webLlm" | "fileLlm" | "visionLlm" | "recoveryLlm">>;
 export type Detection = ReturnType<typeof detectSensitive>;
 export type View = NonNullable<Draft["view"]>;
-type HistoryRow = { turnId: string; role: "user" | "assistant"; text: Redacted; at: string; state: SessionState; intentType?: string };
+type HistoryRow = { turnId: string; role: "user" | "assistant"; text: Redacted; at: string; state: SessionState; intentType?: string; hiddenFromModels?: true };
 export interface Turn {
   id: string; text: Redacted; intentType: string; started: number; epoch: number; trace: TraceEntry[]; ctx: ExecContext;
   /** 외국어로 말했을 때의 (비식별) 원문. text는 한국어 번역. */
@@ -617,7 +617,7 @@ export class SessionOrchestrator {
     // 시작 문맥에 메시지 틀이 들어갈 자리를 남긴다.
     let remaining = 6400;
     for (const message of this.#history.slice(-64).reverse()) {
-      const text = this.#dialogueText(message.text);
+      const text = this.#dialogueText(message.hiddenFromModels === true ? READING_PLACEHOLDER : message.text);
       if (text.length === 0) continue;
       const excerpt = utf8Prefix(text, 800);
       const bytes = Buffer.byteLength(excerpt);
@@ -1478,6 +1478,7 @@ export class SessionOrchestrator {
   finish(turn: Turn, out: Draft): TurnResult {
     const stopped = this.superseded(turn) && out.semanticAction !== "stop";
     const state = stopped ? "STOPPED" : out.state;
+    const reading = !stopped && out.savedResearch?.reading === true;
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
     const pending = d.approval;
@@ -1500,7 +1501,7 @@ export class SessionOrchestrator {
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
     let localSpeechOnly = privateHistory || recorded !== speech || d.approval?.kind === "plan";
     if (!localSpeechOnly && d.confirmation === undefined && turn.intentType !== "READ_START_GUIDE" &&
-        (out.pictureHistory === undefined || out.pictureHistory.length === 0) && out.answerCard === undefined && out.review === undefined) {
+        (out.pictureHistory === undefined || out.pictureHistory.length === 0) && out.answerCard === undefined && out.review === undefined && !reading) {
       speech = recorded = this.#trimSpeech(speech);
     }
     if (turn.progressReply.length > 0 && !stopped) {
@@ -1529,16 +1530,17 @@ export class SessionOrchestrator {
       const reply = out.pictureHistory !== undefined && out.pictureHistory.length > 0 ? redactText(out.pictureHistory) :
         recorded === out.speech && out.historySpeech !== undefined ? out.historySpeech : redactText(recorded);
       this.#history.push({ turnId: turn.id, role: "user", text: userText, at, state, intentType: turn.intentType },
-        { turnId: turn.id, role: "assistant", text: reply, at, state });
+        { turnId: turn.id, role: "assistant", text: reply, at, state, ...(reading ? { hiddenFromModels: true as const } : {}) });
+      const modelReply = reading ? redactText(READING_PLACEHOLDER) : reply;
       if (localSpeechOnly || state === "AUTH_HANDOFF" || state === "STOPPED" || turn.intentType.startsWith("PERSONAL_") ||
           turn.intentType === "SECRET_DISCLOSURE" || userText === REDACTED || this.#consent !== "granted") {
         this.#clearPlannerDialogue();
       } else {
-        const [exchange] = this.plannerDialogue([], [{user: turn.original ?? userText, assistant: reply}]);
+        const [exchange] = this.plannerDialogue([], [{user: turn.original ?? userText, assistant: modelReply}]);
         if (exchange) {
-          this.#plannerTurns.push({ id: turn.id, exchange: { ...exchange, turnId: turn.id }, localize: reply === speech && out.pictureHistory === undefined && out.historySpeech === undefined });
+          this.#plannerTurns.push({ id: turn.id, exchange: { ...exchange, turnId: turn.id }, localize: !reading && reply === speech && out.pictureHistory === undefined && out.historySpeech === undefined });
           if (this.#plannerTurns.length > PLANNER_EXCHANGES) this.#plannerTurns.shift();
-          this.#rememberPublicTurn(turn, out, state, view, userText, reply);
+          this.#rememberPublicTurn(turn, out, state, view, userText, modelReply);
         } else this.#clearPlannerDialogue();
       }
     }
@@ -1565,6 +1567,7 @@ export class SessionOrchestrator {
       flags: { secretDetected: out.secretDetected === true, masked: out.masked === true }, latencyMs: Math.floor(performance.now() - turn.started),
       speechPrefs: this.personal.speech(), researchDelivery: stopped || d.confirmation !== undefined || d.authWaiting ? undefined :
         out.researchDelivery ?? (turn.researchOutcome === true || this.#pendingResearch?.turnId === turn.id ? "outcome" : undefined),
+      savedResearch: stopped ? undefined : out.savedResearch,
       // 응답 말은 뒤에서 대화 언어로 옮겨지므로 버튼 이름도 대화 언어로
       offeredChoices: offer?.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
     });

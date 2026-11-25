@@ -38,6 +38,7 @@ export function createResearchDesk(flows: Workflows, session: WorkspaceSession):
       return {
         jobId, speech: flows.reading(session, job, brevity), lang: languageOf(job.language),
         sources: sources.map(source => ({ ...source, lastCheckedAt: source.lastCheckedAt ?? "" })),
+        ...(job.deliveryToken === undefined ? {} : { receipt: { token: job.deliveryToken } }),
       };
     }),
   };

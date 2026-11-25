@@ -20,6 +20,7 @@ export interface Reading {
   readonly speech: string;
   readonly lang: Lang;
   readonly sources: readonly SourceCitation[];
+  readonly receipt?: { readonly token: string };
 }
 
 export interface ResearchDesk {

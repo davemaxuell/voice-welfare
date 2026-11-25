@@ -645,7 +645,7 @@ export class VoiceEdge {
         replyLanguage = language;
       }
       if (typeof result.speech !== "string") throw new TypeError("speech");
-      const exact = result.researchDelivery === "outcome" || Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
+      const exact = result.researchDelivery === "outcome" || (isRecord(result.savedResearch) && result.savedResearch.reading === true) || Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
         || Boolean(result.pendingConfirmation) || Buffer.byteLength(result.speech, "utf8") > 1100;
       await socket.sendJson({ result, exact });
       if (exact) {

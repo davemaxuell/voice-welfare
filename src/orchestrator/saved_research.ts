@@ -7,6 +7,8 @@ const NO_SAVED_RESEARCH: Record<Lang, string> = {
 };
 const ALL_JOBS = 50;
 
+export const READING_PLACEHOLDER = "[저장한 조사 결과를 읽어 드렸어요]";
+
 export class SavedResearch {
   readonly #session: SessionOrchestrator;
   #lastSaved: string | undefined;
@@ -30,7 +32,10 @@ export class SavedResearch {
     for (const job of await desk.recent(ALL_JOBS)) {
       if (job.phase.kind !== "ready" && job.phase.kind !== "asking") continue;
       const reading = await desk.read(job.id, s.personal.speech().length);
-      if (reading !== undefined) return draft("IDLE", "web-answer", reading.speech, { lang: reading.lang, sources: [...reading.sources] });
+      if (reading !== undefined) {
+        const savedResearch = { jobId: reading.jobId, reading: true, ...(reading.receipt === undefined ? {} : { token: reading.receipt.token }) };
+        return draft("IDLE", "web-answer", reading.speech, { lang: reading.lang, sources: [...reading.sources], savedResearch });
+      }
     }
     return draft("IDLE", "web-answer", NO_SAVED_RESEARCH[lang], { lang });
   }

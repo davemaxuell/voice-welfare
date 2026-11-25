@@ -61,7 +61,7 @@ export class WorkflowRejected extends Error {
 }
 
 export interface ClaimedJob { id: string; prompt: string; language: string; attempts: number; lease: string }
-export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; question?: string; questionRevision?: number }
+export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; question?: string; questionRevision?: number; deliveryToken?: string }
 export interface JobSummary { id: string; prompt: string; language: string; phase: JobPhase }
 export interface Note { id: string; body: string }
 export type JobState = "completed" | "partial" | "needs_input" | "incomplete";
@@ -78,6 +78,7 @@ const claimRow = z.object({ id: z.string(), prompt: z.string(), language: z.stri
 const jobRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), state: z.string(), result: z.string().nullable(),
   checkpoint: z.string().nullable(), revision: z.number().nullable() });
 const deliveryRow = jobRow.extend({token: z.string()});
+const listedRow = jobRow.extend({token: z.string().nullable()});
 
 function readJob({checkpoint, revision, ...row}: z.infer<typeof jobRow>): JobRow {
   const saved = checkpoint === null ? undefined : ResearchCheckpoint.parse(JSON.parse(checkpoint));
@@ -378,9 +379,13 @@ export class WorkflowStore {
 
   async jobs(): Promise<JobRow[]> {
     return await this.transaction(async sql => {
-      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
-        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id`, [this.owner]);
-      return rows.map(raw => readJob(jobRow.parse(raw)));
+      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision,d.token FROM cg_jobs j
+        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed')
+        LEFT JOIN cg_job_delivery d ON d.id=j.id WHERE j.owner=? ORDER BY j.created DESC,j.id`, [this.owner]);
+      return rows.map(raw => {
+        const {token, ...row} = listedRow.parse(raw);
+        return {...readJob(row), ...(token === null ? {} : {deliveryToken: token})};
+      });
     }, { write: false });
   }
 

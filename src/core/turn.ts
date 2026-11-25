@@ -144,6 +144,7 @@ export const TurnResultSchema = z.object({
   semanticAction: SemanticActionSchema, field: optional(text), value: optional(text), page: optional(text),
   speech: text, localSpeechOnly: optional(literalTrue), lang: LangSchema.default("ko"), trace: z.array(TraceEntrySchema),
   researchDelivery: optional(z.enum(["queued", "outcome"])),
+  savedResearch: optional(z.object({ jobId: text, token: optional(text), reading: z.boolean() }).transform(omitAbsent)),
   actions: z.array(ExecutedActionSchema), observation: optional(ObservationSummarySchema), verification: optional(VerificationSchema),
   review: optional(TaskReviewSummarySchema), pendingConfirmation: optional(PendingConfirmationSchema),
   authHandoff: optional(HumanAuthHandoffSchema), answerCard: optional(GroundedAnswerCardSchema), handoff: optional(AgentHandoffSchema),
@@ -177,7 +178,7 @@ export type DraftAction = Omit<ExecutedAction, "result"> & {
   result?: ExecutedAction["result"] | { ok: false; errorCode: "LOG_FAILED"; latencyMs: 0 };
 };
 type DraftExtras = Partial<Pick<TurnResult,
-  "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang" | "review" | "answerCard" | "introScript" | "publicSuggestions" | "researchDelivery"
+  "field" | "value" | "verification" | "handoff" | "sources" | "missingFields" | "lang" | "review" | "answerCard" | "introScript" | "publicSuggestions" | "researchDelivery" | "savedResearch"
 >> & {
   actions?: DraftAction[];
   view?: Observation & { pageId: string };
