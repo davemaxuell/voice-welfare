@@ -35,6 +35,35 @@ it("공식 조사 완료는 대기 안내가 남아 있어도 최종 음성 한 
   } finally { complete.release(); await run.close(); }
 });
 
+const SHORT_READING = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요. 출처는 복지로예요.";
+
+it.each([["짧은", SHORT_READING], ["긴", SHORT_READING.repeat(40)]])("저장한 조사 결과를 읽어 주는 응답(%s 글)은 실시간 음성이 바꿔 말하지 않고 앱이 그대로 읽는다", async (_name, speech) => {
+  const result = { state: "IDLE", speech, savedResearch: { jobId: "job", token: "receipt", reading: true } };
+  const run = startMonitor(async () => result);
+  try {
+    run.enqueue(delta("맡긴 조사 결과 읽어줘", 0, 400));
+    run.enqueue(delegation("read", 500));
+    await run.advance(2500);
+    expect(run.socket.sendJson.mock.calls.filter(([packet]) => (packet as {result?: unknown}).result === result))
+      .toEqual([[{result, exact: true}]]);
+    expect(run.appended("thinking", "read")).toContain("The application is reading its response. Wait for the user.");
+    expect(run.appended("commentary", "read")).toEqual([]);
+  } finally { await run.close(); }
+});
+
+it("저장한 조사에 대한 응답이어도 읽어 준 글이 아니면 실시간 음성이 말한다", async () => {
+  const result = { state: "IDLE", speech: "그 조사를 취소했어요.", savedResearch: { jobId: "job", token: "receipt", reading: false } };
+  const run = startMonitor(async () => result);
+  try {
+    run.enqueue(delta("그 조사 취소해 줘", 0, 400));
+    run.enqueue(delegation("cancel", 500));
+    await run.advance(2500);
+    expect(run.socket.sendJson.mock.calls.filter(([packet]) => (packet as {result?: unknown}).result === result))
+      .toEqual([[{result, exact: false}]]);
+    expect(run.appended("commentary", "cancel")).toEqual([result.speech]);
+  } finally { await run.close(); }
+});
+
 it("test_transcript_matches_offsets_and_keeps_fragments_and_approval_together", () => {
   const transcript = new Transcript();
   transcript.add(delta("Thanks", 0, 250), "old");

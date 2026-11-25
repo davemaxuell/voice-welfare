@@ -9,6 +9,7 @@ import { EmbeddingService } from "../../src/core/model_stack.ts";
 import { RESEARCH_UNDELIVERED, stateNote } from "../../src/core/research_copy.ts";
 import { draft } from "../../src/core/turn.ts";
 import { FIXED } from "../../src/language/i18n.ts";
+import { READING_PLACEHOLDER } from "../../src/orchestrator/saved_research.ts";
 import { AgentRuntime } from "../../src/server/runtime.ts";
 import { SettingsInput } from "../../src/server/settings.ts";
 import { DIMENSIONS, WorkflowStore, installationOwner } from "../../src/server/workflow_store.ts";
@@ -144,7 +145,9 @@ it.each(["partial", "needs_input"])("serves verified public findings as %s and p
     proof: [{quote, url: checked.url}] } });
   expect(await status()).toMatchObject({ result: { text: expect.stringContaining(quote) } });
   expect(lookedUp).toEqual(parts.map(part => "확인할 항목: " + part));
-  expect((await session.handleTurn("맡긴 조사 결과 읽어줘")).speech).toContain(parts[1]);
+  const read = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  expect(read.speech).toContain(parts[1]);
+  expect(read.savedResearch).toEqual({jobId, token: expect.any(String), reading: true});
   if (initialState === "needs_input") {
     const revision = (await status())?.questionRevision;
     const path = base + "/research/" + jobId + "/answer";
@@ -334,6 +337,42 @@ it("끝난 조사는 인수증 목록에 말할 글 하나만 담아 보내고 �
   expect(rows.get(ids.partial)?.speech).toBe(
     "‘기초연금 신청 서류’ 조사 결과예요. 신청서와 신분증을 준비합니다. 가까운 주민센터에 내세요. "
     + "출처 복지로 공식 자료. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 19일. 확인이 남은 항목. 마감일.");
+});
+
+it("말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않고, 모델에 가는 대화에는 자리 표시만 남기며, 인수증을 받은 뒤에는 다시 전달하지 않는다", async () => {
+  const {app, runtime, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  const {id, session} = await newSession();
+  const store = await app.workflows.store();
+  const base = "/api/session/" + id + "/workspace";
+  const text = "신청서와 신분증을 준비합니다. 가까운 주민센터에 내세요. 출처에서 해당 제도의 자세한 내용을 확인해 주세요.";
+  const jobId = await store.enqueue(randomUUID(), "기초연금 신청 서류", "ko");
+  expect(await store.finish((await store.claim())!, "partial", {text, sources: [answered], missing: ["마감일"]})).toBe(true);
+  session.personal.saveSpeech({length: "short"});
+  const [waiting] = deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending;
+
+  const first = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  expect(first.savedResearch).toEqual({jobId, token: waiting?.token, reading: true});
+  expect(first.speech).toBe(waiting?.speech);
+  expect(first.speech).toContain("출처 복지로 공식 자료");
+  expect(first.speech).toContain("출처 확인일 2026년 11월 19일");
+  expect(first.speech).toContain("마감일");
+
+  const sentToModels = JSON.stringify([session.plannerTurns, session.recentVoiceDialogue()]);
+  expect(sentToModels).toContain(READING_PLACEHOLDER);
+  expect(sentToModels).not.toMatch(/신분증|복지로 공식 자료|마감일/u);
+  expect(session.plannerTurns.at(-1)?.exchange.assistant).toBe(READING_PLACEHOLDER);
+  expect(session.recentVoiceDialogue().at(-1)).toEqual({role: "assistant", text: READING_PLACEHOLDER});
+  expect(session.exportHistory().at(-1)?.text).toContain("출처 복지로 공식 자료");
+
+  const heard = await app.request(`${base}/research/${jobId}/delivery/${waiting?.token}`, {method: "DELETE"});
+  expect(heard.status).toBe(200);
+  expect(deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending).toEqual([]);
+  const second = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  expect(second.speech).toBe(first.speech);
+  expect(second.savedResearch).toEqual({jobId, reading: true});
+  session.personal.saveSpeech({length: "normal"});
+  expect((await session.handleTurn("쉽게 말해 줘")).speech).toContain("출처 복지로 공식 자료");
 });
 
 it("영어로 맡긴 한 번에 끝나는 조사는 번역한 카드의 답과 다음 할 일만 저장하고 출처와 날짜는 읽을 때 더한다", async () => {
