@@ -156,6 +156,75 @@ it("조사 접수 응답만 끊겨도 닫힌 패널의 새 작업을 찾아 읽�
   expect(speech.filter(line => line === answer)).toEqual([answer]);
 });
 
+const finished = (speech: string) => ({id: "research", token: "quiet-receipt", state: "completed", language: "ko", speech});
+
+async function serveOneDelivery(speech: string) {
+  const counts = {polls: 0, receipts: 0};
+  await page.route("**/api/session/*/workspace/deliveries", route => {
+    counts.polls++;
+    return route.fulfill({json: {pending: counts.receipts === 0 ? [finished(speech)] : []}});
+  });
+  await page.route("**/api/session/*/workspace/research/research/delivery/quiet-receipt", route => {
+    counts.receipts++;
+    return route.fulfill({json: {heard: true}});
+  });
+  return counts;
+}
+
+it("음성 안내를 끈 사용자는 결과가 대화 기록에 한 줄 써지면 전달한 것으로 치고, 다시 열어도 조용하다", async () => {
+  const speech: string[] = [], line = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요.";
+  await page.addInitScript(() => localStorage.setItem("cheongeum.narrationMuted", "1"));
+  await recordResearchSpeech(speech);
+  const counts = await serveOneDelivery(line);
+  await openWorkspace([]);
+  await expect.poll(() => counts.receipts, {timeout: 15_000}).toBe(1);
+  await screen(page.locator("#log li").filter({hasText: line})).toHaveCount(1);
+  const before = counts.polls;
+  await page.reload();
+  await expect.poll(() => counts.polls, {timeout: 15_000}).toBeGreaterThan(before);
+  await screen(page.locator("#log li").filter({hasText: line})).toHaveCount(0);
+  expect(counts.receipts).toBe(1);
+  expect(speech).toEqual([]);
+});
+
+it("이 PC에 음성이 없으면 결과를 한 줄 쓴 뒤 한 번 전달한 것으로 치고 더는 확인하지 않는다", async () => {
+  const line = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요.";
+  await page.clock.install();
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), workspaceAvailable: true, tts: {supported: false, provider: "none"}}});
+  });
+  const counts = await serveOneDelivery(line);
+  await openWorkspace([]);
+  await page.clock.runFor(1000);
+  await expect.poll(() => counts.receipts, {timeout: 15_000}).toBe(1);
+  await screen(page.locator("#log li").filter({hasText: line})).toHaveCount(1);
+  const polls = counts.polls;
+  await page.clock.runFor(60_000);
+  expect(counts.polls).toBe(polls);
+  expect(counts.receipts).toBe(1);
+});
+
+it("음성 상태를 아직 모르면 소리가 없다고 단정하지 않아 결과를 전달한 것으로 치지 않는다", async () => {
+  const answer = "문화센터 안내를 찾았어요.";
+  let receipts = 0;
+  await page.route("**/api/health", route => route.fulfill({status: 503, json: {error: "down"}}));
+  await page.route("**/api/turn", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), speech: answer, researchDelivery: "outcome"}});
+  });
+  await page.route("**/api/session/*/research-outcomes**", route => {
+    if (route.request().method() === "DELETE") receipts++;
+    return route.fulfill({json: {working: false, outcomes: [], ok: true}});
+  });
+  await page.goto(ui.url);
+  await page.locator("#command").fill("문화센터 안내해 줘");
+  await page.locator("#command").press("Enter");
+  await screen(page.locator("#log li").filter({hasText: answer})).toHaveCount(1, {timeout: 15_000});
+  await page.waitForTimeout(1500);
+  expect(receipts).toBe(0);
+});
+
 it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언어로 읽는다", async () => {
   const line = "Results for “Basic pension”. Bring your ID. Source Welfare guide. Agency data. Data date 2026. Source checked 2026-11-24.";
   const heard: [string, string][] = [];

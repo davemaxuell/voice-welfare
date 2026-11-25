@@ -647,7 +647,7 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
     // 본인인증 인계: 안내 한 번만 말하고 TTS를 멈춰 화면 낭독기가 입력 칸을 읽게 한다
     if (r.state === "AUTH_HANDOFF") void speakTurn(r).then(() => stopSpeaking());
     else void speakTurn(r);
-  } else if (!ui.tts && r.researchDelivery === "outcome") {
+  } else if (researchSilent() && r.researchDelivery === "outcome") {
     void speakTurn(r);
   }
 }
@@ -663,8 +663,9 @@ export function speakResearch(text: string, lang?: Lang) {
 const ACTIVE_RESEARCH_POLL_MS = 2000;
 const presentedResearch = new Set<string>();
 const researchChunks = new Map<string, number>();
+const researchSilent = () => ui.voiceMode.known && (narrationMuted || !ui.voiceMode.tts);
 async function playResearch(token: string, text: string, lang?: Lang) {
-  const heard = isNarrationMuted() || await speakAndWaitFrom(text, researchChunks.get(token) ?? 0, speechPrefs.rate, lang,
+  const heard = researchSilent() || await speakAndWaitFrom(text, researchChunks.get(token) ?? 0, speechPrefs.rate, lang,
     next => researchChunks.set(token, next));
   if (heard) researchChunks.delete(token);
   return heard;
