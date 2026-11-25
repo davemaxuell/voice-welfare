@@ -18,7 +18,7 @@ export function createResearchDesk(flows: Workflows, session: WorkspaceSession):
   return {
     async recent(limit) {
       const summaries = await guarded(async () => (await flows.store()).summaries(limit));
-      return (summaries ?? []).map(({ id, prompt, language, phase }) => ({ id, request: prompt, language: languageOf(language), phase }));
+      return (summaries ?? []).map(({ id, prompt, language, phase, savedOn }) => ({ id, request: prompt, language: languageOf(language), phase, savedOn }));
     },
 
     async delegate(idempotencyKey, goal) {

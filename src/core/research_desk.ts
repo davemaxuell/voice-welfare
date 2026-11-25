@@ -13,6 +13,7 @@ export interface SavedJob {
   readonly request: string;
   readonly language: Lang;
   readonly phase: JobPhase;
+  readonly savedOn: string;
 }
 
 export interface Reading {

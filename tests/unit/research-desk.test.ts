@@ -111,7 +111,7 @@ describe("연구 책상", () => {
     await finished(store, "기초연금 신청 서류", "partial", { text: "구별되는결과글입니다.", sources: [source], missing: ["구별되는남은항목"] });
     await asking(store, "아동수당 신청 방법", 1);
     const listed = await desk.recent(10);
-    expect(listed.map(job => Object.keys(job).sort((a, b) => a.localeCompare(b)))).toEqual(listed.map(() => ["id", "language", "phase", "request"]));
+    expect(listed.map(job => Object.keys(job).sort((a, b) => a.localeCompare(b)))).toEqual(listed.map(() => ["id", "language", "phase", "request", "savedOn"]));
     const serialized = JSON.stringify(listed);
     for (const hidden of ["구별되는결과글", "구별되는출처제목", "구별되는남은항목", "어느 지역인가요", "bokjiro"]) expect(serialized).not.toContain(hidden);
     expect(listed.map(job => job.request)).toEqual(["아동수당 신청 방법", "기초연금 신청 서류"]);
@@ -155,6 +155,22 @@ describe("연구 책상", () => {
     const store = await flows.store();
     for (const [prompt, language] of [["첫째", "ko"], ["둘째", "en"], ["셋째", "xx"]] as const) await finished(store, prompt, "completed", { text: "답" }, language);
     expect((await desk.recent(2)).map(({ request, language }) => [request, language])).toEqual([["셋째", "ko"], ["둘째", "en"]]);
+  });
+
+  it("목록의 맡긴 날은 조사를 맡긴 순간의 한국 날짜다", async () => {
+    const { flows, desk } = setup();
+    const store = await flows.store();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-03-01T14:59:59Z"));
+      await store.enqueue(randomUUID(), "자정 전에 맡긴 조사", "ko");
+      vi.setSystemTime(new Date("2026-03-01T15:00:00Z"));
+      await store.enqueue(randomUUID(), "자정에 맡긴 조사", "ko");
+      vi.setSystemTime(new Date("2026-03-05T00:00:00Z"));
+      expect((await desk.recent(10)).map(job => [job.request, job.savedOn])).toEqual([["자정에 맡긴 조사", "2026-03-02"], ["자정 전에 맡긴 조사", "2026-03-01"]]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("읽기는 요청한 길이로 말할 글과 출처를 주고, 읽을 것이 없거나 없는 조사는 주지 않는다", async () => {

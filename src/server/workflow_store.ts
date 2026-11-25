@@ -7,6 +7,7 @@ import { z } from "zod";
 import { ResearchCheckpoint, StoredResearch, researchSummary } from "../core/research.ts";
 import type { JobPhase } from "../core/research_desk.ts";
 import { casefold, strip } from "../core/text.ts";
+import { todayIso } from "../core/time.ts";
 import { AsyncLock } from "./recovery.ts";
 
 export const DIMENSIONS = 1536;
@@ -62,7 +63,7 @@ export class WorkflowRejected extends Error {
 
 export interface ClaimedJob { id: string; prompt: string; language: string; attempts: number; lease: string }
 export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; question?: string; questionRevision?: number; deliveryToken?: string }
-export interface JobSummary { id: string; prompt: string; language: string; phase: JobPhase }
+export interface JobSummary { id: string; prompt: string; language: string; phase: JobPhase; savedOn: string }
 export interface Note { id: string; body: string }
 export type JobState = "completed" | "partial" | "needs_input" | "incomplete";
 
@@ -77,6 +78,7 @@ const count = z.object({ n: z.union([z.number(), z.bigint(), z.string()]).transf
 const claimRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), attempts: z.number() });
 const jobRow = z.object({ id: z.string(), prompt: z.string(), language: z.string(), state: z.string(), result: z.string().nullable(),
   checkpoint: z.string().nullable(), revision: z.number().nullable() });
+const createdRow = z.object({ created: z.number() });
 const deliveryRow = jobRow.extend({token: z.string()});
 const listedRow = jobRow.extend({token: z.string().nullable()});
 
@@ -391,11 +393,12 @@ export class WorkflowStore {
 
   async summaries(limit: number): Promise<JobSummary[]> {
     return await this.transaction(async sql => {
-      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
+      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,j.created,p.checkpoint,p.revision FROM cg_jobs j
         LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id LIMIT ?`, [this.owner, limit]);
       return rows.map(raw => {
         const job = readJob(jobRow.parse(raw));
-        return { id: job.id, prompt: job.prompt, language: job.language, phase: phaseOf(job) };
+        const savedOn = todayIso(new Date(createdRow.parse(raw).created * 1000));
+        return { id: job.id, prompt: job.prompt, language: job.language, phase: phaseOf(job), savedOn };
       });
     }, { write: false });
   }
