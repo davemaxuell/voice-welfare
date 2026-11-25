@@ -69,4 +69,16 @@ npm start
 
 개발용 키는 저장소 루트의 `.env`에 `OPENAI_API_KEY`로 설정할 수 있습니다. 복지 API를 사용하려면 `WELFARE_DATA_MODE=official-api`와 `WELFARE_API_KEY`를 함께 설정하세요. `TAVILY_API_KEY`는 공개 자료 검색에 쓰는 선택 설정입니다. 이 키가 없어도 탐색 모델과 브라우저가 설정되어 있으면 공식 사이트에서 자료를 찾을 수 있습니다. [서비스 연결](docs/install.md#서비스-연결하기) · [설치 파일 만들기](docs/install.md#설치-파일-만들기) · [런타임 설정](src/server/runtime.ts)
 
-React 대화 화면과 Electron 앱은 같은 TypeScript 서비스를 사용합니다. 요청이 들어오면 세션이 앞선 대화와 현재 화면을 바탕으로 다음 동작을 정하고, 화면이나 자료에서 확인한 결과를 사용자에게 돌려줍니다. [요청 처리 구조](docs/public-service-agent-architecture.md) · [OpenBot 도입 계획](docs/openbot/implementation-plan.md) · [시각장애인 사용자 테스트 계획](docs/user-test/plan.md)
+### 기능별 코드 위치
+
+배포하는 Electron 앱과 웹 대화 화면은 같은 [TypeScript 서버](src/server/main.ts)를 사용합니다. [src/cheongeum/](src/cheongeum/)에는 TypeScript로 옮기기 전의 Python 구현이 남아 있습니다.
+
+| 수정하려는 기능 | 먼저 볼 코드 |
+| --- | --- |
+| 대화 창에 보이는 메시지, 버튼, 입력란 | [web/src/App.tsx](web/src/App.tsx) |
+| 청음이 브라우저에서 페이지를 읽고 링크를 누르는 동작 | [src/agents/web/](src/agents/web/) |
+| 앞선 대화를 기억하고 요청을 이어가거나 멈추는 동작 | [src/orchestrator/session.ts](src/orchestrator/session.ts) |
+| 데스크톱 창, 트레이 메뉴, 전역 단축키 | [apps/desktop/src/main.ts](apps/desktop/src/main.ts) |
+| 개별 기능이나 전체 사용 흐름을 검증하는 테스트 | [단위 테스트](tests/unit/) · [브라우저 통합 테스트](tests/e2e/) |
+
+요청이 들어오면 세션이 앞선 대화와 현재 화면을 바탕으로 다음 동작을 정하고, 화면이나 자료에서 확인한 결과를 사용자에게 돌려줍니다. [요청 처리 구조](docs/public-service-agent-architecture.md) · [OpenBot 도입 계획](docs/openbot/implementation-plan.md) · [시각장애인 사용자 테스트 계획](docs/user-test/plan.md)
