@@ -7,7 +7,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { readCsv } from "../src/agents/welfare/open_data/sync.ts";
 import { REPO_ROOT } from "../src/core/assets.ts";
 
-const catalog = join(REPO_ROOT, "welfare_catalog_checkpoint_2026-11-17");
+const catalog = join(REPO_ROOT, "scripts", "welfare-catalog");
 const checkpoints = join(catalog, "preview_checkpoints");
 
 class HttpError extends Error {

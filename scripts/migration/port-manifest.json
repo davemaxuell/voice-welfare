@@ -1,7 +1,7 @@
 {
   "reference": {
     "commit": "77aad3e88704e55be257d443664582a39e23861d",
-    "collection": ".audit/ts-native/collect-77aad3e.txt"
+    "collection": "scripts/migration/collect-77aad3e.txt"
   },
   "modules": {
     "src/core/actions.ts": {
@@ -745,7 +745,7 @@
       ],
       "sha": "77aad3e88704e55be257d443664582a39e23861d"
     },
-    "welfare_catalog_checkpoint_2026-11-17/tools/README.md": {
+    "scripts/welfare-catalog/tools/README.md": {
       "python": [
         "welfare_catalog_checkpoint_2026-11-17/tools/README.md"
       ],

@@ -1,5 +1,5 @@
 // node scripts/eval-claps.ts <ESC-50/audio> [additional non-clap recordings...]
-// Source and replay protocol are in drafts/future implementations/double-clap detector - test and tune.md.
+// Source and replay protocol are in docs/development/double-clap-evaluation.md.
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';

@@ -12,7 +12,7 @@ const schema = z.object({
   })),
 });
 
-export const { modules, reference } = schema.parse(JSON.parse(readFileSync(new URL("../port-manifest.json", import.meta.url), "utf8")));
+export const { modules, reference } = schema.parse(JSON.parse(readFileSync(new URL("./migration/port-manifest.json", import.meta.url), "utf8")));
 export const portedSources = new Set(Object.values(modules).flatMap(entry => entry.partial === true ? [] : entry.python));
 
 export const partialSources = new Set(Object.values(modules).flatMap(entry => entry.partial === true ? entry.python : []));

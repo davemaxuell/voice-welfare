@@ -39,8 +39,12 @@ describe("parseChanges", () => {
 describe("classify", () => {
   it.each<[string, Area]>([
     [".audit/evidence/x.json", "audit"],
+    ["scripts/migration/parity-exceptions.tsv", "audit"],
+    ["reports/migration/ledger.tsv", "audit"],
     [".github/workflows/release-windows.yml", "ci"],
     ["welfare_catalog_checkpoint_2026-11-17/a.json", "data"],
+    ["scripts/welfare-catalog/welfare_inventory.csv", "data"],
+    ["scripts/welfare-catalog/tools/collect_previews.py", "script"],
     ["tests/fixtures/picture_cases.json", "fixture"],
     ["tests/unit/test_policy.py", "test"],
     ["apps/desktop/test/avatar.e2e.cjs", "test"],
@@ -167,7 +171,7 @@ describe("command line", () => {
   });
 
   it("refuses a revision that is not a commit", () => {
-    const result = run("--base", "no-such-revision-9999", "--head", "HEAD", "--out", ".audit/ts-native/should-not-exist");
+    const result = run("--base", "no-such-revision-9999", "--head", "HEAD", "--out", "reports/migration/should-not-exist");
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("is not a commit");
   });

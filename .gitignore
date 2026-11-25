@@ -16,12 +16,9 @@ apps/desktop/dist/
 .ruff_cache/
 # Local QA output and temporary Electron/browser profiles
 /output/playwright/
-/.audit/pytest-of-user/
-/.audit/pilot-electron-bin/
-/.audit/pilot-electron-profile/
+/.audit/
 # 작업 세션의 임시 파일·작업 기록용 git 묶음
 .superpowers/
 .worktrees/
-.audit/evidence/*.bundle
 node_modules/
 /dist/

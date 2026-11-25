@@ -21,10 +21,10 @@ export interface LedgerRow extends Change {
 export interface RouteDiff { readonly shared: readonly string[]; readonly pythonOnly: readonly string[]; readonly tsOnly: readonly string[] }
 
 const AREA_RULES: readonly (readonly [Exclude<Area, "other">, RegExp])[] = [
-  ["audit", /^\.audit\//u],
+  ["audit", /^(?:\.audit|scripts\/migration|reports\/migration)\//u],
   ["ci", /^\.github\//u],
-  ["script", /^welfare_catalog_checkpoint_[^/]+\/tools\//u],
-  ["data", /^welfare_catalog_checkpoint_[^/]+\//u],
+  ["script", /^(?:welfare_catalog_checkpoint_[^/]+|scripts\/welfare-catalog)\/tools\//u],
+  ["data", /^(?:welfare_catalog_checkpoint_[^/]+|scripts\/welfare-catalog)\//u],
   ["fixture", /^tests\/fixtures\//u],
   ["config", /(?:^|\/)package-lock\.json$/u],
   ["test", /^(?:tests|apps\/desktop\/test)\//u],
@@ -225,7 +225,7 @@ export function main(argv: readonly string[]): number {
     const rows = buildLedger(parseChanges(git("diff", "--name-status", "-z", "--no-renames", ...range), git("diff", "--numstat", "-z", "--no-renames", ...range)), modules);
     checkAgainstShortstat(rows, base, head);
     const routes = diffRoutes(pythonRoutesAt(head), tsRoutesHere());
-    const out = join(REPO_ROOT, values.out ?? ".audit/ts-native");
+    const out = join(REPO_ROOT, values.out ?? "reports/migration");
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, "ledger.tsv"), toTsv(rows));
     writeFileSync(join(out, "route-parity.txt"), formatRouteParity(routes, base, head));

@@ -15,7 +15,7 @@ for (const line of collect.split(/\r?\n/u)) {
 if (python.size === 0) throw new Error("pytest 수집 결과에 테스트 이름이 없습니다.");
 
 // 소유자가 뺀 동작의 Python 테스트 이름과 이유. 줄마다 이름, 탭, 이유이고 #으로 시작하는 줄은 설명이다.
-const exceptionsPath = values.exceptions === undefined ? join(REPO_ROOT, ".audit/ts-native/parity-exceptions.tsv") : resolve(values.exceptions);
+const exceptionsPath = values.exceptions === undefined ? join(REPO_ROOT, "scripts/migration/parity-exceptions.tsv") : resolve(values.exceptions);
 const excepted = new Set<string>();
 if (existsSync(exceptionsPath)) {
   for (const line of readFileSync(exceptionsPath, "utf8").split(/\r?\n/u)) {
