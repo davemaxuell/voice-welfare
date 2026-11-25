@@ -6,7 +6,7 @@ import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { DATA_DATE, SourceData, StoredResearch, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
-import type { Brevity, ResearchDesk } from "../core/research_desk.ts";
+import type { AnswerOutcome, Brevity, ResearchDesk } from "../core/research_desk.ts";
 import { strip } from "../core/text.ts";
 import { LangSchema, type SpeechPrefs } from "../core/turn.ts";
 import { REDACTED, detectSensitive, redactPictureText, type SecretSpan } from "../safety/privacy.ts";
@@ -467,6 +467,15 @@ export class Workflows {
     return jobId;
   }
 
+  async answer(jobId: string, revision: number, text: unknown, current: () => boolean): Promise<AnswerOutcome> {
+    const answer = await this.safeText(text, 600);
+    if (answer === undefined) return "unsafe";
+    if (!current()) return "refused";
+    if (!await (await this.store()).answer(jobId, revision, answer)) return "stale";
+    await this.reconfigure();
+    return "queued";
+  }
+
   async recall(session: WorkspaceSession, query: string): Promise<Note[]> {
     if (!this.personal || session.consentStatus !== "granted" || await this.safeText(query, 600) === undefined) return [];
     try {
@@ -573,13 +582,11 @@ export function registerWorkflows<S extends WorkspaceSession>(app: Hono, service
     const payload = await body(c);
     const version = z.number().int().positive().safeParse(payload?.questionRevision);
     if (!version.success) return reject("REQUEST_CONFLICT", 409);
-    const answer = await service.safeText(payload?.text, 600);
-    if (answer === undefined || payload?.consent !== true) return reject("PUBLIC_TEXT_REQUIRED");
-    if (authorize(sid, c) !== session || session.generation !== generation) return reject("PUBLIC_TEXT_REQUIRED");
-    const store = await service.store();
-    if (!await store.answer(c.req.param("jobId") ?? "", version.data, answer)) return reject("REQUEST_CONFLICT", 409);
-    await service.reconfigure();
-    return c.json({ queued: true });
+    if (payload?.consent !== true) return reject("PUBLIC_TEXT_REQUIRED");
+    const outcome = await service.answer(c.req.param("jobId") ?? "", version.data, payload.text,
+      () => authorize(sid, c) === session && session.generation === generation);
+    if (outcome === "queued") return c.json({ queued: true });
+    return outcome === "stale" ? reject("REQUEST_CONFLICT", 409) : reject("PUBLIC_TEXT_REQUIRED");
   });
 
   app.delete(base + "/research/:jobId", async c => {

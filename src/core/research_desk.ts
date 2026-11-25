@@ -24,6 +24,8 @@ export interface Reading {
   readonly receipt?: { readonly token: string };
 }
 
+export type AnswerOutcome = "queued" | "stale" | "unsafe" | "refused";
+
 export interface ResearchDesk {
   recent(limit: number): Promise<readonly SavedJob[]>;
   delegate(idempotencyKey: string, goal: string): Promise<{ jobId: string } | undefined>;
