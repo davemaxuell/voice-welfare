@@ -322,7 +322,7 @@ it("끝난 조사는 인수증 목록에 말할 글 하나만 담아 보내고 �
   expect(rows.get(ids.legacy)?.speech).toBe("‘옛 형식 조사’ 조사 결과예요. 신청서를 준비하세요. 출처는 복지로 공식 자료이며, 공식 API 실시간 조회입니다. 자료 기준은 2026년. 확인일은 2026년 11월 19일입니다. 출처에서 확인해 주세요.");
   expect(rows.get(ids.english)).toMatchObject({language: "en", speech: "Results for “Basic pension papers”. Bring the form and ID. Source 복지로 공식 자료. Stored data. Data date 2026-03-05. Source checked 2026-11-19."});
   expect(rows.get(ids.corrupt)?.speech).toBe("‘깨진 출처가 섞인 조사’ 조사 결과예요. 서류는 신청서예요. 출처 복지로 공식 자료. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 19일.");
-  expect(rows.get(ids.cancelled)?.speech).toBe(`‘중단한 조사’ 조사 결과예요. ${stateNote("cancelled", "ko")}`);
+  expect(rows.get(ids.cancelled)?.speech).toBe(`‘중단한 조사’ 조사 소식이에요. ${stateNote("cancelled", "ko")}`);
 
   const shown = workspaceRows.parse(await (await app.request(base)).json()).jobs;
   for (const [name, jobId] of Object.entries(ids)) {

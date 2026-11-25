@@ -12,6 +12,14 @@ const bare = { title: "복지로 공식 안내", url, lastCheckedAt: "2026-11-24
 const answer = "신분증과 신청서를 준비하세요.";
 const job = (result: unknown, over: Partial<ReadingJob> = {}): ReadingJob =>
   ({ prompt: "기초연금 신청 서류", language: "ko", state: "completed", result: result === undefined ? undefined : StoredResearch.parse(result), ...over });
+const HEADLINE_START: Record<(typeof STATES)[number], Record<Lang, string>> = {
+  completed: { ko: "‘기초연금 신청 서류’ 조사 결과예요.", en: "Results for “기초연금 신청 서류”.", zh: "“기초연금 신청 서류”的调查结果。", ja: "「기초연금 신청 서류」の調査結果です。" },
+  partial: { ko: "‘기초연금 신청 서류’ 조사 결과예요.", en: "Results for “기초연금 신청 서류”.", zh: "“기초연금 신청 서류”的调查结果。", ja: "「기초연금 신청 서류」の調査結果です。" },
+  incomplete: { ko: "‘기초연금 신청 서류’ 조사 결과예요.", en: "Results for “기초연금 신청 서류”.", zh: "“기초연금 신청 서류”的调查结果。", ja: "「기초연금 신청 서류」の調査結果です。" },
+  needs_input: { ko: "‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요.", en: "A question about “기초연금 신청 서류”.", zh: "关于“기초연금 신청 서류”的调查有一个问题。", ja: "「기초연금 신청 서류」の調査で確認したいことがあります。" },
+  cancelled: { ko: "‘기초연금 신청 서류’ 조사 소식이에요.", en: "An update on “기초연금 신청 서류”.", zh: "关于“기초연금 신청 서류”的调查进展。", ja: "「기초연금 신청 서류」の調査についてのお知らせです。" },
+  failed: { ko: "‘기초연금 신청 서류’ 조사 소식이에요.", en: "An update on “기초연금 신청 서류”.", zh: "关于“기초연금 신청 서류”的调查进展。", ja: "「기초연금 신청 서류」の調査についてのお知らせです。" },
+};
 const read = (target: ReadingJob, brevity: "short" | "normal" | "detailed" = "normal") => researchReading(target, { brevity });
 
 describe("저장한 조사를 읽는 글", () => {
@@ -36,7 +44,7 @@ describe("저장한 조사를 읽는 글", () => {
   });
 
   it("답이 없고 남은 항목도 없으면 상태 안내를, 남은 항목만 있으면 그 항목만 말한다", () => {
-    expect(read(job(undefined, { state: "cancelled" }))).toBe(`‘기초연금 신청 서류’ 조사 결과예요. ${stateNote("cancelled", "ko")}`);
+    expect(read(job(undefined, { state: "cancelled" }))).toBe(`‘기초연금 신청 서류’ 조사 소식이에요. ${stateNote("cancelled", "ko")}`);
     expect(read(job({ text: "", missing: ["지원 금액"] }, { state: "incomplete" }))).toBe(
       "‘기초연금 신청 서류’ 조사 결과예요. 확인이 남은 항목. 지원 금액.");
   });
@@ -113,6 +121,13 @@ describe("저장한 조사를 읽는 글", () => {
     expect(read(job({ text: "신청서에 주민등록번호를 적고 계좌 사본을 내세요." }))).toContain("계좌 사본");
   });
 
+  it("중단·실패·진행 중인 조사는 결과가 아니라 소식으로, 물음이 걸린 조사는 물음으로 시작한다", () => {
+    expect(read(job({ text: "어느 지역에 사시나요?" }, { state: "needs_input" }))).toBe("‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 어느 지역에 사시나요?");
+    expect(read(job(undefined, { state: "failed" }))).toBe(`‘기초연금 신청 서류’ 조사 소식이에요. ${stateNote("failed", "ko")}`);
+    for (const state of ["queued", "running", "unknown"]) expect(read(job(undefined, { state })).startsWith("‘기초연금 신청 서류’ 조사 소식이에요."), state).toBe(true);
+    for (const state of ["completed", "partial", "incomplete"]) expect(read(job({ text: answer }, { state })).startsWith("‘기초연금 신청 서류’ 조사 결과예요."), state).toBe(true);
+  });
+
   it("알 수 없는 언어는 한국어로 읽는다", () => {
     expect(read(job({ text: answer }, { language: "xx" }))).toContain("조사 결과예요.");
   });
@@ -130,7 +145,7 @@ describe("저장한 조사를 읽는 글", () => {
         for (const brevity of ["normal", "short"] as const) {
           const speech = read({ prompt, language: lang, state, result: StoredResearch.parse(result) }, brevity);
           expect(speech, `${name} ${brevity}`).toContain(prompt);
-          expect(speech.startsWith(lang === "ko" ? "‘" : lang === "en" ? "Results" : lang === "zh" ? "“" : "「"), `${name} ${brevity}`).toBe(true);
+          expect(speech.startsWith(HEADLINE_START[state][lang]), `${name} ${brevity}`).toBe(true);
           expect(speech, `${name} ${brevity}`).not.toMatch(doubled);
           expect(speech.at(-1), `${name} ${brevity}`).toBe(lang === "zh" || lang === "ja" ? "。" : ".");
           expect(speech, `${name} ${brevity}`).toContain("마감일");

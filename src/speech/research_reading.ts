@@ -20,12 +20,30 @@ const MAX_MISSING = 5;
 const MAX_PROMPT = 100;
 const SHORT_SENTENCES = 2;
 
-const HEADLINE: Record<Lang, (prompt: string) => string> = {
-  ko: prompt => `‘${prompt}’ 조사 결과예요.`,
-  en: prompt => `Results for “${prompt}”.`,
-  zh: prompt => `“${prompt}”的调查结果。`,
-  ja: prompt => `「${prompt}」の調査結果です。`,
+type Headline = "result" | "question" | "update";
+const HEADLINE: Record<Headline, Record<Lang, (prompt: string) => string>> = {
+  result: {
+    ko: prompt => `‘${prompt}’ 조사 결과예요.`,
+    en: prompt => `Results for “${prompt}”.`,
+    zh: prompt => `“${prompt}”的调查结果。`,
+    ja: prompt => `「${prompt}」の調査結果です。`,
+  },
+  question: {
+    ko: prompt => `‘${prompt}’ 조사에서 여쭤볼 것이 있어요.`,
+    en: prompt => `A question about “${prompt}”.`,
+    zh: prompt => `关于“${prompt}”的调查有一个问题。`,
+    ja: prompt => `「${prompt}」の調査で確認したいことがあります。`,
+  },
+  update: {
+    ko: prompt => `‘${prompt}’ 조사 소식이에요.`,
+    en: prompt => `An update on “${prompt}”.`,
+    zh: prompt => `关于“${prompt}”的调查进展。`,
+    ja: prompt => `「${prompt}」の調査についてのお知らせです。`,
+  },
 };
+const HEADLINE_OF_STATE: ReadonlyMap<string, Headline> = new Map([
+  ["completed", "result"], ["partial", "result"], ["incomplete", "result"], ["needs_input", "question"],
+]);
 const MORE_SOURCES: Record<Lang, (count: number) => string> = {
   ko: count => `출처가 ${count}곳 더 있어요.`,
   en: count => count === 1 ? "There is 1 more source." : `There are ${count} more sources.`,
@@ -93,7 +111,8 @@ export function researchReading(job: ReadingJob, { brevity, speakable }: Reading
   const textHasSources = result?.data !== undefined;
   const cited = result === undefined || textHasSources ? [] : result.sources;
   const subject = Array.from(squash(job.prompt));
-  const parts = [HEADLINE[lang](subject.length > MAX_PROMPT ? `${subject.slice(0, MAX_PROMPT).join("")}…` : subject.join(""))];
+  const headline = HEADLINE[HEADLINE_OF_STATE.get(job.state) ?? "update"][lang];
+  const parts = [headline(subject.length > MAX_PROMPT ? `${subject.slice(0, MAX_PROMPT).join("")}…` : subject.join(""))];
   if (text.length > 0) parts.push(brevity === "short" ? firstSentences(text, lang) : text);
   else if (missing.length === 0) parts.push(stateNote(job.state, lang));
   for (const { title, lastCheckedAt, data } of cited.slice(0, MAX_SOURCES)) {
