@@ -1,5 +1,6 @@
 // 공공업무 요청을 세션에서 받는 자리: 판단(public_task.ts)을 묻고, 읽기 전용 조회나 검토를 거치는 일로 보낸다.
 import { randomUUID } from "node:crypto";
+import { citeWithData } from "../agents/welfare/answer_card.ts";
 import type { BrowserJourney } from "../agents/web/journey.ts";
 import { BROWSE_TIME_BUDGET_MS } from "../agents/web/autopilot.ts";
 import { raceAbort } from "../core/abort.ts";
@@ -344,7 +345,10 @@ export class PublicPlanner {
     if (kind === "POLICY_QUESTION") {
       backendActivity("welfare");
       const answer = await s.deps.welfare.publicFacts(task.subject, task.goal, task.facts, turn.ctx.signal);
-      if (answer !== undefined) return s.replies.welfareDraft(answer, "welfare-retrieval");
+      if (answer !== undefined) {
+        const found = s.replies.welfareDraft(answer, "welfare-retrieval");
+        return research && answer.card !== undefined ? { ...found, sources: citeWithData(answer.card, answer.sources) } : found;
+      }
       if (mode === "quiet" && task.goal.length > 0) return this.quietLookup(task, turn, bounds);
       if (task.subject.length === 0) {
         if (task.goal.length > 0) return s.browse.runGoal(task.goal, turn.ctx, { publicTask: task, ...bounds });

@@ -15,6 +15,12 @@ export function cite(source: SourceCitation): SourceCitation {
     version: source.version?.startsWith('fixture') === true ? STORED : source.version, note: source.note});
 }
 
+export function citeWithData(card: GroundedAnswerCard, sources: readonly SourceCitation[]): SourceCitation[] {
+  const data = omitAbsent({kind: card.dataKind, origin: card.dataOrigin, date: card.dataDate});
+  const listed = sources.some(source => source.url === card.source.url);
+  return [...sources.map(source => source.url === card.source.url ? {...source, data} : source), ...listed ? [] : [{...card.source, data}]];
+}
+
 export function sourceSentence(source: SourceCitation): string {
   const version = cite(source).version;
   return `(출처: ${source.title.startsWith('복지로') ? '복지로' : source.title}, ${version === STORED ? '연습용 예시, 저장된 자료 기준' : version ?? ''})`;

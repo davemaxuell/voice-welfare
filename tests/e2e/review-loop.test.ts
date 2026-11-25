@@ -110,6 +110,21 @@ it.each([...LIMITS, [undefined, 3] as const])("test_missing_fact_retries_in_same
   for (const entry of session.exportHistory()) expect(entry.text).not.toContain("검토 전 초안");
 });
 
+it("a retry that cites the same URL without data keeps the data the first lookup attached", async () => {
+  const session = await newSession();
+  const data = { kind: "live", origin: "official-api", date: "2026년" } as const;
+  let searches = 0;
+  session.deps.quietSearch = async () => {
+    const index = searches++;
+    return { speech: "검토 전 초안", reviewQuotes: [QUOTES[index] ?? ""], sources: [{ ...source("https://www.gov.kr/event", "행사 자료"), ...(index === 0 ? { data } : {}) }] };
+  };
+  session.deps.llm = reviewing();
+  const result = await session.handleTurn(REQUEST, { fromVoice: true, difficulty: "medium" });
+  expect(searches).toBe(2);
+  expect(result.review?.status).toBe("completed");
+  expect(result.sources).toEqual([{ ...source("https://www.gov.kr/event", "행사 자료"), data }]);
+});
+
 it("test_no_progress_or_missing_reviewer_never_announces_success", async () => {
   const session = await newSession();
   session.deps.llm = reviewing();

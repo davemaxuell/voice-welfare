@@ -203,7 +203,10 @@ export class ReviewLoop {
         if (hasText(result.summary)) run.evidence.push(...await inspectionEvidence(result, s.deps.scanner, privateValues));
         return;
       }
-      for (const source of result.sources ?? []) run.sources.set(source.url, source);
+      for (const source of result.sources ?? []) {
+        if (source.data === undefined && run.sources.get(source.url)?.data !== undefined) continue;
+        run.sources.set(source.url, source);
+      }
       run.evidence.push(...evidenceFromDraft(result));
       if (result.semanticAction === "describe-screen" && result.pictureHistory === HISTORY_DESCRIBED) {
         const captured = result.actions?.find(({action, policy, result: receipt}) => action.type === "capture" && policy.allowed &&
