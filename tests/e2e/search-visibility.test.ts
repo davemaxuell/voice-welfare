@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import * as browser from "../../src/agents/web/browser/index.ts";
 import { ModelTransportError } from "../../src/core/llm.ts";
+import type { ResearchDesk } from "../../src/core/research_desk.ts";
 import { LOOKUP_TIMEOUT, LOOKUP_UNAVAILABLE, PublicTask } from "../../src/orchestrator/public_task.ts";
 import { BROWSE_TIME_BUDGET_MS } from "../../src/agents/web/autopilot.ts";
 import { redactText } from "../../src/safety/privacy.ts";
@@ -36,8 +37,8 @@ async function desktop() {
 it("test_answer_first_then_show_on_request_and_keep_the_page", async () => {
   const {session, launches} = await desktop();
   const quiet = vi.fn<NonNullable<OrchestratorDeps["quietSearch"]>>().mockResolvedValue({speech: fact, sources: [source]});
-  const delegate = vi.fn<NonNullable<OrchestratorDeps["delegateResearch"]>>();
-  session.deps.quietSearch = quiet; session.deps.delegateResearch = delegate;
+  const delegate = vi.fn<ResearchDesk["delegate"]>();
+  session.deps.quietSearch = quiet; session.deps.research = {recent: async () => [], delegate, read: async () => undefined};
   let mode: "quiet" | "visible" = "quiet";
   const model = new FakeLlm(({schemaName}) => schemaName === "public_service_decision" ? lookup(mode) : schemaName === "public_browse_step" ?
     {action: "answer", target: null, answer: null, claims: [{fact: "dates", quote: fact}]} : undefined);

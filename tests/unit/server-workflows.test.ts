@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { researchSummary, type ResearchCheckpoint, type ResearchPlan } from "../../src/core/research.ts";
+import type { ResearchDesk } from "../../src/core/research_desk.ts";
 import { DIMENSIONS, LEASE_SECONDS, WorkflowRejected, WorkflowStore, canonicalUuid, installationOwner } from "../../src/server/workflow_store.ts";
 import { Workflows, publicResult, safeInput, type ResearchOutcome, type ResearchSession } from "../../src/server/workflows.ts";
 
@@ -463,9 +464,9 @@ describe("research worker", () => {
     const flagged = new Workflows({ ...runtime, moderation: { screen: async () => true } });
     await expect(flagged.enqueue(session, randomUUID(), "질문")).rejects.toMatchObject({ reason: "input" });
     expect(await service.recall({ ...session, consentStatus: "unknown" }, "질문")).toEqual([]);
-    const deps: { recallNotes?: (query: string) => Promise<string[]>; delegateResearch?: (id: string, query: string) => Promise<boolean> } = {};
+    const deps: { recallNotes?: (query: string) => Promise<string[]>; research?: ResearchDesk } = {};
     shared.bind({ ...session, deps });
-    expect(deps.delegateResearch).toBeUndefined();
+    expect(deps.research).toBeUndefined();
     expect(await deps.recallNotes?.("질문")).toEqual([]);
   });
 });

@@ -264,13 +264,9 @@ export class PublicPlanner {
     }
     if (decision.kind === "delegate_research") {
       turn.intentType = "CLARIFY";
-      if (s.deps.delegateResearch === undefined) return s.finish(turn, draft(s.state, "clarify", "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요."));
+      if (s.deps.research === undefined) return s.finish(turn, draft(s.state, "clarify", "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요."));
       const question = decision.goal ?? "";
-      if (s.web.guard.directActions) {
-        const saved = await s.deps.delegateResearch(turn.id, question);
-        return s.finish(turn, draft("IDLE", "none", saved ? "조사를 맡겼어요. 결과가 나오면 알려 드릴게요." : "조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요.",
-          saved ? {researchDelivery: "queued"} : {}));
-      }
+      if (s.web.guard.directActions) return s.finish(turn, await s.saved.delegate(turn.id, question));
       const prompt = {
         ko: `‘${question}’ 질문과 결과를 저장하고 공개 자료를 조사할까요? 앱을 다시 열면 이어서 조사해요.`,
         en: `Save the question “${question}” and its results, and research public sources? Research resumes when you reopen the app.`,

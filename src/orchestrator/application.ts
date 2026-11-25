@@ -179,10 +179,7 @@ export class ApplicationCommands {
     if (approval.kind === "research") {
       const late = expired();
       d.clearApproval();
-      const delegate = s.deps.delegateResearch;
-      const saved = !late && s.consentStatus === "granted" && delegate !== undefined && await delegate(approval.confirmation.actionId, approval.goal);
-      return draft("IDLE", "none", saved ? "조사를 맡겼어요. 결과가 나오면 알려 드릴게요." : "조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요.",
-        saved ? {researchDelivery: "queued"} : {});
+      return s.saved.delegate(approval.confirmation.actionId, approval.goal, { expired: late });
     }
     if (approval.kind === "visual") {
       if (expired()) {

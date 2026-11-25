@@ -6,13 +6,14 @@ import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { DATA_DATE, SourceData, StoredResearch, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
-import type { Brevity } from "../core/research_desk.ts";
+import type { Brevity, ResearchDesk } from "../core/research_desk.ts";
 import { strip } from "../core/text.ts";
-import { draft, LangSchema, type Draft, type Lang, type SpeechPrefs } from "../core/turn.ts";
+import { LangSchema, type SpeechPrefs } from "../core/turn.ts";
 import { REDACTED, detectSensitive, redactPictureText, type SecretSpan } from "../safety/privacy.ts";
 import { researchReading } from "../speech/research_reading.ts";
 import { withDeadline } from "../voice/live.ts";
 import { AsyncLock } from "./recovery.ts";
+import { createResearchDesk } from "./research_desk.ts";
 import { LEASE_SECONDS, MAX_ATTEMPTS, WorkflowRejected, WorkflowStore, canonicalUuid, hasReading, installationOwner, type ClaimedJob, type JobRow, type Note } from "./workflow_store.ts";
 
 /** PiiScanner.scan: 글마다 모델이 찾은 비밀 구간. 모델이 없으면 규칙만 쓴다. */
@@ -166,8 +167,7 @@ export interface WorkspaceSession {
   readonly personal?: { speech(): Pick<SpeechPrefs, "length"> } | undefined;
   readonly deps?: {
     recallNotes?: ((query: string) => Promise<string[]>) | undefined;
-    delegateResearch?: ((requestId: string, query: string) => Promise<boolean>) | undefined;
-    readResearch?: ((language: Lang) => Promise<Draft | undefined>) | undefined;
+    research?: ResearchDesk | undefined;
   } | undefined;
 }
 export interface WorkflowRuntime {
@@ -185,10 +185,6 @@ const RESEARCH_TIME_LIMIT_MS = 5 * 60_000;
 const RESEARCH_TOTAL_MS = 3 * RESEARCH_TIME_LIMIT_MS;
 const MAX_CONTINUATIONS = 2;
 const RENEW_EVERY_MS = LEASE_SECONDS * 1000 / 2;
-const NO_SAVED_RESEARCH: Record<Lang, string> = {
-  ko: "아직 확인할 조사 결과가 없어요.", en: "There are no saved research results ready yet.",
-  zh: "目前还没有可查看的调查结果。", ja: "確認できる調査結果はまだありません。",
-};
 
 export class Workflows {
   readonly events = new InMemoryEventLog();
@@ -496,31 +492,7 @@ export class Workflows {
     const deps = session.deps;
     if (deps === undefined) return;
     deps.recallNotes = async query => (await this.recall(session, query)).map(note => note.body);
-    const delegate = async (requestId: string, query: string) => {
-      try {
-        const generation = session.generation;
-        return (await this.enqueue(session, requestId, query, () => session.generation === generation)) !== "";
-      } catch {
-        return false;
-      }
-    };
-    deps.delegateResearch = this.personal ? delegate : undefined;
-    deps.readResearch = async lang => {
-      const permitted = () => this.personal && session.consentStatus === "granted";
-      if (!permitted()) return undefined;
-      const generation = session.generation;
-      const jobs = await (await this.store()).jobs();
-      if (!permitted() || generation !== session.generation) return undefined;
-      for (const job of jobs) {
-        if (!["completed", "partial", "needs_input", "incomplete"].includes(job.state) || !hasReading(job)) continue;
-        const sources = StoredResearch.safeParse(job.result).data?.sources ?? [];
-        return draft("IDLE", "web-answer", this.reading(session, job), {
-          lang: LangSchema.safeParse(job.language).data ?? "ko",
-          sources: sources.map(source => ({ ...source, lastCheckedAt: source.lastCheckedAt ?? "" })),
-        });
-      }
-      return draft("IDLE", "web-answer", NO_SAVED_RESEARCH[lang], { lang });
-    };
+    deps.research = this.personal ? createResearchDesk(this, session) : undefined;
   }
 }
 

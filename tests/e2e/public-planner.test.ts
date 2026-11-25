@@ -2,9 +2,11 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import * as browser from "../../src/agents/web/browser/index.ts";
 import { STACK } from "../../src/core/model_stack.ts";
+import type { ResearchDesk } from "../../src/core/research_desk.ts";
 import { detectScriptLang } from "../../src/language/i18n.ts";
 import { parseDecision, PublicTask, reviewCompletion } from "../../src/orchestrator/public_task.ts";
 import { loadConfig } from "../../src/server/runtime.ts";
+import { SettingsInput } from "../../src/server/settings.ts";
 import { RuleBasedIntentProvider } from "../../src/understanding/rules.ts";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { browserCases, latch } from "./browser-cases.ts";
@@ -273,4 +275,50 @@ it("includes a completed agency lookup once after redacting a supplied URL in di
   expect(user).not.toContain(marker);
   expect(JSON.parse(user)).toMatchObject({ task: { agency: "한국장학재단" }, recent: [],
     dialogue: [{ user: `한국장학재단 안내 ${origin} 에서 국가장학금 신청처를 알려줘`, assistant: reply }] });
+});
+
+const delegation = {kind: "delegate_research", goal: "기초연금 신청 서류", requestedFacts: [], exclusions: [], continuation: false, choices: []};
+
+it.each([["바로 맡기는 길", "false"], ["승인을 받아 맡기는 길", "true"]] as const)("%s에서 맡긴 조사의 번호를 세션이 기억하고 맡겼다고만 알린다", async (_name, confirmation) => {
+  const {app, runtime, session: create} = await service({REQUIRE_ACTION_CONFIRMATION: confirmation}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  const {session} = await create();
+  withLlm(session, new FakeLlm({public_service_decision: delegation}));
+  expect(session.saved.lastSaved).toBeUndefined();
+  let reply = await session.handleTurn("기초연금 서류는 배경에서 조사해 줘", {fromVoice: true});
+  if (confirmation === "true") {
+    expect(reply.pendingConfirmation?.kind).toBe("public-research");
+    expect(session.saved.lastSaved).toBeUndefined();
+    reply = await session.confirm(true, reply.pendingConfirmation?.actionId);
+  }
+  const jobs = await (await app.workflows.store()).jobs();
+  expect(jobs.map(job => job.prompt)).toEqual(["기초연금 신청 서류"]);
+  expect(session.saved.lastSaved).toBe(jobs[0]?.id);
+  expect(reply).toMatchObject({researchDelivery: "queued", speech: "조사를 맡겼어요. 결과가 나오면 알려 드릴게요."});
+});
+
+it("맡기지 못한 조사는 마지막으로 맡긴 번호를 바꾸지 않고 개인 기기가 없으면 설정을 안내한다", async () => {
+  const {session} = await open();
+  withLlm(session, new FakeLlm({public_service_decision: delegation}));
+  const ask = async () => {
+    const waiting = await session.handleTurn("기초연금 서류는 배경에서 조사해 줘", {fromVoice: true});
+    return await session.confirm(true, waiting.pendingConfirmation?.actionId);
+  };
+  expect((await session.handleTurn("기초연금 서류는 배경에서 조사해 줘")).speech).toBe("자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요.");
+  const jobs = ["job-1", "job-2"];
+  const delegate = vi.fn<ResearchDesk["delegate"]>(async () => {
+    const jobId = jobs.shift();
+    return jobId === undefined ? undefined : {jobId};
+  });
+  session.deps.research = {recent: async () => [], delegate, read: async () => undefined};
+  expect(await ask()).toMatchObject({researchDelivery: "queued"});
+  expect(session.saved.lastSaved).toBe("job-1");
+  expect(await ask()).toMatchObject({researchDelivery: "queued"});
+  expect(session.saved.lastSaved).toBe("job-2");
+  const failed = await ask();
+  expect(failed.speech).toBe("조사를 시작하지 못했어요. 개인 기기 설정과 질문을 확인해 주세요.");
+  expect(failed.researchDelivery).toBeUndefined();
+  expect(session.saved.lastSaved).toBe("job-2");
+  expect(delegate).toHaveBeenCalledTimes(3);
 });

@@ -26,6 +26,7 @@ import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { backendActivity, backendTrace, Progress } from "../core/progress.ts";
 import { RESEARCH_UNDELIVERED } from "../core/research_copy.ts";
+import type { ResearchDesk } from "../core/research_desk.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { PUBLIC_AGENCIES } from "../core/sites.ts";
 import { hasText, rstripChars, strip, stripChars } from "../core/text.ts";
@@ -57,6 +58,7 @@ import { FirstRunGuide } from "./first_run.ts";
 import { spokenPlanNames } from "../agents/web/skills/known_plan.ts";
 import { PublicPlanner, type QuietAnswer } from "./public_plan.ts";
 import { PublicTask, publicDestinations, type PublicTurn } from "./public_task.ts";
+import { SavedResearch } from "./saved_research.ts";
 import { SessionNeed } from "./session_need.ts";
 import { SessionReplies } from "./replies.ts";
 import { LIVE_DIFFICULTY, REVIEW_LIMITS, ReviewLoop, ReviewedTask, isDifficulty } from "./review_loop.ts";
@@ -93,8 +95,7 @@ export interface OrchestratorDeps {
   firstRunStep?: string;
   firstRunProgress?: (step: string) => void;
   recallNotes?: (text: string) => Promise<string[]>;
-  delegateResearch?: (id: string, goal: string) => Promise<boolean>;
-  readResearch?: (lang: Lang) => Promise<Draft | undefined>;
+  research?: ResearchDesk;
   /** 개인 정보 금고·신청 기록 저장소(없으면 이번 대화 메모리에만) */
   personal?: PersonalStore;
   routeDevice?: () => boolean;
@@ -208,6 +209,7 @@ export class SessionOrchestrator {
   readonly replies: SessionReplies;
   readonly application: ApplicationCommands;
   readonly planner: PublicPlanner;
+  readonly saved: SavedResearch;
   readonly review: ReviewLoop;
   /** 맞춤 복지 찾기: 이번 대화에서만 쓰는 사용자 정보 */
   profile: UserProfile;
@@ -293,6 +295,7 @@ export class SessionOrchestrator {
     this.replies = new SessionReplies(this);
     this.application = new ApplicationCommands(this);
     this.planner = new PublicPlanner(this);
+    this.saved = new SavedResearch(this);
     this.review = new ReviewLoop(this);
   }
 
@@ -1235,9 +1238,9 @@ export class SessionOrchestrator {
       }
       if (forced === undefined) {
         const savedResearch = /^(?:맡긴 조사 결과 읽어\s*줘|저장한 조사 결과 읽어\s*줘|read (?:my |the )?saved research(?: results?)?|朗读(?:已保存的)?调查结果|保存した調査結果を読んで)[.!?。]?$/iu;
-        if (this.deps.readResearch !== undefined && !d.hasPendingInteraction && savedResearch.test(original ?? text)) {
+        if (this.deps.research !== undefined && !d.hasPendingInteraction && savedResearch.test(original ?? text)) {
           turn.intentType = "READ_RESEARCH";
-          const result = await this.deps.readResearch(this.lang);
+          const result = await this.saved.readNewest(this.lang);
           if (result !== undefined) return this.finish(turn, { ...result, state: this.state });
         }
         // 라벨(intentType)은 await 전에 적는다. 그 안에서 예외가 나면 RECOVERING 결과가 이 라벨을 보고한다.

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResearchCheckpoint, ResearchPlan } from "../../src/core/research.ts";
-import type { JobPhase } from "../../src/core/research_desk.ts";
+import type { JobPhase, ResearchDesk } from "../../src/core/research_desk.ts";
 import { createResearchDesk } from "../../src/server/research_desk.ts";
 import type { WorkflowStore } from "../../src/server/workflow_store.ts";
 import { Workflows, type ResearchSession } from "../../src/server/workflows.ts";
@@ -152,6 +152,17 @@ describe("연구 책상", () => {
     expect((await desk.read(ready, "detailed"))?.speech).toContain("넷째 문장이에요.");
     expect(await desk.read(empty, "normal")).toBeUndefined();
     expect(await desk.read(randomUUID(), "normal")).toBeUndefined();
+  });
+
+  it("개인 기기가 아니면 책상을 주지 않고, 개인 기기면 세션에 책상을 붙인다", async () => {
+    const shared = setup({ pilotProfile: "shared" });
+    const deps: { research?: ResearchDesk } = {};
+    shared.flows.bind({ ...shared.session, deps });
+    expect(deps.research).toBeUndefined();
+    const personal = setup();
+    personal.flows.bind({ ...personal.session, deps });
+    expect(deps.research).toBeDefined();
+    expect(await deps.research?.delegate(randomUUID(), "기초연금 신청 서류")).toBeDefined();
   });
 
   it("동의를 거두면 맡기기도 목록도 읽기도 거절한다", async () => {
