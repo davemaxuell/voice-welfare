@@ -55,6 +55,7 @@ export const TurnSchema = z.object({
   observation: opt(ObservationSchema), verification: opt(z.object({ fieldValueMatches: opt(z.boolean()), receipt: opt(text) })),
   pendingConfirmation: opt(PendingSchema), authHandoff: opt(AuthHandoffSchema), answerCard: opt(AnswerCardSchema),
   researchDelivery: opt(z.enum(["queued", "outcome"])),
+  savedResearch: opt(z.object({ jobId: text, token: opt(text), reading: z.boolean() })),
   accessMode: opt(z.enum(["full", "read-only", "none"])), sources: z.array(SourceSchema).default([]), speechPrefs: opt(SpeechPrefsSchema),
   offeredChoices: opt(z.array(z.object({ key: text, label: text }))), publicSuggestions: opt(z.array(text)),
   introScript: opt(z.array(z.object({ text, pose: z.enum(INTRO_POSES), ask: opt(z.boolean()) }))),
@@ -103,6 +104,7 @@ const JobSchema = z.object({
   id: text, prompt: text, state: text,
   language: LangSchema.optional().catch(undefined),
   speech: opt(text),
+  deliveryToken: opt(text),
   questionRevision: opt(z.number().int().positive()),
   result: opt(StoredResearch).catch(undefined),
 });

@@ -12,7 +12,7 @@ import { createFirstRun } from "./first-run.ts";
 import { issues, type Capture, type IssueKey, type IssueAction } from "./presentation.ts";
 import { listMicrophones, preferredMicrophone, startRecording, VoiceLoop, type LiveAudio, type Recording } from "./mic.ts";
 import { BackendStatus } from "./backend-status.ts";
-import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
+import { RESEARCH_POLL_MS, recordHeard, researchStarted } from "./research-delivery.ts";
 import {
   applySpeechPrefs, earcon, noteVoiceInterruption, onSpeaking, preloadCues, reportVoiceRecovery, serverTts, withPrivateReadback, speechPrefs,
   isSpeechReserved, reserveSpeech, takeInterruptedSpeech, transitionCue, type CueKind,
@@ -622,6 +622,11 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
   const isConsent = r.intentType === "CONSENT" || r.semanticAction === "consent";
   const hasTurn = ui.hasTurn || (!isConsent && r.semanticAction !== "set-language");
   set({ last: r, state: r.state, lang: language, hasTurn, error: undefined });
+  const receipt = pendingReceipt(r);
+  if (receipt !== undefined) {
+    claimedReadings.add(receipt.token);
+    presentedResearch.add(receipt.token);
+  }
   if (r.researchDelivery === "queued") researchStarted();
   if (r.researchDelivery === "outcome") presentedResearch.add(r.turnId);
   if (isConsent) {
@@ -647,7 +652,7 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
     // 본인인증 인계: 안내 한 번만 말하고 TTS를 멈춰 화면 낭독기가 입력 칸을 읽게 한다
     if (r.state === "AUTH_HANDOFF") void speakTurn(r).then(() => stopSpeaking());
     else void speakTurn(r);
-  } else if (researchSilent() && r.researchDelivery === "outcome") {
+  } else if (researchSilent() && (r.researchDelivery === "outcome" || receipt !== undefined)) {
     void speakTurn(r);
   }
 }
@@ -656,12 +661,14 @@ function speak(text: string) {
   void speakAndWaitFrom(text);
 }
 
-export function speakResearch(text: string, lang?: Lang) {
-  if (ui.workspaceAvailable && ui.consent === "granted") void speakAndWaitFrom(text, 0, speechPrefs.rate, lang);
+export async function speakResearch(text: string, lang?: Lang): Promise<boolean> {
+  return ui.workspaceAvailable && ui.consent === "granted" && await speakAndWaitFrom(text, 0, speechPrefs.rate, lang);
 }
 
 const ACTIVE_RESEARCH_POLL_MS = 2000;
 const presentedResearch = new Set<string>();
+const claimedReadings = new Set<string>();
+const heardReadings = new Set<string>();
 const researchChunks = new Map<string, number>();
 const researchSilent = () => ui.voiceMode.known && (narrationMuted || !ui.voiceMode.tts);
 async function playResearch(token: string, text: string, lang?: Lang) {
@@ -682,7 +689,7 @@ function presentResearch(token: string, text: string, lang: Lang) {
   }
 }
 export async function deliverResearch(token: string, text: string, lang: Lang): Promise<boolean> {
-  if (!ui.workspaceAvailable || !canReportResearch()) return false;
+  if (!ui.workspaceAvailable || !canReportResearch() || claimedReadings.has(token)) return false;
   presentResearch(token, text, lang);
   const heard = await playResearch(token, text, lang);
   if (heard) presentedResearch.delete(token);
@@ -791,9 +798,39 @@ export async function speakAndWaitFrom(text: string, fromChunk = 0, rate = speec
 
 const speakAndWait = (text: string) => speakAndWaitFrom(text);
 
-type Spoken = Pick<Turn, "speech"> & Partial<Pick<Turn, "localSpeechOnly" | "lang" | "authHandoff" | "turnId" | "sessionId" | "researchDelivery">>;
+type Spoken = Pick<Turn, "speech"> & Partial<Pick<Turn, "localSpeechOnly" | "lang" | "authHandoff" | "turnId" | "sessionId" | "researchDelivery" | "savedResearch">>;
+
+function pendingReceipt(result: Pick<Spoken, "savedResearch" | "localSpeechOnly">) {
+  const saved = result.savedResearch;
+  return saved?.token !== undefined && result.localSpeechOnly !== true ? { jobId: saved.jobId, token: saved.token } : undefined;
+}
+
+function speakReading(sessionId: string, { jobId, token }: { jobId: string; token: string }, text: string, lang: Lang | undefined) {
+  const current = researchPlayback.get(token);
+  if (current !== undefined) return current;
+  const play = async () => {
+    if (heardReadings.has(token)) return true;
+    claimedReadings.add(token);
+    const generation = stoppedGeneration;
+    const heard = await playResearch(token, text, lang);
+    if (!heard || sessionId !== ui.sessionId || stoppedGeneration !== generation) {
+      claimedReadings.delete(token);
+      return false;
+    }
+    heardReadings.add(token);
+    presentedResearch.delete(token);
+    if (!await recordHeard(sessionId, jobId, token)) researchStarted();
+    return true;
+  };
+  const playing = play().finally(() => researchPlayback.delete(token));
+  researchPlayback.set(token, playing);
+  return playing;
+}
+
 async function speakTurn(result: Spoken, text = result.speech) {
   const id = result.sessionId, token = result.turnId;
+  const receipt = pendingReceipt(result);
+  if (receipt !== undefined && id !== undefined) return speakReading(id, receipt, text, result.lang);
   if (result.researchDelivery === "outcome" && token !== undefined && id !== undefined && result.localSpeechOnly !== true) {
     const current = researchPlayback.get(token);
     if (current !== undefined) return current;
@@ -1052,7 +1089,7 @@ export async function startConversation() {
         const resumeAnswer = async () => {
           if (interrupted?.kind !== "server" || interrupted.text.length === 0) return;
           setPhase("speaking");
-          if (r.researchDelivery === "outcome" && r.localSpeechOnly !== true) await speakTurn(r);
+          if ((r.researchDelivery === "outcome" && r.localSpeechOnly !== true) || pendingReceipt(r) !== undefined) await speakTurn(r);
           else await speakAndWaitFrom(interrupted.text, interrupted.fromChunk);
         };
         setPhase("listening");
@@ -1852,6 +1889,8 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 export async function endSession() {
   clearTimeout(researchRecoveryTimer);
   presentedResearch.clear();
+  claimedReadings.clear();
+  heardReadings.clear();
   researchChunks.clear();
   heardOutcomes.clear();
   timing?.cancelPending();

@@ -5,7 +5,7 @@ import type { Lang } from "../../src/core/turn.ts";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { api, errorCode, WorkspaceSchema, type Note, type Workspace } from "./api.ts";
-import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
+import { RESEARCH_POLL_MS, recordHeard, researchStarted } from "./research-delivery.ts";
 import { workflowErrorText, workflowResultText, workflowStateText, workflowText } from "./workflows-text.ts";
 
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
@@ -50,7 +50,7 @@ export function WorkflowPanel({
   sessionId: string | undefined;
   lang: Lang;
   directActions?: boolean;
-  onRead: (text: string, lang: Lang | undefined) => void;
+  onRead: (text: string, lang: Lang | undefined) => Promise<boolean>;
   onStatus?: (line: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<Workspace | undefined>(undefined);
@@ -199,6 +199,12 @@ export function WorkflowPanel({
     }
   }
 
+  async function readAloud(job: Workspace["jobs"][number], speech: string) {
+    const token = job.deliveryToken;
+    if (!await onRead(speech, job.language) || token === undefined || sessionId === undefined) return;
+    if (!await recordHeard(sessionId, job.id, token)) researchStarted();
+  }
+
   async function change(
     path: string,
     method: string,
@@ -329,7 +335,7 @@ export function WorkflowPanel({
         }}><label>{label("answer")} <input name="text" maxLength={600} required/></label>
           <button type="submit" aria-label={actionAria(resumeLabel, job.prompt)}>{resumeLabel}</button></form>}
         <div className="row research-actions">
-          {speech !== undefined && <button type="button" aria-label={actionAria(readLabel, job.prompt)} onClick={() => onRead(speech, job.language)}>{readLabel}</button>}
+          {speech !== undefined && <button type="button" aria-label={actionAria(readLabel, job.prompt)} onClick={() => void readAloud(job, speech)}>{readLabel}</button>}
           {job.state === "failed" && <button type="button" aria-label={actionAria(retryLabel, job.prompt)} onClick={() => void change("/research", "POST", {
             text: job.prompt, consent: true, requestId: crypto.randomUUID(),
           }, { feedback: workflowText("retriedJob", lang, { title: summarizeTitle(job.prompt) }), markActive: true })}>{retryLabel}</button>}

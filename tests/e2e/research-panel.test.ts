@@ -1,5 +1,6 @@
 import { chromium, expect as screen, type Browser, type Page } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { latch } from "./browser-cases.ts";
 import { startUi } from "./web-ui-fixtures.ts";
 
 let browser: Browser;
@@ -74,12 +75,12 @@ async function openWorkspace(jobs: unknown[], notes: unknown[] = []) {
   await screen(page.locator("#workflow-title")).toBeVisible({ timeout: 15_000 });
 }
 
-async function recordResearchSpeech(speech: string[]) {
-  await page.exposeFunction("testHeard", (line: string) => { speech.push(line); });
+async function recordResearchSpeech(speech: string[], {playback = Promise.resolve(), interrupted = () => false}: {playback?: Promise<unknown>; interrupted?: () => boolean} = {}) {
+  await page.exposeFunction("testHeard", async (line: string) => { speech.push(line); await playback; return interrupted() ? "cancelled" : "played"; });
   await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
     route.fulfill({contentType: "text/javascript", body: `
       export * from '/src/speaker.ts?original';
-      export const serverTts = { cancel() {}, async speak(text) { await window.testHeard(text); return 'played'; } };
+      export const serverTts = { cancel() {}, async speak(text) { return await window.testHeard(text); } };
     `}));
   await page.route("**/api/health", async route => {
     const response = await route.fetch();
@@ -248,6 +249,116 @@ it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언�
   await page.getByRole("button", {name: "결과 듣기: Basic pension"}).click();
   await expect.poll(() => heard.length, {timeout: 15_000}).toBe(2);
   expect(heard).toEqual([["en", line], ["en", line]]);
+});
+
+const READING = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요. 출처 복지로 공식 자료. 출처 확인일 2026년 11월 19일.";
+
+async function serveReading(options: {failFirstReceipt?: true} = {}) {
+  const token = "reading-receipt";
+  const state = {asked: false, heard: false, polls: 0, receipts: [] as string[]};
+  await page.route("**/api/session/*/workspace/deliveries", route => {
+    state.polls++;
+    return route.fulfill({json: {pending: state.heard ? [] : [{id: "job", token, state: state.asked ? "completed" : "running", language: "ko", speech: READING}]}});
+  });
+  await page.route(`**/api/session/*/workspace/research/job/delivery/${token}`, route => {
+    state.receipts.push(route.request().method());
+    if (options.failFirstReceipt === true && state.receipts.length === 1) return route.fulfill({status: 503, json: {error: "down"}});
+    state.heard = true;
+    return route.fulfill({json: {heard: true}});
+  });
+  await page.route("**/api/turn", async route => {
+    const response = await route.fetch();
+    state.asked = true;
+    await route.fulfill({json: {...await response.json(), speech: READING, lang: "ko",
+      savedResearch: {jobId: "job", token, reading: true}}});
+  });
+  return state;
+}
+
+async function askToRead() {
+  await page.locator("#command").fill("맡긴 조사 결과 읽어줘");
+  await page.locator("#command").press("Enter");
+}
+
+it("말로 요청해 읽은 저장한 조사는 한 번 말하고 다 들은 뒤에 인수증을 한 번 보내며, 목록에 남은 줄을 감시가 다시 말하거나 쓰지 않는다", async () => {
+  const speech: string[] = [], playback = latch();
+  await recordResearchSpeech(speech, {playback: playback.promise});
+  const state = await serveReading();
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => speech.length, {timeout: 15_000}).toBe(1);
+  const polls = state.polls;
+  await expect.poll(() => state.polls, {timeout: 20_000}).toBeGreaterThan(polls);
+  expect(speech).toEqual([READING]);
+  expect(state.receipts).toEqual([]);
+  playback.resolve();
+  await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  await page.waitForTimeout(1000);
+  expect(speech).toEqual([READING]);
+  expect(state.receipts).toEqual(["DELETE"]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("음성 안내를 끈 사용자가 말로 요청해 읽은 저장한 조사는 대화 기록에 줄을 쓴 뒤 바로 인수증을 보내고 소리는 내지 않는다", async () => {
+  const speech: string[] = [];
+  await page.addInitScript(() => localStorage.setItem("cheongeum.narrationMuted", "1"));
+  await recordResearchSpeech(speech);
+  const state = await serveReading();
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+  expect(speech).toEqual([]);
+});
+
+it("읽은 저장한 조사의 인수증을 보내지 못해도 다시 말하지 않고 감시가 인수증만 다시 보낸다", async () => {
+  const speech: string[] = [];
+  await recordResearchSpeech(speech);
+  const state = await serveReading({failFirstReceipt: true});
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => state.receipts, {timeout: 20_000}).toEqual(["DELETE", "DELETE"]);
+  await page.waitForTimeout(1000);
+  expect(speech).toEqual([READING]);
+  expect(state.receipts).toEqual(["DELETE", "DELETE"]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("말로 요청해 읽던 저장한 조사의 재생이 끊기면 인수증을 보내지 않고, 감시가 나중에 그 결과를 줄 하나 더 쓰지 않고 다시 들려준다", async () => {
+  const speech: string[] = [];
+  await recordResearchSpeech(speech, {interrupted: () => speech.length === 1});
+  const state = await serveReading();
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => speech.length, {timeout: 15_000}).toBe(1);
+  expect(state.receipts).toEqual([]);
+  await expect.poll(() => speech.length, {timeout: 25_000}).toBe(2);
+  await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  expect(speech).toEqual([READING, READING]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("패널의 듣기 단추는 다 읽은 뒤에 그 조사의 인수증을 보내고, 인수증이 없는 조사는 읽기만 한다", async () => {
+  const speech: string[] = [], playback = latch(), receipts: string[] = [];
+  await recordResearchSpeech(speech, {playback: playback.promise});
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: []}}));
+  await page.route("**/api/session/*/workspace/research/*/delivery/*", route => {
+    receipts.push(new URL(route.request().url()).pathname.split("/").slice(-3).join("/"));
+    return route.fulfill({json: {heard: true}});
+  });
+  const done = (id: string, prompt: string, extra: object) => ({id, prompt, state: "completed", language: "ko", speech: `${prompt} 결과예요.`,
+    result: {text: "답입니다.", sources: [source]}, ...extra});
+  await openWorkspace([done("fresh", "기초연금", {deliveryToken: "panel-receipt"}), done("heard", "장애인연금", {})]);
+  await page.locator("#workflow-title").click();
+  await page.getByRole("button", {name: "결과 듣기: 기초연금"}).click();
+  await expect.poll(() => speech, {timeout: 15_000}).toEqual(["기초연금 결과예요."]);
+  expect(receipts).toEqual([]);
+  playback.resolve();
+  await expect.poll(() => receipts, {timeout: 15_000}).toEqual(["fresh/delivery/panel-receipt"]);
+  await page.getByRole("button", {name: "결과 듣기: 장애인연금"}).click();
+  await expect.poll(() => speech, {timeout: 15_000}).toEqual(["기초연금 결과예요.", "장애인연금 결과예요."]);
+  await page.waitForTimeout(1000);
+  expect(receipts).toEqual(["fresh/delivery/panel-receipt"]);
 });
 
 it("기본 조작 모드에서는 조사 시작과 메모 저장을 한 번씩만 요청한다", async () => {
