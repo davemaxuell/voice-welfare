@@ -6,13 +6,14 @@ import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { DATA_DATE, SourceData, StoredResearch, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
+import type { Brevity } from "../core/research_desk.ts";
 import { strip } from "../core/text.ts";
 import { draft, LangSchema, type Draft, type Lang, type SpeechPrefs } from "../core/turn.ts";
 import { REDACTED, detectSensitive, redactPictureText, type SecretSpan } from "../safety/privacy.ts";
 import { researchReading } from "../speech/research_reading.ts";
 import { withDeadline } from "../voice/live.ts";
 import { AsyncLock } from "./recovery.ts";
-import { LEASE_SECONDS, MAX_ATTEMPTS, WorkflowRejected, WorkflowStore, canonicalUuid, installationOwner, type ClaimedJob, type JobRow, type Note } from "./workflow_store.ts";
+import { LEASE_SECONDS, MAX_ATTEMPTS, WorkflowRejected, WorkflowStore, canonicalUuid, hasReading, installationOwner, type ClaimedJob, type JobRow, type Note } from "./workflow_store.ts";
 
 /** PiiScanner.scan: 글마다 모델이 찾은 비밀 구간. 모델이 없으면 규칙만 쓴다. */
 export type Scan = (texts: readonly string[]) => Promise<(readonly SecretSpan[])[]>;
@@ -188,7 +189,6 @@ const NO_SAVED_RESEARCH: Record<Lang, string> = {
   ko: "아직 확인할 조사 결과가 없어요.", en: "There are no saved research results ready yet.",
   zh: "目前还没有可查看的调查结果。", ja: "確認できる調査結果はまだありません。",
 };
-const IN_PROGRESS = new Set(["queued", "running"]);
 
 export class Workflows {
   readonly events = new InMemoryEventLog();
@@ -486,9 +486,10 @@ export class Workflows {
     }
   }
 
-  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result" | "question">): string {
+  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result" | "question">,
+    brevity: Brevity = session.personal?.speech().length ?? "normal"): string {
     return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data, question: job.question },
-      { brevity: session.personal?.speech().length ?? "normal", speakable: text => session.speakable?.(text) !== false });
+      { brevity, speakable: text => session.speakable?.(text) !== false });
   }
 
   bind(session: WorkspaceSession): void {
@@ -521,11 +522,6 @@ export class Workflows {
       return draft("IDLE", "web-answer", NO_SAVED_RESEARCH[lang], { lang });
     };
   }
-}
-
-function hasReading(job: Pick<JobRow, "state" | "result">): boolean {
-  const saved = IN_PROGRESS.has(job.state) ? undefined : StoredResearch.safeParse(job.result).data;
-  return saved !== undefined && ((saved.text ?? "").length > 0 || saved.missing.length > 0);
 }
 
 type Access<S> = (sid: string, c: Context) => S | Response;

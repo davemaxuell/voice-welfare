@@ -4,7 +4,8 @@ import { closeSync, existsSync, linkSync, mkdirSync, openSync, readFileSync, rmS
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { ResearchCheckpoint, researchSummary } from "../core/research.ts";
+import { ResearchCheckpoint, StoredResearch, researchSummary } from "../core/research.ts";
+import type { JobPhase } from "../core/research_desk.ts";
 import { casefold, strip } from "../core/text.ts";
 import { AsyncLock } from "./recovery.ts";
 
@@ -61,6 +62,7 @@ export class WorkflowRejected extends Error {
 
 export interface ClaimedJob { id: string; prompt: string; language: string; attempts: number; lease: string }
 export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; question?: string; questionRevision?: number }
+export interface JobSummary { id: string; prompt: string; language: string; phase: JobPhase }
 export interface Note { id: string; body: string }
 export type JobState = "completed" | "partial" | "needs_input" | "incomplete";
 
@@ -85,6 +87,21 @@ function readJob({checkpoint, revision, ...row}: z.infer<typeof jobRow>): JobRow
   const questionRevision = row.state === "needs_input" && waiting !== undefined && waiting.attempts < 2 ? revision ?? undefined : undefined;
   const question = row.state === "needs_input" && waiting?.outcome?.status === "waiting" ? waiting.outcome.question : undefined;
   return { ...row, result, ...(question === undefined ? {} : { question }), ...(questionRevision === undefined ? {} : { questionRevision }) };
+}
+const IN_PROGRESS = new Set(["queued", "running"]);
+
+export function hasReading(job: Pick<JobRow, "state" | "result">): boolean {
+  const saved = IN_PROGRESS.has(job.state) ? undefined : StoredResearch.safeParse(job.result).data;
+  return saved !== undefined && ((saved.text ?? "").length > 0 || saved.missing.length > 0);
+}
+
+function phaseOf(job: JobRow): JobPhase {
+  switch (job.state) {
+    case "queued": case "running": return { kind: "working" };
+    case "needs_input": return { kind: "asking", revision: job.questionRevision };
+    case "completed": case "partial": case "incomplete": return hasReading(job) ? { kind: "ready" } : { kind: "ended" };
+    default: return { kind: "ended" };
+  }
 }
 const noteRow = z.object({ id: z.string(), body: z.string() });
 const noteVectorRow = noteRow.extend({ embedding: z.string().nullable(), model: z.string().nullable() });
@@ -365,6 +382,17 @@ export class WorkflowStore {
       const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
         LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id`, [this.owner]);
       return rows.map(raw => readJob(jobRow.parse(raw)));
+    }, { write: false });
+  }
+
+  async summaries(limit: number): Promise<JobSummary[]> {
+    return await this.transaction(async sql => {
+      const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
+        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state='needs_input' WHERE j.owner=? ORDER BY j.created DESC,j.id LIMIT ?`, [this.owner, limit]);
+      return rows.map(raw => {
+        const job = readJob(jobRow.parse(raw));
+        return { id: job.id, prompt: job.prompt, language: job.language, phase: phaseOf(job) };
+      });
     }, { write: false });
   }
 
