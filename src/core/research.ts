@@ -1,9 +1,21 @@
 import { z } from "zod";
 
+export const DATA_DATE = /^\d{4}(?:-\d{2}-\d{2}|년)$/u;
+export const SourceData = z.object({
+  kind: z.enum(["live", "stored", "private-program"]),
+  origin: z.string().min(1).max(100),
+  date: z.string().regex(DATA_DATE).optional().catch(undefined),
+});
+export type SourceData = z.infer<typeof SourceData>;
 export const ResearchSource = z.object({
   title: z.string().max(360), url: z.string().max(4096),
   lastCheckedAt: z.string().optional(), version: z.string().optional(),
+  data: SourceData.optional().catch(undefined),
 });
+export type ResearchSource = z.infer<typeof ResearchSource>;
+export function sourceKey(source: { url?: string | undefined; data?: SourceData | undefined }): string {
+  return JSON.stringify([source.url ?? "", source.data?.kind ?? "", source.data?.origin ?? "", source.data?.date ?? ""]);
+}
 export const ResearchProof = z.object({ quote: z.string().min(1).max(2800), url: z.string().max(4096) });
 export const ResearchStop = z.enum([
   "verified", "needs_input", "source_unavailable", "no_progress", "budget", "policy", "cancelled", "interrupted", "lease_lost",
@@ -40,11 +52,12 @@ export type ResearchPlan = z.infer<typeof ResearchPlan>;
 export type ResearchCheckpoint = z.infer<typeof ResearchCheckpoint>;
 export type ResearchFinding = z.infer<typeof ResearchFinding>;
 
-export interface ResearchOutcome<Source = { url?: string; title?: string | null; lastCheckedAt?: string; version?: string }> {
+export interface ResearchOutcome<Source = { url?: string; title?: string | null; lastCheckedAt?: string; version?: string; data?: SourceData }> {
   text?: string | null;
   sources?: readonly Source[];
   proof?: readonly z.infer<typeof ResearchProof>[];
-  data?: { kind: "live" | "stored" | "private-program"; origin: string; date?: string };
+  /** 조사 전체에 하나만 붙던 자료 정보. 인용마다 `data`를 두기 전부터 쓰던 줄이라 한동안 함께 적는다. */
+  data?: SourceData;
   missing?: readonly string[];
   reason?: ResearchStop;
 }
@@ -63,8 +76,27 @@ export function researchSummary(plan: ResearchPlan, budget = false): [string, Re
   if (question?.status === "waiting") notes.push(question.question);
   const state = question ? "needs_input" : missing.length === 0 ? "completed" : verified.length > 0 ? "partial" : "incomplete";
   const reason = question ? "needs_input" : missing.length === 0 ? "verified" : budget ? "budget" : "source_unavailable";
+  const cited = [...new Map(verified.flatMap(finding => finding.sources).map(source => [sourceKey(source), source])).values()];
+  const dated = new Set(cited.flatMap(source => source.data?.date === undefined ? [] : [source.url]));
   return [state, {
-    text: notes.join("\n\n"), sources: [...new Map(verified.flatMap(finding => finding.sources).map(source => [source.url, source])).values()],
+    text: notes.join("\n\n"), sources: cited.filter(source => source.data?.date !== undefined || !dated.has(source.url)),
     proof: verified.flatMap(finding => finding.proof), missing, reason,
   }];
+}
+
+const lenientList = <T extends z.ZodType>(item: T) => z.array(item.nullable().catch(null))
+  .transform(list => list.filter((entry): entry is z.output<T> => entry !== null)).catch([]);
+
+export const StoredResearch = z.object({
+  text: z.string().optional().catch(undefined),
+  sources: lenientList(ResearchSource),
+  missing: lenientList(z.string()),
+  proof: lenientList(ResearchProof),
+  reason: ResearchStop.optional().catch(undefined),
+  data: SourceData.optional().catch(undefined),
+});
+export type StoredResearch = z.infer<typeof StoredResearch>;
+
+export function sourceData(result: Pick<StoredResearch, "data">, source: Pick<ResearchSource, "data">): SourceData | undefined {
+  return source.data ?? result.data;
 }

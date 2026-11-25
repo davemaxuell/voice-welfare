@@ -6,6 +6,7 @@ import {
   type Observation,
 } from "./actions.ts";
 import { ChoiceKeySchema } from "./choices.ts";
+import { SourceData } from "./research.ts";
 import { integer, omitAbsent, optional } from "./schema.ts";
 
 export const SESSION_STATES = [
@@ -72,6 +73,7 @@ const literalFalse = z.preprocess(value => value === 0 ? false : value, z.litera
 const literalTrue = z.preprocess(value => value === 1 ? true : value, z.literal(true));
 export const SourceCitationSchema = z.object({
   title: text, url: UrlStringSchema, lastCheckedAt: text, version: optional(text), note: optional(text),
+  data: SourceData.optional().catch(undefined),
 }).transform(omitAbsent);
 export type SourceCitation = z.infer<typeof SourceCitationSchema>;
 export const PolicyDecisionSchema = z.object({ allowed: z.boolean(), code: text, reason: text });
