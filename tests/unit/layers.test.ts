@@ -15,7 +15,7 @@ const allowed: Record<string, readonly string[]> = {
   "agents.welfare": ["core", "safety", "speech.phrasing"],
   evaluation: ["agents.welfare", "core", "safety"],
   orchestrator: ["agents.web", "agents.web.skills", "agents.welfare", "core", "language", "personal", "safety", "speech.phrasing", "speech.screen", "understanding"],
-  server: ["agents.web", "agents.welfare", "core", "orchestrator", "personal", "practice_site", "safety", "understanding", "voice"],
+  server: ["agents.web", "agents.welfare", "core", "orchestrator", "personal", "practice_site", "safety", "speech.phrasing", "understanding", "voice"],
 };
 
 const src = join(REPO_ROOT, "src");

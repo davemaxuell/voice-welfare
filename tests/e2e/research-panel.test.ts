@@ -35,6 +35,7 @@ const allStateJobs = [
     id: "j-completed",
     prompt: "주민등록등본 발급 수수료",
     state: "completed",
+    speech: "‘주민등록등본 발급 수수료’ 조사 결과예요. 정부24 온라인 발급은 무료입니다.",
     result: {
       text: "정부24 온라인 발급은 무료입니다.",
       sources: [source],
@@ -92,7 +93,7 @@ it("닫힌 조사 목록에서도 대화로 접수한 작업의 결과를 읽고
   await recordResearchSpeech(speech);
   let queued = false, acknowledged = 0;
   await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: queued && acknowledged < 2 ?
-    [{id: "research", token: "voice-receipt", state: "completed", language: "ko", result: {text: answer}}] : []}}));
+    [{id: "research", token: "voice-receipt", state: "completed", language: "ko", speech: answer}] : []}}));
   await page.route("**/api/session/*/workspace/research/research/delivery/voice-receipt", route => {
     acknowledged++;
     return route.fulfill({status: acknowledged === 1 ? 503 : 200, json: {heard: true}});
@@ -142,7 +143,7 @@ it("조사 접수 응답만 끊겨도 닫힌 패널의 새 작업을 찾아 읽�
   let enqueued = false, received = false;
   await page.route("**/api/session/*/research-outcomes", route => route.fulfill({json: {working: false, outcomes: []}}));
   await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: enqueued && !received
-    ? [{id: "job", token: "recovered-job", state: "completed", language: "ko", result: {text: answer}}] : []}}));
+    ? [{id: "job", token: "recovered-job", state: "completed", language: "ko", speech: answer}] : []}}));
   await page.route("**/api/session/*/workspace/research/job/delivery/recovered-job", route => {
     received = true;
     return route.fulfill({json: {heard: true}});
@@ -153,6 +154,31 @@ it("조사 접수 응답만 끊겨도 닫힌 패널의 새 작업을 찾아 읽�
   await page.locator("#command").press("Enter");
   await expect.poll(() => received, {timeout: 16_000}).toBe(true);
   expect(speech.filter(line => line === answer)).toEqual([answer]);
+});
+
+it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언어로 읽는다", async () => {
+  const line = "Results for “Basic pension”. Bring your ID. Source Welfare guide. Agency data. Data date 2026. Source checked 2026-11-24.";
+  const heard: [string, string][] = [];
+  await page.exposeFunction("testHeard", (text: string, lang: string) => { heard.push([lang, text]); });
+  await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
+    route.fulfill({contentType: "text/javascript", body: `
+      export * from '/src/speaker.ts?original';
+      export const serverTts = { cancel() {}, async speak(text, _fetch, _from, _rate, lang) { await window.testHeard(text, lang); return 'played'; } };
+    `}));
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), workspaceAvailable: true, tts: {supported: true, provider: "test-tts"}}});
+  });
+  let delivered = false;
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: delivered ? [] : [
+    {id: "job", token: "english-receipt", state: "completed", language: "en", speech: line}]}}));
+  await page.route("**/api/session/*/workspace/research/job/delivery/english-receipt", route => { delivered = true; return route.fulfill({json: {heard: true}}); });
+  await openWorkspace([{id: "job", prompt: "Basic pension", state: "completed", language: "en", speech: line, result: {text: "Bring your ID.", sources: [source]}}]);
+  await expect.poll(() => heard.length, {timeout: 15_000}).toBe(1);
+  await page.locator("#workflow-title").click();
+  await page.getByRole("button", {name: "결과 듣기: Basic pension"}).click();
+  await expect.poll(() => heard.length, {timeout: 15_000}).toBe(2);
+  expect(heard).toEqual([["en", line], ["en", line]]);
 });
 
 it("기본 조작 모드에서는 조사 시작과 메모 저장을 한 번씩만 요청한다", async () => {

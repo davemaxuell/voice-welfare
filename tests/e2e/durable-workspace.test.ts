@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { expect as expectPage } from "@playwright/test";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import { launchBrowser } from "../../src/agents/web/browser/index.ts";
 import type { WelfareService } from "../../src/agents/welfare/data/index.ts";
 import { EmbeddingService } from "../../src/core/model_stack.ts";
+import { RESEARCH_UNDELIVERED, stateNote } from "../../src/core/research_copy.ts";
 import { draft } from "../../src/core/turn.ts";
 import { AgentRuntime } from "../../src/server/runtime.ts";
 import { SettingsInput } from "../../src/server/settings.ts";
-import { DIMENSIONS, WorkflowStore } from "../../src/server/workflow_store.ts";
+import { DIMENSIONS, WorkflowStore, installationOwner } from "../../src/server/workflow_store.ts";
 import { Workflows, type ResearchSession } from "../../src/server/workflows.ts";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { latch } from "./browser-cases.ts";
@@ -279,4 +281,145 @@ it("인용마다 자료 정보를 두기 전에 저장한 기록은 조사 전�
   expect(await store.finish((await store.claim())!, "completed", old)).toBe(true);
   const [row] = z.object({jobs: z.array(z.object({prompt: z.string(), result: z.unknown()}))}).parse(await (await app.request("/api/session/" + id + "/workspace")).json()).jobs;
   expect(row?.result).toEqual(old);
+});
+
+const deliveries = z.object({pending: z.array(z.strictObject({id: z.string(), token: z.string(), state: z.string(), language: z.string(), speech: z.string()}))});
+const workspaceRows = z.object({jobs: z.array(z.looseObject({id: z.string(), speech: z.string().optional()}))});
+const reading = z.object({text: z.string(), sources: z.array(z.object({title: z.string(), url: z.string(), lastCheckedAt: z.string(), data: dataShape.optional()}))});
+const answered = {title: "복지로 공식 자료", url: checked.url, lastCheckedAt: "2026-11-19", data: {kind: "live", origin: "official-api", date: "2026년"}};
+
+it("끝난 조사는 인수증 목록에 말할 글 하나만 담아 보내고 결과 원문 칸은 두지 않으며 패널 목록도 같은 글을 쓴다", async () => {
+  const {app, runtime, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  const {id, session} = await newSession();
+  const store = await app.workflows.store();
+  const base = "/api/session/" + id + "/workspace";
+  const seed = async (prompt: string, language: string, state: string, result?: object) => {
+    const jobId = await store.enqueue(randomUUID(), prompt, language);
+    expect(await store.finish((await store.claim())!, state, result)).toBe(true);
+    return jobId;
+  };
+  const text = "신청서와 신분증을 준비합니다. 가까운 주민센터에 내세요. 출처에서 해당 제도의 자세한 내용을 확인해 주세요.";
+  const ids = {
+    partial: await seed("기초연금 신청 서류", "ko", "partial", {text, sources: [answered], missing: ["마감일"]}),
+    secret: await seed("비밀 값이 든 조사", "ko", "completed", {text: "비밀번호는 1234예요.", sources: [answered]}),
+    legacy: await seed("옛 형식 조사", "ko", "completed", {text: "신청서를 준비하세요. 출처는 복지로 공식 자료이며, 공식 API 실시간 조회입니다. 자료 기준은 2026년. 확인일은 2026년 11월 19일입니다. 출처에서 확인해 주세요.",
+      sources: [{title: "복지로 공식 자료", url: checked.url, lastCheckedAt: "2026-11-19"}], data: {kind: "live", origin: "official-api", date: "2026년"}}),
+    english: await seed("Basic pension papers", "en", "completed", {text: "Bring the form and ID.", sources: [{...answered, data: {kind: "stored", origin: "fixture", date: "2026-03-05"}}]}),
+    corrupt: await seed("깨진 출처가 섞인 조사", "ko", "completed", {text: "서류는 신청서예요.", sources: [{title: 7}, answered]}),
+    cancelled: await store.enqueue(randomUUID(), "중단한 조사", "ko"),
+  };
+  expect(await store.cancel(ids.cancelled)).toBe(true);
+  const pending = async () => new Map(deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending.map(row => [row.id, row]));
+  let rows = await pending();
+  expect(rows.size).toBe(6);
+  for (const row of rows.values()) expect(Object.keys(row).sort((a, b) => a.localeCompare(b))).toEqual(["id", "language", "speech", "state", "token"]);
+  expect(rows.get(ids.partial)?.speech).toBe(
+    "‘기초연금 신청 서류’ 조사 결과예요. 신청서와 신분증을 준비합니다. 가까운 주민센터에 내세요. 출처에서 해당 제도의 자세한 내용을 확인해 주세요. "
+    + "출처 복지로 공식 자료. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 19일. 확인이 남은 항목. 마감일.");
+  expect(rows.get(ids.secret)?.speech).toBe(RESEARCH_UNDELIVERED.ko);
+  expect(rows.get(ids.legacy)?.speech).toBe("‘옛 형식 조사’ 조사 결과예요. 신청서를 준비하세요. 출처는 복지로 공식 자료이며, 공식 API 실시간 조회입니다. 자료 기준은 2026년. 확인일은 2026년 11월 19일입니다. 출처에서 확인해 주세요.");
+  expect(rows.get(ids.english)).toMatchObject({language: "en", speech: "Results for “Basic pension papers”. Bring the form and ID. Source 복지로 공식 자료. Stored data. Data date 2026-03-05. Source checked 2026-11-19."});
+  expect(rows.get(ids.corrupt)?.speech).toBe("‘깨진 출처가 섞인 조사’ 조사 결과예요. 서류는 신청서예요. 출처 복지로 공식 자료. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 19일.");
+  expect(rows.get(ids.cancelled)?.speech).toBe(`‘중단한 조사’ 조사 결과예요. ${stateNote("cancelled", "ko")}`);
+
+  const shown = workspaceRows.parse(await (await app.request(base)).json()).jobs;
+  for (const [name, jobId] of Object.entries(ids)) {
+    expect(shown.find(job => job.id === jobId)?.speech, name).toBe(name === "cancelled" ? undefined : rows.get(jobId)?.speech);
+  }
+
+  session.personal.saveSpeech({length: "short"});
+  rows = await pending();
+  expect(rows.get(ids.partial)?.speech).toBe(
+    "‘기초연금 신청 서류’ 조사 결과예요. 신청서와 신분증을 준비합니다. 가까운 주민센터에 내세요. "
+    + "출처 복지로 공식 자료. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 19일. 확인이 남은 항목. 마감일.");
+});
+
+it("영어로 맡긴 한 번에 끝나는 조사는 번역한 카드의 답과 다음 할 일만 저장하고 출처와 날짜는 읽을 때 더한다", async () => {
+  const {app, runtime, post, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  const documents = "신청서와 신분증을 준비합니다.";
+  vi.spyOn(runtime.welfareProvider, "findService").mockResolvedValue({...official("WLF-1", "검증용 제도", {criteriaYear: "2026"}), documents});
+  const create = runtime.createSession.bind(runtime);
+  vi.spyOn(runtime, "createSession").mockImplementation(async options => {
+    const session = await create(options);
+    if (options?.background !== true) return session;
+    const model = new FakeLlm(({schemaName, user}) => {
+      if (schemaName === "public_service_decision") return {kind: "find_information", goal, source: "welfare", subject: "기초연금", agency: "복지로",
+        requestedFacts: ["documents"], exclusions: [], continuation: false, question: null, choices: []};
+      if (schemaName === "public_research_coverage") return {coverage: "all", checks: [{request: "신청 서류", quote: documents}]};
+      if (schemaName !== "translate_out") return undefined;
+      const {passage} = z.object({passage: z.string()}).parse(JSON.parse(user));
+      return {text: passage.includes("신청서") ? "Bring the application form and ID." : "Check the source for details."};
+    });
+    withLlm(session, model);
+    session.deps.webLlm = model;
+    return session;
+  });
+  const {id, session} = await newSession();
+  session.lang = "en";
+  const base = "/api/session/" + id + "/workspace";
+  expect((await post(base + "/research", {text: goal, requestId: randomUUID(), consent: true})).status).toBe(200);
+  const status = async () => z.object({jobs: z.array(z.object({state: z.string(), speech: z.string().optional(), result: reading.partial().nullish()}))})
+    .parse(await (await app.request(base)).json()).jobs[0];
+  await expect.poll(async () => (await status())?.state, {timeout: 20_000}).toBe("completed");
+  const job = await status();
+  expect(job?.result?.text).toBe("Bring the application form and ID. Check the source for details.");
+  expect(job?.speech).toBe("Results for “기초연금 신청 서류”. Bring the application form and ID. Check the source for details. "
+    + "Source 복지로 공식 자료. Agency data. Data date 2026. Source checked 2026-11-19.");
+  expect(deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending[0]).toMatchObject({language: "en", speech: job?.speech});
+});
+
+it("패널이 보여 주는 날짜와 금액을 말로 읽는 글도 똑같이 말하고 자동 전달과 듣기 단추가 같은 글을 읽는다", async () => {
+  const {config, settings, seal, path} = await service(), prefs = settings();
+  prefs.save(SettingsInput.parse({deviceUse: "personal"})); prefs.setFirstRun("done");
+  const directory = dirname(path), seeded = await WorkflowStore.open(join(directory, "workflows.sqlite3"), installationOwner(directory));
+  await seeded.enqueue(randomUUID(), "기초연금 금액과 서류", "ko");
+  expect(await seeded.finish((await seeded.claim())!, "completed", {
+    text: "한 달에 최대 342,510원을 받을 수 있어요. 신분증과 신청서를 준비하세요.",
+    sources: [{...answered, data: {kind: "live", origin: "official-api", date: "2026-03-05"}},
+      {title: "정부24 안내", url: "https://www.gov.kr/", lastCheckedAt: "2026-11-18", data: {kind: "stored", origin: "fixture", date: "2026년"}}],
+  })).toBe(true);
+  const runtime = new AgentRuntime(config, undefined, undefined, async () => {throw new Error("Unexpected provider call");}, prefs);
+  runtime.sealFactory = () => seal;
+  const ui = await startUi(false, {}, runtime);
+  try {
+    const browser = await launchBrowser(true);
+    try {
+      const page = await browser.newPage(), spoken: string[] = [];
+      await page.exposeFunction("testHeard", (line: string) => { spoken.push(line); });
+      await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
+        route.fulfill({contentType: "text/javascript", body: `
+          export * from '/src/speaker.ts?original';
+          export const serverTts = { cancel() {}, async speak(text) { await window.testHeard(text); return 'played'; } };
+        `}));
+      await page.route("**/api/health", async route => {
+        const response = await route.fetch();
+        await route.fulfill({json: {...await response.json(), tts: {supported: true, provider: "test-tts"}}});
+      });
+      await page.goto(ui.url);
+      await page.locator("#recovery-no").click();
+      await expect.poll(() => spoken.length, {timeout: 20_000}).toBe(1);
+      await page.locator("#workflow-title").click();
+      const row = page.locator("#research-list li");
+      await expectPage(row).toHaveCount(1);
+      const shown = await row.innerText();
+      await row.getByRole("button", {name: /^결과 듣기/}).click();
+      await expect.poll(() => spoken.length, {timeout: 20_000}).toBe(2);
+      const [automatic, button] = spoken;
+      expect(button).toBe(automatic);
+      const dates = (text: string) => [...text.matchAll(/(\d{4})-(\d{2})-(\d{2})|(\d{4})년 (\d{1,2})월 (\d{1,2})일|(\d{4})년/gu)]
+        .map(m => m[1] !== undefined ? `${m[1]}-${m[2]}-${m[3]}` : m[4] !== undefined ? `${m[4]}-${(m[5] ?? "").padStart(2, "0")}-${(m[6] ?? "").padStart(2, "0")}` : (m[7] ?? ""))
+        .sort((a, b) => a.localeCompare(b));
+      expect(dates(shown)).toEqual(["2026", "2026-03-05", "2026-11-18", "2026-11-19"]);
+      expect(dates(button ?? "")).toEqual(dates(shown));
+      expect(shown.match(/\d[\d,]*원/gu)).toEqual(["342,510원"]);
+      expect(button?.match(/\d[\d,]*원/gu)).toEqual(["342,510원"]);
+      for (const label of ["기관 자료", "저장 자료", "복지로 공식 자료", "정부24 안내"]) {
+        expect(shown, label).toContain(label);
+        expect(button, label).toContain(label);
+      }
+    } finally {await browser.close();}
+  } finally {await ui.close();}
 });

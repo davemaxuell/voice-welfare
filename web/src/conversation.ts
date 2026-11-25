@@ -656,8 +656,8 @@ function speak(text: string) {
   void speakAndWaitFrom(text);
 }
 
-export function speakResearch(text: string) {
-  if (ui.workspaceAvailable && ui.consent === "granted") speak(text);
+export function speakResearch(text: string, lang?: Lang) {
+  if (ui.workspaceAvailable && ui.consent === "granted") void speakAndWaitFrom(text, 0, speechPrefs.rate, lang);
 }
 
 const ACTIVE_RESEARCH_POLL_MS = 2000;

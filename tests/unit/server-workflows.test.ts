@@ -20,7 +20,7 @@ it("끝난 조사의 음성 인수증은 해당 작업이 전달될 때까지 �
   const [store] = await database("");
   const id = await store.enqueue(randomUUID(), "기관 안내", "ko");
   const pending = await store.pendingDeliveries();
-  expect(pending).toEqual([{id, token: expect.any(String), language: "ko", state: "queued", result: null}]);
+  expect(pending).toEqual([{id, token: expect.any(String), prompt: "기관 안내", language: "ko", state: "queued", result: null}]);
   const token = pending[0]!.token;
   await store.heard(id, token);
   expect(await store.pendingDeliveries()).toEqual(pending);

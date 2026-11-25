@@ -101,6 +101,8 @@ const ProgressSchema = z.object({ seq: z.number(), backend_status: z.string() })
 export type ProgressSnapshot = z.infer<typeof ProgressSchema>;
 const JobSchema = z.object({
   id: text, prompt: text, state: text,
+  language: LangSchema.optional().catch(undefined),
+  speech: opt(text),
   questionRevision: opt(z.number().int().positive()),
   result: opt(StoredResearch).catch(undefined),
 });

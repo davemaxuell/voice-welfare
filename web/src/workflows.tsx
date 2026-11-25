@@ -50,7 +50,7 @@ export function WorkflowPanel({
   sessionId: string | undefined;
   lang: Lang;
   directActions?: boolean;
-  onRead: (text: string) => void;
+  onRead: (text: string, lang: Lang | undefined) => void;
   onStatus?: (line: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<Workspace | undefined>(undefined);
@@ -288,6 +288,7 @@ export function WorkflowPanel({
     <ul id="research-list" className="research-list">{snapshot?.jobs.map(job => {
       const inProgress = ACTIVE_STATES.has(job.state);
       const found = job.result?.text ?? "";
+      const speech = job.speech;
       const missing = job.result?.missing ?? [];
       const sources = (job.result?.sources ?? []).filter(source => /^https:\/\//i.test(source.url));
       const stateText = workflowStateText(job.state, lang);
@@ -328,10 +329,7 @@ export function WorkflowPanel({
         }}><label>{label("answer")} <input name="text" maxLength={600} required/></label>
           <button type="submit" aria-label={actionAria(resumeLabel, job.prompt)}>{resumeLabel}</button></form>}
         <div className="row research-actions">
-          {(found.length > 0 || missing.length > 0) && <button type="button" aria-label={actionAria(readLabel, job.prompt)} onClick={() => onRead([
-            job.prompt, found, ...sources.map(source => `${source.title}. ${label("checked")} ${source.lastCheckedAt ?? label("unknownDate")}`),
-            ...(missing.length > 0 ? [label("missing"), ...missing] : []),
-          ].filter(Boolean).join(". "))}>{readLabel}</button>}
+          {speech !== undefined && <button type="button" aria-label={actionAria(readLabel, job.prompt)} onClick={() => onRead(speech, job.language)}>{readLabel}</button>}
           {job.state === "failed" && <button type="button" aria-label={actionAria(retryLabel, job.prompt)} onClick={() => void change("/research", "POST", {
             text: job.prompt, consent: true, requestId: crypto.randomUUID(),
           }, { feedback: workflowText("retriedJob", lang, { title: summarizeTitle(job.prompt) }), markActive: true })}>{retryLabel}</button>}

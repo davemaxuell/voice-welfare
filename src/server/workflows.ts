@@ -6,13 +6,13 @@ import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
 import { DATA_DATE, SourceData, StoredResearch, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
-import { RESEARCH_UNDELIVERED } from "../core/research_copy.ts";
 import { strip } from "../core/text.ts";
-import { draft, LangSchema, type Draft, type Lang } from "../core/turn.ts";
+import { draft, LangSchema, type Draft, type Lang, type SpeechPrefs } from "../core/turn.ts";
 import { REDACTED, detectSensitive, redactPictureText, type SecretSpan } from "../safety/privacy.ts";
+import { researchReading } from "../speech/research_reading.ts";
 import { withDeadline } from "../voice/live.ts";
 import { AsyncLock } from "./recovery.ts";
-import { LEASE_SECONDS, MAX_ATTEMPTS, WorkflowRejected, WorkflowStore, canonicalUuid, installationOwner, type ClaimedJob, type Note } from "./workflow_store.ts";
+import { LEASE_SECONDS, MAX_ATTEMPTS, WorkflowRejected, WorkflowStore, canonicalUuid, installationOwner, type ClaimedJob, type JobRow, type Note } from "./workflow_store.ts";
 
 /** PiiScanner.scan: 글마다 모델이 찾은 비밀 구간. 모델이 없으면 규칙만 쓴다. */
 export type Scan = (texts: readonly string[]) => Promise<(readonly SecretSpan[])[]>;
@@ -162,6 +162,7 @@ export interface WorkspaceSession {
   readonly consentStatus: string;
   readonly lang: string;
   readonly generation: number;
+  readonly personal?: { speech(): Pick<SpeechPrefs, "length"> } | undefined;
   readonly deps?: {
     recallNotes?: ((query: string) => Promise<string[]>) | undefined;
     delegateResearch?: ((requestId: string, query: string) => Promise<boolean>) | undefined;
@@ -183,12 +184,11 @@ const RESEARCH_TIME_LIMIT_MS = 5 * 60_000;
 const RESEARCH_TOTAL_MS = 3 * RESEARCH_TIME_LIMIT_MS;
 const MAX_CONTINUATIONS = 2;
 const RENEW_EVERY_MS = LEASE_SECONDS * 1000 / 2;
-const RESEARCH_SPEECH = {
-  ko: { none: "아직 확인할 조사 결과가 없어요.", sources: "출처", checked: "확인일", undated: "날짜 기록 없음", missing: "확인이 남은 항목" },
-  en: { none: "There are no saved research results ready yet.", sources: "Sources", checked: "Checked", undated: "Date unavailable", missing: "Still to verify" },
-  zh: { none: "目前还没有可查看的调查结果。", sources: "来源", checked: "核实日期", undated: "日期未知", missing: "待核实项目" },
-  ja: { none: "確認できる調査結果はまだありません。", sources: "出典", checked: "確認日", undated: "日付不明", missing: "確認が残っている項目" },
+const NO_SAVED_RESEARCH: Record<Lang, string> = {
+  ko: "아직 확인할 조사 결과가 없어요.", en: "There are no saved research results ready yet.",
+  zh: "目前还没有可查看的调查结果。", ja: "確認できる調査結果はまだありません。",
 };
+const IN_PROGRESS = new Set(["queued", "running"]);
 
 export class Workflows {
   readonly events = new InMemoryEventLog();
@@ -486,6 +486,11 @@ export class Workflows {
     }
   }
 
+  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result">): string {
+    return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data },
+      { brevity: session.personal?.speech().length ?? "normal", speakable: text => session.speakable?.(text) !== false });
+  }
+
   bind(session: WorkspaceSession): void {
     const deps = session.deps;
     if (deps === undefined) return;
@@ -503,26 +508,24 @@ export class Workflows {
       const permitted = () => this.personal && session.consentStatus === "granted";
       if (!permitted()) return undefined;
       const generation = session.generation;
-      const copy = RESEARCH_SPEECH[lang];
       const jobs = await (await this.store()).jobs();
       if (!permitted() || generation !== session.generation) return undefined;
       for (const job of jobs) {
-        if (!["completed", "partial", "needs_input", "incomplete"].includes(job.state)) continue;
-        const saved = StoredResearch.safeParse(job.result);
-        if (!saved.success) continue;
-        const { text, sources, missing } = saved.data;
-        if ((text ?? "").length === 0 && missing.length === 0) continue;
-        const citations = sources.map(source => ({ ...source, lastCheckedAt: source.lastCheckedAt ?? "" }));
-        return draft("IDLE", "web-answer", [
-          job.prompt, text,
-          ...(sources.length === 0 ? [] : [copy.sources, ...sources.map(source =>
-            `${source.title} · ${copy.checked} ${source.lastCheckedAt ?? copy.undated}`)]),
-          ...(missing.length === 0 ? [] : [copy.missing, ...missing]),
-        ].filter(Boolean).join(". "), { lang, sources: citations });
+        if (!["completed", "partial", "needs_input", "incomplete"].includes(job.state) || !hasReading(job)) continue;
+        const sources = StoredResearch.safeParse(job.result).data?.sources ?? [];
+        return draft("IDLE", "web-answer", this.reading(session, job), {
+          lang: LangSchema.safeParse(job.language).data ?? "ko",
+          sources: sources.map(source => ({ ...source, lastCheckedAt: source.lastCheckedAt ?? "" })),
+        });
       }
-      return draft("IDLE", "web-answer", copy.none, { lang });
+      return draft("IDLE", "web-answer", NO_SAVED_RESEARCH[lang], { lang });
     };
   }
+}
+
+function hasReading(job: Pick<JobRow, "state" | "result">): boolean {
+  const saved = IN_PROGRESS.has(job.state) ? undefined : StoredResearch.safeParse(job.result).data;
+  return saved !== undefined && ((saved.text ?? "").length > 0 || saved.missing.length > 0);
 }
 
 type Access<S> = (sid: string, c: Context) => S | Response;
@@ -544,7 +547,7 @@ export function registerWorkflows<S extends WorkspaceSession>(app: Hono, service
     if (session instanceof Response) return session;
     const store = await service.store();
     const [jobs, notes] = await Promise.all([store.jobs(), store.notes()]);
-    return c.json({ jobs, notes });
+    return c.json({ jobs: jobs.map(job => hasReading(job) ? { ...job, speech: service.reading(session, job) } : job), notes });
   });
 
   app.get(base + "/deliveries", async c => {
@@ -552,14 +555,10 @@ export function registerWorkflows<S extends WorkspaceSession>(app: Hono, service
     if (session instanceof Response) return session;
     const store = await service.store();
     const rows = await store.pendingDeliveries();
-    const pending = rows.map(job => {
-      const result = StoredResearch.safeParse(job.result);
-      if (result.success && [result.data.text ?? "", ...result.data.missing].some(value => session.speakable?.(value) === false)) {
-        const lang = LangSchema.safeParse(job.language).data ?? "ko";
-        return {...job, result: {text: RESEARCH_UNDELIVERED[lang]}};
-      }
-      return job;
-    });
+    const pending = rows.map(job => ({
+      id: job.id, token: job.token, state: job.state, language: LangSchema.safeParse(job.language).data ?? "ko",
+      speech: service.reading(session, job),
+    }));
     return c.json({pending});
   });
   app.delete(base + "/research/:jobId/delivery/:token", async c => {
