@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import * as browser from "../../src/agents/web/browser/index.ts";
 import { STACK } from "../../src/core/model_stack.ts";
-import type { ResearchDesk } from "../../src/core/research_desk.ts";
+import type { JobPhase, ResearchDesk, SavedJob } from "../../src/core/research_desk.ts";
 import { detectScriptLang } from "../../src/language/i18n.ts";
 import { parseDecision, PublicTask, reviewCompletion } from "../../src/orchestrator/public_task.ts";
 import { loadConfig } from "../../src/server/runtime.ts";
@@ -321,4 +321,162 @@ it("맡기지 못한 조사는 마지막으로 맡긴 번호를 바꾸지 않고
   expect(failed.researchDelivery).toBeUndefined();
   expect(session.saved.lastSaved).toBe("job-2");
   expect(delegate).toHaveBeenCalledTimes(3);
+});
+
+const unusedFields = {requestedFacts: [], exclusions: [], continuation: false, choices: []};
+const readSaved = (jobs: string[]) => ({public_service_decision: {kind: "saved_research", research: {action: "read", jobs, answer: null}, ...unusedFields}});
+const savedJob = (id: string, request: string, phase: JobPhase): SavedJob => ({id, request, language: "ko", phase, savedOn: "2026-11-25"});
+const ASKED = "아까 맡긴 거 어떻게 됐어?";
+function deskOf(jobs: SavedJob[]) {
+  const recent = vi.fn<ResearchDesk["recent"]>(async limit => jobs.slice(0, limit));
+  const read = vi.fn<ResearchDesk["read"]>(async jobId => ({
+    jobId, speech: `‘${jobs.find(job => job.id === jobId)?.request}’ 조사 결과예요. 신분증을 준비하세요.`, lang: "ko", sources: [], receipt: {token: "receipt-" + jobId},
+  }));
+  return {recent, read, delegate: vi.fn<ResearchDesk["delegate"]>(async () => undefined)};
+}
+const plannerPayloads = (model: FakeLlm) => model.calls.filter(call => call.schemaName === "public_service_decision")
+  .map(call => z.record(z.string(), z.unknown()).parse(JSON.parse(call.user)));
+
+it("제 말로 맡긴 조사를 물으면 플래너가 고른 조사를 읽어 주고 신청 기록 명령으로 가지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  const records = vi.spyOn(session.personalDialogue, "run");
+  const model = new FakeLlm(readSaved(["j2"]));
+  withLlm(session, model);
+  const reply = await session.handleTurn(ASKED);
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: "‘기초연금 신청 서류’ 조사 결과예요. 신분증을 준비하세요.",
+    savedResearch: {jobId: "job-2", token: "receipt-job-2", reading: true}});
+  expect(desk.read.mock.calls.map(([jobId]) => jobId)).toEqual(["job-2"]);
+  expect(records).not.toHaveBeenCalled();
+  expect(plannerPayloads(model)).toMatchObject([{utterance: ASKED, savedJobs: [
+    {ref: "j1", request: "아동수당 신청 방법", state: "working", savedOn: "2026-11-25"},
+    {ref: "j2", request: "기초연금 신청 서류", state: "ready", savedOn: "2026-11-25"},
+  ]}]);
+});
+
+it("같은 말에 플래너가 신청 기록이라고 하면 전처럼 신청 기록을 알려 주고 조사는 읽지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  const records = vi.spyOn(session.personalDialogue, "run");
+  withLlm(session, new FakeLlm({public_service_decision: {kind: "existing", ...unusedFields}}));
+  const reply = await session.handleTurn(ASKED);
+  expect(reply.intentType).toBe("PERSONAL_APP_STATUS");
+  expect(reply.speech).toContain("기록된 신청이 없어요.");
+  expect(records.mock.calls.map(([command]) => command.kind)).toEqual(["app-status"]);
+  expect(reply.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
+});
+
+it("읽을 수 있는 조사가 여럿인데 하나를 짚지 않았으면 요청을 불러 주며 묻고 아무것도 읽지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([
+    savedJob("job-1", "아동수당 신청 방법", {kind: "ready"}), savedJob("job-2", "조사 중인 것", {kind: "working"}),
+    savedJob("job-3", "기초연금 신청 서류", {kind: "asking", revision: 1}),
+  ]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(readSaved([])));
+  const reply = await session.handleTurn(ASKED);
+  expect(reply.speech).toBe("맡긴 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’ 중 어떤 것을 읽어 드릴까요?");
+  expect(reply.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
+});
+
+it("읽을 수 있는 조사가 넷이면 최근 세 건만 불러 주고, 플래너가 둘을 짚으면 그 둘만 묻는다", async () => {
+  const {session} = await open();
+  const jobs = ["가", "나", "다", "라"].map((request, i) => savedJob(`job-${i + 1}`, request, {kind: "ready"}));
+  session.deps.research = deskOf(jobs);
+  withLlm(session, new FakeLlm(readSaved([])));
+  expect((await session.handleTurn(ASKED)).speech).toBe("맡긴 조사가 여러 개예요. ‘가’, ‘나’, ‘다’ 중 어떤 것을 읽어 드릴까요?");
+  withLlm(session, new FakeLlm(readSaved(["j2", "j4"])));
+  expect((await session.handleTurn(ASKED)).speech).toBe("맡긴 조사가 여러 개예요. ‘나’, ‘라’ 중 어떤 것을 읽어 드릴까요?");
+});
+
+it.each([
+  ["짚은 조사가 아직 조사 중이면 조사하고 있다고", ["j1"], "아직 조사하고 있어요. 끝나면 알려 드릴게요."],
+  ["짚은 조사가 끝났지만 읽을 것이 없으면 결과가 없다고", ["j2"], "아직 확인할 조사 결과가 없어요."],
+] as const)("%s 알리고 다른 조사를 대신 읽지 않는다", async (_name, jobs, speech) => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "중단한 조사", {kind: "ended"}),
+    savedJob("job-3", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(readSaved([...jobs])));
+  const reply = await session.handleTurn(ASKED);
+  expect(reply.speech).toBe(speech);
+  expect(reply.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
+});
+
+it("공용 기기에서 모델이 저장한 조사를 골라도 저장소를 열지 않고 개인 기기 안내만 한다", async () => {
+  const {app, runtime, session: create} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "shared"}));
+  const {session} = await create();
+  expect(session.deps.research).toBeUndefined();
+  const store = vi.spyOn(app.workflows, "store");
+  const records = vi.spyOn(session.personalDialogue, "run");
+  const model = new FakeLlm(readSaved([]));
+  withLlm(session, model);
+  const reply = await session.handleTurn(ASKED);
+  expect(reply).toMatchObject({intentType: "CLARIFY", speech: "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요."});
+  expect(reply.savedResearch).toBeUndefined();
+  expect(plannerPayloads(model).map(payload => Object.keys(payload).includes("savedJobs"))).toEqual([false]);
+  expect(store).not.toHaveBeenCalled();
+  expect(records).not.toHaveBeenCalled();
+});
+
+it("모델이 목록에 없는 조사를 가리키면 신청 기록이나 다른 명령으로 넘기지 않고 어느 조사인지 되묻는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  const records = vi.spyOn(session.personalDialogue, "run");
+  const model = new FakeLlm(readSaved(["j2"]));
+  withLlm(session, model);
+  const reply = await session.handleTurn(ASKED);
+  expect(reply).toMatchObject({intentType: "CLARIFY", speech: "어느 조사를 말씀하시는지 잘 모르겠어요. 맡기신 조사의 주제를 말씀해 주세요."});
+  expect(reply.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
+  expect(records).not.toHaveBeenCalled();
+  expect(model.calls.map(call => call.schemaName)).toEqual(["public_service_decision"]);
+});
+
+it("외국어로 말해도 플래너에 맡겨 둔 조사 목록이 가고, 저장한 조사 작업의 플래너에는 가지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  session.setLanguage("en");
+  const model = new FakeLlm({public_service_decision: {kind: "conversation", reply: "Sure.", ...unusedFields}});
+  withLlm(session, model);
+  expect((await session.handleTurn("How did the research I asked for turn out?")).speech).toBe("Sure.");
+  expect(plannerPayloads(model)).toMatchObject([{replyLanguage: "en", savedJobs: [{ref: "j1", request: "기초연금 신청 서류", state: "ready"}]}]);
+
+  const background = new FakeLlm({public_service_decision: {kind: "clarify", question: "어느 지역인가요?", goal: "기초연금 신청 서류", ...unusedFields}});
+  withLlm(session, background);
+  desk.recent.mockClear();
+  await session.researchPublic("기초연금 신청 서류를 알려줘", "ko");
+  const [payload] = plannerPayloads(background);
+  expect(payload).toBeDefined();
+  expect(Object.keys(payload ?? {})).not.toContain("savedJobs");
+  expect(desk.recent).not.toHaveBeenCalled();
+});
+
+it("조사 목록을 읽지 못해도 조사와 상관없는 요청은 그대로 답한다", async () => {
+  const {session} = await open();
+  session.deps.research = {...deskOf([]), recent: async () => { throw new Error("저장소를 열 수 없음"); }};
+  const model = new FakeLlm({public_service_decision: {kind: "conversation", reply: "안녕하세요.", ...unusedFields}});
+  withLlm(session, model);
+  expect((await session.handleTurn("안녕")).speech).toBe("안녕하세요.");
+  expect(Object.keys(plannerPayloads(model)[0] ?? {})).not.toContain("savedJobs");
+});
+
+it("조사 목록을 읽지 못하면 플래너에 목록을 보내지 않고, 모델이 저장한 조사를 골라도 읽지 않고 어느 조사인지 되묻는다", async () => {
+  const {session} = await open();
+  const desk = {...deskOf([]), recent: async () => { throw new Error("저장소를 열 수 없음"); }};
+  session.deps.research = desk;
+  const model = new FakeLlm(readSaved([]));
+  withLlm(session, model);
+  const reply = await session.handleTurn(ASKED);
+  expect(reply).toMatchObject({intentType: "CLARIFY", speech: "어느 조사를 말씀하시는지 잘 모르겠어요. 맡기신 조사의 주제를 말씀해 주세요."});
+  expect(Object.keys(plannerPayloads(model)[0] ?? {})).not.toContain("savedJobs");
+  expect(desk.read).not.toHaveBeenCalled();
 });
