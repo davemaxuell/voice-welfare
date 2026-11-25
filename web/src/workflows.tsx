@@ -1,3 +1,4 @@
+import { sourceData } from "../../src/core/research.ts";
 import type { Lang } from "../../src/core/turn.ts";
 // 자료 조사와 저장한 메모(개인 PC). 패널이 열려 있으면 3.5초, 닫혀 있어도 진행 중인 조사가 있을 때만 10초마다 읽는다.
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
@@ -288,7 +289,6 @@ export function WorkflowPanel({
       const found = job.result?.text ?? "";
       const missing = job.result?.missing ?? [];
       const sources = (job.result?.sources ?? []).filter(source => /^https:\/\//i.test(source.url));
-      const data = job.result?.data;
       const stateText = workflowStateText(job.state, lang);
       const note = workflowStateNote(job.state, lang);
       const updated = timestamps[job.id];
@@ -308,10 +308,13 @@ export function WorkflowPanel({
         {note.length > 0 && <p className="research-note">{note}</p>}
         {found.length > 0 && <p className="research-result">{found}</p>}
         {missing.length > 0 && <><p className="research-missing-title">{label("missing")}</p><ul className="research-missing">{missing.map((part, i) => <li key={i}>{part}</li>)}</ul></>}
-        {data !== undefined && <p className="research-meta">{label(data.kind)} · {label("dataDate")} {data.date ?? label("unknownDate")}</p>}
-        {sources.length > 0 && <p className="research-sources">{sources.map((source, i) => <Fragment key={`${source.url}-${i}`}>
-          <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{" · "}{label("checked")} {source.lastCheckedAt ?? label("unknownDate")}{" "}
-        </Fragment>)}</p>}
+        {sources.map((source, i) => {
+          const data = job.result === undefined ? undefined : sourceData(job.result, source);
+          return <Fragment key={`${source.url}-${i}`}>
+            <p className="research-sources"><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{" · "}{label("checked")} {source.lastCheckedAt ?? label("unknownDate")}</p>
+            {data !== undefined && <p className="research-meta">{label(data.kind)} · {label("dataDate")} {data.date ?? label("unknownDate")}</p>}
+          </Fragment>;
+        })}
         {job.questionRevision !== undefined && <form key={job.questionRevision} className="research-answer-form" onSubmit={event => {
           event.preventDefault();
           const form = event.currentTarget;

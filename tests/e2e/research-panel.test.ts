@@ -211,6 +211,27 @@ it("여덟 가지 조사 상태를 각기 다른 표시·안내·시각·고유 
   expect(buttonNames).toContain("조사 이어가기: 지역별 바우처 문의");
 });
 
+it("출처마다 자료 종류와 기준일을 보여 주고, 옛 기록은 조사 전체 줄로 보여 주며, 깨진 기록 하나가 목록을 비우지 않는다", async () => {
+  const dated = { ...source, data: { kind: "live", origin: "official-api", date: "2026년" } };
+  const undated = { title: "복지로 저장 자료", url: "https://www.bokjiro.go.kr/stored", lastCheckedAt: "2026-11-18", data: { kind: "stored", origin: "fixture" } };
+  const legacy = { id: "j-legacy", prompt: "옛 형식으로 저장한 조사", state: "completed", result: { text: "신청서가 필요합니다.", sources: [source],
+    data: { kind: "private-program", origin: "공공데이터포털", date: "2026-11-18" } } };
+  const bare = { id: "j-bare", prompt: "자료 정보가 없는 조사", state: "completed", result: { text: "답입니다.", sources: [source] } };
+  await openWorkspace([
+    { id: "j-two", prompt: "서류와 지급일", state: "completed", result: { text: "서류와 지급일입니다.", sources: [dated, undated, { title: 7 }] } },
+    legacy, bare, { id: 5, prompt: ["깨진 기록"] }, { id: "j-odd", prompt: "결과가 깨진 조사", state: "failed", result: "oops" },
+  ]);
+  await page.locator("#workflow-title").click();
+  const row = (id: string) => page.locator("#research-list li").filter({ hasText: id });
+  await screen(page.locator("#research-list li")).toHaveCount(4);
+  await screen(row("서류와 지급일").locator(".research-meta")).toHaveText(["기관 자료 · 자료 기준일 2026년", "저장 자료 · 자료 기준일 날짜 기록 없음"]);
+  await screen(row("서류와 지급일").locator(".research-sources")).toHaveCount(2);
+  await screen(row("옛 형식").locator(".research-meta")).toHaveText("민간 사업 자료 · 자료 기준일 2026-11-18");
+  await screen(row("자료 정보가 없는").locator(".research-meta")).toHaveCount(0);
+  await screen(row("자료 정보가 없는").locator(".research-sources")).toContainText("복지로 공식 안내");
+  await screen(row("결과가 깨진")).toContainText("실패");
+});
+
 it("조사 등록 시 작업 이름을 알리고, 오류 코드를 안내한 뒤 다음 새로고침이 성공하면 오류를 지운다", async () => {
   let jobs: unknown[] = [];
   let failNextGet = false;

@@ -2,6 +2,7 @@ import { issueText, workspaceText } from "./workspace-language.ts";
 import { getSpeechLang } from "./audio.ts";
 // 서버와 주고받는 모든 요청. 응답은 여기서 zod로 검증해 화면이 쓰는 모양으로만 넘긴다(Python server/app.py의 계약).
 import { z } from "zod";
+import { StoredResearch } from "../../src/core/research.ts";
 import { LangSchema, SessionStateSchema, type Lang } from "../../src/core/turn.ts";
 import type { LiveAudio } from "./mic.ts";
 import { TRANSCRIPTION_DEADLINE_MS } from "../../src/voice/recovery.ts";
@@ -101,15 +102,15 @@ export type ProgressSnapshot = z.infer<typeof ProgressSchema>;
 const JobSchema = z.object({
   id: text, prompt: text, state: text,
   questionRevision: opt(z.number().int().positive()),
-  result: opt(z.object({
-    text: opt(text), sources: opt(z.array(z.object({ url: text, title: text, lastCheckedAt: opt(text), version: opt(text) }))),
-    missing: opt(z.array(text)),
-    data: opt(z.object({ kind: z.enum(["live", "stored", "private-program"]), origin: text, date: opt(text) })),
-  })),
+  result: opt(StoredResearch).catch(undefined),
 });
 const NoteSchema = z.object({ id: text, body: text });
 export type Note = z.infer<typeof NoteSchema>;
-export const WorkspaceSchema = z.object({ jobs: z.array(JobSchema), notes: z.array(NoteSchema) });
+const jobs = z.array(z.unknown()).transform(rows => rows.flatMap(row => {
+  const job = JobSchema.safeParse(row);
+  return job.success ? [job.data] : [];
+}));
+export const WorkspaceSchema = z.object({ jobs, notes: z.array(NoteSchema) });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
 export type ErrorKind = "network" | "timeout" | "server" | "expired";
