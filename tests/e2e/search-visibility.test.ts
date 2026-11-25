@@ -38,7 +38,7 @@ it("test_answer_first_then_show_on_request_and_keep_the_page", async () => {
   const {session, launches} = await desktop();
   const quiet = vi.fn<NonNullable<OrchestratorDeps["quietSearch"]>>().mockResolvedValue({speech: fact, sources: [source]});
   const delegate = vi.fn<ResearchDesk["delegate"]>();
-  session.deps.quietSearch = quiet; session.deps.research = {recent: async () => [], delegate, read: async () => undefined};
+  session.deps.quietSearch = quiet; session.deps.research = {recent: async () => [], delegate, read: async () => undefined, answer: async () => "refused", cancel: async () => undefined};
   let mode: "quiet" | "visible" = "quiet";
   const model = new FakeLlm(({schemaName}) => schemaName === "public_service_decision" ? lookup(mode) : schemaName === "public_browse_step" ?
     {action: "answer", target: null, answer: null, claims: [{fact: "dates", quote: fact}]} : undefined);

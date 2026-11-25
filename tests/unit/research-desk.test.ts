@@ -188,6 +188,58 @@ describe("연구 책상", () => {
     expect(await desk.read(randomUUID(), "normal")).toBeUndefined();
   });
 
+  it("답은 지금 질문의 번호로 넣을 때만 받아 조사를 다시 줄에 세우고, 지난 번호나 보내면 안 되는 답은 아무것도 바꾸지 않는다", async () => {
+    const { flows, desk } = setup();
+    const store = await flows.store();
+    const id = await asking(store, "아동수당 신청 방법", 1);
+    const before = await store.jobs();
+    expect(before[0]).toMatchObject({ id, state: "needs_input", questionRevision: 1 });
+    expect(await desk.answer(id, 2, "서울")).toBe("stale");
+    expect(await desk.answer(randomUUID(), 1, "서울")).toBe("stale");
+    for (const unsafe of ["비밀번호는 1234예요", "메일 name@example.org", "", "가".repeat(601)]) expect(await desk.answer(id, 1, unsafe), unsafe).toBe("unsafe");
+    expect(await store.jobs()).toEqual(before);
+
+    expect(await desk.answer(id, 1, "서울")).toBe("queued");
+    const [after] = await store.jobs();
+    expect(["queued", "running"]).toContain(after?.state);
+    expect(after?.deliveryToken).not.toBe(before[0]?.deliveryToken);
+    expect((await desk.recent(10))[0]?.phase).toEqual({ kind: "working" });
+    expect(await desk.answer(id, 1, "부산")).toBe("stale");
+  });
+
+  it("한 번에 끝나는 조사의 되물음과 질문 횟수를 다 쓴 되물음에는 답을 넣을 수 없다", async () => {
+    const { flows, desk } = setup();
+    const store = await flows.store();
+    const onePass = await finished(store, "한 번에 끝나는 조사의 질문", "needs_input", { text: "어느 지역인가요?" });
+    const exhausted = await asking(store, "질문 소진", 2);
+    const before = await store.jobs();
+    expect(await desk.answer(onePass, 1, "서울")).toBe("stale");
+    expect(await desk.answer(exhausted, 1, "서울")).toBe("stale");
+    expect(await store.jobs()).toEqual(before);
+  });
+
+  it("취소는 조사 중이거나 되묻는 조사만 그만두고 그 요청과 남은 인수증을 돌려주며, 이미 끝난 조사에는 아무것도 하지 않는다", async () => {
+    const { flows, desk } = setup();
+    const store = await flows.store();
+    const ready = await finished(store, "끝난 조사", "completed", { text: "답" });
+    const heard = await asking(store, "질문을 들은 조사", 1);
+    const waiting = await asking(store, "질문을 아직 못 들은 조사", 1);
+    const queued = await store.enqueue(randomUUID(), "차례를 기다리는 조사", "ko");
+    const tokens = new Map((await store.pendingDeliveries()).map(row => [row.id, row.token]));
+    await store.heard(heard, tokens.get(heard) ?? "");
+
+    expect(await desk.cancel(queued)).toEqual({ request: "차례를 기다리는 조사", token: tokens.get(queued) });
+    expect(await desk.cancel(waiting)).toEqual({ request: "질문을 아직 못 들은 조사", token: tokens.get(waiting) });
+    expect(await desk.cancel(heard)).toEqual({ request: "질문을 들은 조사" });
+    const states = async () => new Map((await store.jobs()).map(job => [job.id, job.state]));
+    expect(await states()).toEqual(new Map([[queued, "cancelled"], [waiting, "cancelled"], [heard, "cancelled"], [ready, "completed"]]));
+
+    for (const ended of [queued, waiting, heard, ready, randomUUID()]) expect(await desk.cancel(ended), ended).toBeUndefined();
+    expect(await states()).toEqual(new Map([[queued, "cancelled"], [waiting, "cancelled"], [heard, "cancelled"], [ready, "completed"]]));
+    expect((await store.pendingDeliveries()).map(row => row.id).sort((a, b) => a.localeCompare(b)))
+      .toEqual([queued, waiting, ready].sort((a, b) => a.localeCompare(b)));
+  });
+
   it("개인 기기가 아니면 책상을 주지 않고, 개인 기기면 세션에 책상을 붙인다", async () => {
     const shared = setup({ pilotProfile: "shared" });
     const deps: { research?: ResearchDesk } = {};
@@ -207,6 +259,29 @@ describe("연구 책상", () => {
     expect(await desk.read(id, "normal")).toBeUndefined();
     expect(await desk.delegate(randomUUID(), "아동수당 신청 서류")).toBeUndefined();
     expect(await (await flows.store()).jobs()).toHaveLength(1);
+  });
+
+  it("동의를 거두면 답도 취소도 거절하고 조사는 그대로 둔다", async () => {
+    const { flows, session, desk } = setup();
+    const store = await flows.store();
+    const id = await asking(store, "아동수당 신청 방법", 1);
+    const before = await store.jobs();
+    session.consentStatus = "declined";
+    expect(await desk.answer(id, 1, "서울")).toBe("refused");
+    expect(await desk.cancel(id)).toBeUndefined();
+    expect(await store.jobs()).toEqual(before);
+  });
+
+  it("답을 살피는 사이 세션 세대가 바뀌면 저장소에 넣지 않는다", async () => {
+    const { flows, session, desk } = setup();
+    const store = await flows.store();
+    const id = await asking(store, "아동수당 신청 방법", 1);
+    const before = await store.jobs();
+    const check = flows.safeText.bind(flows);
+    vi.spyOn(flows, "safeText").mockImplementationOnce(async (value, maximum) => { session.generation++; return await check(value, maximum); });
+    expect(await desk.answer(id, 1, "서울")).toBe("refused");
+    expect(await store.jobs()).toEqual(before);
+    expect(await desk.answer(id, 1, "서울")).toBe("queued");
   });
 
   it("저장소를 읽는 사이 세션 세대가 바뀌면 읽은 것을 내주지 않는다", async () => {

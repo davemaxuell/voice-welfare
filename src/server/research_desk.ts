@@ -41,5 +41,18 @@ export function createResearchDesk(flows: Workflows, session: WorkspaceSession):
         ...(job.deliveryToken === undefined ? {} : { receipt: { token: job.deliveryToken } }),
       };
     }),
+
+    async answer(jobId, revision, text) {
+      const generation = session.generation;
+      if (!permitted()) return "refused";
+      return await flows.answer(jobId, revision, text, () => permitted() && session.generation === generation);
+    },
+
+    cancel: jobId => guarded(async () => {
+      const store = await flows.store();
+      if (!await flows.cancel(store, jobId)) return undefined;
+      const job = (await store.jobs()).find(row => row.id === jobId);
+      return job === undefined ? undefined : { request: job.prompt, ...(job.deliveryToken === undefined ? {} : { token: job.deliveryToken }) };
+    }),
   };
 }

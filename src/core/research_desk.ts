@@ -30,4 +30,6 @@ export interface ResearchDesk {
   recent(limit: number): Promise<readonly SavedJob[]>;
   delegate(idempotencyKey: string, goal: string): Promise<{ jobId: string } | undefined>;
   read(jobId: string, brevity: Brevity): Promise<Reading | undefined>;
+  answer(jobId: string, revision: number, text: string): Promise<AnswerOutcome>;
+  cancel(jobId: string): Promise<{ request: string; token?: string } | undefined>;
 }

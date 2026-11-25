@@ -311,7 +311,7 @@ it("맡기지 못한 조사는 마지막으로 맡긴 번호를 바꾸지 않고
     const jobId = jobs.shift();
     return jobId === undefined ? undefined : {jobId};
   });
-  session.deps.research = {recent: async () => [], delegate, read: async () => undefined};
+  session.deps.research = {...deskOf([]), delegate};
   expect(await ask()).toMatchObject({researchDelivery: "queued"});
   expect(session.saved.lastSaved).toBe("job-1");
   expect(await ask()).toMatchObject({researchDelivery: "queued"});
@@ -332,7 +332,12 @@ function deskOf(jobs: SavedJob[]) {
   const read = vi.fn<ResearchDesk["read"]>(async jobId => ({
     jobId, speech: `‘${jobs.find(job => job.id === jobId)?.request}’ 조사 결과예요. 신분증을 준비하세요.`, lang: "ko", sources: [], receipt: {token: "receipt-" + jobId},
   }));
-  return {recent, read, delegate: vi.fn<ResearchDesk["delegate"]>(async () => undefined)};
+  const answer = vi.fn<ResearchDesk["answer"]>(async () => "queued");
+  const cancel = vi.fn<ResearchDesk["cancel"]>(async jobId => {
+    const request = jobs.find(job => job.id === jobId)?.request;
+    return request === undefined ? undefined : {request, token: "receipt-" + jobId};
+  });
+  return {recent, read, answer, cancel, delegate: vi.fn<ResearchDesk["delegate"]>(async () => undefined)};
 }
 const plannerPayloads = (model: FakeLlm) => model.calls.filter(call => call.schemaName === "public_service_decision")
   .map(call => z.record(z.string(), z.unknown()).parse(JSON.parse(call.user)));
