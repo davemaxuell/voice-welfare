@@ -20,7 +20,7 @@ export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export const RESTRICTIONS = ["login", "application", "submission", "personal_input", "screen_capture"] as const;
 export const READ_SKILLS = ["READ_MAIN", "LIST_LINKS", "DESCRIBE_SCREEN", "ABOUT_SITE", "CURRENT_STEP", "REPHRASE", "READ_START_GUIDE", "WHAT_CAN_I_SAY"] as const;
 export const DECISION_KINDS = ["open_agency", "find_information", "inspect_personal", "browser_command", "clarify", "read_skill", "conversation", "delegate_research", "saved_research", "existing", "review_before_output"] as const;
-export const SAVED_ACTIONS = ["read"] as const;
+export const SAVED_ACTIONS = ["read", "answer", "cancel"] as const;
 export type Fact = typeof FACTS[number];
 export type SearchMode = typeof SEARCH_MODES[number];
 export type Restriction = typeof RESTRICTIONS[number];
@@ -104,11 +104,12 @@ const nullable = <T extends z.ZodType>(schema: T) => schema.nullish().transform(
 const COMMANDS = ["PREV", "OPEN_BROWSER", "OPEN_SITE", "FOLLOW_LINK", "SEARCH", "LIST_LINKS", "READ_MAIN"] as const;
 export const FOREGROUND_BROWSER_INTENTS: ReadonlySet<Intent["type"]> = new Set<Intent["type"]>([...COMMANDS, ...READ_SKILLS]);
 const command = z.strictObject({type: z.enum(COMMANDS), target: nullable(z.string().min(1).max(240)), more: z.boolean()});
-const savedResearch = z.strictObject({
-  action: z.enum(SAVED_ACTIONS),
-  jobs: z.array(z.string().regex(/^j[1-8]$/u)).max(8),
-  answer: z.null().optional(),
-});
+const savedJobRefs = z.array(z.string().regex(/^j[1-8]$/u)).max(8);
+const savedAction = z.enum(SAVED_ACTIONS);
+const savedResearch = z.discriminatedUnion("action", [
+  z.strictObject({ action: savedAction.exclude(["answer"]), jobs: savedJobRefs, answer: z.null().optional() }),
+  z.strictObject({ action: savedAction.extract(["answer"]), jobs: savedJobRefs, answer: z.string() }),
+]);
 const DECISION = z.strictObject({
   kind: z.enum(DECISION_KINDS),
   command: nullable(command),
@@ -310,13 +311,23 @@ only for read_skill and reply only for conversation. Use null or empty lists for
 const SAVED_JOBS = `
 savedJobs lists research the resident earlier asked 청음 to carry out and save, newest first. Each entry has a ref,
 the request, the Korea date it was saved and a state: working is still being researched, ready has a result to read,
-asking and asking-restart have a question for the resident, ended has nothing to read. lastSaved marks the job
-delegated most recently in this conversation. The list holds no results, so say nothing about what a job found.
-Use saved_research with action read when the resident asks to hear, read or check on research they delegated,
-in any wording, including whether it is finished or how it turned out. In jobs give the ref of every listed job
-their words could mean. Leave jobs empty when they did not single one out, and never pick one for them.
-Set answer to null. Requests about application reminders saved locally in 청음 still use existing, and a request
-to start new research still uses delegate_research. Use null research for every other kind.`;
+asking and asking-restart have put a question to the resident, ended has nothing to read. lastSaved marks the job
+delegated most recently in this conversation. The list holds no results and no question text, so say nothing
+about what a job found or asked.
+Use saved_research for a request about this saved research, in any wording, and choose one action.
+Use read when the resident asks to hear, read or check on research they delegated, including whether it is
+finished or how it turned out.
+Use answer when the resident replies to the question of a job in state asking. Take an utterance as that reply
+when it reads as an answer and neither task nor dialogue holds a pending question it could answer. Copy the
+reply verbatim from the utterance into answer.
+Use cancel when the resident asks to cancel, stop or drop research they delegated.
+In jobs give the ref of every listed job their words could mean. Leave jobs empty when they did not single one
+out, and never pick one for them. A bare reference such as "그거" or "that one" right after delegating means the
+lastSaved job. Set answer to null unless the action is answer.
+A job in state asking-restart cannot take an answer. When the resident replies to its question, use
+delegate_research with a goal that combines that job's request and their reply.
+Requests about application reminders saved locally in 청음 still use existing, and a request to start new
+research still uses delegate_research. Use null research for every other kind.`;
 
 const uniqueInOrder = <T>(values: Iterable<T>) => [...new Set(values)];
 
@@ -386,7 +397,8 @@ export function parseDecision(raw: unknown, spansFor: SpansFor = () => []): Publ
     || (d.command.more && !["READ_MAIN", "LIST_LINKS"].includes(d.command.type)))) return undefined;
   if (d.agency !== undefined && !PUBLIC_AGENCIES.has(d.agency) && d.kind !== "inspect_personal") return undefined;
   if (d.choices.length > 2 || d.requestedFacts.length > 8 || d.exclusions.length > 5) return undefined;
-  const values: Array<[string | undefined, number]> = [[d.agency, 100], [d.subject, 100], [d.goal, 500], [d.question, 200], [d.reply, 240], ...d.choices.map((c): [string, number] => [c, 64])];
+  const values: Array<[string | undefined, number]> = [[d.agency, 100], [d.subject, 100], [d.goal, 500], [d.question, 200], [d.reply, 240],
+    [d.research?.answer ?? undefined, 300], ...d.choices.map((c): [string, number] => [c, 64])];
   for (const [value, limit] of values) {
     if (value !== undefined && (strip(value) === "" || codePoints(value) > limit || value.includes(REDACTED)
       || /https?:\/\/|www\./iu.test(value) || redactText(value, spansFor(value)) !== value || detectSensitive(value).hasSecretValue)) {
@@ -501,7 +513,8 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
   });
   let spansFor: SpansFor = () => [];
   if (scan !== undefined && isRecord(raw)) {
-    const texts = [raw.agency, raw.subject, raw.goal, raw.question, raw.reply, ...(Array.isArray(raw.choices) ? raw.choices : [])]
+    const texts = [raw.agency, raw.subject, raw.goal, raw.question, raw.reply, isRecord(raw.research) ? raw.research.answer : undefined,
+      ...(Array.isArray(raw.choices) ? raw.choices : [])]
       .filter((value): value is string => typeof value === "string");
     const found = await scan(texts);
     const byText = new Map(texts.map((text, i) => [text, found[i] ?? []]));
@@ -510,7 +523,9 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
   const decision = parseDecision(raw, spansFor);
   if (isRecord(raw) && raw.kind === "saved_research") {
     const listed = new Set(options.saved?.jobs.map(job => job.ref));
-    const usable = options.saved !== undefined && decision?.research?.jobs.every(ref => listed.has(ref)) === true;
+    const request = decision?.research;
+    const usable = options.saved !== undefined && request !== undefined && request.jobs.every(ref => listed.has(ref))
+      && (request.action !== "answer" || destination.text.includes(request.answer));
     return usable ? decision : UNCLEAR_SAVED;
   }
   if (decision?.kind === "inspect_personal" && decision.agency !== undefined && !PUBLIC_AGENCIES.has(decision.agency) &&

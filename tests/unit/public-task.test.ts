@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { z } from "zod";
 import type { LlmRequest } from "../../src/core/llm.ts";
-import { redactText } from "../../src/safety/privacy.ts";
+import { REDACTED, redactText, type SecretSpan } from "../../src/safety/privacy.ts";
 import { translateIn } from "../../src/language/i18n.ts";
 import { planWithLlm } from "../../src/understanding/llm_planner.ts";
 import { reviewBeforeOutput, reviewEvidence } from "../../src/orchestrator/task_review.ts";
@@ -34,7 +34,7 @@ it("개인 탐색과 한 단계 명령은 앞에서 실행하는 계획에만 �
   const {command, research, outcome, needUpdate, ...properties} = DECISION_SCHEMA.properties;
   expect(needUpdate.properties.changes.items.properties.aspect.enum).toContain("region");
   expect(command.properties.type.enum).toContain("PREV");
-  expect(research.properties.action.enum).toEqual(["read"]);
+  expect(research.properties.action.enum).toEqual(["read", "answer", "cancel"]);
   expect(outcome.anyOf[0]).toMatchObject({enum: ["answer", "arrival"]});
   const additions = new Set(["inspect_personal", "browser_command", "saved_research"]);
   expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command", "saved_research"]);
@@ -149,7 +149,7 @@ it("저장한 조사 결정은 종류와 research가 짝이 맞고 읽기와 보
   const rejected: Record<string, unknown> = {
     "research 없는 saved_research": {...unused, kind: "saved_research", research: null},
     "다른 종류에 붙은 research": {...readSaved([]), kind: "existing"},
-    "아직 없는 일": {...unused, kind: "saved_research", research: {action: "cancel", jobs: ["j1"], answer: null}},
+    "모르는 일": {...unused, kind: "saved_research", research: {action: "delete", jobs: ["j1"], answer: null}},
     "목록 밖 번호": readSaved(["j9"]),
     "조사 번호를 그대로 쓴 값": readSaved(["3f1c2a9e-0000-4000-8000-000000000000"]),
     "여덟 건을 넘는 목록": readSaved(["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j8", "j1"]),
@@ -158,6 +158,54 @@ it("저장한 조사 결정은 종류와 research가 짝이 맞고 읽기와 보
     "모르는 칸": readSaved(["j1"], {result: "신분증을 준비하세요."}),
   };
   for (const [name, raw] of Object.entries(rejected)) expect(parseDecision(raw), name).toBeUndefined();
+});
+
+const savedAction = (action: string, answer: unknown, jobs: unknown = ["j1"]) => ({...unused, kind: "saved_research", research: {action, jobs, ...(answer === undefined ? {} : {answer})}});
+
+it("답하기는 답이 있을 때만, 취소와 읽기는 답이 없을 때만 받는다", () => {
+  expect(parseDecision(savedAction("answer", "서울"))?.research).toEqual({action: "answer", jobs: ["j1"], answer: "서울"});
+  expect(parseDecision(savedAction("answer", "서울이요", []))?.research).toEqual({action: "answer", jobs: [], answer: "서울이요"});
+  expect(parseDecision(savedAction("answer", "가".repeat(300)))?.research?.answer).toHaveLength(300);
+  expect(parseDecision(savedAction("answer", "😀".repeat(300)))?.research?.action).toBe("answer");
+  expect(parseDecision(savedAction("cancel", null))?.research).toMatchObject({action: "cancel", jobs: ["j1"]});
+  expect(parseDecision(savedAction("cancel", undefined, []))?.research).toMatchObject({action: "cancel", jobs: []});
+  const rejected: Record<string, unknown> = {
+    "답 없는 답하기": savedAction("answer", null),
+    "답 칸이 빠진 답하기": savedAction("answer", undefined),
+    "빈 답": savedAction("answer", "  "),
+    "글이 아닌 답": savedAction("answer", 7),
+    "삼백 자를 넘는 답": savedAction("answer", "가".repeat(301)),
+    "취소에 붙은 답": savedAction("cancel", "서울"),
+    "목록 밖 번호를 짚은 취소": savedAction("cancel", null, ["j9"]),
+  };
+  for (const [name, raw] of Object.entries(rejected)) expect(parseDecision(raw), name).toBeUndefined();
+});
+
+it("답은 다른 결정 글과 같은 검사를 거쳐 비밀 값이나 주소나 가린 자리가 있으면 받지 않는다", async () => {
+  const rejected = ["비밀번호는 1234예요", "카드 1234-5678-9012-3456", "https://example.com 에 있어요", "www.example.com", "서울 " + REDACTED];
+  for (const answer of rejected) expect(parseDecision(savedAction("answer", answer)), answer).toBeUndefined();
+  const flagged = "홍길동";
+  expect(parseDecision(savedAction("answer", flagged))?.research?.answer).toBe(flagged);
+  expect(parseDecision(savedAction("answer", flagged), text => text === flagged ? [["idnum", 0, flagged.length]] : []), "모델이 찾은 구간").toBeUndefined();
+  const saved: PlannerSaved = {jobs: [{ref: "j1", request: "기초연금 신청 서류", state: "asking", savedOn: "2026-11-25"}]};
+  const scanned: string[][] = [];
+  const scan = async (texts: readonly string[]) => { scanned.push([...texts]); return texts.map((text): SecretSpan[] => text === flagged ? [["idnum", 0, flagged.length]] : []); };
+  const decided = await decide(fake(savedAction("answer", flagged)).llm, redactText("홍길동이요"), "ko", new PublicTask(), {voice: true, recent: [], signal, saved, scan});
+  expect(scanned.flat()).toContain(flagged);
+  expect(decided).toEqual({kind: "saved_research_unclear"});
+});
+
+it("답이 주민이 한 말에 그대로 있을 때만 받고, 없으면 결정 없음이 아니라 되물을 결정이 된다", async () => {
+  const saved: PlannerSaved = {jobs: [{ref: "j1", request: "기초연금 신청 서류", state: "asking", savedOn: "2026-11-25"}]};
+  const decided = (said: string, raw: unknown) => decide(fake(raw).llm, redactText(said), "ko", new PublicTask(), {voice: true, recent: [], signal, saved});
+  expect(await decided("서울이요", savedAction("answer", "서울"))).toMatchObject({kind: "saved_research", research: {action: "answer", jobs: ["j1"], answer: "서울"}});
+  expect(await decided("서울이요", savedAction("answer", "서울이요", []))).toMatchObject({research: {action: "answer", jobs: [], answer: "서울이요"}});
+  const unclear = {kind: "saved_research_unclear"};
+  expect(await decided("서울이요", savedAction("answer", "부산"))).toEqual(unclear);
+  expect(await decided("서울이요", savedAction("answer", "서울특별시"))).toEqual(unclear);
+  expect(await decided("서울이요", savedAction("answer", null))).toEqual(unclear);
+  expect(await decided("그거 취소해 줘", savedAction("cancel", null))).toMatchObject({kind: "saved_research", research: {action: "cancel", jobs: ["j1"]}});
+  expect(await decided("그거 취소해 줘", savedAction("cancel", null, ["j2"]))).toEqual(unclear);
 });
 
 it("맡겨 둔 조사가 있을 때만 그 목록과 안내 문단을 보내고, 목록에는 정해진 칸만 싣는다", async () => {

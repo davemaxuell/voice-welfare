@@ -513,3 +513,168 @@ it("조사 목록을 읽지 못하면 플래너에 목록을 보내지 않고, �
   expect(Object.keys(plannerPayloads(model)[0] ?? {})).not.toContain("savedJobs");
   expect(desk.read).not.toHaveBeenCalled();
 });
+
+const savedDecision = (action: "read" | "answer" | "cancel", jobs: string[], answer: string | null = null) =>
+  ({public_service_decision: {kind: "saved_research", research: {action, jobs, answer}, ...unusedFields}});
+
+it.each([
+  ["취소해 줘", "STOPPED", 0, []],
+  ["작업 취소해 줘", "STOPPED", 0, []],
+  ["그거 취소해 줘", "IDLE", 1, ["job-1"]],
+  ["맡긴 조사 취소해 줘", "IDLE", 1, ["job-1"]],
+] as const)("'%s': 멈추는 말은 플래너에 가지 않고 맡긴 조사를 그대로 두며, 조사를 짚어 취소하는 말은 그 조사를 그만둔다", async (said, state, planned, cancelled) => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "기초연금 신청 서류", {kind: "working"})]);
+  session.deps.research = desk;
+  const model = new FakeLlm(savedDecision("cancel", ["j1"]));
+  withLlm(session, model);
+  const reply = await session.handleTurn(said);
+  expect(reply.state).toBe(state);
+  expect(model.calls.filter(call => call.schemaName === "public_service_decision")).toHaveLength(planned);
+  expect(desk.cancel.mock.calls.map(([jobId]) => jobId)).toEqual(cancelled);
+});
+
+it("조사를 취소하면 그 요청을 넣어 알리고, 전달이 남아 있던 조사일 때만 응답에 인수증을 싣는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "기초연금 신청 서류", {kind: "asking", revision: 1})]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("cancel", ["j2"])));
+  const pending = await session.handleTurn("기초연금 조사 취소해 줘");
+  expect(pending).toMatchObject({intentType: "SAVED_RESEARCH", speech: "‘기초연금 신청 서류’ 조사를 취소했어요.", savedResearch: {jobId: "job-2", token: "receipt-job-2", reading: false}});
+  expect(pending.researchDelivery).toBeUndefined();
+
+  desk.cancel.mockResolvedValueOnce({request: "아동수당 신청 방법"});
+  withLlm(session, new FakeLlm(savedDecision("cancel", ["j1"])));
+  const heard = await session.handleTurn("아동수당 조사 취소해 줘");
+  expect(heard.speech).toBe("‘아동수당 신청 방법’ 조사를 취소했어요.");
+  expect(heard.savedResearch).toBeUndefined();
+  expect(desk.cancel.mock.calls.map(([jobId]) => jobId)).toEqual(["job-2", "job-1"]);
+});
+
+it("이미 끝난 조사를 짚어 취소하거나 그 사이 끝났으면 이미 끝났다고 알리고 다른 조사를 대신 취소하지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "끝난 조사", {kind: "ready"}),
+    savedJob("job-3", "중단한 조사", {kind: "ended"})]);
+  session.deps.research = desk;
+  for (const ref of ["j2", "j3"]) {
+    withLlm(session, new FakeLlm(savedDecision("cancel", [ref])));
+    const reply = await session.handleTurn("그 조사 취소해 줘");
+    expect(reply.speech, ref).toBe("이미 끝났거나 취소된 조사예요.");
+    expect(reply.savedResearch, ref).toBeUndefined();
+  }
+  expect(desk.cancel).not.toHaveBeenCalled();
+
+  desk.cancel.mockResolvedValueOnce(undefined);
+  withLlm(session, new FakeLlm(savedDecision("cancel", ["j1"])));
+  expect((await session.handleTurn("아동수당 조사 취소해 줘")).speech).toBe("이미 끝났거나 취소된 조사예요.");
+  expect(desk.cancel.mock.calls.map(([jobId]) => jobId)).toEqual(["job-1"]);
+});
+
+it("방금 맡긴 조사를 취소하면 마지막으로 맡긴 번호를 지우고, 다른 조사를 취소하면 그대로 둔다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-2", "기초연금 신청 서류", {kind: "working"}), savedJob("job-1", "아동수당 신청 방법", {kind: "working"})]);
+  desk.delegate.mockResolvedValue({jobId: "job-2"});
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm({public_service_decision: delegation}));
+  const waiting = await session.handleTurn("기초연금 서류는 배경에서 조사해 줘", {fromVoice: true});
+  await session.confirm(true, waiting.pendingConfirmation?.actionId);
+  expect(session.saved.lastSaved).toBe("job-2");
+
+  const model = new FakeLlm(savedDecision("cancel", ["j2"]));
+  withLlm(session, model);
+  await session.handleTurn("아동수당 조사 취소해 줘");
+  expect(plannerPayloads(model)[0]).toMatchObject({savedJobs: [{ref: "j1", lastSaved: true}, {ref: "j2"}]});
+  expect(session.saved.lastSaved).toBe("job-2");
+  withLlm(session, new FakeLlm(savedDecision("cancel", ["j1"])));
+  expect((await session.handleTurn("그거 취소해 줘")).speech).toBe("‘기초연금 신청 서류’ 조사를 취소했어요.");
+  expect(session.saved.lastSaved).toBeUndefined();
+  expect(desk.cancel.mock.calls.map(([jobId]) => jobId)).toEqual(["job-1", "job-2"]);
+});
+
+it.each([
+  ["queued", "답을 받았어요. 이어서 조사할게요.", "queued"],
+  ["stale", "그 질문은 이미 바뀌었어요.", undefined],
+  ["unsafe", "답에 개인정보나 비밀 값이 있는 것 같아 보내지 않았어요. 공개해도 되는 말로 다시 답해 주세요.", undefined],
+  ["refused", "답을 보내지 못했어요. 다시 말씀해 주세요.", undefined],
+] as const)("되묻는 조사에 말로 답하면 플래너가 짚은 말만 그 질문의 번호로 넣고, 넣은 결과(%s)에 맞게 알린다", async (outcome, speech, delivery) => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "끝난 조사", {kind: "ready"}), savedJob("job-2", "아동수당 신청 방법", {kind: "asking", revision: 3})]);
+  desk.answer.mockResolvedValue(outcome);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("answer", [], "서울")));
+  const reply = await session.handleTurn("서울이요");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech});
+  expect(reply.researchDelivery).toBe(delivery);
+  expect(reply.savedResearch).toBeUndefined();
+  expect(desk.answer.mock.calls).toEqual([["job-2", 3, "서울"]]);
+});
+
+it("이어서 답을 받을 수 없는 되물음에 답하면 새로 맡겨 달라고 알리고 아무것도 넣지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: undefined})]);
+  session.deps.research = desk;
+  const model = new FakeLlm(savedDecision("answer", ["j1"], "서울"));
+  withLlm(session, model);
+  const reply = await session.handleTurn("서울이요");
+  expect(reply.speech).toBe("이 조사는 이어서 답을 받을 수 없어요. 새로 맡겨 주세요.");
+  expect(reply.researchDelivery).toBeUndefined();
+  expect(desk.answer).not.toHaveBeenCalled();
+  expect(plannerPayloads(model)[0]).toMatchObject({savedJobs: [{ref: "j1", state: "asking-restart"}]});
+});
+
+it("답을 기다리는 조사가 없으면 없다고 알리고, 모델이 준 답이 주민의 말에 없으면 어느 조사인지 되물으며, 어느 쪽도 답을 넣지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "기초연금 신청 서류", {kind: "ready"})]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("answer", [], "서울")));
+  expect((await session.handleTurn("서울이요")).speech).toBe("지금 답을 기다리는 조사가 없어요.");
+
+  const asking = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: 1})]);
+  session.deps.research = asking;
+  withLlm(session, new FakeLlm(savedDecision("answer", ["j1"], "부산")));
+  expect(await session.handleTurn("서울이요")).toMatchObject({intentType: "CLARIFY", speech: "어느 조사를 말씀하시는지 잘 모르겠어요. 맡기신 조사의 주제를 말씀해 주세요."});
+  expect(desk.answer).not.toHaveBeenCalled();
+  expect(asking.answer).not.toHaveBeenCalled();
+});
+
+it("답하거나 취소할 수 있는 조사가 여럿인데 하나를 짚지 않았으면 그 일에 맞는 말로 묻고 아무것도 하지 않는다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: 1}), savedJob("job-2", "끝난 조사", {kind: "ready"}),
+    savedJob("job-3", "기초연금 신청 서류", {kind: "asking", revision: 2}), savedJob("job-4", "조사 중인 것", {kind: "working"})]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("answer", [], "서울")));
+  expect((await session.handleTurn("서울이요")).speech)
+    .toBe("답을 기다리는 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’ 중 어느 것에 답하시는지, 조사 이름과 답을 함께 말씀해 주세요.");
+  withLlm(session, new FakeLlm(savedDecision("cancel", [])));
+  expect((await session.handleTurn("맡긴 조사 취소해 줘")).speech)
+    .toBe("맡긴 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’, ‘조사 중인 것’ 중 어떤 것을 취소할까요?");
+  expect(desk.answer).not.toHaveBeenCalled();
+  expect(desk.cancel).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["en", "Seoul", "It's Seoul", "Cancel the pension research"],
+  ["zh", "首尔", "是首尔", "取消养老金的调查"],
+  ["ja", "ソウル", "ソウルです", "年金の調査を取り消して"],
+] as const)("%s로 말해도 답과 취소의 응답은 그 언어의 정해진 문장이고 번역 모델을 거치지 않는다", async (lang, answer, answerSaid, cancelSaid) => {
+  const {session} = await open();
+  const request = "기초연금 신청 서류";
+  const desk = deskOf([savedJob("job-1", request, {kind: "asking", revision: 1})]);
+  session.deps.research = desk;
+  session.setLanguage(lang);
+  const korean = /[가-힣]/u;
+  const answering = new FakeLlm(savedDecision("answer", ["j1"], answer));
+  withLlm(session, answering);
+  const answered = await session.handleTurn(answerSaid);
+  expect(answered).toMatchObject({lang, researchDelivery: "queued"});
+  expect(answered.speech).not.toMatch(korean);
+  expect(desk.answer.mock.calls).toEqual([["job-1", 1, answer]]);
+
+  const cancelling = new FakeLlm(savedDecision("cancel", ["j1"]));
+  withLlm(session, cancelling);
+  const cancelled = await session.handleTurn(cancelSaid);
+  expect(cancelled).toMatchObject({lang, savedResearch: {jobId: "job-1", token: "receipt-job-1", reading: false}});
+  expect(cancelled.speech).toContain(request);
+  expect(cancelled.speech.replace(request, "")).not.toMatch(korean);
+  expect([...answering.calls, ...cancelling.calls].map(call => call.schemaName)).toEqual(["public_service_decision", "public_service_decision"]);
+});

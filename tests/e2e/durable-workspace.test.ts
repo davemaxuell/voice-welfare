@@ -93,9 +93,11 @@ it("test_restart_without_foreground_session_then_cancel_running_job", async () =
   } finally {canceled.resolve(); await restarted.close(); await prior.close();}
 });
 
-const readSaved = {kind: "saved_research", research: {action: "read", jobs: [], answer: null}, requestedFacts: [], exclusions: [], continuation: false, choices: []};
+const savedDecision = (action: "read" | "answer" | "cancel", answer: string | null = null) =>
+  ({kind: "saved_research", research: {action, jobs: [], answer}, requestedFacts: [], exclusions: [], continuation: false, choices: []});
+const readSaved = savedDecision("read");
 
-it.each(["partial", "needs_input"])("serves verified public findings as %s and preserves progress", async initialState => {
+async function twoPartResearch(initialState: "needs_input" | "partial") {
   const {app, runtime, post, session: newSession} = await service({}, {settings: true});
   runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
   runtime.services.moderation = undefined;
@@ -147,19 +149,176 @@ it.each(["partial", "needs_input"])("serves verified public findings as %s and p
     proof: [{quote, url: checked.url}] } });
   expect(await status()).toMatchObject({ result: { text: expect.stringContaining(quote) } });
   expect(lookedUp).toEqual(parts.map(part => "확인할 항목: " + part));
+  const answered = {id: jobId, result: {sources: [checked, notice], text: quote + "\n\n" + deadline}};
+  return {post, session, base, jobId, status, lookedUp, parts, answerPath: base + "/research/" + jobId + "/answer", answered};
+}
+
+it.each(["partial", "needs_input"] as const)("serves verified public findings as %s and preserves progress", async initialState => {
+  const {post, session, jobId, status, lookedUp, parts, answerPath, answered} = await twoPartResearch(initialState);
   session.deps.llm = new FakeLlm({public_service_decision: readSaved});
   const read = await session.handleTurn("아까 맡긴 조사 읽어 줘");
   expect(read.speech).toContain(parts[1]);
+  expect(read.speech.endsWith("답을 말씀해 주시면 이어서 조사할게요.")).toBe(initialState === "needs_input");
   expect(read.savedResearch).toEqual({jobId, token: expect.any(String), reading: true});
   if (initialState === "needs_input") {
     const revision = (await status())?.questionRevision;
-    const path = base + "/research/" + jobId + "/answer";
-    expect((await post(path, {text: "서울", consent: true, questionRevision: 1})).status).toBe(409);
-    expect((await post(path, {text: "서울", consent: true, questionRevision: revision})).status).toBe(200);
+    expect((await post(answerPath, {text: "서울", consent: true, questionRevision: 1})).status).toBe(409);
+    expect((await post(answerPath, {text: "서울", questionRevision: revision})).status).toBe(400);
+    expect((await post(answerPath, {text: "연락처는 010-1234-5678", consent: true, questionRevision: revision})).status).toBe(400);
+    expect((await status())?.questionRevision).toBe(revision);
+    expect((await post(answerPath, {text: "서울", consent: true, questionRevision: revision})).status).toBe(200);
     await expect.poll(async () => (await status())?.state, {timeout: 12_000}).toBe("completed");
-    expect(await status()).toMatchObject({ id: jobId, result: { sources: [checked, notice], text: quote + "\n\n" + deadline } });
+    expect(await status()).toMatchObject(answered);
     expect(lookedUp).toEqual([...parts, parts[1]].map(part => "확인할 항목: " + part));
   }
+});
+
+it("맡긴 조사가 되물은 것에 말로 답하면 그 답으로 조사를 이어서 끝낸다", async () => {
+  const {session, status, lookedUp, parts, answered} = await twoPartResearch("needs_input");
+  const model = new FakeLlm({public_service_decision: savedDecision("answer", "서울")});
+  session.deps.llm = model;
+  const reply = await session.handleTurn("서울이요");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: "답을 받았어요. 이어서 조사할게요.", researchDelivery: "queued"});
+  expect(JSON.parse(model.calls[0]?.user ?? "{}")).toMatchObject({utterance: "서울이요", savedJobs: [{ref: "j1", request: parts.join(" 그리고 "), state: "asking"}]});
+  await expect.poll(async () => (await status())?.state, {timeout: 12_000}).toBe("completed");
+  expect(await status()).toMatchObject(answered);
+  expect(lookedUp).toEqual([...parts, parts[1]].map(part => "확인할 항목: " + part));
+});
+
+it("말로 한 답을 넣기 직전에 패널에서 같은 질문에 먼저 답했으면 질문이 바뀌었다고 알리고 조사는 패널의 답으로만 이어진다", async () => {
+  const {post, session, status, lookedUp, parts, answerPath, answered} = await twoPartResearch("needs_input");
+  const desk = session.deps.research;
+  if (desk === undefined) throw new Error("개인 기기 세션에 조사 책상이 없음");
+  const byVoice = desk.answer.bind(desk);
+  vi.spyOn(desk, "answer").mockImplementationOnce(async (jobId, revision, text) => {
+    expect((await post(answerPath, {text: "서울", consent: true, questionRevision: revision})).status).toBe(200);
+    return await byVoice(jobId, revision, text);
+  });
+  session.deps.llm = new FakeLlm({public_service_decision: savedDecision("answer", "부산")});
+  const reply = await session.handleTurn("부산이요");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: "그 질문은 이미 바뀌었어요."});
+  expect(reply.researchDelivery).toBeUndefined();
+  await expect.poll(async () => (await status())?.state, {timeout: 12_000}).toBe("completed");
+  expect(await status()).toMatchObject(answered);
+  expect(lookedUp).toEqual([...parts, parts[1]].map(part => "확인할 항목: " + part));
+});
+
+it("보내면 안 되는 값이 든 답은 말로 해도 넣지 않고 보내지 않았다고 알리며 조사는 묻던 그대로 남는다", async () => {
+  const {session, status, lookedUp, parts} = await twoPartResearch("needs_input");
+  const before = await status();
+  session.deps.llm = new FakeLlm({public_service_decision: savedDecision("answer", "010-1234-5678")});
+  const reply = await session.handleTurn("연락처는 010-1234-5678이에요");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: "답에 개인정보나 비밀 값이 있는 것 같아 보내지 않았어요. 공개해도 되는 말로 다시 답해 주세요."});
+  expect(reply.researchDelivery).toBeUndefined();
+  expect(await status()).toEqual(before);
+  expect(before?.state).toBe("needs_input");
+  expect(lookedUp).toEqual(parts.map(part => "확인할 항목: " + part));
+});
+
+it("한 번에 끝나는 조사가 되물은 것에는 말로 답해도 넣지 않고 새로 맡겨 달라고 알리며, 읽어 줄 때도 같은 안내로 끝난다", async () => {
+  const {app, runtime, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  const {session} = await newSession();
+  const store = await app.workflows.store();
+  await store.enqueue(randomUUID(), goal, "ko");
+  expect(await store.finish((await store.claim())!, "needs_input", {text: "어느 지역인가요?"})).toBe(true);
+  const before = await store.jobs();
+  const model = new FakeLlm({public_service_decision: savedDecision("answer", "서울")});
+  session.deps.llm = model;
+  const reply = await session.handleTurn("서울이요");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: "이 조사는 이어서 답을 받을 수 없어요. 새로 맡겨 주세요."});
+  expect(reply.researchDelivery).toBeUndefined();
+  expect(JSON.parse(model.calls[0]?.user ?? "{}")).toMatchObject({savedJobs: [{ref: "j1", state: "asking-restart"}]});
+  expect(await store.jobs()).toEqual(before);
+  session.deps.llm = new FakeLlm({public_service_decision: readSaved});
+  expect((await session.handleTurn("그 조사 읽어 줘")).speech)
+    .toBe(`‘${goal}’ 조사에서 여쭤볼 것이 있어요. 어느 지역인가요? 이 조사는 이어서 답을 받을 수 없어요. 새로 맡겨 주세요.`);
+});
+
+function holdResearch(runtime: AgentRuntime, release: Promise<void> = new Promise<never>(() => {})) {
+  const started = latch(), returned = latch();
+  const create = runtime.createSession.bind(runtime);
+  vi.spyOn(runtime, "createSession").mockImplementation(async options => {
+    const session = await create(options);
+    if (options?.background === true) vi.spyOn(session, "researchPublic").mockImplementation(async () => {
+      started.resolve();
+      await release;
+      returned.resolve();
+      return ["completed", {text: "늦게 도착한 답", sources: [checked]}];
+    });
+    return session;
+  });
+  return {started: started.promise, returned: returned.promise};
+}
+
+it("조사 중인 것을 말로 취소하면 늦게 끝난 조사가 결과를 남기지 못하고, 취소했다는 말의 인수증을 받은 뒤에는 중단 소식을 전하지 않는다", async () => {
+  const {app, runtime, post, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  const release = latch(), worker = holdResearch(runtime, release.promise);
+  const {id, session} = await newSession();
+  const base = "/api/session/" + id + "/workspace";
+  const {id: jobId} = z.object({id: z.string()}).parse(await (await post(base + "/research", {text: goal, requestId: randomUUID(), consent: true})).json());
+  await worker.started;
+  const store = await app.workflows.store();
+  const row = async () => (await store.jobs()).find(job => job.id === jobId);
+  const pending = async () => deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending;
+  const [waiting] = await pending();
+  expect(waiting).toMatchObject({id: jobId, state: "running"});
+
+  const stopped = await session.handleTurn("취소해 줘");
+  expect(stopped.state).toBe("STOPPED");
+  expect((await row())?.state).toBe("running");
+  expect(await session.wake(stopped.stopGeneration ?? -1)).toBe("IDLE");
+
+  session.deps.llm = new FakeLlm({public_service_decision: savedDecision("cancel")});
+  const reply = await session.handleTurn("맡긴 조사 취소해 줘");
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: `‘${goal}’ 조사를 취소했어요.`});
+  expect(reply.savedResearch).toEqual({jobId, token: waiting?.token, reading: false});
+  expect(await row()).toMatchObject({state: "cancelled", result: null});
+
+  release.resolve();
+  await worker.returned;
+  await expect.poll(() => app.workflows.events.all().filter(event => event.turnId === jobId).map(event => event.errorCode)).toEqual(["cancelled"]);
+  await new Promise(resolve => setImmediate(resolve));
+  expect(await row()).toMatchObject({state: "cancelled", result: null});
+
+  expect((await pending()).map(job => [job.id, job.state])).toEqual([[jobId, "cancelled"]]);
+  expect((await app.request(`${base}/research/${jobId}/delivery/${waiting?.token}`, {method: "DELETE"})).status).toBe(200);
+  expect(await pending()).toEqual([]);
+  expect(await store.pendingDeliveries()).toEqual([]);
+
+  const again = await session.handleTurn("그 조사 취소해 줘");
+  expect(again.speech).toBe("이미 끝났거나 취소된 조사예요.");
+  expect(again.savedResearch).toBeUndefined();
+});
+
+it("바로 맡긴 뒤에 '그거 취소해 줘'라고 하면 먼저 맡긴 조사가 있어도 방금 맡긴 조사만 그만둔다", async () => {
+  const {app, runtime, session: newSession} = await service({REQUIRE_ACTION_CONFIRMATION: "false"}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  holdResearch(runtime);
+  const {session} = await newSession();
+  const store = await app.workflows.store();
+  const earlier = await store.enqueue(randomUUID(), "아동수당 신청 방법", "ko");
+  const unused = {requestedFacts: [], exclusions: [], continuation: false, choices: []};
+  const listed = z.object({utterance: z.string(), savedJobs: z.array(z.object({ref: z.string(), lastSaved: z.boolean().optional()})).optional()});
+  withLlm(session, new FakeLlm(({schemaName, user}) => {
+    if (schemaName !== "public_service_decision") return undefined;
+    const {utterance, savedJobs = []} = listed.parse(JSON.parse(user));
+    if (!utterance.includes("취소")) return {kind: "delegate_research", goal, ...unused};
+    return {kind: "saved_research", research: {action: "cancel", jobs: savedJobs.filter(job => job.lastSaved === true).map(job => job.ref), answer: null}, ...unused};
+  }));
+  expect(await session.handleTurn("기초연금 서류는 배경에서 조사해 줘", {fromVoice: true})).toMatchObject({researchDelivery: "queued"});
+  const saved = session.saved.lastSaved;
+  expect((await store.jobs()).map(job => job.id)).toEqual([saved, earlier]);
+
+  const reply = await session.handleTurn("그거 취소해 줘", {fromVoice: true});
+  expect(reply).toMatchObject({intentType: "SAVED_RESEARCH", speech: `‘${goal}’ 조사를 취소했어요.`, savedResearch: {jobId: saved, reading: false}});
+  const states = new Map((await store.jobs()).map(job => [job.id, job.state]));
+  expect(states.get(saved ?? "")).toBe("cancelled");
+  expect(["queued", "running"]).toContain(states.get(earlier));
+  expect(session.saved.lastSaved).toBeUndefined();
 });
 
 it("test_workspace_panel_save_recall_and_forget_through_installed_ui", async () => {

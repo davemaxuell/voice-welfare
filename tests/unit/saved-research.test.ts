@@ -51,3 +51,22 @@ it("읽기는 결과가 있거나 되묻는 조사에만 맞는다", () => {
   ];
   for (const [phase, expected] of phases) expect(fits("read", phase), JSON.stringify(phase)).toBe(expected);
 });
+
+it("답하기는 되묻는 조사에만, 취소는 조사 중이거나 되묻는 조사에만 맞는다", () => {
+  const phases: [JobPhase, {answer: boolean; cancel: boolean}][] = [
+    [{ kind: "working" }, { answer: false, cancel: true }],
+    [{ kind: "asking", revision: 1 }, { answer: true, cancel: true }],
+    [{ kind: "ready" }, { answer: false, cancel: false }],
+    [{ kind: "ended" }, { answer: false, cancel: false }],
+  ];
+  for (const [phase, expected] of phases) {
+    expect({ answer: fits("answer", phase), cancel: fits("cancel", phase) }, JSON.stringify(phase)).toEqual(expected);
+  }
+});
+
+it("이어서 답을 받을 수 없는 되물음도 답하기와 취소에 맞아, 답하려 하면 없는 조사 취급이 아니라 새로 맡기라는 안내를 받는다", () => {
+  const restart: JobPhase = { kind: "asking", revision: undefined };
+  expect(fits("answer", restart)).toBe(true);
+  expect(fits("cancel", restart)).toBe(true);
+  expect(plannerView([job("restart", "라", restart)], undefined, same).saved.jobs[0]?.state).toBe("asking-restart");
+});
