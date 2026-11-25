@@ -93,6 +93,8 @@ it("test_restart_without_foreground_session_then_cancel_running_job", async () =
   } finally {canceled.resolve(); await restarted.close(); await prior.close();}
 });
 
+const readSaved = {kind: "saved_research", research: {action: "read", jobs: [], answer: null}, requestedFacts: [], exclusions: [], continuation: false, choices: []};
+
 it.each(["partial", "needs_input"])("serves verified public findings as %s and preserves progress", async initialState => {
   const {app, runtime, post, session: newSession} = await service({}, {settings: true});
   runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
@@ -145,7 +147,8 @@ it.each(["partial", "needs_input"])("serves verified public findings as %s and p
     proof: [{quote, url: checked.url}] } });
   expect(await status()).toMatchObject({ result: { text: expect.stringContaining(quote) } });
   expect(lookedUp).toEqual(parts.map(part => "확인할 항목: " + part));
-  const read = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  session.deps.llm = new FakeLlm({public_service_decision: readSaved});
+  const read = await session.handleTurn("아까 맡긴 조사 읽어 줘");
   expect(read.speech).toContain(parts[1]);
   expect(read.savedResearch).toEqual({jobId, token: expect.any(String), reading: true});
   if (initialState === "needs_input") {
@@ -351,7 +354,9 @@ it("말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않�
   session.personal.saveSpeech({length: "short"});
   const [waiting] = deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending;
 
-  const first = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  const model = new FakeLlm({public_service_decision: readSaved});
+  session.deps.llm = model;
+  const first = await session.handleTurn("아까 맡긴 조사 읽어 줘");
   expect(first.savedResearch).toEqual({jobId, token: waiting?.token, reading: true});
   expect(first.speech).toBe(waiting?.speech);
   expect(first.speech).toContain("출처 복지로 공식 자료");
@@ -368,9 +373,14 @@ it("말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않�
   const heard = await app.request(`${base}/research/${jobId}/delivery/${waiting?.token}`, {method: "DELETE"});
   expect(heard.status).toBe(200);
   expect(deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending).toEqual([]);
-  const second = await session.handleTurn("맡긴 조사 결과 읽어줘");
+  const second = await session.handleTurn("그 조사 다시 읽어 줘");
   expect(second.speech).toBe(first.speech);
   expect(second.savedResearch).toEqual({jobId, reading: true});
+  const planned = model.calls.filter(call => call.schemaName === "public_service_decision").map(call => call.user);
+  expect(planned).toHaveLength(2);
+  expect(planned[1]).toContain(READING_PLACEHOLDER);
+  expect(planned.join("\n")).not.toMatch(/신분증|복지로 공식 자료|마감일/u);
+  session.deps.llm = undefined;
   session.personal.saveSpeech({length: "normal"});
   expect((await session.handleTurn("쉽게 말해 줘")).speech).toContain("출처 복지로 공식 자료");
 

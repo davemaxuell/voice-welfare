@@ -277,7 +277,7 @@ async function serveReading(options: {failFirstReceipt?: true; failReceipts?: tr
 }
 
 async function askToRead() {
-  await page.locator("#command").fill("맡긴 조사 결과 읽어줘");
+  await page.locator("#command").fill("아까 맡긴 조사 읽어 줘");
   await page.locator("#command").press("Enter");
 }
 

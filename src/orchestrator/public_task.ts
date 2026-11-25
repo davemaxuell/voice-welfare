@@ -19,7 +19,8 @@ export const SEARCH_MODES = ["quiet", "visible"] as const;
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export const RESTRICTIONS = ["login", "application", "submission", "personal_input", "screen_capture"] as const;
 export const READ_SKILLS = ["READ_MAIN", "LIST_LINKS", "DESCRIBE_SCREEN", "ABOUT_SITE", "CURRENT_STEP", "REPHRASE", "READ_START_GUIDE", "WHAT_CAN_I_SAY"] as const;
-export const DECISION_KINDS = ["open_agency", "find_information", "inspect_personal", "browser_command", "clarify", "read_skill", "conversation", "delegate_research", "existing", "review_before_output"] as const;
+export const DECISION_KINDS = ["open_agency", "find_information", "inspect_personal", "browser_command", "clarify", "read_skill", "conversation", "delegate_research", "saved_research", "existing", "review_before_output"] as const;
+export const SAVED_ACTIONS = ["read"] as const;
 export type Fact = typeof FACTS[number];
 export type SearchMode = typeof SEARCH_MODES[number];
 export type Restriction = typeof RESTRICTIONS[number];
@@ -103,9 +104,15 @@ const nullable = <T extends z.ZodType>(schema: T) => schema.nullish().transform(
 const COMMANDS = ["PREV", "OPEN_BROWSER", "OPEN_SITE", "FOLLOW_LINK", "SEARCH", "LIST_LINKS", "READ_MAIN"] as const;
 export const FOREGROUND_BROWSER_INTENTS: ReadonlySet<Intent["type"]> = new Set<Intent["type"]>([...COMMANDS, ...READ_SKILLS]);
 const command = z.strictObject({type: z.enum(COMMANDS), target: nullable(z.string().min(1).max(240)), more: z.boolean()});
+const savedResearch = z.strictObject({
+  action: z.enum(SAVED_ACTIONS),
+  jobs: z.array(z.string().regex(/^j[1-8]$/u)).max(8),
+  answer: z.null().optional(),
+});
 const DECISION = z.strictObject({
   kind: z.enum(DECISION_KINDS),
   command: nullable(command),
+  research: nullable(savedResearch),
   outcome: nullable(z.enum(["answer", "arrival"])),
   source: nullable(z.enum(["browser", "welfare", "places"])),
   searchMode: nullable(z.enum(SEARCH_MODES)),
@@ -124,6 +131,9 @@ const DECISION = z.strictObject({
   needUpdate: NeedUpdate.nullish().catch(undefined),
 });
 export type PublicDecision = z.output<typeof DECISION>;
+export type SavedDecision = NonNullable<PublicDecision["research"]>;
+export type UnclearSaved = { readonly kind: "saved_research_unclear" } & { readonly [K in Exclude<keyof PublicDecision, "kind">]?: never };
+const UNCLEAR_SAVED: UnclearSaved = Object.freeze({ kind: "saved_research_unclear" });
 
 export function singleBrowserIntent(cmd: NonNullable<PublicDecision["command"]>): Intent {
   switch (cmd.type) {
@@ -160,9 +170,11 @@ const required = ["kind", "source", "agency", "subject", "goal", "requestedFacts
   "skill", "reply", "searchMode", "difficulty", "requirements"];
 const commandSchema = { type: ["object", "null"], additionalProperties: false, required: ["type", "target", "more"],
   properties: { type: {type: "string", enum: COMMANDS}, target: {type: ["string","null"]}, more: {type: "boolean"} } };
-export const DECISION_SCHEMA = { additionalProperties: false, properties: {...decisionProperties, command: commandSchema, agency: nullableText("Agency"),
+const researchSchema = { type: ["object", "null"], additionalProperties: false, required: ["action", "jobs", "answer"],
+  properties: { action: {type: "string", enum: SAVED_ACTIONS}, jobs: {type: "array", items: {type: "string"}}, answer: {type: ["string","null"]} } };
+export const DECISION_SCHEMA = { additionalProperties: false, properties: {...decisionProperties, command: commandSchema, research: researchSchema, agency: nullableText("Agency"),
   outcome: nullableEnum(["answer", "arrival"], "Outcome"), needUpdate: needUpdateSchema},
-  required: [...required, "command", "outcome", "needUpdate"], title: "PublicDecision", type: "object" };
+  required: [...required, "command", "research", "outcome", "needUpdate"], title: "PublicDecision", type: "object" };
 export const RESEARCH_SCHEMA = { ...DECISION_SCHEMA, required, properties: { ...decisionProperties,
   kind: { type: "string", enum: ["find_information", "clarify", "existing", "review_before_output"] } } };
 
@@ -295,6 +307,17 @@ Keep private details, credentials and saved personal notes out of outputs. Do no
 information, put URLs in outputs, invent facts, or claim any work was done. Set question only for clarify, skill
 only for read_skill and reply only for conversation. Use null or empty lists for unused fields.`;
 
+const SAVED_JOBS = `
+savedJobs lists research the resident earlier asked 청음 to carry out and save, newest first. Each entry has a ref,
+the request, the Korea date it was saved and a state: working is still being researched, ready has a result to read,
+asking and asking-restart have a question for the resident, ended has nothing to read. lastSaved marks the job
+delegated most recently in this conversation. The list holds no results, so say nothing about what a job found.
+Use saved_research with action read when the resident asks to hear, read or check on research they delegated,
+in any wording, including whether it is finished or how it turned out. In jobs give the ref of every listed job
+their words could mean. Leave jobs empty when they did not single one out, and never pick one for them.
+Set answer to null. Requests about application reminders saved locally in 청음 still use existing, and a request
+to start new research still uses delegate_research. Use null research for every other kind.`;
+
 const uniqueInOrder = <T>(values: Iterable<T>) => [...new Set(values)];
 
 export class PublicTask {
@@ -358,6 +381,7 @@ export function parseDecision(raw: unknown, spansFor: SpansFor = () => []): Publ
   if (!parsed.success) return undefined;
   const d = parsed.data;
   if ((d.kind === "browser_command") !== (d.command !== undefined)) return undefined;
+  if ((d.kind === "saved_research") !== (d.research !== undefined)) return undefined;
   if (d.command && (["OPEN_SITE", "FOLLOW_LINK", "SEARCH"].includes(d.command.type) !== (d.command.target !== undefined)
     || (d.command.more && !["READ_MAIN", "LIST_LINKS"].includes(d.command.type)))) return undefined;
   if (d.agency !== undefined && !PUBLIC_AGENCIES.has(d.agency) && d.kind !== "inspect_personal") return undefined;
@@ -392,6 +416,15 @@ const ORDINALS: readonly (readonly string[])[] = [["1", "1번", "첫번째", "fi
 
 export interface PublicTurn { turnId?: string; agency: string | null; request: string; reply: string }
 
+export interface PlannerJob {
+  readonly ref: string;
+  readonly request: string;
+  readonly state: "working" | "asking" | "asking-restart" | "ready" | "ended";
+  readonly savedOn: string;
+  readonly lastSaved?: true;
+}
+export interface PlannerSaved { readonly jobs: readonly PlannerJob[] }
+
 export interface DecideOptions {
   need?: NeedContext;
   voice: boolean;
@@ -404,12 +437,17 @@ export interface DecideOptions {
   savedNotes?: readonly string[];
   research?: boolean;
   currentInspectionScreen?: boolean;
+  saved?: PlannerSaved;
   /** PiiScanner.scan. Without it the decision fields are checked by rules only. */
   scan?: (texts: readonly string[]) => Promise<(readonly SecretSpan[])[]>;
 }
 
-export async function decide(llm: StructuredLlm, utterance: Redacted, language: string, task: PublicTask, options: DecideOptions): Promise<PublicDecision | undefined> {
+export async function decide(llm: StructuredLlm, utterance: Redacted, language: string, task: PublicTask, options: DecideOptions): Promise<PublicDecision | UnclearSaved | undefined> {
   const { voice, recent, signal, speechCandidates = [], corroborated = false, savedNotes, research = false, scan } = options;
+  const savedJobs = (options.saved?.jobs ?? []).map(job => ({
+    ref: redactText(job.ref), request: redactText(job.request), state: redactText(job.state), savedOn: redactText(job.savedOn),
+    ...(job.lastSaved === true ? { lastSaved: true } : {}),
+  }));
   let choice: string | null = null;
   if (task.question !== "" && task.choices.length > 0) {
     const key = commandKey(utterance);
@@ -429,6 +467,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
   if (page !== undefined) system += "\nThe resident supplied an exact page on the origin in suppliedPage. Its path is bound locally to the browser. "
     + "For a question about that page, use a browser lookup and inspect it before asking which service or document it describes. "
     + "Use the existing safeguards for personal records, login and identity checks.";
+  if (savedJobs.length > 0) system += SAVED_JOBS;
   const exchanges = options.dialogue ?? [];
   const included = new Set(exchanges.map(entry => entry.turnId));
   const additionalRecent = recent.filter(turn => turn.turnId === undefined || !included.has(turn.turnId));
@@ -456,6 +495,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
       ...(dialogue.length > 0 ? { dialogue } : {}),
       ...(savedNotes !== undefined && savedNotes.length > 0 ? { savedNotes: savedNotes.map(note => publicDestinations(note).text) } : {}),
       ...(speechCandidates.length > 0 ? { speechCandidates: speechCandidates.map(name => redactText(name)), corroborated } : {}),
+      ...(savedJobs.length > 0 ? { savedJobs } : {}),
     }),
     schemaName: "public_service_decision", schema: research ? RESEARCH_SCHEMA : DECISION_SCHEMA, signal,
   });
@@ -468,6 +508,11 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     spansFor = text => byText.get(text) ?? [];
   }
   const decision = parseDecision(raw, spansFor);
+  if (isRecord(raw) && raw.kind === "saved_research") {
+    const listed = new Set(options.saved?.jobs.map(job => job.ref));
+    const usable = options.saved !== undefined && decision?.research?.jobs.every(ref => listed.has(ref)) === true;
+    return usable ? decision : UNCLEAR_SAVED;
+  }
   if (decision?.kind === "inspect_personal" && decision.agency !== undefined && !PUBLIC_AGENCIES.has(decision.agency) &&
       !utterance.includes(decision.agency) && !(decision.continuation && decision.agency === task.agency)) return undefined;
   if (decision?.command?.target !== undefined) {

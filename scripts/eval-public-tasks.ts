@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { ModelConnections, OPENAI_BASE_URL, createStructuredLlm, type StructuredLlm } from "../src/core/llm.ts";
 import { REPO_ROOT } from "../src/core/assets.ts";
-import { decide, PublicTask, type Fact, type PublicDecision } from "../src/orchestrator/public_task.ts";
+import { decide, PublicTask, type Fact, type PublicDecision, type UnclearSaved } from "../src/orchestrator/public_task.ts";
 import { redactText } from "../src/safety/privacy.ts";
 import { loadConfig } from "../src/server/runtime.ts";
 
@@ -39,8 +39,8 @@ const cases: Case[] = [
   { id: "ja-control", lang: "ja", words: "今の画面を読み上げてください。", kind: "read_skill", skills: ["DESCRIBE_SCREEN", "READ_MAIN"] },
 ];
 
-function matches(c: Case, decision: PublicDecision | undefined, task: PublicTask) {
-  if (decision === undefined || decision.kind !== c.kind) return false;
+function matches(c: Case, decision: PublicDecision | UnclearSaved | undefined, task: PublicTask) {
+  if (decision === undefined || decision.kind === "saved_research_unclear" || decision.kind !== c.kind) return false;
   const actual = task.advance(decision);
   return (c.agency === undefined || actual.agency === c.agency)
     && (c.facts ?? []).every(f => actual.facts.includes(f))

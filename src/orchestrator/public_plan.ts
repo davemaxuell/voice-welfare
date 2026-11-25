@@ -20,6 +20,7 @@ import { isPictureRequest } from "../understanding/rules.ts";
 import { goalSiteRequest, mentionsKnownSite, namedSiteCommand, publicServiceSite, siteLabel } from "../understanding/sites.ts";
 import { publicPatterns } from "./patterns.ts";
 import { ASK_SERVICE, FOREGROUND_BROWSER_INTENTS, LOOKUP_TIMEOUT, LOOKUP_UNAVAILABLE, PublicTask, REJECTED, decide, publicDestinations, reviewCompletion, singleBrowserIntent, type PublicDecision } from "./public_task.ts";
+import { NEEDS_PERSONAL_DEVICE } from "./saved_research.ts";
 import type { NeedContext } from "./session_need.ts";
 import { LIVE_DIFFICULTY, ReviewedTask } from "./review_loop.ts";
 import { coverage, pageMatches } from "./task_review.ts";
@@ -187,17 +188,24 @@ export class PublicPlanner {
     const suppliedAddress = publicDestinations(text);
     const notes = s.deps.recallNotes !== undefined && !research ? await s.deps.recallNotes(suppliedAddress.text) : [];
     const scanner = s.deps.scanner;
+    const view = research ? undefined : await s.saved.plannerView();
     const decision = await decide(llm, text, lang, task, {
       voice: turn.fromVoice, recent, signal: turn.ctx.signal, ...(research ? { research: true } : {}),
       dialogue: research || personalContext ? [] : s.plannerDialogue([], turn.plannerDialogue),
       currentInspectionScreen: onInspectedPage,
       need: research || personalContext ? undefined : s.need.context(),
       ...(notes.length > 0 ? { savedNotes: notes } : {}),
+      ...(view === undefined ? {} : { saved: view.saved }),
       speechCandidates: candidates.slice(0, 2).map(c => c.label), corroborated: clear,
       ...(scanner === undefined ? {} : { scan: (texts: readonly string[]) => scanner.scan(texts) }),
     });
     if (s.superseded(turn) || turn.ctx.signal.aborted) return s.finish(turn, draft("STOPPED", "none", FIXED.stopBusy[lang], { lang }));
     if (decision === undefined) return asking ? clarify(task.question) : undefined;
+    if (decision.kind === "saved_research_unclear") {
+      if (research) return undefined;
+      turn.intentType = "CLARIFY";
+      return s.finish(turn, s.saved.unclear());
+    }
     if (!research && !personalContext && decision.kind !== "inspect_personal" && decision.needUpdate) {
       const quotes = decision.needUpdate.changes.flatMap(change => change.quote === null ? [] : [change.quote]);
       const spans = await scanner?.scan(quotes);
@@ -262,9 +270,14 @@ export class PublicPlanner {
       if (research) turn.researchState = result.review?.status ?? "incomplete";
       return s.finish(turn, result);
     }
+    if (decision.kind === "saved_research") {
+      if (decision.research === undefined || view === undefined) throw new RangeError("목록 없이 통과한 저장한 조사 결정");
+      turn.intentType = "SAVED_RESEARCH";
+      return s.finish(turn, await s.saved.handle(decision.research, view));
+    }
     if (decision.kind === "delegate_research") {
       turn.intentType = "CLARIFY";
-      if (s.deps.research === undefined) return s.finish(turn, draft(s.state, "clarify", "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요."));
+      if (s.deps.research === undefined) return s.finish(turn, draft(s.state, "clarify", NEEDS_PERSONAL_DEVICE));
       const question = decision.goal ?? "";
       if (s.web.guard.directActions) return s.finish(turn, await s.saved.delegate(turn.id, question));
       const prompt = {

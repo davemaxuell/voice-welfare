@@ -1237,12 +1237,6 @@ export class SessionOrchestrator {
         d.profileDone();
       }
       if (forced === undefined) {
-        const savedResearch = /^(?:맡긴 조사 결과 읽어\s*줘|저장한 조사 결과 읽어\s*줘|read (?:my |the )?saved research(?: results?)?|朗读(?:已保存的)?调查结果|保存した調査結果を読んで)[.!?。]?$/iu;
-        if (this.deps.research !== undefined && !d.hasPendingInteraction && savedResearch.test(original ?? text)) {
-          turn.intentType = "READ_RESEARCH";
-          const result = await this.saved.readNewest(this.lang);
-          if (result !== undefined) return this.finish(turn, { ...result, state: this.state });
-        }
         // 라벨(intentType)은 await 전에 적는다. 그 안에서 예외가 나면 RECOVERING 결과가 이 라벨을 보고한다.
         // 실제 사이트 칸 채우기. 진행 중이면 그 대답으로 받고, 아니면 '하나씩 채워줘'로 시작한다.
         // 승인 대기(칸에 넣을지 물음) 중이면 칸 채우기 대답으로 가로채지 않고 승인 문으로 보낸다.

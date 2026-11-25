@@ -6,7 +6,7 @@ import { redactText } from "../../src/safety/privacy.ts";
 import { translateIn } from "../../src/language/i18n.ts";
 import { planWithLlm } from "../../src/understanding/llm_planner.ts";
 import { reviewBeforeOutput, reviewEvidence } from "../../src/orchestrator/task_review.ts";
-import { AGENCY_CATALOG, DECISION_SCHEMA, PublicTask, RESEARCH_SCHEMA, decide, parseDecision, reviewCompletion } from "../../src/orchestrator/public_task.ts";
+import { AGENCY_CATALOG, DECISION_SCHEMA, PublicTask, RESEARCH_SCHEMA, SYSTEM, decide, parseDecision, reviewCompletion, type PlannerSaved } from "../../src/orchestrator/public_task.ts";
 
 const oracle = z.object({
   schema: z.unknown(), research: z.unknown(), catalog: z.unknown(),
@@ -31,15 +31,16 @@ function fake(reply: unknown) {
 const signal = new AbortController().signal;
 
 it("개인 탐색과 한 단계 명령은 앞에서 실행하는 계획에만 추가한다", () => {
-  const {command, outcome, needUpdate, ...properties} = DECISION_SCHEMA.properties;
+  const {command, research, outcome, needUpdate, ...properties} = DECISION_SCHEMA.properties;
   expect(needUpdate.properties.changes.items.properties.aspect.enum).toContain("region");
   expect(command.properties.type.enum).toContain("PREV");
+  expect(research.properties.action.enum).toEqual(["read"]);
   expect(outcome.anyOf[0]).toMatchObject({enum: ["answer", "arrival"]});
-  const additions = new Set(["inspect_personal", "browser_command"]);
-  expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command"]);
+  const additions = new Set(["inspect_personal", "browser_command", "saved_research"]);
+  expect(properties.kind.enum.filter(k => additions.has(k))).toEqual(["inspect_personal", "browser_command", "saved_research"]);
   expect(properties.agency.anyOf[0]).toMatchObject({type: "string"});
   expect({...DECISION_SCHEMA, properties: {...properties, agency: RESEARCH_SCHEMA.properties.agency, kind: {...properties.kind, enum: properties.kind.enum.filter(k => !additions.has(k))}},
-    required: DECISION_SCHEMA.required.filter(k => !["command", "outcome", "needUpdate"].includes(k))}).toEqual(withCurrentAgencies(oracle.schema));
+    required: DECISION_SCHEMA.required.filter(k => !["command", "research", "outcome", "needUpdate"].includes(k))}).toEqual(withCurrentAgencies(oracle.schema));
   expect(RESEARCH_SCHEMA).toEqual(withCurrentAgencies(oracle.research));
   expect(AGENCY_CATALOG).toEqual(expectedCatalog);
 });
@@ -138,6 +139,73 @@ it("decide selects a pending choice and sends the same request", async () => {
   const rewritten = await decide(fake({ ...reviewRaw, requirements: ["바꿔 말한 요구"] }).llm, redactText("등본 서류를 찾아 정리해줘"), "ko", new PublicTask(), { voice: true, recent: [], signal });
   expect(rewritten?.requirements).toEqual(oracle.rewritten);
 });
+const unused = {requestedFacts: [], choices: [], exclusions: [], continuation: false};
+const readSaved = (jobs: unknown, more: Record<string, unknown> = {}) => ({...unused, kind: "saved_research", research: {action: "read", jobs, answer: null, ...more}});
+
+it("저장한 조사 결정은 종류와 research가 짝이 맞고 읽기와 보낸 번호 모양일 때만 받는다", () => {
+  expect(parseDecision(readSaved([]))).toMatchObject({kind: "saved_research", research: {action: "read", jobs: []}});
+  expect(parseDecision(readSaved(["j1", "j8"]))?.research?.jobs).toEqual(["j1", "j8"]);
+  expect(parseDecision({...unused, kind: "saved_research", research: {action: "read", jobs: ["j2"]}})?.research?.jobs).toEqual(["j2"]);
+  const rejected: Record<string, unknown> = {
+    "research 없는 saved_research": {...unused, kind: "saved_research", research: null},
+    "다른 종류에 붙은 research": {...readSaved([]), kind: "existing"},
+    "아직 없는 일": {...unused, kind: "saved_research", research: {action: "cancel", jobs: ["j1"], answer: null}},
+    "목록 밖 번호": readSaved(["j9"]),
+    "조사 번호를 그대로 쓴 값": readSaved(["3f1c2a9e-0000-4000-8000-000000000000"]),
+    "여덟 건을 넘는 목록": readSaved(["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j8", "j1"]),
+    "목록이 아닌 jobs": readSaved("j1"),
+    "읽기에 붙은 답": readSaved(["j1"], {answer: "서울"}),
+    "모르는 칸": readSaved(["j1"], {result: "신분증을 준비하세요."}),
+  };
+  for (const [name, raw] of Object.entries(rejected)) expect(parseDecision(raw), name).toBeUndefined();
+});
+
+it("맡겨 둔 조사가 있을 때만 그 목록과 안내 문단을 보내고, 목록에는 정해진 칸만 싣는다", async () => {
+  const jobs = [
+    {ref: "j1", request: "기초연금 신청 서류", state: "ready", savedOn: "2026-11-25", lastSaved: true},
+    {ref: "j2", request: "아동수당 신청 방법", state: "asking-restart", savedOn: "2026-11-24"},
+  ] as const;
+  const wider: PlannerSaved = {jobs: jobs.map(job => ({...job, result: "구별되는결과글", sources: ["구별되는출처"], question: "구별되는질문"}))};
+  const said = redactText("아까 맡긴 거 어떻게 됐어?");
+  const ask = async (saved?: PlannerSaved) => {
+    const {llm, calls} = fake(oracle.cases.find);
+    await decide(llm, said, "ko", new PublicTask(), {voice: true, recent: [], signal, ...(saved === undefined ? {} : {saved})});
+    return {system: calls[0]?.system ?? "", user: calls[0]?.user ?? ""};
+  };
+  const without = await ask(), empty = await ask({jobs: []}), listed = await ask(wider);
+  const catalog = "\nAgency catalog: " + JSON.stringify(expectedCatalog);
+  expect(without.system).toBe(SYSTEM + catalog);
+  expect(empty).toEqual(without);
+  const keys = (user: string) => Object.keys(z.record(z.string(), z.unknown()).parse(JSON.parse(user)));
+  expect(keys(without.user)).not.toContain("savedJobs");
+  expect(keys(listed.user)).toEqual([...keys(without.user), "savedJobs"]);
+  expect(z.object({savedJobs: z.unknown()}).parse(JSON.parse(listed.user)).savedJobs).toEqual(jobs);
+  expect(listed.user).not.toMatch(/구별되는/u);
+  expect(listed.system.startsWith(SYSTEM)).toBe(true);
+  expect(listed.system.endsWith(catalog)).toBe(true);
+  expect(listed.system.slice(SYSTEM.length, -catalog.length)).toContain("savedJobs");
+});
+
+it("저장한 조사 결정이 보낸 목록 밖의 조사를 가리키거나 목록 없이 오거나 모양이 틀리면 결정 없음이 아니라 되물을 결정이 된다", async () => {
+  const saved: PlannerSaved = {jobs: [{ref: "j1", request: "기초연금 신청 서류", state: "ready", savedOn: "2026-11-25"}]};
+  const said = redactText("아까 맡긴 거 어떻게 됐어?");
+  const decided = (raw: unknown, options: {saved?: PlannerSaved; research?: boolean} = {}) =>
+    decide(fake(raw).llm, said, "ko", new PublicTask(), {voice: true, recent: [], signal, ...options});
+  expect(await decided(readSaved(["j1"]), {saved})).toMatchObject({kind: "saved_research", research: {action: "read", jobs: ["j1"]}});
+  expect(await decided(readSaved([]), {saved})).toMatchObject({kind: "saved_research", research: {jobs: []}});
+  expect(await decided(readSaved([]), {saved: {jobs: []}})).toMatchObject({kind: "saved_research", research: {jobs: []}});
+  const unclear = {kind: "saved_research_unclear"};
+  expect(await decided(readSaved(["j2"]), {saved})).toEqual(unclear);
+  expect(await decided(readSaved(["j1", "j2"]), {saved})).toEqual(unclear);
+  expect(await decided(readSaved(["j1"]))).toEqual(unclear);
+  expect(await decided(readSaved([]))).toEqual(unclear);
+  expect(await decided(readSaved([]), {research: true})).toEqual(unclear);
+  expect(await decided({...unused, kind: "saved_research", research: null}, {saved})).toEqual(unclear);
+  expect(await decided(readSaved(["j1"], {answer: "서울"}), {saved})).toEqual(unclear);
+  expect(await decided({...unused, kind: "existing"}, {saved})).toMatchObject({kind: "existing"});
+  expect(await decided({kind: "existing"}, {saved})).toBeUndefined();
+});
+
 it("review_completion grades evidence as Python does", async () => {
   for (const [name, expected] of Object.entries(oracle.reviews)) {
     const replies: Record<string, unknown> = {
