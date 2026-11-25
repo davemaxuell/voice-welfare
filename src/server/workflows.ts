@@ -482,10 +482,10 @@ export class Workflows {
     }
   }
 
-  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result" | "question">,
+  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result" | "question" | "questionRevision">,
     brevity: Brevity = session.personal?.speech().length ?? "normal"): string {
-    return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data, question: job.question },
-      { brevity, speakable: text => session.speakable?.(text) !== false });
+    return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data,
+      question: job.question, questionRevision: job.questionRevision }, { brevity, speakable: text => session.speakable?.(text) !== false });
   }
 
   bind(session: WorkspaceSession): void {

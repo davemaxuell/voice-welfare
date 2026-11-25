@@ -71,6 +71,12 @@ export const RESEARCH_UNDELIVERED: Record<Lang, string> = {
   zh: "调查结果未能送达，请再问一次。", ja: "調査結果をお伝えできませんでした。もう一度ご依頼ください。",
 };
 
+export const RESEARCH_RESTART: Record<Lang, string> = {
+  ko: "이 조사는 이어서 답을 받을 수 없어요. 새로 맡겨 주세요.",
+  en: "This research can’t take an answer. Please ask for it again as new research.",
+  zh: "这项调查无法继续接收回答。请重新委托调查。", ja: "この調査は続けてお答えを受け取れません。新しく調査をご依頼ください。",
+};
+
 export function stateNote(state: string, lang: Lang): string {
   return Object.hasOwn(STATE_NOTES, state) ? STATE_NOTES[state as keyof typeof STATE_NOTES][LANG_INDEX[lang]] : "";
 }

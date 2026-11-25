@@ -365,8 +365,7 @@ export class WorkflowStore {
         WHERE j.owner=? ORDER BY j.created,d.id`, [this.owner]);
       return rows.map(raw => {
         const {token, ...row} = deliveryRow.parse(raw);
-        const {id, prompt, language, state, result} = readJob(row);
-        return {id, token, prompt, language, state, result};
+        return {...readJob(row), token};
       });
     }, {write: false});
   }

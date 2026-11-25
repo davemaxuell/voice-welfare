@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { StoredResearch } from "../../src/core/research.ts";
-import { RESEARCH_UNDELIVERED, stateNote } from "../../src/core/research_copy.ts";
+import { RESEARCH_RESTART, RESEARCH_UNDELIVERED, stateNote } from "../../src/core/research_copy.ts";
 import type { Lang } from "../../src/core/turn.ts";
 import { researchReading, type ReadingJob } from "../../src/speech/research_reading.ts";
 
@@ -11,7 +11,7 @@ const dated = { title: "복지로 공식 안내", url, lastCheckedAt: "2026-11-2
 const bare = { title: "복지로 공식 안내", url, lastCheckedAt: "2026-11-24" };
 const answer = "신분증과 신청서를 준비하세요.";
 const job = (result: unknown, over: Partial<ReadingJob> = {}): ReadingJob =>
-  ({ prompt: "기초연금 신청 서류", language: "ko", state: "completed", result: result === undefined ? undefined : StoredResearch.parse(result), question: undefined, ...over });
+  ({ prompt: "기초연금 신청 서류", language: "ko", state: "completed", result: result === undefined ? undefined : StoredResearch.parse(result), question: undefined, questionRevision: undefined, ...over });
 const HEADLINE_START: Record<(typeof STATES)[number], Record<Lang, string>> = {
   completed: { ko: "‘기초연금 신청 서류’ 조사 결과예요.", en: "Results for “기초연금 신청 서류”.", zh: "“기초연금 신청 서류”的调查结果。", ja: "「기초연금 신청 서류」の調査結果です。" },
   partial: { ko: "‘기초연금 신청 서류’ 조사 결과예요.", en: "Results for “기초연금 신청 서류”.", zh: "“기초연금 신청 서류”的调查结果。", ja: "「기초연금 신청 서류」の調査結果です。" },
@@ -74,11 +74,12 @@ describe("저장한 조사를 읽는 글", () => {
     const question = "어느 구에 사시나요?";
     const asking = job({ text: `신분증이 필요해요. 신청서도 내야 해요. 주민센터에서 받아요.
 
-${question}` }, { state: "needs_input", question });
-    expect(read(asking, "short")).toBe(`‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 신분증이 필요해요. 신청서도 내야 해요. ${question}`);
-    expect(read({ ...asking, result: StoredResearch.parse({ text: question }) }, "short")).toBe(`‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. ${question}`);
+${question}` }, { state: "needs_input", question, questionRevision: 1 });
+    const invite = "답을 말씀해 주시면 이어서 조사할게요.";
+    expect(read(asking, "short")).toBe(`‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 신분증이 필요해요. 신청서도 내야 해요. ${question} ${invite}`);
+    expect(read({ ...asking, result: StoredResearch.parse({ text: question }) }, "short")).toBe(`‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. ${question} ${invite}`);
     expect(read(asking, "normal")).toContain("주민센터에서 받아요.");
-    expect(read(asking, "normal").endsWith(question)).toBe(true);
+    expect(read(asking, "normal").endsWith(`${question} ${invite}`)).toBe(true);
   });
 
   it("저장할 때 길어서 잘린 글에는 빠진 질문을 붙여, 짧게 읽어도 자세히 읽어도 질문을 읽는다", () => {
@@ -141,10 +142,20 @@ ${question}` }, { state: "needs_input", question });
   });
 
   it("중단·실패·진행 중인 조사는 결과가 아니라 소식으로, 물음이 걸린 조사는 물음으로 시작한다", () => {
-    expect(read(job({ text: "어느 지역에 사시나요?" }, { state: "needs_input" }))).toBe("‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 어느 지역에 사시나요?");
+    expect(read(job({ text: "어느 지역에 사시나요?" }, { state: "needs_input", questionRevision: 1 }))).toBe(
+      "‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 어느 지역에 사시나요? 답을 말씀해 주시면 이어서 조사할게요.");
     expect(read(job(undefined, { state: "failed" }))).toBe(`‘기초연금 신청 서류’ 조사 소식이에요. ${stateNote("failed", "ko")}`);
     for (const state of ["queued", "running", "unknown"]) expect(read(job(undefined, { state })).startsWith("‘기초연금 신청 서류’ 조사 소식이에요."), state).toBe(true);
     for (const state of ["completed", "partial", "incomplete"]) expect(read(job({ text: answer }, { state })).startsWith("‘기초연금 신청 서류’ 조사 결과예요."), state).toBe(true);
+  });
+
+  it("되묻는 조사는 이어서 답을 받을 수 있으면 말로 답해 달라는 문장으로, 없으면 새로 맡겨 달라는 문장으로 끝난다", () => {
+    const asked = { text: "어느 지역에 사시나요?", sources: [dated], missing: ["마감일"] };
+    const body = "‘기초연금 신청 서류’ 조사에서 여쭤볼 것이 있어요. 어느 지역에 사시나요? 출처 복지로 공식 안내. 기관 자료. 자료 기준일 2026년. 출처 확인일 2026년 11월 24일. 확인이 남은 항목. 마감일.";
+    expect(read(job(asked, { state: "needs_input", questionRevision: 2 }))).toBe(`${body} 답을 말씀해 주시면 이어서 조사할게요.`);
+    expect(read(job(asked, { state: "needs_input" }))).toBe(`${body} 이 조사는 이어서 답을 받을 수 없어요. 새로 맡겨 주세요.`);
+    expect(read(job(asked, { state: "needs_input", questionRevision: 2 }), "short")).toBe(`${body} 답을 말씀해 주시면 이어서 조사할게요.`);
+    expect(read(job(asked, { state: "partial", questionRevision: 2 }))).toBe(body.replace("조사에서 여쭤볼 것이 있어요.", "조사 결과예요."));
   });
 
   it("알 수 없는 언어는 한국어로 읽는다", () => {
@@ -162,7 +173,7 @@ ${question}` }, { state: "needs_input", question });
     it.each(STATES)("%s 상태는 어느 자료 모양이든 주제로 시작하고 끝맺음 표 하나로 끝난다", state => {
       for (const [name, result] of Object.entries(variants)) {
         for (const brevity of ["normal", "short"] as const) {
-          const speech = read({ prompt, language: lang, state, result: StoredResearch.parse(result), question: undefined }, brevity);
+          const speech = read({ prompt, language: lang, state, result: StoredResearch.parse(result), question: undefined, questionRevision: undefined }, brevity);
           expect(speech, `${name} ${brevity}`).toContain(prompt);
           expect(speech.startsWith(HEADLINE_START[state][lang]), `${name} ${brevity}`).toBe(true);
           expect(speech, `${name} ${brevity}`).not.toMatch(doubled);
@@ -172,7 +183,8 @@ ${question}` }, { state: "needs_input", question });
       }
     });
     it("자료 정보가 있으면 자료 종류, 기준 연도, 확인일을 그 언어로 말하고 옛 기록은 출처를 더하지 않는다", () => {
-      const speech = read({ prompt, language: lang, state: "completed", result: StoredResearch.parse(variants["인용마다 자료 정보"]), question: undefined });
+      const completed = (result: unknown) => read({ prompt, language: lang, state: "completed", result: StoredResearch.parse(result), question: undefined, questionRevision: undefined });
+      const speech = completed(variants["인용마다 자료 정보"]);
       const year = lang === "ko" ? "2026년" : lang === "en" ? "2026" : "2026年";
       const checked = lang === "ko" ? "2026년 11월 24일" : "2026-11-24";
       expect(speech).toContain("복지로 공식 안내");
@@ -180,14 +192,31 @@ ${question}` }, { state: "needs_input", question });
       expect(speech).toContain(checked);
       expect(speech).toContain(lang === "ko" ? "기관 자료" : lang === "en" ? "Agency data" : lang === "zh" ? "机构数据" : "機関のデータ");
       expect(speech).not.toContain("2026年年");
-      const legacy = read({ prompt, language: lang, state: "completed", result: StoredResearch.parse(variants["옛 기록"]), question: undefined });
+      const legacy = completed(variants["옛 기록"]);
       expect(legacy).not.toContain("복지로 공식 안내");
       expect(legacy).toContain("Bring your ID.");
-      const none = read({ prompt, language: lang, state: "completed", result: StoredResearch.parse(variants["자료 정보 없음"]), question: undefined });
+      const none = completed(variants["자료 정보 없음"]);
       expect(none).toContain(lang === "ko" ? "날짜 기록 없음" : lang === "en" ? "Date unavailable" : lang === "zh" ? "日期未知" : "日付不明");
     });
     it("답도 남은 항목도 없으면 그 언어의 상태 안내를 말한다", () => {
-      expect(read({ prompt, language: lang, state: "cancelled", result: undefined, question: undefined })).toContain(stateNote("cancelled", lang));
+      expect(read({ prompt, language: lang, state: "cancelled", result: undefined, question: undefined, questionRevision: undefined })).toContain(stateNote("cancelled", lang));
+    });
+    it("되묻는 조사만 맨 끝에 권유 문장 하나를 더하고, 답을 받을 수 있는지에 따라 그 문장이 다르다", () => {
+      const result = StoredResearch.parse({ text: "Which region?", sources: [dated], missing: ["마감일"] });
+      const reading = (state: string, questionRevision?: number) => read({ prompt, language: lang, state, result, question: undefined, questionRevision });
+      const answerable = reading("needs_input", 2), restart = reading("needs_input");
+      const stop = lang === "zh" || lang === "ja" ? "。" : ".";
+      const body = answerable.slice(0, answerable.lastIndexOf("마감일" + stop) + "마감일".length + stop.length);
+      expect(body.endsWith("마감일" + stop)).toBe(true);
+      expect(restart.startsWith(body)).toBe(true);
+      const invitation = answerable.slice(body.length).trim(), restartNote = restart.slice(body.length).trim();
+      expect(restartNote).toBe(RESEARCH_RESTART[lang]);
+      expect(invitation.length).toBeGreaterThan(0);
+      expect(invitation).not.toBe(restartNote);
+      expect(invitation.at(-1)).toBe(stop);
+      for (const state of STATES.filter(other => other !== "needs_input")) {
+        expect(reading(state, 2).endsWith("마감일" + stop), state).toBe(true);
+      }
     });
   });
 });

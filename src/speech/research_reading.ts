@@ -1,5 +1,5 @@
 import type { StoredResearch } from "../core/research.ts";
-import { RESEARCH_UNDELIVERED, resultWord, stateNote } from "../core/research_copy.ts";
+import { RESEARCH_RESTART, RESEARCH_UNDELIVERED, resultWord, stateNote } from "../core/research_copy.ts";
 import { LangSchema, type Lang, type SpeechPrefs } from "../core/turn.ts";
 import { detectSensitive } from "../safety/privacy.ts";
 import { speakDate } from "./phrasing.ts";
@@ -10,6 +10,7 @@ export interface ReadingJob {
   state: string;
   result: StoredResearch | undefined;
   question: string | undefined;
+  questionRevision: number | undefined;
 }
 export interface ReadingOptions {
   brevity: SpeechPrefs["length"];
@@ -56,6 +57,12 @@ const MORE_MISSING: Record<Lang, (count: number) => string> = {
   en: count => count === 1 ? "1 more item is still to verify." : `${count} more items are still to verify.`,
   zh: count => `还有${count}项待核实。`,
   ja: count => `確認が残っている項目がほかに${count}件あります。`,
+};
+const ANSWER_BY_VOICE: Record<Lang, string> = {
+  ko: "답을 말씀해 주시면 이어서 조사할게요.",
+  en: "Tell me your answer and I’ll continue the research.",
+  zh: "请说出您的回答，我会继续调查。",
+  ja: "お答えをお話しいただければ、調査を続けます。",
 };
 const STOP: Record<Lang, string> = { ko: ".", en: ".", zh: "。", ja: "。" };
 
@@ -135,6 +142,7 @@ export function researchReading(job: ReadingJob, { brevity, speakable }: Reading
   if (cited.length > MAX_SOURCES) parts.push(MORE_SOURCES[lang](cited.length - MAX_SOURCES));
   if (missing.length > 0) parts.push(resultWord("missing", lang), ...missing.slice(0, MAX_MISSING));
   if (missing.length > MAX_MISSING) parts.push(MORE_MISSING[lang](missing.length - MAX_MISSING));
+  if (job.state === "needs_input") parts.push((job.questionRevision === undefined ? RESEARCH_RESTART : ANSWER_BY_VOICE)[lang]);
   const speech = joinSpoken(parts, lang);
   return speakable?.(speech) !== false && !detectSensitive(speech).hasSecretValue ? speech : RESEARCH_UNDELIVERED[lang];
 }
