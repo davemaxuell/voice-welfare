@@ -136,6 +136,36 @@ it("safe input and public results match Python on a table", async () => {
     expect([actualState, actualOutcome ?? null], JSON.stringify(result).slice(0, 120)).toEqual([expectedState, expectedOutcome]);
   }
 });
+const cited = { title: "복지로 공식 자료", url: "https://www.bokjiro.go.kr/welfare", lastCheckedAt: "2026-11-24" };
+it.each<[string, unknown, unknown]>([
+  ["기준일이 날짜인 기관 자료", { kind: "live", origin: "official-api", date: "2026-03-05" }, { kind: "live", origin: "official-api", date: "2026-03-05" }],
+  ["기준 연도만 있는 기관 자료", { kind: "live", origin: "official-api", date: "2026년" }, { kind: "live", origin: "official-api", date: "2026년" }],
+  ["기준일이 없는 저장 자료", { kind: "stored", origin: "fixture" }, { kind: "stored", origin: "fixture" }],
+  ["민간 사업 자료", { kind: "private-program", origin: "공공데이터포털", date: "2026-11-18" }, { kind: "private-program", origin: "공공데이터포털", date: "2026-11-18" }],
+  ["자료 정보가 없는 인용", undefined, undefined],
+  ["안전하지 않은 기관 이름은 자료 정보를 통째로 뺀다", { kind: "live", origin: "문의 name@example.org", date: "2026년" }, undefined],
+  ["종류를 모르면 자료 정보를 통째로 뺀다", { kind: "mystery", origin: "official-api", date: "2026년" }, undefined],
+  ["기준일 모양이 틀리면 그 칸만 뺀다", { kind: "live", origin: "official-api", date: "2026-3-5" }, { kind: "live", origin: "official-api" }],
+  ["전각 숫자 기준일은 그 칸만 뺀다", { kind: "stored", origin: "fixture", date: "２０２６년" }, { kind: "stored", origin: "fixture" }],
+  ["빈 기준일은 그 칸만 뺀다", { kind: "stored", origin: "fixture", date: "" }, { kind: "stored", origin: "fixture" }],
+  ["줄바꿈이 붙은 기준일은 그 칸만 뺀다", { kind: "stored", origin: "fixture", date: "2026-03-05\n" }, { kind: "stored", origin: "fixture" }],
+  ["백 자를 넘는 기관 이름은 자료 정보를 통째로 뺀다", { kind: "live", origin: "가".repeat(101) }, undefined],
+])("저장하는 인용의 자료 정보: %s", async (_name, data, expected) => {
+  const [state, saved] = await publicResult("completed", { text: "신청서를 준비하세요.", sources: [{ ...cited, ...(data === undefined ? {} : { data }) }] } as ResearchOutcome);
+  expect(state).toBe("completed");
+  expect(saved?.sources).toStrictEqual([expected === undefined ? cited : { ...cited, data: expected }]);
+});
+it("조사 전체에 하나만 적던 자료 정보도 기준 연도를 받고 같은 규칙으로 걸러 낸다", async () => {
+  const base = { text: "신청서를 준비하세요.", sources: [cited] };
+  const [, year] = await publicResult("completed", { ...base, data: { kind: "live", origin: "official-api", date: "2026년" } });
+  expect(year?.data).toStrictEqual({ kind: "live", origin: "official-api", date: "2026년" });
+  const [, odd] = await publicResult("completed", { ...base, data: { kind: "live", origin: "official-api", date: "2026-3-5" } });
+  expect(odd?.data).toStrictEqual({ kind: "live", origin: "official-api" });
+  const [, unsafe] = await publicResult("completed", { ...base, data: { kind: "live", origin: "문의 name@example.org" } });
+  expect(Object.keys(unsafe ?? {})).not.toContain("data");
+  const [, none] = await publicResult("completed", base);
+  expect(Object.keys(none ?? {})).not.toContain("data");
+});
 it("canonical UUIDs accept Python's spellings", () => {
   const id = "12345678-1234-5678-1234-567812345678";
   for (const spelling of [id, id.toUpperCase(), "{" + id + "}", "urn:uuid:" + id, id.replaceAll("-", "")]) expect(canonicalUuid(spelling)).toBe(id);

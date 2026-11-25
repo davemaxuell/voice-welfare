@@ -5,7 +5,7 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { raceAbort } from "../core/abort.ts";
 import { InMemoryEventLog } from "../core/events.ts";
-import { ResearchSource, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
+import { DATA_DATE, SourceData, StoredResearch, researchSummary, type ResearchCheckpoint, type ResearchOutcome, type ResearchPlan, type ResearchProgress, type ResearchStop } from "../core/research.ts";
 import { strip } from "../core/text.ts";
 import { draft, LangSchema, type Draft, type Lang } from "../core/turn.ts";
 import { RESEARCH_UNDELIVERED } from "../orchestrator/public_task.ts";
@@ -88,9 +88,18 @@ export function urlPort(port: string | undefined): number | undefined {
 }
 
 export type { ResearchOutcome } from "../core/research.ts";
-type SavedSource = { title: string; url: string; lastCheckedAt?: string; version?: string };
+type SavedSource = { title: string; url: string; lastCheckedAt?: string; version?: string; data?: SourceData };
 type PublicOutcome = ResearchOutcome<SavedSource> & { text: string; sources: SavedSource[] };
 const take = (text: string, count: number) => Array.from(text).slice(0, count).join("");
+
+async function safeData(value: SourceData | undefined, scan: Scan | undefined): Promise<SourceData | undefined> {
+  if (value === undefined) return undefined;
+  const kind = SourceData.shape.kind.safeParse(value.kind);
+  const origin = safeInput(value.origin, 100, await spansOf(scan, value.origin));
+  if (!kind.success || origin === undefined) return undefined;
+  const date = value.date !== undefined && DATA_DATE.test(value.date) ? value.date : undefined;
+  return { kind: kind.data, origin, ...(date === undefined ? {} : { date }) };
+}
 
 export async function publicResult(state: string, result: ResearchOutcome, scan?: Scan): Promise<[string, PublicOutcome | undefined]> {
   const sources: PublicOutcome["sources"] = [];
@@ -114,8 +123,10 @@ export async function publicResult(state: string, result: ResearchOutcome, scan?
     const lastCheckedAt = item.lastCheckedAt?.match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
     const version = item.version === undefined ? undefined : safeInput(item.version, 100, await spansOf(scan, item.version));
     const safeUrl = take(url.split("#")[0] ?? "", 2048);
+    const data = await safeData(item.data, scan);
     sources.push({ title: take(redactPictureText(title, await spansOf(scan, title)), 180), url: safeUrl,
-      ...(lastCheckedAt === undefined ? {} : { lastCheckedAt }), ...(version === undefined ? {} : { version }) });
+      ...(lastCheckedAt === undefined ? {} : { lastCheckedAt }), ...(version === undefined ? {} : { version }),
+      ...(data === undefined ? {} : { data }) });
     urls.set(url, safeUrl);
   }
   const raw = result.text ?? "";
@@ -132,11 +143,7 @@ export async function publicResult(state: string, result: ResearchOutcome, scan?
     const quote = safeInput(item.quote, 1400, await spansOf(scan, item.quote));
     if (url !== undefined && quote !== undefined) proof.push({ quote, url });
   }
-  const origin = result.data === undefined ? undefined : safeInput(result.data.origin, 100, await spansOf(scan, result.data.origin));
-  const date = result.data?.date?.match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
-  const data = result.data === undefined || origin === undefined ? undefined : {
-    kind: result.data.kind, origin, ...(date === undefined ? {} : { date }),
-  };
+  const data = await safeData(result.data, scan);
   if (state === "incomplete" && missing.length > 0) return [state, { text: "", sources: [], missing, reason: result.reason }];
   if (state !== "completed" && state !== "partial" && state !== "needs_input") return ["incomplete", undefined];
   return [state, { text, sources, ...(missing.length === 0 ? {} : { missing }), ...(proof.length === 0 ? {} : { proof }),
@@ -177,7 +184,6 @@ const RESEARCH_TIME_LIMIT_MS = 5 * 60_000;
 const RESEARCH_TOTAL_MS = 3 * RESEARCH_TIME_LIMIT_MS;
 const MAX_CONTINUATIONS = 2;
 const RENEW_EVERY_MS = LEASE_SECONDS * 1000 / 2;
-const StoredResearch = z.object({ text: z.string().optional(), sources: z.array(ResearchSource).optional(), missing: z.array(z.string()).optional() });
 const RESEARCH_SPEECH = {
   ko: { none: "아직 확인할 조사 결과가 없어요.", sources: "출처", checked: "확인일", undated: "날짜 기록 없음", missing: "확인이 남은 항목" },
   en: { none: "There are no saved research results ready yet.", sources: "Sources", checked: "Checked", undated: "Date unavailable", missing: "Still to verify" },
@@ -505,7 +511,7 @@ export class Workflows {
         if (!["completed", "partial", "needs_input", "incomplete"].includes(job.state)) continue;
         const saved = StoredResearch.safeParse(job.result);
         if (!saved.success) continue;
-        const { text, sources = [], missing = [] } = saved.data;
+        const { text, sources, missing } = saved.data;
         if ((text ?? "").length === 0 && missing.length === 0) continue;
         const citations = sources.map(source => ({ ...source, lastCheckedAt: source.lastCheckedAt ?? "" }));
         return draft("IDLE", "web-answer", [
@@ -549,7 +555,7 @@ export function registerWorkflows<S extends WorkspaceSession>(app: Hono, service
     const rows = await store.pendingDeliveries();
     const pending = rows.map(job => {
       const result = StoredResearch.safeParse(job.result);
-      if (result.success && [result.data.text ?? "", ...result.data.missing ?? []].some(value => session.speakable?.(value) === false)) {
+      if (result.success && [result.data.text ?? "", ...result.data.missing].some(value => session.speakable?.(value) === false)) {
         const lang = LangSchema.safeParse(job.language).data ?? "ko";
         return {...job, result: {text: RESEARCH_UNDELIVERED[lang]}};
       }
