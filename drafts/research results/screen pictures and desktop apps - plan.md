@@ -138,7 +138,7 @@ Four independent designs were written from the same brief and the same grounding
 - **From candidate 4:** the picture decision as one pure table test.
 - **Rejected:** a second guard and a second run path (rules drift apart); an image argument on the text model method (a text model could be handed an image); refusing every page with an embedded frame (many real pages have one, so pictures would rarely work); choosing web or desktop by guessing from the front window (a wrong guess describes the wrong screen); rules that depend on which screen is open (the judge found "복지로 열어줘" said inside a folder would be read as a file name).
 
-The four design packages, the grounding and the judge's rubric are kept locally in `.audit/desktop-vision/`. They are not committed.
+The four design packages, the grounding and the judge's rubric were in `.audit/desktop-vision/` and were removed in the 2026-11-24 doc cleanup. They remain in commit `cf1a482`.
 
 ## Risks
 

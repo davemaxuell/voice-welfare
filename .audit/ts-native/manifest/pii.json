@@ -1,4 +1,0 @@
-{
-  "src/safety/pii_model.ts": {"python": ["src/cheongeum/safety/pii_model.py"], "sha": "77aad3e88704e55be257d443664582a39e23861d"},
-  "scripts/setup-models.ts": {"python": ["scripts/setup_local_models.py"], "sha": "77aad3e88704e55be257d443664582a39e23861d", "partial": true}
-}

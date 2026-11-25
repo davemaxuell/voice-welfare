@@ -41,7 +41,7 @@ It reads the waveform, not a spectrum. It checks only loudness and suddenness.
 
 - A steady loud high tone does not pass: a pure tone's peak is only about 1.4× its average level.
 - Any sharp, loud, broadband burst can pass, whatever its pitch: clap, finger snap, door slam, dropped object, hard key slam. A loud sharp consonant such as "ㅍ" or "ㅌ" might pass. Not tested.
-- A tone that starts abruptly can pass. The slice that catches the onset is mostly silence plus a short tone, so its peak-to-average ratio can briefly exceed 4. This is why the sound-cue design softens beeps with a 20 ms fade-in (`docs/superpowers/specs/2026-11-18-sound-cues-design.md`).
+- A tone that starts abruptly can pass. The slice that catches the onset is mostly silence plus a short tone, so its peak-to-average ratio can briefly exceed 4. This is why the sound cues soften beeps with a 20 ms fade-in.
 
 ## Problems found
 

@@ -1,7 +1,0 @@
-- [x] Reproduce it yourself on the matching surface. The captured outbound public decision and intent plan both contain a worked example. The rendered intent catalog and browser instructions introduce more examples.
-- [x] Binary-search the cause. The examples are authored in static model instructions or incorporated from intent descriptions; live user history and runtime evidence are separate inputs.
-- [x] Plan the fix. Replace demonstrations with direct instructions at their source. Retain request schemas, actual conversation context, official catalog data, safety gates and user-facing help. Partition edits by file ownership.
-- [x] Verify on the same surface. Captured the serialized Sol requests and Live session instructions locally. Replayed the original Hi-Korea search and both link follow-ups in Chromium. The Python suite passed 1,723 checks, with two optional PostgreSQL integrations skipped. The outbound-prompt regression failed on the original instructions and passed on the revision.
-- [x] Stage the commits so the failing repro lands before the fix in git history. Skipped for this shared checkout. The regressions ran before and after each prompt correction.
-- [x] Run Opening a PR. Skipped for this local prompt correction.
-- [x] Restart the approved local server after the tests. Its health endpoint reports GPT Live-1 and GPT-6.2-sol on port 8787, the UI returns HTTP 200, and the local practice site serves this checkout.
