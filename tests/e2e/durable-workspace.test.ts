@@ -8,6 +8,7 @@ import type { WelfareService } from "../../src/agents/welfare/data/index.ts";
 import { EmbeddingService } from "../../src/core/model_stack.ts";
 import { RESEARCH_UNDELIVERED, stateNote } from "../../src/core/research_copy.ts";
 import { draft } from "../../src/core/turn.ts";
+import { FIXED } from "../../src/language/i18n.ts";
 import { AgentRuntime } from "../../src/server/runtime.ts";
 import { SettingsInput } from "../../src/server/settings.ts";
 import { DIMENSIONS, WorkflowStore, installationOwner } from "../../src/server/workflow_store.ts";
@@ -369,6 +370,40 @@ it("영어로 맡긴 한 번에 끝나는 조사는 번역한 카드의 답과 �
   expect(job?.speech).toBe("Results for “기초연금 신청 서류”. Bring the application form and ID. Check the source for details. "
     + "Source 복지로 공식 자료. Agency data. Data date 2026. Source checked 2026-11-19.");
   expect(deliveries.parse(await (await app.request(base + "/deliveries")).json()).pending[0]).toMatchObject({language: "en", speech: job?.speech});
+});
+
+it("영어로 맡긴 조사의 번역이 실패하면 저장한 글이 번역 실패 안내로 시작하고 한국어 답은 한 번만 담는다", async () => {
+  const {app, runtime, post, session: newSession} = await service({}, {settings: true});
+  runtime.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  runtime.services.moderation = undefined;
+  const documents = "신청서와 신분증을 준비합니다.";
+  vi.spyOn(runtime.welfareProvider, "findService").mockResolvedValue({...official("WLF-1", "검증용 제도", {criteriaYear: "2026"}), documents});
+  const create = runtime.createSession.bind(runtime);
+  vi.spyOn(runtime, "createSession").mockImplementation(async options => {
+    const session = await create(options);
+    if (options?.background !== true) return session;
+    const model = new FakeLlm(({schemaName}) => {
+      if (schemaName === "public_service_decision") return {kind: "find_information", goal, source: "welfare", subject: "기초연금", agency: "복지로",
+        requestedFacts: ["documents"], exclusions: [], continuation: false, question: null, choices: []};
+      if (schemaName === "public_research_coverage") return {coverage: "all", checks: [{request: "신청 서류", quote: documents}]};
+      if (schemaName === "translate_out") throw new Error("translator unavailable");
+      return undefined;
+    });
+    withLlm(session, model);
+    session.deps.webLlm = model;
+    return session;
+  });
+  const {id, session} = await newSession();
+  session.lang = "en";
+  const base = "/api/session/" + id + "/workspace";
+  expect((await post(base + "/research", {text: goal, requestId: randomUUID(), consent: true})).status).toBe(200);
+  const status = async () => z.object({jobs: z.array(z.object({state: z.string(), result: reading.partial().nullish()}))})
+    .parse(await (await app.request(base)).json()).jobs[0];
+  await expect.poll(async () => (await status())?.state, {timeout: 20_000}).toBe("completed");
+  const text = (await status())?.result?.text ?? "";
+  expect(text).toBe(`${FIXED.translateFail.en} ${oneSolved}`);
+  expect(text.split("신청서와 신분증을 준비합니다.")).toHaveLength(2);
+  expect(text).not.toMatch(/자료 기준|확인일|Data date/u);
 });
 
 it("패널이 보여 주는 날짜와 금액을 말로 읽는 글도 똑같이 말하고 자동 전달과 듣기 단추가 같은 글을 읽는다", async () => {

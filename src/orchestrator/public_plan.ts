@@ -98,7 +98,8 @@ export class PublicPlanner {
       limited = turn.researchState === "partial";
     }
     const result = await s.localize(planned);
-    const found = result.answerCard === undefined ? result.speech : answerAndNextStep(result.answerCard);
+    const found = result.answerCard === undefined ? result.speech :
+      `${result.lang === language ? "" : `${FIXED.translateFail[language]} `}${answerAndNextStep(result.answerCard)}`;
     return [turn.researchState, { text: limited ? `${LIMITED[result.lang]} ${found}` : found, sources: result.sources }];
   }
 
