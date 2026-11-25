@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { api } from "./api.ts";
 import { LangSchema, type Lang } from "../../src/core/turn.ts";
-import { workflowResultText, workflowStateNote } from "./workflows-text.ts";
+import { resultWord, stateNote } from "../../src/core/research_copy.ts";
 
 export const RESEARCH_POLL_MS = 10_000;
 const pending = z.object({pending: z.array(z.object({
@@ -33,8 +33,8 @@ export function watchResearch(sessionId: string, deliver: (token: string, text: 
           const result = job.state === "cancelled" ? undefined : job.result;
           const missing = result?.missing ?? [];
           const answer = result?.text;
-          const line = [answer !== undefined && answer.length > 0 ? answer : workflowStateNote(job.state, job.language),
-            ...(missing.length > 0 ? [workflowResultText("missing", job.language), ...missing] : [])].join(". ");
+          const line = [answer !== undefined && answer.length > 0 ? answer : stateNote(job.state, job.language),
+            ...(missing.length > 0 ? [resultWord("missing", job.language), ...missing] : [])].join(". ");
           if (!await deliver(job.token, line, job.language)) { wait = true; continue; }
           heard.add(job.token);
           try { localStorage.setItem(key, "1"); } catch { /* 메모리 인수증 사용 */ }

@@ -25,6 +25,7 @@ import { ModelTransportError, type Redacted, type StructuredLlm } from "../core/
 import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { backendActivity, backendTrace, Progress } from "../core/progress.ts";
+import { RESEARCH_UNDELIVERED } from "../core/research_copy.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { PUBLIC_AGENCIES } from "../core/sites.ts";
 import { hasText, rstripChars, strip, stripChars } from "../core/text.ts";
@@ -55,7 +56,7 @@ import { boundedDialogue, PLANNER_EXCHANGES, utf8Prefix, type DialogueExchange }
 import { FirstRunGuide } from "./first_run.ts";
 import { spokenPlanNames } from "../agents/web/skills/known_plan.ts";
 import { PublicPlanner, type QuietAnswer } from "./public_plan.ts";
-import { PublicTask, publicDestinations, RESEARCH_UNDELIVERED, type PublicTurn } from "./public_task.ts";
+import { PublicTask, publicDestinations, type PublicTurn } from "./public_task.ts";
 import { SessionNeed } from "./session_need.ts";
 import { SessionReplies } from "./replies.ts";
 import { LIVE_DIFFICULTY, REVIEW_LIMITS, ReviewLoop, ReviewedTask, isDifficulty } from "./review_loop.ts";

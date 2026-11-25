@@ -1,11 +1,12 @@
 import { sourceData } from "../../src/core/research.ts";
+import { stateNote } from "../../src/core/research_copy.ts";
 import type { Lang } from "../../src/core/turn.ts";
 // 자료 조사와 저장한 메모(개인 PC). 패널이 열려 있으면 3.5초, 닫혀 있어도 진행 중인 조사가 있을 때만 10초마다 읽는다.
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { api, errorCode, WorkspaceSchema, type Note, type Workspace } from "./api.ts";
 import { RESEARCH_POLL_MS, researchStarted } from "./research-delivery.ts";
-import { workflowErrorText, workflowResultText, workflowStateNote, workflowStateText, workflowText } from "./workflows-text.ts";
+import { workflowErrorText, workflowResultText, workflowStateText, workflowText } from "./workflows-text.ts";
 
 const SearchSchema = z.object({ notes: z.array(z.object({ id: z.string(), body: z.string() })) });
 const CancelSchema = z.object({ cancelled: z.boolean() });
@@ -290,7 +291,7 @@ export function WorkflowPanel({
       const missing = job.result?.missing ?? [];
       const sources = (job.result?.sources ?? []).filter(source => /^https:\/\//i.test(source.url));
       const stateText = workflowStateText(job.state, lang);
-      const note = workflowStateNote(job.state, lang);
+      const note = stateNote(job.state, lang);
       const updated = timestamps[job.id];
       const cancelOrDelete = workflowText(inProgress ? "cancel" : "delete", lang);
       const readLabel = label("read");

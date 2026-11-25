@@ -98,12 +98,6 @@ export const LOOKUP_TIMEOUT: Record<Lang, string> = {
   zh: "我没能及时从官方资料中核实答案。" + OPEN_SITE_SEARCH.zh,
   ja: "時間内に公式資料で答えを確認できませんでした。" + OPEN_SITE_SEARCH.ja,
 };
-export const RESEARCH_UNDELIVERED: Record<Lang, string> = {
-  ko: "조사 결과를 전달하지 못했어요. 다시 요청해 주세요.",
-  en: "I couldn’t deliver the research result. Please ask again.",
-  zh: "调查结果未能送达，请再问一次。", ja: "調査結果をお伝えできませんでした。もう一度ご依頼ください。",
-};
-
 // The TS LLM client drops null properties, so a missing nullable key means null.
 const nullable = <T extends z.ZodType>(schema: T) => schema.nullish().transform(value => value ?? undefined);
 const COMMANDS = ["PREV", "OPEN_BROWSER", "OPEN_SITE", "FOLLOW_LINK", "SEARCH", "LIST_LINKS", "READ_MAIN"] as const;
