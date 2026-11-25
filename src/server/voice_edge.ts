@@ -464,6 +464,13 @@ export interface ConversationDeps<S extends EdgeSession> {
   readonly port: number | undefined;
 }
 
+function appReadsVerbatim(result: TurnResultLike): boolean {
+  const saved = isRecord(result.savedResearch) ? result.savedResearch : undefined;
+  return result.researchDelivery === "outcome" || saved?.reading === true || typeof saved?.token === "string" || Boolean(result.localSpeechOnly)
+    || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
+    || Boolean(result.pendingConfirmation) || Buffer.byteLength(result.speech, "utf8") > 1100;
+}
+
 export class VoiceEdge {
   readonly provider: (stt: EdgeSource, profile?: SpeechProfile) => LiveSessionProvider;
   readonly active = new Map<string, ServerSocket>();
@@ -645,8 +652,7 @@ export class VoiceEdge {
         replyLanguage = language;
       }
       if (typeof result.speech !== "string") throw new TypeError("speech");
-      const exact = result.researchDelivery === "outcome" || (isRecord(result.savedResearch) && result.savedResearch.reading === true) || Boolean(result.localSpeechOnly) || result.intentType === "READ_START_GUIDE" || result.semanticAction === "review-before-output"
-        || Boolean(result.pendingConfirmation) || Buffer.byteLength(result.speech, "utf8") > 1100;
+      const exact = appReadsVerbatim(result);
       await socket.sendJson({ result, exact });
       if (exact) {
         transcript.rememberAppSpeech(result.speech);

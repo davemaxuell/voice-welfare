@@ -254,12 +254,14 @@ it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언�
 
 const READING = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요. 출처 복지로 공식 자료. 출처 확인일 2026년 11월 19일.";
 
-async function serveReading(options: {failFirstReceipt?: true; failReceipts?: true; state?: string} = {}) {
+async function serveReading(options: {failFirstReceipt?: true; failReceipts?: true; state?: string; cancelled?: {reply: string; notice: string}} = {}) {
   const token = "reading-receipt";
   const state = {asked: false, heard: false, polls: 0, receipts: [] as string[]};
+  const cancelled = options.cancelled;
+  const after = cancelled === undefined ? {state: "completed", speech: READING} : {state: "cancelled", speech: cancelled.notice};
   await page.route("**/api/session/*/workspace/deliveries", route => {
     state.polls++;
-    return route.fulfill({json: {pending: state.heard ? [] : [{id: "job", token, state: state.asked ? "completed" : "running", language: "ko", speech: READING}]}});
+    return route.fulfill({json: {pending: state.heard ? [] : [{id: "job", token, language: "ko", ...(state.asked ? after : {state: "running", speech: READING})}]}});
   });
   await page.route(`**/api/session/*/workspace/research/job/delivery/${token}`, route => {
     state.receipts.push(route.request().method());
@@ -270,8 +272,8 @@ async function serveReading(options: {failFirstReceipt?: true; failReceipts?: tr
   await page.route("**/api/turn", async route => {
     const response = await route.fetch();
     state.asked = true;
-    await route.fulfill({json: {...await response.json(), ...(options.state === undefined ? {} : {state: options.state}), speech: READING, lang: "ko",
-      savedResearch: {jobId: "job", token, reading: true}}});
+    await route.fulfill({json: {...await response.json(), ...(options.state === undefined ? {} : {state: options.state}), speech: cancelled?.reply ?? READING, lang: "ko",
+      savedResearch: {jobId: "job", token, reading: cancelled === undefined}}});
   });
   return state;
 }
@@ -371,6 +373,28 @@ it("읽어 주기 전에 다른 응답으로 바뀐 저장한 조사는 감시�
   expect(speech.filter(line => line === READING)).toEqual([READING]);
   expect(state.receipts).toEqual(["DELETE"]);
   await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("말로 취소한 조사는 취소했다는 말을 다 들은 뒤에 인수증을 한 번 보내고, 감시가 중단 소식을 말하거나 쓰지 않는다", async () => {
+  const reply = "‘기초연금’ 조사를 취소했어요.", notice = "‘기초연금’ 조사 소식이에요. 조사를 중단했어요.";
+  const speech: string[] = [], playback = latch();
+  await recordResearchSpeech(speech, {playback: playback.promise});
+  const state = await serveReading({cancelled: {reply, notice}});
+  await openWorkspace([]);
+  await page.locator("#command").fill("맡긴 조사 취소해 줘");
+  await page.locator("#command").press("Enter");
+  await expect.poll(() => speech.length, {timeout: 15_000}).toBe(1);
+  const polls = state.polls;
+  await expect.poll(() => state.polls, {timeout: 20_000}).toBeGreaterThan(polls);
+  expect(speech).toEqual([reply]);
+  expect(state.receipts).toEqual([]);
+  playback.resolve();
+  await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  await page.waitForTimeout(1000);
+  expect(speech).toEqual([reply]);
+  expect(state.receipts).toEqual(["DELETE"]);
+  await screen(page.locator("#log li").filter({hasText: reply})).toHaveCount(1);
+  await screen(page.locator("#log li").filter({hasText: notice})).toHaveCount(0);
 });
 
 it("패널의 듣기 단추는 다 읽은 뒤에 그 조사의 인수증을 보내고, 인수증이 없는 조사는 읽기만 한다", async () => {
