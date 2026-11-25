@@ -624,7 +624,7 @@ async function applyTurnResult(result: Turn, speakIt: boolean, sleepOnStop: bool
   set({ last: r, state: r.state, lang: language, hasTurn, error: undefined });
   const receipt = pendingReceipt(r);
   if (receipt !== undefined) {
-    claimedReadings.add(receipt.token);
+    claimedReading = { token: receipt.token, turnId: r.turnId };
     presentedResearch.add(receipt.token);
   }
   if (r.researchDelivery === "queued") researchStarted();
@@ -667,7 +667,7 @@ export async function speakResearch(text: string, lang?: Lang): Promise<boolean>
 
 const ACTIVE_RESEARCH_POLL_MS = 2000;
 const presentedResearch = new Set<string>();
-const claimedReadings = new Set<string>();
+let claimedReading: { token: string; turnId: string } | undefined;
 const heardReadings = new Set<string>();
 const researchChunks = new Map<string, number>();
 const researchSilent = () => ui.voiceMode.known && (narrationMuted || !ui.voiceMode.tts);
@@ -688,8 +688,11 @@ function presentResearch(token: string, text: string, lang: Lang) {
     presentedResearch.add(token);
   }
 }
+function readingHolds(token: string) {
+  return (claimedReading?.token === token && claimedReading.turnId === ui.last?.turnId) || researchPlayback.has(token) || heardReadings.has(token);
+}
 export async function deliverResearch(token: string, text: string, lang: Lang): Promise<boolean> {
-  if (!ui.workspaceAvailable || !canReportResearch() || claimedReadings.has(token)) return false;
+  if (!ui.workspaceAvailable || !canReportResearch() || readingHolds(token)) return false;
   presentResearch(token, text, lang);
   const heard = await playResearch(token, text, lang);
   if (heard) presentedResearch.delete(token);
@@ -810,11 +813,10 @@ function speakReading(sessionId: string, { jobId, token }: { jobId: string; toke
   if (current !== undefined) return current;
   const play = async () => {
     if (heardReadings.has(token)) return true;
-    claimedReadings.add(token);
     const generation = stoppedGeneration;
     const heard = await playResearch(token, text, lang);
     if (!heard || sessionId !== ui.sessionId || stoppedGeneration !== generation) {
-      claimedReadings.delete(token);
+      if (claimedReading?.token === token) claimedReading = undefined;
       return false;
     }
     heardReadings.add(token);
@@ -1889,7 +1891,7 @@ function connect(s: { sessionId: string; state?: Session["state"] | undefined; s
 export async function endSession() {
   clearTimeout(researchRecoveryTimer);
   presentedResearch.clear();
-  claimedReadings.clear();
+  claimedReading = undefined;
   heardReadings.clear();
   researchChunks.clear();
   heardOutcomes.clear();

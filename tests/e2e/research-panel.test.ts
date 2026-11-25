@@ -75,12 +75,13 @@ async function openWorkspace(jobs: unknown[], notes: unknown[] = []) {
   await screen(page.locator("#workflow-title")).toBeVisible({ timeout: 15_000 });
 }
 
-async function recordResearchSpeech(speech: string[], {playback = Promise.resolve(), interrupted = () => false}: {playback?: Promise<unknown>; interrupted?: () => boolean} = {}) {
+async function recordResearchSpeech(speech: string[], {playback = Promise.resolve(), interrupted = () => false, shim = ""}: {playback?: Promise<unknown>; interrupted?: () => boolean; shim?: string} = {}) {
   await page.exposeFunction("testHeard", async (line: string) => { speech.push(line); await playback; return interrupted() ? "cancelled" : "played"; });
   await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
     route.fulfill({contentType: "text/javascript", body: `
       export * from '/src/speaker.ts?original';
       export const serverTts = { cancel() {}, async speak(text) { return await window.testHeard(text); } };
+      ${shim}
     `}));
   await page.route("**/api/health", async route => {
     const response = await route.fetch();
@@ -253,7 +254,7 @@ it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언�
 
 const READING = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요. 출처 복지로 공식 자료. 출처 확인일 2026년 11월 19일.";
 
-async function serveReading(options: {failFirstReceipt?: true} = {}) {
+async function serveReading(options: {failFirstReceipt?: true; state?: string} = {}) {
   const token = "reading-receipt";
   const state = {asked: false, heard: false, polls: 0, receipts: [] as string[]};
   await page.route("**/api/session/*/workspace/deliveries", route => {
@@ -269,7 +270,7 @@ async function serveReading(options: {failFirstReceipt?: true} = {}) {
   await page.route("**/api/turn", async route => {
     const response = await route.fetch();
     state.asked = true;
-    await route.fulfill({json: {...await response.json(), speech: READING, lang: "ko",
+    await route.fulfill({json: {...await response.json(), ...(options.state === undefined ? {} : {state: options.state}), speech: READING, lang: "ko",
       savedResearch: {jobId: "job", token, reading: true}}});
   });
   return state;
@@ -335,6 +336,28 @@ it("말로 요청해 읽던 저장한 조사의 재생이 끊기면 인수증을
   await expect.poll(() => speech.length, {timeout: 25_000}).toBe(2);
   await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
   expect(speech).toEqual([READING, READING]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("읽어 주기 전에 다른 응답으로 바뀐 저장한 조사는 감시가 나중에 줄 하나 더 쓰지 않고 한 번 들려주고 인수증을 한 번 보낸다", async () => {
+  const speech: string[] = [], parked = latch(), cue = latch();
+  await page.exposeFunction("testCue", async () => { parked.resolve(); await cue.promise; });
+  await recordResearchSpeech(speech, {shim: `
+    import { earcon as playCue } from '/src/speaker.ts?original';
+    export const earcon = kind => kind === "problem" ? window.testCue() : playCue(kind);`});
+  const state = await serveReading({state: "RECOVERING"});
+  await openWorkspace([]);
+  await askToRead();
+  await parked.promise;
+  await page.locator("#lang-select").selectOption("ko");
+  await expect.poll(() => speech.length, {timeout: 15_000}).toBe(1);
+  expect(speech).not.toContain(READING);
+  cue.resolve();
+  await expect.poll(() => speech.filter(line => line === READING).length, {timeout: 25_000}).toBe(1);
+  await expect.poll(() => state.receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  await page.waitForTimeout(1000);
+  expect(speech.filter(line => line === READING)).toEqual([READING]);
+  expect(state.receipts).toEqual(["DELETE"]);
   await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
 });
 
