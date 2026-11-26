@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { CHOICE_KEYS, CHOICE_TURNS, ChoiceKeySchema, choiceLabel, offeredChoices, type ChoiceKey } from "../../src/core/choices.ts";
+import { CHOICE_KEYS, CHOICE_TURNS, ChoiceKeySchema, JOB_CHOICE_KEYS, choiceLabel, isJobChoice, offeredChoices, type ChoiceKey } from "../../src/core/choices.ts";
 import { parseIntent } from "../../src/core/intents.ts";
 
 // 기대값은 pyref(77aad3e)의 cheongeum.core.choices.choice_label 출력이다.
@@ -108,4 +108,20 @@ it("제안 하나는 키마다 그 언어의 이름을 붙인 목록이 되고 �
     .toEqual([{ key: "auth-done", label: "인증 끝났어요" }, { key: "auth-cancel", label: "인증 취소" }]);
   expect(offeredChoices({ keys: ["read-main"] }, "en")).toEqual([{ key: "read-main", label: "Read the page" }]);
   expect(offeredChoices({ keys: [] }, "ko")).toEqual([]);
+});
+
+it("조사를 고르는 선택지는 셋이고, 네 언어 모두 이름에 순서만 있다", () => {
+  expect(JOB_CHOICE_KEYS).toEqual(["job-1", "job-2", "job-3"]);
+  expect(JOB_CHOICE_KEYS.map(key => ["ko", "en", "zh", "ja", "fr"].map(lang => choiceLabel(key, lang, "verification")))).toEqual([
+    ["1번", "Option 1", "第1项", "1番", "1번"],
+    ["2번", "Option 2", "第2项", "2番", "2번"],
+    ["3번", "Option 3", "第3项", "3番", "3번"],
+  ]);
+  expect(offeredChoices({ keys: ["job-1", "job-2"] }, "en")).toEqual([{ key: "job-1", label: "Option 1" }, { key: "job-2", label: "Option 2" }]);
+});
+
+it("제안 키는 조사를 고르는 세 자리까지 받고, 조사를 고르는 키인지는 그 셋으로만 가린다", () => {
+  for (const key of JOB_CHOICE_KEYS) expect(ChoiceKeySchema.safeParse(key).success, key).toBe(true);
+  for (const key of ["job-0", "job-4", "job-", "pick-1"]) expect(ChoiceKeySchema.safeParse(key).success, key).toBe(false);
+  expect([...CHOICE_KEYS, ...JOB_CHOICE_KEYS, "job-4"].filter(isJobChoice)).toEqual(["job-1", "job-2", "job-3"]);
 });

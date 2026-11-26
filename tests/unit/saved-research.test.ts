@@ -70,3 +70,19 @@ it("이어서 답을 받을 수 없는 되물음도 답하기와 취소에 맞�
   expect(fits("cancel", restart)).toBe(true);
   expect(plannerView([job("restart", "라", restart)], undefined, same).saved.jobs[0]?.state).toBe("asking-restart");
 });
+
+it("고르라고 물어 둔 것은 선택지마다 부른 번호와 이번 목록의 ref로 싣고, 목록에서 사라진 조사는 빼되 남은 번호는 그대로 둔다", () => {
+  const jobs = [job("new", "새로 맡긴 조사", { kind: "working" }), job("a", "가", { kind: "ready" }), job("c", "다", { kind: "ready" })];
+  const reading = { action: "read", options: [{ jobId: "a" }, { jobId: "b" }, { jobId: "c" }] } as const;
+  const view = plannerView(jobs, undefined, same, reading);
+  expect(view.saved.pick).toEqual({ action: "read", options: [{ number: 1, ref: "j2" }, { number: 3, ref: "j3" }] });
+  expect(view.pick).toBe(reading);
+  expect(view.resolve("j2")).toBe("a");
+
+  const answering = { action: "answer", answer: "서울이요", options: [{ jobId: "a", revision: 4 }, { jobId: "c", revision: undefined }] } as const;
+  expect(plannerView(jobs, undefined, same, answering).saved.pick)
+    .toEqual({ action: "answer", answer: "서울이요", options: [{ number: 1, ref: "j2" }, { number: 2, ref: "j3" }] });
+
+  expect(plannerView([job("new", "새로 맡긴 조사", { kind: "working" })], undefined, same, reading).saved).not.toHaveProperty("pick");
+  expect(plannerView(jobs, undefined, same).saved).not.toHaveProperty("pick");
+});

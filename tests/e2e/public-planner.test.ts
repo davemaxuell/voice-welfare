@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { z } from "zod";
 import * as browser from "../../src/agents/web/browser/index.ts";
 import { STACK } from "../../src/core/model_stack.ts";
-import type { JobPhase, ResearchDesk, SavedJob } from "../../src/core/research_desk.ts";
+import type { ResearchDesk } from "../../src/core/research_desk.ts";
 import { detectScriptLang } from "../../src/language/i18n.ts";
 import { parseDecision, PublicTask, reviewCompletion } from "../../src/orchestrator/public_task.ts";
 import { loadConfig } from "../../src/server/runtime.ts";
@@ -11,6 +11,7 @@ import { RuleBasedIntentProvider } from "../../src/understanding/rules.ts";
 import { FakeLlm, withLlm } from "../helpers.ts";
 import { browserCases, latch } from "./browser-cases.ts";
 import { adapterFor, pageFor, runtimeCases } from "./browser-runtime-cases.ts";
+import { deskOf, plannerPayloads, savedDecision, savedJob } from "./saved-research-fakes.ts";
 
 const open = browserCases(), service = runtimeCases(), source = "방문 신청자는 신분증과 신청서를 지참합니다.";
 function decision(fields: Record<string, unknown> = {}) {
@@ -324,23 +325,8 @@ it("맡기지 못한 조사는 마지막으로 맡긴 번호를 바꾸지 않고
 });
 
 const unusedFields = {requestedFacts: [], exclusions: [], continuation: false, choices: []};
-const readSaved = (jobs: string[]) => ({public_service_decision: {kind: "saved_research", research: {action: "read", jobs, answer: null}, ...unusedFields}});
-const savedJob = (id: string, request: string, phase: JobPhase): SavedJob => ({id, request, language: "ko", phase, savedOn: "2026-11-25"});
+const readSaved = (jobs: string[]) => savedDecision("read", jobs);
 const ASKED = "아까 맡긴 거 어떻게 됐어?";
-function deskOf(jobs: SavedJob[]) {
-  const recent = vi.fn<ResearchDesk["recent"]>(async limit => jobs.slice(0, limit));
-  const read = vi.fn<ResearchDesk["read"]>(async jobId => ({
-    jobId, speech: `‘${jobs.find(job => job.id === jobId)?.request}’ 조사 결과예요. 신분증을 준비하세요.`, lang: "ko", sources: [], receipt: {token: "receipt-" + jobId},
-  }));
-  const answer = vi.fn<ResearchDesk["answer"]>(async () => "queued");
-  const cancel = vi.fn<ResearchDesk["cancel"]>(async jobId => {
-    const request = jobs.find(job => job.id === jobId)?.request;
-    return request === undefined ? undefined : {request, token: "receipt-" + jobId};
-  });
-  return {recent, read, answer, cancel, delegate: vi.fn<ResearchDesk["delegate"]>(async () => undefined)};
-}
-const plannerPayloads = (model: FakeLlm) => model.calls.filter(call => call.schemaName === "public_service_decision")
-  .map(call => z.record(z.string(), z.unknown()).parse(JSON.parse(call.user)));
 
 it("제 말로 맡긴 조사를 물으면 플래너가 고른 조사를 읽어 주고 신청 기록 명령으로 가지 않는다", async () => {
   const {session} = await open();
@@ -411,7 +397,7 @@ it("읽을 수 있는 조사가 여럿인데 하나를 짚지 않았으면 요�
   session.deps.research = desk;
   withLlm(session, new FakeLlm(readSaved([])));
   const reply = await session.handleTurn(ASKED);
-  expect(reply.speech).toBe("맡긴 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’ 중 어떤 것을 읽어 드릴까요?");
+  expect(reply.speech).toBe("맡긴 조사가 여러 개예요. 1번 ‘아동수당 신청 방법’, 2번 ‘기초연금 신청 서류’ 중 어떤 것을 읽어 드릴까요?");
   expect(reply.savedResearch).toBeUndefined();
   expect(desk.read).not.toHaveBeenCalled();
 });
@@ -421,9 +407,10 @@ it("읽을 수 있는 조사가 넷이면 최근 세 건만 불러 주고, 플�
   const jobs = ["가", "나", "다", "라"].map((request, i) => savedJob(`job-${i + 1}`, request, {kind: "ready"}));
   session.deps.research = deskOf(jobs);
   withLlm(session, new FakeLlm(readSaved([])));
-  expect((await session.handleTurn(ASKED)).speech).toBe("맡긴 조사가 여러 개예요. ‘가’, ‘나’, ‘다’ 중 어떤 것을 읽어 드릴까요?");
+  expect((await session.handleTurn(ASKED)).speech)
+    .toBe("맡긴 조사가 여러 개예요. 1번 ‘가’, 2번 ‘나’, 3번 ‘다’ 중 어떤 것을 읽어 드릴까요? 이 밖에도 더 있어요. 다른 조사는 주제를 말씀해 주세요.");
   withLlm(session, new FakeLlm(readSaved(["j2", "j4"])));
-  expect((await session.handleTurn(ASKED)).speech).toBe("맡긴 조사가 여러 개예요. ‘나’, ‘라’ 중 어떤 것을 읽어 드릴까요?");
+  expect((await session.handleTurn(ASKED)).speech).toBe("맡긴 조사가 여러 개예요. 1번 ‘나’, 2번 ‘라’ 중 어떤 것을 읽어 드릴까요?");
 });
 
 it.each([
@@ -513,9 +500,6 @@ it("조사 목록을 읽지 못하면 플래너에 목록을 보내지 않고, �
   expect(Object.keys(plannerPayloads(model)[0] ?? {})).not.toContain("savedJobs");
   expect(desk.read).not.toHaveBeenCalled();
 });
-
-const savedDecision = (action: "read" | "answer" | "cancel", jobs: string[], answer: string | null = null) =>
-  ({public_service_decision: {kind: "saved_research", research: {action, jobs, answer}, ...unusedFields}});
 
 it.each([
   ["취소해 줘", "STOPPED", 0, []],
@@ -656,10 +640,10 @@ it("답하거나 취소할 수 있는 조사가 여럿인데 하나를 짚지 �
   session.deps.research = desk;
   withLlm(session, new FakeLlm(savedDecision("answer", [], "서울")));
   expect((await session.handleTurn("서울이요")).speech)
-    .toBe("답을 기다리는 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’ 중 어느 것에 답하시는지, 조사 이름과 답을 함께 말씀해 주세요.");
+    .toBe("답을 기다리는 조사가 여러 개예요. 1번 ‘아동수당 신청 방법’, 2번 ‘기초연금 신청 서류’ 중 어느 것에 답할까요?");
   withLlm(session, new FakeLlm(savedDecision("cancel", [])));
   expect((await session.handleTurn("맡긴 조사 취소해 줘")).speech)
-    .toBe("맡긴 조사가 여러 개예요. ‘아동수당 신청 방법’, ‘기초연금 신청 서류’, ‘조사 중인 것’ 중 어떤 것을 취소할까요?");
+    .toBe("맡긴 조사가 여러 개예요. 1번 ‘아동수당 신청 방법’, 2번 ‘기초연금 신청 서류’, 3번 ‘조사 중인 것’ 중 어떤 것을 취소할까요?");
   expect(desk.answer).not.toHaveBeenCalled();
   expect(desk.cancel).not.toHaveBeenCalled();
 });

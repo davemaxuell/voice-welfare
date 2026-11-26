@@ -1,6 +1,8 @@
+import { JOB_CHOICE_KEYS, choiceLabel } from "../core/choices.ts";
 import { RESEARCH_RESTART } from "../core/research_copy.ts";
-import type { AnswerOutcome, JobPhase, ResearchDesk, SavedJob } from "../core/research_desk.ts";
+import type { AnswerOutcome, JobPhase, ResearchDesk, SavedJob, SavedPick } from "../core/research_desk.ts";
 import { draft, type Draft, type Lang } from "../core/turn.ts";
+import { spokenRequest } from "../speech/research_reading.ts";
 import type { PlannerJob, PlannerSaved, SavedDecision } from "./public_task.ts";
 import type { SessionOrchestrator } from "./session.ts";
 
@@ -53,17 +55,16 @@ const ANSWERED: Record<AnswerOutcome, Phrase> = {
     zh: "未能发送您的回答。请再说一次。", ja: "お答えを送れませんでした。もう一度お話しください。",
   },
 };
-const CANCELLED: Record<Lang, (request: string) => string> = {
-  ko: request => `‘${request}’ 조사를 취소했어요.`,
-  en: request => `I cancelled the research on “${request}”.`,
-  zh: request => `已取消“${request}”的调查。`,
-  ja: request => `「${request}」の調査を取り消しました。`,
+const CANCELLED: Record<Lang, (name: string) => string> = {
+  ko: name => `‘${name}’ 조사를 취소했어요.`,
+  en: name => `I cancelled the research on “${name}”.`,
+  zh: name => `已取消“${name}”的调查。`,
+  ja: name => `「${name}」の調査を取り消しました。`,
 };
 export const NEEDS_PERSONAL_DEVICE = "자료 조사를 맡기려면 이용 설정에서 개인 기기를 선택해 주세요.";
 
 const LISTED = 8;
 const REQUEST_LENGTH = 120;
-const ASKED_ABOUT = 3;
 
 export const READING_PLACEHOLDER = "[저장한 조사 결과를 읽어 드렸어요]";
 
@@ -71,6 +72,7 @@ export interface PlannerView {
   readonly saved: PlannerSaved;
   /** 플래너가 본 그대로의 조사 목록 */
   readonly jobs: readonly SavedJob[];
+  readonly pick: SavedPick | undefined;
   resolve(ref: string): string | undefined;
 }
 
@@ -78,15 +80,26 @@ function plannerState(phase: JobPhase): PlannerJob["state"] {
   return phase.kind === "asking" && phase.revision === undefined ? "asking-restart" : phase.kind;
 }
 
-export function plannerView(jobs: readonly SavedJob[], lastSaved: string | undefined, redact: (text: string) => string): PlannerView {
+export function plannerView(jobs: readonly SavedJob[], lastSaved: string | undefined, redact: (text: string) => string, pick?: SavedPick): PlannerView {
   const listed = jobs.slice(0, LISTED).map((job, i) => ({ ...job, ref: `j${i + 1}` }));
   const ids = new Map(listed.map(job => [job.ref, job.id]));
+  const refs = new Map(listed.map(job => [job.id, job.ref]));
+  const options = (pick?.options ?? []).flatMap((option, i) => {
+    const ref = refs.get(option.jobId);
+    return ref === undefined ? [] : [{ number: i + 1, ref }];
+  });
+  const pending = pick === undefined || options.length === 0 ? undefined :
+    pick.action === "answer" ? { action: pick.action, answer: pick.answer, options } : { action: pick.action, options };
   return {
     jobs: jobs.slice(0, LISTED),
-    saved: { jobs: listed.map(job => ({
-      ref: job.ref, request: Array.from(redact(job.request)).slice(0, REQUEST_LENGTH).join(""), state: plannerState(job.phase), savedOn: job.savedOn,
-      ...(job.id === lastSaved ? { lastSaved: true } : {}),
-    })) },
+    saved: {
+      jobs: listed.map(job => ({
+        ref: job.ref, request: Array.from(redact(job.request)).slice(0, REQUEST_LENGTH).join(""), state: plannerState(job.phase), savedOn: job.savedOn,
+        ...(job.id === lastSaved ? { lastSaved: true } : {}),
+      })),
+      ...(pending === undefined ? {} : { pick: pending }),
+    },
+    pick,
     resolve: ref => ids.get(ref),
   };
 }
@@ -100,11 +113,25 @@ export function fits(action: SavedAction, phase: JobPhase): boolean {
   return FITS[action].has(phase.kind);
 }
 
-const NAMED: Record<Lang, (requests: readonly string[]) => string> = {
-  ko: requests => requests.map(request => `‘${request}’`).join(", "),
-  en: requests => new Intl.ListFormat("en", { type: "disjunction" }).format(requests.map(request => `“${request}”`)),
-  zh: requests => requests.map(request => `“${request}”`).join("、"),
-  ja: requests => requests.map(request => `「${request}」`).join("、"),
+type Task = { readonly action: Exclude<SavedAction, "answer"> } | { readonly action: "answer"; readonly answer: string };
+
+const askedRevision = (job: SavedJob) => job.phase.kind === "asking" ? job.phase.revision : undefined;
+function questionRevision(job: SavedJob, pick: SavedPick | undefined): number | undefined {
+  const offered = pick?.action === "answer" ? pick.options.find(option => option.jobId === job.id) : undefined;
+  return offered === undefined ? askedRevision(job) : offered.revision;
+}
+
+const NUMBERED: Record<Lang, (number: string, name: string) => string> = {
+  ko: (number, name) => `${number} ‘${name}’`,
+  en: (number, name) => `${number} “${name}”`,
+  zh: (number, name) => `${number}“${name}”`,
+  ja: (number, name) => `${number}「${name}」`,
+};
+const NAMED: Record<Lang, (items: readonly string[]) => string> = {
+  ko: items => items.join(", "),
+  en: items => new Intl.ListFormat("en", { type: "disjunction" }).format(items),
+  zh: items => items.join("、"),
+  ja: items => items.join("、"),
 };
 const WHICH_ONE: Record<SavedAction, Record<Lang, (names: string) => string>> = {
   read: {
@@ -114,10 +141,10 @@ const WHICH_ONE: Record<SavedAction, Record<Lang, (names: string) => string>> = 
     ja: names => `お預かりした調査がいくつかあります。${names}のどれを読みましょうか。`,
   },
   answer: {
-    ko: names => `답을 기다리는 조사가 여러 개예요. ${names} 중 어느 것에 답하시는지, 조사 이름과 답을 함께 말씀해 주세요.`,
-    en: names => `Several saved research jobs are waiting for an answer. Please say which one you are answering together with your answer: ${names}.`,
-    zh: names => `有几项调查在等您的回答。${names}，请把要回答的调查名称和回答一起说。`,
-    ja: names => `お答えを待っている調査がいくつかあります。${names}のどれへのお答えか、調査の名前とお答えを一緒にお話しください。`,
+    ko: names => `답을 기다리는 조사가 여러 개예요. ${names} 중 어느 것에 답할까요?`,
+    en: names => `Several saved research jobs are waiting for an answer. Which should I give your answer to: ${names}?`,
+    zh: names => `有几项调查在等您的回答。${names}，要把您的回答交给哪一项？`,
+    ja: names => `お答えを待っている調査がいくつかあります。${names}のどれにお答えを伝えましょうか。`,
   },
   cancel: {
     ko: names => `맡긴 조사가 여러 개예요. ${names} 중 어떤 것을 취소할까요?`,
@@ -125,6 +152,10 @@ const WHICH_ONE: Record<SavedAction, Record<Lang, (names: string) => string>> = 
     zh: names => `您有几项已保存的调查。${names}，要取消哪一项？`,
     ja: names => `お預かりした調査がいくつかあります。${names}のどれを取り消しましょうか。`,
   },
+};
+const MORE_FIT: Phrase = {
+  ko: "이 밖에도 더 있어요. 다른 조사는 주제를 말씀해 주세요.", en: "There are more. For another one, tell me what it was about.",
+  zh: "此外还有其他调查。要找别的，请说出它的主题。", ja: "ほかにもあります。別の調査は、その内容をお話しください。",
 };
 
 export class SavedResearch {
@@ -143,10 +174,10 @@ export class SavedResearch {
   }
 
   async plannerView(): Promise<PlannerView | undefined> {
-    const desk = this.#session.deps.research;
+    const s = this.#session, desk = s.deps.research;
     if (desk === undefined) return undefined;
     const jobs = await desk.recent(LISTED).catch(() => undefined);
-    return jobs === undefined ? undefined : plannerView(jobs, this.#lastSaved, text => this.#session.modelSpeech(text));
+    return jobs === undefined ? undefined : plannerView(jobs, this.#lastSaved, text => s.modelSpeech(text), s.offeredPick);
   }
 
   unclear(): Draft {
@@ -156,24 +187,45 @@ export class SavedResearch {
   }
 
   async handle(request: SavedDecision, view: PlannerView): Promise<Draft> {
-    const s = this.#session;
-    const desk = s.deps.research, lang = s.lang;
+    const desk = this.#session.deps.research;
     if (desk === undefined) return this.unclear();
     const named = new Set(request.jobs.map(ref => view.resolve(ref)));
     // 답은 플래너가 본 질문의 번호로 넣는다. 그사이 질문이 바뀌었으면 저장소가 받지 않는다(stale).
     const listed = request.action === "answer" ? view.jobs : await desk.recent(LISTED);
-    const meant = request.jobs.length === 0 ? listed : listed.filter(job => named.has(job.id));
-    const [job, ...others] = meant.filter(candidate => fits(request.action, candidate.phase));
-    if (job === undefined) return draft(s.state, "none", NOTHING_FITS[request.action](meant)[lang], { lang });
-    if (others.length > 0) {
-      const names = NAMED[lang]([job, ...others].slice(0, ASKED_ABOUT).map(candidate => candidate.request));
-      return draft(s.state, "clarify", WHICH_ONE[request.action][lang](names), { lang });
-    }
-    switch (request.action) {
+    return this.#among(desk, request.jobs.length === 0 ? listed : listed.filter(job => named.has(job.id)), request, view.pick);
+  }
+
+  async choose(pick: SavedPick, jobId: string): Promise<Draft> {
+    const desk = this.#session.deps.research;
+    if (desk === undefined) return this.unclear();
+    const listed = await desk.recent(LISTED);
+    return this.#among(desk, listed.filter(job => job.id === jobId), pick, pick);
+  }
+
+  async #among(desk: ResearchDesk, meant: readonly SavedJob[], task: Task, pick: SavedPick | undefined): Promise<Draft> {
+    const s = this.#session, lang = s.lang;
+    const [job, ...others] = meant.filter(candidate => fits(task.action, candidate.phase));
+    if (job === undefined) return draft(s.state, "none", NOTHING_FITS[task.action](meant)[lang], { lang });
+    if (others.length > 0) return this.#ask(task, [job, ...others]);
+    switch (task.action) {
       case "read": return this.#read(desk, job);
-      case "answer": return this.#answer(desk, job, request.answer);
+      case "answer": return this.#answer(desk, job, task.answer, questionRevision(job, pick));
       case "cancel": return this.#cancel(desk, job);
     }
+  }
+
+  #ask(task: Task, candidates: readonly SavedJob[]): Draft {
+    const s = this.#session, lang = s.lang;
+    const offered = JOB_CHOICE_KEYS.flatMap((key, i) => {
+      const job = candidates[i];
+      return job === undefined ? [] : [{ key, job }];
+    });
+    const names = NAMED[lang](offered.map(({ key, job }) => NUMBERED[lang](choiceLabel(key, lang), spokenRequest(job.request))));
+    const pick: SavedPick = task.action === "answer"
+      ? { action: task.action, answer: task.answer, options: offered.map(({ job }) => ({ jobId: job.id, revision: askedRevision(job) })) }
+      : { action: task.action, options: offered.map(({ job }) => ({ jobId: job.id })) };
+    const sentences = [WHICH_ONE[task.action][lang](names), ...(candidates.length > offered.length ? [MORE_FIT[lang]] : [])];
+    return draft(s.state, "clarify", sentences.join(lang === "zh" || lang === "ja" ? "" : " "), { lang, pick });
   }
 
   async #read(desk: ResearchDesk, job: SavedJob): Promise<Draft> {
@@ -184,9 +236,8 @@ export class SavedResearch {
     return draft(s.state, "web-answer", reading.speech, { lang: reading.lang, sources: [...reading.sources], savedResearch });
   }
 
-  async #answer(desk: ResearchDesk, job: SavedJob, answer: string): Promise<Draft> {
+  async #answer(desk: ResearchDesk, job: SavedJob, answer: string, revision: number | undefined): Promise<Draft> {
     const s = this.#session, lang = s.lang;
-    const revision = job.phase.kind === "asking" ? job.phase.revision : undefined;
     if (revision === undefined) return draft(s.state, "none", RESEARCH_RESTART[lang], { lang });
     const outcome = await desk.answer(job.id, revision, answer);
     return draft(s.state, "none", ANSWERED[outcome][lang], { lang, ...(outcome === "queued" ? { researchDelivery: "queued" as const } : {}) });
@@ -198,6 +249,6 @@ export class SavedResearch {
     if (cancelled === undefined) return draft(s.state, "none", ALREADY_ENDED[lang], { lang });
     if (this.#lastSaved === job.id) this.#lastSaved = undefined;
     const savedResearch = cancelled.token === undefined ? undefined : { jobId: job.id, token: cancelled.token, reading: false };
-    return draft(s.state, "none", CANCELLED[lang](cancelled.request), { lang, ...(savedResearch === undefined ? {} : { savedResearch }) });
+    return draft(s.state, "none", CANCELLED[lang](spokenRequest(cancelled.request)), { lang, ...(savedResearch === undefined ? {} : { savedResearch }) });
   }
 }

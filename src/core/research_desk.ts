@@ -26,6 +26,11 @@ export interface Reading {
 
 export type AnswerOutcome = "queued" | "stale" | "unsafe" | "refused";
 
+interface PickOption { readonly jobId: string }
+export type SavedPick =
+  | { readonly action: "read" | "cancel"; readonly options: readonly PickOption[] }
+  | { readonly action: "answer"; readonly answer: string; readonly options: readonly (PickOption & { readonly revision: number | undefined })[] };
+
 export interface ResearchDesk {
   recent(limit: number): Promise<readonly SavedJob[]>;
   delegate(idempotencyKey: string, goal: string): Promise<{ jobId: string } | undefined>;

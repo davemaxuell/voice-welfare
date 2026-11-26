@@ -6,6 +6,7 @@ import {
   type Observation,
 } from "./actions.ts";
 import { ChoiceKeySchema } from "./choices.ts";
+import type { SavedPick } from "./research_desk.ts";
 import { SourceData } from "./research.ts";
 import { integer, omitAbsent, optional } from "./schema.ts";
 
@@ -208,6 +209,7 @@ type DraftExtras = Partial<Pick<TurnResult,
   /** 공개 안내 조사에서 찾은 근거 글과 그 판정(completed·partial·incomplete·needs_input) */
   researchEvidence?: string;
   researchState?: string;
+  pick?: SavedPick;
 };
 export type Draft = Pick<TurnResult, "state" | "semanticAction" | "speech"> & DraftExtras;
 export function draft(state: SessionState, semanticAction: SemanticAction, speech: string, extra: DraftExtras = {}): Draft {

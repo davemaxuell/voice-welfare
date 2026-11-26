@@ -16,7 +16,7 @@ import { speakAnswerCard, type WelfareInformationAgent } from "../agents/welfare
 import { PROFILE_ORDER, parseProfileAnswer, profileQuestion, type ProfileSlot, type UserProfile } from "../agents/welfare/discovery.ts";
 import { OpenData, type PlaceFinder } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
-import { CHOICE_TURNS, choiceLabel, offeredChoices, type ChoiceKey } from "../core/choices.ts";
+import { CHOICE_TURNS, JOB_CHOICE_KEYS, choiceLabel, isJobChoice, offeredChoices, type ChoiceKey } from "../core/choices.ts";
 import { APPROVAL_TTL_S, DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
@@ -26,7 +26,7 @@ import { TurnQueue } from "../core/mutex.ts";
 import type { PlaceAsk } from "../core/places.ts";
 import { backendActivity, backendTrace, Progress } from "../core/progress.ts";
 import { RESEARCH_UNDELIVERED } from "../core/research_copy.ts";
-import type { ResearchDesk } from "../core/research_desk.ts";
+import type { ResearchDesk, SavedPick } from "../core/research_desk.ts";
 import { omitAbsent } from "../core/schema.ts";
 import { PUBLIC_AGENCIES } from "../core/sites.ts";
 import { hasText, rstripChars, strip, stripChars } from "../core/text.ts";
@@ -139,7 +139,7 @@ export interface TurnOptions {
   maxCodePoints?: number;
 }
 interface ProcessOptions { fromVoice?: boolean; staleLinkOffer?: boolean; proposalReply?: boolean; plannerDialogue?: readonly DialogueExchange[] | undefined }
-interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string; navigationHandoff?: Draft["navigationHandoff"] }
+interface Offer { turnId: string; keys: ChoiceKey[]; handoffId?: string; authKind?: string; url?: string; navigationHandoff?: Draft["navigationHandoff"]; saved?: SavedPick }
 /** 공공업무 판단에 주는 지난 대화 한 줄. 기관을 모르면 agency는 null(모델에 가는 JSON 그대로). */
 export type { PublicTurn } from "./public_task.ts";
 export interface RecoveryCheckpoint {
@@ -307,6 +307,7 @@ export class SessionOrchestrator {
   /** 청음이 부르는 이름: 개인 PC면 금고, 아니면 이번 대화(세션 메모리 금고)에만 있다. */
   get callName() { return this.personal.callName(); }
   get linkOfferId() { return this.browse.linkChoices?.offerId ?? ""; }
+  get offeredPick(): SavedPick | undefined { return this.#offer?.saved; }
   get places(): PlaceFinder { return this.deps.places ?? (this.#noPlaces ??= OpenData.empty().places); }
   clock() { return this.deps.clock?.() ?? performance.now() / 1000; }
 
@@ -527,6 +528,14 @@ export class SessionOrchestrator {
         const view = await this.web.observe(check.ctx).catch(() => undefined);
         if (view?.url !== offer.url) return undefined;
       }
+      if (isJobChoice(chosen)) {
+        const pick = offer.saved, option = pick?.options[JOB_CHOICE_KEYS.indexOf(chosen)];
+        if (pick === undefined || option === undefined) return undefined;
+        this.#offer = undefined;
+        const turn = this.beginTurn(redactText(choiceLabel(chosen, "ko")));
+        turn.intentType = "SAVED_RESEARCH";
+        return this.localize(await this.saved.choose(pick, option.jobId).then(out => this.finish(turn, out), error => this.#failed(turn, error)));
+      }
       if (chosen !== "resume-navigation") this.#offer = undefined;
       const { text, intent } = CHOICE_TURNS[chosen];
       return this.process(redactText(text ?? choiceLabel(chosen, "ko", offer.authKind)), NO_SECRET, { ...intent });
@@ -549,6 +558,7 @@ export class SessionOrchestrator {
     if (this.dialogue.authWaiting && handoff !== undefined) {
       return { turnId: turn.id, keys: ["auth-done", "auth-cancel"], handoffId: handoff.id, authKind: handoff.kind };
     }
+    if (out.pick !== undefined) return { turnId: turn.id, keys: JOB_CHOICE_KEYS.slice(0, out.pick.options.length), saved: out.pick };
     if (out.navigationHandoff !== undefined) return {turnId: turn.id, keys: ["resume-navigation"], navigationHandoff: out.navigationHandoff};
     if (state === "BROWSING" && (out.semanticAction === "open-site" || out.semanticAction === "follow-link" || out.semanticAction === "back") &&
         view !== undefined && view.url.length > 0) {
@@ -1371,13 +1381,17 @@ export class SessionOrchestrator {
       if (rest.length > 0 || splitQuestion) return this.finish(turn, await this.runPlan(intents, turn));
       return await this.planner.command(turn, intent.type, () => this.route(intent, turn));
     } catch (error) {
-      if (isAbort(error)) return this.voided();
-      if (error instanceof ModelTransportError) {
-        return this.finish(turn, draft("RECOVERING", "none", "웹 탐색에 필요한 AI 서비스에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요."));
-      }
-      const name = error instanceof Error ? error.name : "Error";
-      return this.finish(turn, draft("RECOVERING", "none", `처리 중 문제가 생겨 실행을 멈췄습니다(${name}). 다시 말씀해 주세요.`));
+      return this.#failed(turn, error);
     }
+  }
+
+  #failed(turn: Turn, error: unknown): TurnResult {
+    if (isAbort(error)) return this.voided();
+    if (error instanceof ModelTransportError) {
+      return this.finish(turn, draft("RECOVERING", "none", "웹 탐색에 필요한 AI 서비스에 연결하지 못했어요. 잠시 뒤 다시 말씀해 주세요."));
+    }
+    const name = error instanceof Error ? error.name : "Error";
+    return this.finish(turn, draft("RECOVERING", "none", `처리 중 문제가 생겨 실행을 멈췄습니다(${name}). 다시 말씀해 주세요.`));
   }
 
   async #authTurn(turn: Turn, forced: Intent | undefined): Promise<Draft> {
@@ -1492,7 +1506,8 @@ export class SessionOrchestrator {
     let recorded = privateHistory ? REDACTED : this.#withoutSecrets(speech);
     let localSpeechOnly = privateHistory || recorded !== speech || d.approval?.kind === "plan";
     if (!localSpeechOnly && d.confirmation === undefined && turn.intentType !== "READ_START_GUIDE" &&
-        (out.pictureHistory === undefined || out.pictureHistory.length === 0) && out.answerCard === undefined && out.review === undefined && !reading) {
+        (out.pictureHistory === undefined || out.pictureHistory.length === 0) && out.answerCard === undefined && out.review === undefined && !reading &&
+        out.pick === undefined) {
       speech = recorded = this.#trimSpeech(speech);
     }
     if (turn.progressReply.length > 0 && !stopped) {
