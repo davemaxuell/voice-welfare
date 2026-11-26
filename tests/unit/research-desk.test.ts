@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResearchCheckpoint, ResearchPlan } from "../../src/core/research.ts";
 import type { JobPhase, ResearchDesk } from "../../src/core/research_desk.ts";
 import { createResearchDesk } from "../../src/server/research_desk.ts";
-import type { WorkflowStore } from "../../src/server/workflow_store.ts";
+import { LEASE_SECONDS, MAX_ATTEMPTS, type WorkflowStore } from "../../src/server/workflow_store.ts";
 import { Workflows, type ResearchSession } from "../../src/server/workflows.ts";
 
 const folders: string[] = [];
@@ -58,6 +58,21 @@ async function cancelled(store: WorkflowStore, prompt: string) {
   await later();
   const id = await store.enqueue(randomUUID(), prompt, "ko");
   expect(await store.cancel(id)).toBe(true);
+  return id;
+}
+async function failedAfterFinding(store: WorkflowStore, prompt: string) {
+  await later();
+  const id = await store.enqueue(randomUUID(), prompt, "ko");
+  const [verified] = waitingPlan(1).steps;
+  if (verified === undefined) throw new Error("Expected a verified step");
+  const plan: ResearchPlan = { ...waitingPlan(1), steps: [verified, { requirement: "나 제도의 마감일", attempts: 1 }] };
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const job = await store.claim(5_000_000_000 + attempt * LEASE_SECONDS);
+    if (job === undefined) throw new Error("Expected a claim");
+    if (attempt === 0) expect(await store.saveProgress(job, 0, { version: 1, plan, activeMs: 1, continuations: 0 })).toBe(true);
+    await store.retry(job);
+  }
+  expect((await store.jobs()).find(job => job.id === id)?.state).toBe("failed");
   return id;
 }
 async function asking(store: WorkflowStore, prompt: string, attempts: number) {
@@ -113,6 +128,7 @@ describe("연구 책상", () => {
       emptyCompleted: await finished(store, "빈 완료", "completed", { sources: [source] }),
       cancelled: await cancelled(store, "중단"),
       failed: await finished(store, "실패", "failed"),
+      failedAfterFinding: await failedAfterFinding(store, "확인한 것을 남기고 실패"),
       askingWithQuestion: await asking(store, "질문 있음", 1),
       askingExhausted: await asking(store, "질문 소진", 2),
       askingWithoutCheckpoint: await finished(store, "한 번에 끝나는 조사의 질문", "needs_input", { text: "어느 지역인가요?" }),
@@ -124,12 +140,14 @@ describe("연구 책상", () => {
     const expected: [string, JobPhase][] = [
       [ids.completed!, { kind: "ready" }], [ids.partial!, { kind: "ready" }], [ids.incomplete!, { kind: "ready" }],
       [ids.emptyCompleted!, { kind: "ended" }], [ids.cancelled!, { kind: "ended" }], [ids.failed!, { kind: "ended" }],
+      [ids.failedAfterFinding!, { kind: "ready" }],
       [ids.askingWithQuestion!, { kind: "asking", revision: 1 }], [ids.askingExhausted!, { kind: "asking", revision: undefined }],
       [ids.askingWithoutCheckpoint!, { kind: "asking", revision: undefined }],
       [running, { kind: "working" }], [queued, { kind: "working" }],
     ];
     expect(phases.size).toBe(expected.length);
     for (const [id, phase] of expected) expect(phases.get(id), id).toEqual(phase);
+    expect((await desk.read(ids.failedAfterFinding!, "normal"))?.speech).toContain("신청서를 준비하세요.");
   });
 
   it("목록은 limit건까지 최근에 맡긴 것부터 주고 언어를 알아본다", async () => {

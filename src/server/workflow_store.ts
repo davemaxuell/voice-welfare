@@ -99,8 +99,7 @@ function phaseOf(job: JobRow): JobPhase {
   switch (job.state) {
     case "queued": case "running": return { kind: "working" };
     case "needs_input": return { kind: "asking", revision: job.questionRevision };
-    case "completed": case "partial": case "incomplete": return hasReading(job) ? { kind: "ready" } : { kind: "ended" };
-    default: return { kind: "ended" };
+    default: return hasReading(job) ? { kind: "ready" } : { kind: "ended" };
   }
 }
 const noteRow = z.object({ id: z.string(), body: z.string() });
@@ -388,7 +387,7 @@ export class WorkflowStore {
   async summaries(limit: number): Promise<JobSummary[]> {
     return await this.transaction(async sql => {
       const rows = await sql.rows(`SELECT j.id,j.prompt,j.language,j.state,j.result,p.checkpoint,p.revision FROM cg_jobs j
-        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state='needs_input' WHERE j.owner=? ORDER BY j.created DESC,j.id LIMIT ?`, [this.owner, limit]);
+        LEFT JOIN cg_job_progress p ON p.id=j.id AND j.state IN ('needs_input','failed') WHERE j.owner=? ORDER BY j.created DESC,j.id LIMIT ?`, [this.owner, limit]);
       return rows.map(raw => {
         const job = readJob(jobRow.parse(raw));
         return { id: job.id, prompt: job.prompt, language: job.language, phase: phaseOf(job) };
