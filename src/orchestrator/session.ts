@@ -16,7 +16,7 @@ import { speakAnswerCard, type WelfareInformationAgent } from "../agents/welfare
 import { PROFILE_ORDER, parseProfileAnswer, profileQuestion, type ProfileSlot, type UserProfile } from "../agents/welfare/discovery.ts";
 import { OpenData, type PlaceFinder } from "../agents/welfare/open_data/index.ts";
 import { raceAbort } from "../core/abort.ts";
-import { CHOICE_TURNS, choiceLabel, type ChoiceKey } from "../core/choices.ts";
+import { CHOICE_TURNS, choiceLabel, offeredChoices, type ChoiceKey } from "../core/choices.ts";
 import { APPROVAL_TTL_S, DialogueState, type Approval } from "../core/dialogue.ts";
 import type { EventSink } from "../core/events.ts";
 import type { Intent } from "../core/intents.ts";
@@ -590,10 +590,7 @@ export class SessionOrchestrator {
       platform: "pc" as const, observation: this.summarize(this.web.currentView),
       pendingConfirmation: this.#approvalPresentation()?.card ?? this.dialogue.confirmation, awaitingField: this.dialogue.awaiting, history: this.exportHistory(),
       authHandoff: this.dialogue.authWaiting && this.dialogue.authHandoff !== undefined ? this.dialogue.authHandoff.public() : undefined,
-      ...(offer === undefined ? {} : {
-        turnId: offer.turnId,
-        offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
-      }),
+      ...(offer === undefined ? {} : { turnId: offer.turnId, offeredChoices: offeredChoices(offer, this.lang) }),
       mockOnly: guard.readOnlyWeb !== true && guard.allowedOrigins.every(origin => origin === this.web.profile.origin),
       speechPrefs: this.personal.speech(),
     });
@@ -731,8 +728,7 @@ export class SessionOrchestrator {
       return {
         ...checkpoint, state: this.state, ...(this.state === "STOPPED" ? { stopGeneration: this.#queue.epoch } : {}),
         authHandoff: this.dialogue.authWaiting && handoff !== undefined ? handoff.public() : null,
-        ...(offer === undefined ? {} : { turnId: offer.turnId,
-          offeredChoices: offer.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })) }),
+        ...(offer === undefined ? {} : { turnId: offer.turnId, offeredChoices: offeredChoices(offer, this.lang) }),
       };
     });
   }
@@ -1564,7 +1560,7 @@ export class SessionOrchestrator {
         out.researchDelivery ?? (turn.researchOutcome === true || this.#pendingResearch?.turnId === turn.id ? "outcome" : undefined),
       savedResearch: stopped ? undefined : out.savedResearch,
       // 응답 말은 뒤에서 대화 언어로 옮겨지므로 버튼 이름도 대화 언어로
-      offeredChoices: offer?.keys.map(key => ({ key, label: choiceLabel(key, this.lang, offer.authKind) })),
+      offeredChoices: offer === undefined ? undefined : offeredChoices(offer, this.lang),
     });
     if (result.researchDelivery === undefined && this.#pendingResearch?.turnId === turn.id) this.#pendingResearch = undefined;
     if (result.lang === this.lang || this.deps.llm === undefined) this.#keepResearch(result);

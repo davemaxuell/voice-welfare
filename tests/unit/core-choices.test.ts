@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { CHOICE_KEYS, CHOICE_TURNS, ChoiceKeySchema, choiceLabel, type ChoiceKey } from "../../src/core/choices.ts";
+import { CHOICE_KEYS, CHOICE_TURNS, ChoiceKeySchema, choiceLabel, offeredChoices, type ChoiceKey } from "../../src/core/choices.ts";
 import { parseIntent } from "../../src/core/intents.ts";
 
 // 기대값은 pyref(77aad3e)의 cheongeum.core.choices.choice_label 출력이다.
@@ -101,4 +101,11 @@ it("고른 뒤 처리할 말과 의도가 표와 같다", () => {
 it("제안 키는 정해진 선택지만 받는다", () => {
   expect(ChoiceKeySchema.safeParse("auth-done").success).toBe(true);
   expect(ChoiceKeySchema.safeParse("approve").success).toBe(false);
+});
+
+it("제안 하나는 키마다 그 언어의 이름을 붙인 목록이 되고 인증 종류에 맞는 이름을 쓴다", () => {
+  expect(offeredChoices({ keys: ["auth-done", "auth-cancel"], authKind: "verification" }, "ko"))
+    .toEqual([{ key: "auth-done", label: "인증 끝났어요" }, { key: "auth-cancel", label: "인증 취소" }]);
+  expect(offeredChoices({ keys: ["read-main"] }, "en")).toEqual([{ key: "read-main", label: "Read the page" }]);
+  expect(offeredChoices({ keys: [] }, "ko")).toEqual([]);
 });

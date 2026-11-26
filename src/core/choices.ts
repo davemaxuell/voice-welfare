@@ -29,3 +29,7 @@ export function choiceLabel(key: ChoiceKey, lang: string, authKind?: string | nu
   const row = LABELS[key === "auth-done" && authKind != null && authKind !== "login" ? "auth-done-check" : key];
   return new Map<string, string>(Object.entries(row)).get(lang) ?? row.ko;
 }
+
+export function offeredChoices(offer: { readonly keys: readonly ChoiceKey[]; readonly authKind?: string | undefined }, lang: string): { key: ChoiceKey; label: string }[] {
+  return offer.keys.map(key => ({ key, label: choiceLabel(key, lang, offer.authKind) }));
+}
