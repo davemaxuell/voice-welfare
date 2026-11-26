@@ -9,7 +9,7 @@ import type { SttProvider } from "../../src/voice/stt.ts";
 import type { TtsProvider } from "../../src/voice/tts.ts";
 import { testRuntimeEnv } from "../helpers.ts";
 
-const textStt: SttProvider = {
+export const textStt: SttProvider = {
   name: "test-text", supported: true,
   live: {
     model: "test-text",
@@ -27,16 +27,16 @@ const textStt: SttProvider = {
     return { text };
   },
 };
-const textTts: TtsProvider = {
+export const textTts: TtsProvider = {
   name: "test-tts", supported: true,
   async synthesize(text) { return { audio: new TextEncoder().encode(text), mimeType: "audio/mpeg" }; },
 };
 
-export async function startUi(voice = false, overrides: Record<string, string> = {}, prepared?: AgentRuntime) {
+export async function startUi(voice = false, overrides: Record<string, string> = {}, prepared?: AgentRuntime, options: Parameters<typeof makeApp>[1] = {}) {
   const supplied = prepared === undefined ? (voice ? process.env.CHEONGEUM_UI_TEST_VOICE_API_URL : process.env.CHEONGEUM_UI_TEST_API_URL) : undefined;
   const service = prepared ?? new AgentRuntime(loadConfig(testRuntimeEnv({ REQUIRE_CONSENT: "true", ...overrides })),
     voice ? textStt : undefined, voice ? textTts : undefined);
-  const app = makeApp(service);
+  const app = makeApp(service, options);
   const http = createHttpService(app);
   // UI modules and the native API share a port, as they do in the desktop app.
   const localApi: Plugin = {
@@ -73,7 +73,7 @@ export async function startUi(voice = false, overrides: Record<string, string> =
     await vite.listen();
     const address = vite.httpServer?.address();
     if (address == null || typeof address === "string") throw new Error("Vite 서버 주소가 없습니다.");
-    return { url: `http://127.0.0.1:${address.port}/`, reset, close };
+    return { url: `http://127.0.0.1:${address.port}/`, app, reset, close };
   } catch (error) {
     await close();
     throw error;
@@ -123,8 +123,12 @@ export async function recordCues(page: Page, voice = false) {
     ${speech}
   `);
   if (!voice) return;
+  await fakeMicrophone(page, "기초연금", ["장애인연금이 뭐야", "지금 어디까지 했어?"]);
+}
+
+export async function fakeMicrophone(page: Page, said: string, clips: readonly string[] = []) {
   await replaceModule(page, "mic", `
-    const clips = ['장애인연금이 뭐야', '지금 어디까지 했어?'];
+    const clips = ${JSON.stringify(clips)};
     function clip(open, text) {
       const result = open();
       const bytes = new Uint8Array(2048).fill(32);
@@ -133,7 +137,7 @@ export async function recordCues(page: Page, voice = false) {
       return result;
     }
     export async function startRecording(open) {
-      return { stop: async () => clip(open, '기초연금'), cancel() {} };
+      return { stop: async () => clip(open, ${JSON.stringify(said)}), cancel() {} };
     }
     export async function listMicrophones() { return []; }
     export function preferredMicrophone() { return undefined; }
