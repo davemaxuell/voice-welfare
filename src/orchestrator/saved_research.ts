@@ -26,14 +26,27 @@ const NOTHING_ASKED: Phrase = {
   ko: "지금 답을 기다리는 조사가 없어요.", en: "No saved research is waiting for an answer right now.",
   zh: "目前没有等待您回答的调查。", ja: "いま、お答えを待っている調査はありません。",
 };
+const NO_LONGER_ASKING: Phrase = {
+  ko: "그 조사는 이제 답을 기다리지 않아요.", en: "That research isn’t waiting for an answer anymore.",
+  zh: "那项调查已不再等待您的回答。", ja: "その調査は、もうお答えを待っていません。",
+};
 const ALREADY_ENDED: Phrase = {
   ko: "이미 끝났거나 취소된 조사예요.", en: "That research has already finished or been cancelled.",
   zh: "那项调查已经结束或已取消。", ja: "その調査はすでに終わったか、取り消されています。",
 };
-const NOTHING_FITS: Record<SavedAction, (meant: readonly SavedJob[]) => Phrase> = {
-  read: meant => meant.some(job => job.phase.kind === "working") ? STILL_WORKING : NO_SAVED_RESEARCH,
-  answer: () => NOTHING_ASKED,
-  cancel: () => ALREADY_ENDED,
+type Scope = "all" | "pointed";
+const anyWorking = (meant: readonly SavedJob[]) => meant.some(job => job.phase.kind === "working");
+const NOTHING_FITS: Record<Scope, Record<SavedAction, (meant: readonly SavedJob[]) => Phrase>> = {
+  all: {
+    read: meant => anyWorking(meant) ? STILL_WORKING : NO_SAVED_RESEARCH,
+    answer: () => NOTHING_ASKED,
+    cancel: () => ALREADY_ENDED,
+  },
+  pointed: {
+    read: meant => anyWorking(meant) ? STILL_WORKING : ALREADY_ENDED,
+    answer: () => NO_LONGER_ASKING,
+    cancel: () => ALREADY_ENDED,
+  },
 };
 const ANSWERED: Record<AnswerOutcome, Phrase> = {
   queued: {
@@ -192,20 +205,21 @@ export class SavedResearch {
     const named = new Set(request.jobs.map(ref => view.resolve(ref)));
     // 답은 플래너가 본 질문의 번호로 넣는다. 그사이 질문이 바뀌었으면 저장소가 받지 않는다(stale).
     const listed = request.action === "answer" ? view.jobs : await desk.recent(LISTED);
-    return this.#among(desk, request.jobs.length === 0 ? listed : listed.filter(job => named.has(job.id)), request, view.pick);
+    const scope: Scope = request.jobs.length === 0 ? "all" : "pointed";
+    return this.#among(desk, scope === "all" ? listed : listed.filter(job => named.has(job.id)), scope, request, view.pick);
   }
 
   async choose(pick: SavedPick, jobId: string): Promise<Draft> {
     const desk = this.#session.deps.research;
     if (desk === undefined) return this.unclear();
     const listed = await desk.recent(LISTED);
-    return this.#among(desk, listed.filter(job => job.id === jobId), pick, pick);
+    return this.#among(desk, listed.filter(job => job.id === jobId), "pointed", pick, pick);
   }
 
-  async #among(desk: ResearchDesk, meant: readonly SavedJob[], task: Task, pick: SavedPick | undefined): Promise<Draft> {
+  async #among(desk: ResearchDesk, meant: readonly SavedJob[], scope: Scope, task: Task, pick: SavedPick | undefined): Promise<Draft> {
     const s = this.#session, lang = s.lang;
     const [job, ...others] = meant.filter(candidate => fits(task.action, candidate.phase));
-    if (job === undefined) return draft(s.state, "none", NOTHING_FITS[task.action](meant)[lang], { lang });
+    if (job === undefined) return draft(s.state, "none", NOTHING_FITS[scope][task.action](meant)[lang], { lang });
     if (others.length > 0) return this.#ask(task, [job, ...others]);
     switch (task.action) {
       case "read": return this.#read(desk, job);

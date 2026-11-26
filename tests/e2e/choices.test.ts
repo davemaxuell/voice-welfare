@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { linkReference } from "../../src/agents/web/link_choices.ts";
+import type { ResearchPlan } from "../../src/core/research.ts";
 import type { TurnResult } from "../../src/core/turn.ts";
 import type { SessionOrchestrator } from "../../src/orchestrator/session.ts";
 import { SettingsInput } from "../../src/server/settings.ts";
+import type { WorkflowStore } from "../../src/server/workflow_store.ts";
 import { FakeLlm, PORTAL, withLlm } from "../helpers.ts";
 import { runtimeCases } from "./browser-runtime-cases.ts";
 import { apiFixture } from "./runtime-http-fixture.ts";
@@ -151,7 +153,7 @@ it("물은 뒤에 그 조사가 취소되거나 지워지면 버튼을 눌러도
   const asked = await session.handleTurn(ASK_TO_READ);
   jobs[1] = savedJob("job-2", "기초연금 신청 서류", {kind: "ended"});
   const cancelled = await session.choose(asked.turnId, "job-2");
-  expect(cancelled).toMatchObject({intentType: "SAVED_RESEARCH", userUtterance: "2번", speech: "아직 확인할 조사 결과가 없어요."});
+  expect(cancelled).toMatchObject({intentType: "SAVED_RESEARCH", userUtterance: "2번", speech: "이미 끝났거나 취소된 조사예요."});
   expect(cancelled?.savedResearch).toBeUndefined();
   expect(cancelled?.offeredChoices ?? []).toEqual([]);
   expect(await session.choose(asked.turnId, "job-1"), "한 번 쓴 제안").toBeUndefined();
@@ -163,7 +165,7 @@ it("물은 뒤에 그 조사가 취소되거나 지워지면 버튼을 눌러도
   jobs.splice(0, 2, savedJob("job-3", "가", {kind: "ready"}), savedJob("job-4", "나", {kind: "ready"}));
   const third = await session.handleTurn(ASK_TO_READ);
   jobs.pop();
-  expect((await session.choose(third.turnId, "job-2"))?.speech).toBe("아직 확인할 조사 결과가 없어요.");
+  expect((await session.choose(third.turnId, "job-2"))?.speech).toBe("이미 끝났거나 취소된 조사예요.");
   expect(desk.read.mock.calls.map(([jobId]) => jobId)).toEqual(["job-1"]);
 });
 
@@ -273,6 +275,67 @@ it.each(secondPicks)("물은 뒤에 그 조사의 질문이 바뀌었으면 %s �
   expect(picked).toMatchObject({intentType: "SAVED_RESEARCH", speech: "그 질문은 이미 바뀌었어요."});
   expect(picked?.researchDelivery).toBeUndefined();
   expect(desk.answer.mock.calls).toEqual([["job-2", 2, "서울이요"]]);
+});
+
+async function askingJob(store: WorkflowStore, prompt: string) {
+  await new Promise(resolve => setTimeout(resolve, 3));
+  const id = await store.enqueue(randomUUID(), prompt, "ko");
+  const job = await store.claim();
+  if (job === undefined) throw new Error("조사를 집지 못함");
+  const source = {title: "복지로 공식 자료", url: "https://www.bokjiro.go.kr/", lastCheckedAt: "2026-11-24"};
+  const plan: ResearchPlan = {route: "quiet", goal: prompt, subject: "", exclusions: [], steps: [
+    {requirement: "가 제도의 서류", attempts: 1, outcome: {status: "verified", finding: {text: "신청서를 준비하세요.", sources: [source], proof: [{quote: "신청서를 준비하세요.", url: source.url}]}}},
+    {requirement: "나 제도의 마감일", attempts: 1, outcome: {status: "waiting", question: "어느 지역인가요?"}},
+  ]};
+  expect(await store.saveProgress(job, 0, {version: 1, plan, activeMs: 1, continuations: 0})).toBe(true);
+  expect(await store.finish(job, "needs_input", {text: "어느 지역인가요?"})).toBe(true);
+  return id;
+}
+
+it.each(secondPicks)("물은 뒤에 고른 조사가 패널에서 먼저 답을 받았으면 %s 말로 한 답을 넣지 않고 그 조사는 이제 답을 기다리지 않는다고 말한다", async (_name, pick) => {
+  const {app, runtime: server, session: newSession} = await service({}, {settings: true});
+  server.settings!.save(SettingsInput.parse({deviceUse: "personal"}));
+  const {session} = await newSession();
+  const store = await app.workflows.store();
+  await askingJob(store, "기초연금 신청 서류");
+  await askingJob(store, "아동수당 신청 방법");
+  const [first, second] = await store.summaries(8);
+  if (first === undefined || second === undefined) throw new Error("조사 두 건이 저장되지 않음");
+  const revision = async (jobId: string) => (await store.jobs()).find(job => job.id === jobId)?.questionRevision;
+  const firstRevision = await revision(first.id), secondRevision = await revision(second.id);
+  expect([typeof firstRevision, typeof secondRevision]).toEqual(["number", "number"]);
+  session.deps.llm = secondOptionPlanner("answer", "서울이요");
+
+  const asked = await session.handleTurn("서울이요");
+  expect(asked.speech).toBe(`답을 기다리는 조사가 여러 개예요. 1번 ‘${first.prompt}’, 2번 ‘${second.prompt}’ 중 어느 것에 답할까요?`);
+  expect(await store.answer(second.id, secondRevision ?? -1, "부산")).toBe(true);
+
+  const picked = await pick(session, asked.turnId);
+  expect(picked).toMatchObject({intentType: "SAVED_RESEARCH", speech: "그 조사는 이제 답을 기다리지 않아요."});
+  expect(picked?.researchDelivery).toBeUndefined();
+  expect(picked?.speech, "첫 조사가 아직 기다린다는 말이 아니다").not.toContain("조사가 없어요");
+  expect((await store.jobs()).find(job => job.id === first.id), "첫 조사는 묻던 그대로").toMatchObject({state: "needs_input", questionRevision: firstRevision});
+
+  const claimed = await store.claim();
+  expect(claimed?.id).toBe(second.id);
+  const progress = claimed === undefined ? undefined : await store.progress(claimed);
+  expect(progress?.checkpoint.plan.steps.map(step => step.clarification), "둘째 조사에는 패널의 답만").toEqual([undefined, "부산"]);
+});
+
+it("읽으려고 물은 뒤에 되묻던 조사가 패널의 답으로 다시 조사 중이면 버튼을 눌러도 읽지 않고 아직 조사하고 있다고 말한다", async () => {
+  const {session} = await runtime.createBrowserSession();
+  const jobs = [savedJob("job-1", "아동수당 신청 방법", {kind: "ready"}), savedJob("job-2", "기초연금 신청 서류", {kind: "asking", revision: 1})];
+  const desk = deskOf(jobs);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("read", [])));
+
+  const asked = await session.handleTurn(ASK_TO_READ);
+  expect(asked.offeredChoices).toHaveLength(2);
+  jobs[1] = savedJob("job-2", "기초연금 신청 서류", {kind: "working"});
+  const picked = await session.choose(asked.turnId, "job-2");
+  expect(picked).toMatchObject({intentType: "SAVED_RESEARCH", speech: "아직 조사하고 있어요. 끝나면 알려 드릴게요."});
+  expect(picked?.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
 });
 
 it("링크 목록을 들은 뒤라도 조사를 고르라는 물음에 답한 '2번'은 링크를 열지 않고 그 조사를 읽는다", async () => {

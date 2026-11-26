@@ -415,7 +415,7 @@ it("읽을 수 있는 조사가 넷이면 최근 세 건만 불러 주고, 플�
 
 it.each([
   ["짚은 조사가 아직 조사 중이면 조사하고 있다고", ["j1"], "아직 조사하고 있어요. 끝나면 알려 드릴게요."],
-  ["짚은 조사가 끝났지만 읽을 것이 없으면 결과가 없다고", ["j2"], "아직 확인할 조사 결과가 없어요."],
+  ["짚은 조사가 끝났지만 읽을 것이 없으면 결과가 없다고", ["j2"], "이미 끝났거나 취소된 조사예요."],
 ] as const)("%s 알리고 다른 조사를 대신 읽지 않는다", async (_name, jobs, speech) => {
   const {session} = await open();
   const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "working"}), savedJob("job-2", "중단한 조사", {kind: "ended"}),
@@ -425,6 +425,18 @@ it.each([
   const reply = await session.handleTurn(ASKED);
   expect(reply.speech).toBe(speech);
   expect(reply.savedResearch).toBeUndefined();
+  expect(desk.read).not.toHaveBeenCalled();
+});
+
+it("읽을 조사를 짚지 않았는데 읽을 것이 하나도 없으면 맡긴 조사 전체에 대해 결과가 없다고 말하고, 조사 중인 것이 있으면 조사 중이라고 말한다", async () => {
+  const {session} = await open();
+  const desk = deskOf([savedJob("job-1", "중단한 조사", {kind: "ended"}), savedJob("job-2", "또 중단한 조사", {kind: "ended"})]);
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(readSaved([])));
+  expect((await session.handleTurn(ASKED)).speech).toBe("아직 확인할 조사 결과가 없어요.");
+
+  session.deps.research = deskOf([savedJob("job-1", "조사 중인 것", {kind: "working"}), savedJob("job-2", "중단한 조사", {kind: "ended"})]);
+  expect((await session.handleTurn(ASKED)).speech).toBe("아직 조사하고 있어요. 끝나면 알려 드릴게요.");
   expect(desk.read).not.toHaveBeenCalled();
 });
 
