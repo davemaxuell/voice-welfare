@@ -439,6 +439,29 @@ it("읽다가 끊긴 조사를 말로 취소하면 같은 인수증의 취소 �
   expect(speech).toEqual(["‘기초연금’ 조사 결과예요.", "신분증을 준비하세요.", cancelled]);
 });
 
+it("조사를 고르는 제안은 순서 이름만 있는 버튼으로 보이고, 누르면 그 응답의 번호와 자리 키만 보낸다", async () => {
+  const question = "맡긴 조사가 여러 개예요. 1번 ‘아동수당 신청 방법’, 2번 ‘기초연금 신청 서류’ 중 어떤 것을 읽어 드릴까요?";
+  const offeredChoices = [{key: "job-1", label: "1번"}, {key: "job-2", label: "2번"}];
+  let asked: Record<string, unknown> = {};
+  const chosen: unknown[] = [];
+  await page.route("**/api/turn", async route => {
+    asked = {...await (await route.fetch()).json(), speech: question, lang: "ko", semanticAction: "clarify", offeredChoices};
+    await route.fulfill({json: asked});
+  });
+  await page.route("**/api/session/*/choice", async route => {
+    chosen.push(route.request().postDataJSON());
+    await route.fulfill({json: {...asked, turnId: "after-choice", userUtterance: "2번", speech: READING, offeredChoices: undefined}});
+  });
+  await openWorkspace([]);
+  await askToRead();
+  const group = page.getByRole("group", {name: "어느 조사인지 번호로 골라 주세요."});
+  await screen(group.getByRole("button")).toHaveText(["1번", "2번"], {timeout: 15_000});
+  await group.getByRole("button", {name: "2번"}).click();
+  await expect.poll(() => chosen, {timeout: 15_000}).toEqual([{turnId: asked.turnId, key: "job-2"}]);
+  await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+  await screen(group).toHaveCount(0);
+});
+
 it("패널의 듣기 단추는 다 읽은 뒤에 그 조사의 인수증을 보내고, 인수증이 없는 조사는 읽기만 한다", async () => {
   const speech: string[] = [], playback = latch(), receipts: string[] = [];
   await recordResearchSpeech(speech, {playback: playback.promise});

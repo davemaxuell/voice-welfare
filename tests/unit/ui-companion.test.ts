@@ -30,6 +30,21 @@ it("서버 제안은 인증 인계면 사이트 이름으로 묻고, 본문 읽�
   expect(currentDecision({ ...base, lang: "en", last: turn({ offeredChoices: [{ key: "read-main", label: "Read" }] }) })?.prompt).not.toBe("이 페이지의 본문을 읽어 드릴까요?");
 });
 
+it("조사를 고르는 제안은 번호로 고르라는 물음과 순서 이름만 있는 카드가 되고, 맡긴 요청의 글은 아바타로 나가지 않는다", () => {
+  const speech = "맡긴 조사가 여러 개예요. 1번 ‘아동수당 신청 방법’, 2번 ‘기초연금 신청 서류’ 중 어떤 것을 읽어 드릴까요?";
+  const offeredChoices = [{ key: "job-1", label: "1번" }, { key: "job-2", label: "2번" }];
+  const last = turn({ speech, semanticAction: "clarify", intentType: "SAVED_RESEARCH", offeredChoices });
+  const ui = { ...base, last };
+  const decision = currentDecision(ui);
+  if (decision === undefined) throw new Error("카드가 없다");
+  expect(decision).toMatchObject({ key: "offer:t1", kind: "offer", prompt: "어느 조사인지 번호로 골라 주세요.", choices: offeredChoices, ref: { turnId: "t1" } });
+  expect(currentDecision({ ...ui, lang: "en" })?.prompt).toBe("Choose the research by its number.");
+  const view = desktopView(ui, { ...live, card: { ...decision, id: "i-2" } });
+  expect(view).toMatchObject({ mode: "choice", choiceSetId: "i-2", prompt: "어느 조사인지 번호로 골라 주세요.", choices: offeredChoices });
+  expect(JSON.stringify(view)).not.toMatch(/아동수당|기초연금/u);
+  expect(turnNotice(last)).toBeNull();
+});
+
 it("아바타 카드에는 승인할 값과 목적이 실리지 않는다", () => {
   const ui = { ...base, state: "WAITING_FOR_USER_CONFIRMATION" as const, last: turn({ pendingConfirmation: pending }) };
   const decision = currentDecision(ui);

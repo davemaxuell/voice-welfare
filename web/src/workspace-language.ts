@@ -122,6 +122,7 @@ const copy: Readonly<Record<string, readonly [string, string, string]>> = {
   '{site}에서 보안 확인을 직접 해 주세요.': ['Please complete the security check at {site}.', '请在 {site} 完成安全验证。', '{site} でセキュリティ確認を行ってください。'],
   '이 페이지의 본문을 읽어 드릴까요?': ['Would you like me to read this page?', '要我朗读这个页面吗？', 'このページの本文を読みましょうか？'],
   '이 화면에서 할 수 있는 일이에요.': ['What would you like to do here?', '您想在这个页面做什么？', 'この画面で何をしますか？'],
+  '어느 조사인지 번호로 골라 주세요.': ['Choose the research by its number.', '请按编号选择是哪一项调查。', 'どの調査か、番号で選んでください。'],
   '{service} 안내를 찾았어요. 저를 누르면 답변과 출처를 볼 수 있어요.': ['I found information on {service}. Select me to see the answer and its source.', '找到了有关{service}的信息。点我查看答复和来源。', '{service}の案内が見つかりました。私を押すと回答と出典を確認できます。'],
   '확인이 필요한 입력란이 있어요. 저를 눌러 확인해 주세요.': ['A field needs your attention. Select me to review it.', '有一项需要核对。点我查看。', '確認が必要な入力欄があります。私を押して確認してください。'],
   '입력할 새 값을 말씀해 주세요.': ['What would you like to enter?', '您想填入什么内容？', '新しく入力する内容を教えてください。'],

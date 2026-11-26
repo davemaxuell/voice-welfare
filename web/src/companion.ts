@@ -1,5 +1,6 @@
 // 화면 위 아바타에는 현재 선택지와 짧은 안내만 표시한다.
 // 입력값·파일 이름·받아쓴 글·화면 원문은 넣지 않는다. 승인 내용은 대화 창의 검토 화면에서 본다.
+import { MAX_OFFERED_CHOICES, isJobChoice } from "../../src/core/choices.ts";
 import type { SessionState } from "../../src/core/turn.ts";
 import { presentationOf, type Capture, type PresentationInput } from "./presentation.ts";
 import type { ApprovalKind, Turn } from "./api.ts";
@@ -97,8 +98,9 @@ export function currentDecision(ui: DecisionInput): Decision | undefined {
     key: `offer:${last.turnId ?? ""}`,
     kind: "offer",
     prompt: handoff !== undefined ? t(AUTH_PROMPTS[handoff.kind]).replace("{site}", () => handoff.site)
-      : t(offered.length === 1 && first?.key === "read-main" ? "이 페이지의 본문을 읽어 드릴까요?" : "이 화면에서 할 수 있는 일이에요."),
-    choices: offered.slice(0, 3).map(({ key, label }) => ({ key, label })),
+      : t(offered.length === 1 && first?.key === "read-main" ? "이 페이지의 본문을 읽어 드릴까요?"
+        : offered.every(choice => isJobChoice(choice.key)) ? "어느 조사인지 번호로 골라 주세요." : "이 화면에서 할 수 있는 일이에요."),
+    choices: offered.slice(0, MAX_OFFERED_CHOICES).map(({ key, label }) => ({ key, label })),
     ref: { turnId: last.turnId ?? "", handoffId: handoff?.id },
   };
 }

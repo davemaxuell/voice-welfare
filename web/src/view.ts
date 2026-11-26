@@ -1,5 +1,6 @@
 import { koreanConsentGuide } from "./onboarding-text.ts";
 // 화면 상태 → 화면에 보일 것. Python app.js의 render()가 하던 판단을 DOM 없이 계산한다(App.tsx는 이 결과만 그린다).
+import { isJobChoice } from "../../src/core/choices.ts";
 import { STATE_LABELS_KO, type Lang, type SessionState } from "../../src/core/turn.ts";
 import type { AnswerCard, IntroPose, ObservedField, Source } from "./api.ts";
 import { APPROVE_LABELS, type Consent, type Decision, type LastTurn } from "./companion.ts";
@@ -200,6 +201,7 @@ export function viewOf(ui: UiState, env: Env) {
   const pending = state === "WAITING_FOR_USER_CONFIRMATION" ? last?.pendingConfirmation : undefined;
   const authCard = decision?.kind === "offer" && decision.ref.handoffId !== undefined && decision.ref.handoffId.length > 0 ? decision : undefined;
   const readMain = decision?.kind === "offer" ? decision.choices.find(choice => choice.key === "read-main") : undefined;
+  const jobChoices = decision?.kind === "offer" ? decision.choices.filter(choice => isJobChoice(choice.key)) : [];
   const receipt = state === "MOCK_SUBMITTED" ? last?.verification?.receipt : undefined;
   const answer = last?.answerCard;
   const providers = [
@@ -292,6 +294,7 @@ export function viewOf(ui: UiState, env: Env) {
       values: pending.values,
     } : undefined,
     readMain: decision !== undefined && readMain !== undefined ? { id: decision.id, label: readMain.label } : undefined,
+    jobChoices: decision !== undefined && jobChoices.length > 0 ? { id: decision.id, prompt: decision.prompt, choices: jobChoices } : undefined,
     confirmCard: decision?.kind === "approval" ? decision.id : "",
     decisionDisabled: busy || decisionTaken || ui.offline === true || ui.cancelUnconfirmed === true ||
       (pending !== undefined && decision?.kind !== "approval"),

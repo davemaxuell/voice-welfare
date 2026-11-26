@@ -138,6 +138,13 @@ function Log({ messages, t, logRef }: { messages: LogEntry[]; t: (s: string) => 
   </div>;
 }
 
+function JobChoices({ offer, disabled }: { offer: NonNullable<WorkspaceView["jobChoices"]>; disabled: boolean }) {
+  return <div className="row" id="job-choices" role="group" aria-label={offer.prompt}>
+    {offer.choices.map(choice => <button type="button" key={choice.key} data-key={choice.key} disabled={disabled}
+      onClick={() => void choose(offer.id, choice.key)}>{choice.label}</button>)}
+  </div>;
+}
+
 function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (text: string) => string }) {
   const { confirm, auth } = view;
   return <>
@@ -163,6 +170,7 @@ function Decisions({ view, ui, t }: { view: WorkspaceView; ui: Snapshot; t: (tex
     </div>
     {view.readMain !== undefined && <button type="button" id="read-main" disabled={view.decisionDisabled}
       onClick={() => { if (view.readMain !== undefined) void choose(view.readMain.id, "read-main"); }}>{view.readMain.label}</button>}
+    {view.jobChoices !== undefined && <JobChoices offer={view.jobChoices} disabled={view.decisionDisabled}/>}
     <div className="decision result" id="result-panel" role="region" aria-labelledby="result-title" hidden={view.receipt === undefined}>
       <h3 id="result-title">{t("모의접수 결과")}</h3>
       <p>{t("모의 접수번호")} <strong id="receipt">{view.receipt}</strong></p>
