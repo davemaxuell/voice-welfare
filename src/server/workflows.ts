@@ -486,8 +486,8 @@ export class Workflows {
     }
   }
 
-  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result">): string {
-    return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data },
+  reading(session: WorkspaceSession, job: Pick<JobRow, "prompt" | "language" | "state" | "result" | "question">): string {
+    return researchReading({ prompt: job.prompt, language: job.language, state: job.state, result: StoredResearch.safeParse(job.result).data, question: job.question },
       { brevity: session.personal?.speech().length ?? "normal", speakable: text => session.speakable?.(text) !== false });
   }
 

@@ -60,7 +60,7 @@ export class WorkflowRejected extends Error {
 }
 
 export interface ClaimedJob { id: string; prompt: string; language: string; attempts: number; lease: string }
-export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; questionRevision?: number }
+export interface JobRow { id: string; prompt: string; language: string; state: string; result: unknown; question?: string; questionRevision?: number }
 export interface Note { id: string; body: string }
 export type JobState = "completed" | "partial" | "needs_input" | "incomplete";
 
@@ -83,7 +83,8 @@ function readJob({checkpoint, revision, ...row}: z.infer<typeof jobRow>): JobRow
   const result: unknown = row.result !== null && row.result !== "" ? JSON.parse(row.result) : fallback;
   const waiting = saved?.plan.steps.find(step => step.outcome?.status === "waiting");
   const questionRevision = row.state === "needs_input" && waiting !== undefined && waiting.attempts < 2 ? revision ?? undefined : undefined;
-  return { ...row, result, ...(questionRevision === undefined ? {} : { questionRevision }) };
+  const question = row.state === "needs_input" && waiting?.outcome?.status === "waiting" ? waiting.outcome.question : undefined;
+  return { ...row, result, ...(question === undefined ? {} : { question }), ...(questionRevision === undefined ? {} : { questionRevision }) };
 }
 const noteRow = z.object({ id: z.string(), body: z.string() });
 const noteVectorRow = noteRow.extend({ embedding: z.string().nullable(), model: z.string().nullable() });

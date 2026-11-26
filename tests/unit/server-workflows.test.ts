@@ -289,6 +289,7 @@ describe("research worker", () => {
         { ...step, attempts: 1, outcome: { status: "waiting", question: "어떤 지역인가요?" } }) };
       expect(await reopened.saveProgress(replacement, 1, { ...checkpoint, plan: waiting })).toBe(true);
       expect(await reopened.finish(replacement, "needs_input", { text: "어떤 지역인가요?" })).toBe(true);
+      expect((await reopened.jobs()).find(job => job.id === id)?.question).toBe("어떤 지역인가요?");
       expect(await other.answer(id, 2, "서울")).toBe(false);
       expect(await reopened.answer(id, 1, "서울")).toBe(false);
       expect(await reopened.answer(id, 2, "서울")).toBe(true);
