@@ -2,7 +2,7 @@
 
 **Build the first release around a resident returning to work they already started.** Someone asks "기초연금 신청에 필요한 서류를 찾아줘", agrees to a public lookup, and closes the app. When they return to their personal PC, Cheongeum should read the answer at the next quiet moment, or when they ask "맡긴 조사 결과 읽어줘". The reading identifies the source and its date and offers to open the official page. If the source omits a requirement, the resident should hear what still needs checking. This journey uses Cheongeum's existing worker, voice interface and browser, and would benefit directly from OpenBot's treatment of durable work and visible outcomes.
 
-**Most of the first release is on main.** This revision checks the plan against Cheongeum `main` at `cf1a482` (November 23) and the released OpenBot **v1.1.2** (`8826a0f`). PR 2 shipped in `7f8ee6a` on November 21, together with PR 1's dated sources and proof. The answer card's own data date still does not reach most saved jobs. `9523e24` built part of PR 3: each finished result is read aloud on its own, and the server records a receipt once the resident has heard it. The rest of PR 3 finishes that data path and adds the voice path for a resident who wants to find, answer or cancel one particular job. The November 19 study records the earlier Python pilot. [OpenBot release](https://github.com/CopilotKit/OpenBot/releases/tag/v1.1.2) · [Archived study](https://github.com/davemaxuell/voice-welfare/blob/906518b3642f1a9885b8b31b1eca988224b6922f/docs/openbot/README.md) · [Cheongeum runtime](../../src/server/runtime.ts)
+**The first release is complete.** This revision checks the plan against Cheongeum `main` at `cf1a482` (November 23), the PR 3 changes that followed it, and the released OpenBot **v1.1.2** (`8826a0f`). PR 2 shipped in `7f8ee6a` on November 21, together with PR 1's dated sources and proof. `9523e24` built the first part of PR 3: each finished result is read aloud on its own, and the server records a receipt once the resident has heard it. The rest of PR 3 carried the answer card's data date to every saved job and added the voice path for a resident who wants to find, hear, answer or cancel one particular job. The November 19 study records the earlier Python pilot. [OpenBot release](https://github.com/CopilotKit/OpenBot/releases/tag/v1.1.2) · [Archived study](https://github.com/davemaxuell/voice-welfare/blob/906518b3642f1a9885b8b31b1eca988224b6922f/docs/openbot/README.md) · [Cheongeum runtime](../../src/server/runtime.ts)
 
 Other changes on main since the November 21 draft affect the remaining work:
 
@@ -14,12 +14,12 @@ Other changes on main since the November 21 draft affect the remaining work:
 
 ## Status on main
 
-| Work | State at `cf1a482` | Evidence |
+| Work | State | Evidence |
 | --- | --- | --- |
 | Backend for tasks that stop midway | Shipped in `7f8ee6a` | [Checkpoint contract](../../src/core/research.ts) · [Long-running task design](https://github.com/davemaxuell/voice-welfare/blob/906518b3642f1a9885b8b31b1eca988224b6922f/docs/openbot/long-running-tasks.md) |
-| PR 1 · Keep the evidence with a saved answer | Partly shipped in `7f8ee6a`. Sources keep their dates and proof. A job with two or more requirements saves no `data`, and the store drops a `YYYY년` data date | [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Planner](../../src/orchestrator/public_plan.ts) |
+| PR 1 · Keep the evidence with a saved answer | Shipped. `7f8ee6a` keeps each source's dates and proof. PR 3 added the answer card's data kind, origin and date to each source, for a one-pass job and for a job with two or more requirements, and the store keeps a `YYYY년` data date | [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Store tests](../../tests/unit/server-workflows.test.ts) · [Planner](../../src/orchestrator/public_plan.ts) |
 | PR 2 · Restore the next decision after an authentication handoff | Shipped in `7f8ee6a` | [Recovery tests](../../tests/e2e/pilot-recovery.test.ts) |
-| PR 3 · Let residents hear and manage their research | Delivery and receipts shipped in `9523e24`. PR 1's data path and voice actions on a chosen job remain | [Research panel tests](../../tests/e2e/research-panel.test.ts) |
+| PR 3 · Let residents hear and manage their research | Shipped. Delivery and receipts came in `9523e24`. A finished result is now read once with its subject, source, data date and checked date, then the items still to verify. By voice, a resident can find, hear, answer or cancel one saved job. A heard result stays quiet, and a result read on request is not delivered again | [Journey tests](../../tests/e2e/saved-research-journey.test.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Choice tests](../../tests/e2e/choices.test.ts) · [Planner tests](../../tests/e2e/public-planner.test.ts) |
 | Extensions 4 to 7 | Not started | |
 | Optional institutional pilot | Not started. Only the AG-UI fixture probe exists | [Archived probe](https://github.com/davemaxuell/voice-welfare/blob/906518b3642f1a9885b8b31b1eca988224b6922f/docs/openbot/probe/check.py) |
 
@@ -46,30 +46,30 @@ Embedding CopilotKit's React and runtime packages is a smaller option than deplo
 
 ## First release
 
-PR 2 has shipped, and PR 1 has shipped in part. PR 3 finishes PR 1 and is the remaining work for the first release. Its effort range is a planning estimate for one engineer familiar with this repo. Participant sessions and institutional setup are separate.
+All three PRs have shipped. PR 3 also finished PR 1's data path. Participant sessions and institutional setup are separate.
 
-### PR 1 · Keep the evidence with a saved answer (partly shipped)
+### PR 1 · Keep the evidence with a saved answer (shipped)
 
-`7f8ee6a` keeps each source's dates and the quote-to-source proof on a saved answer. The answer card's `dataKind`, `dataOrigin` and `dataDate` reach the store only for a lookup that finishes in one pass, and only when the date has the `YYYY-MM-DD` form. [Planner](../../src/orchestrator/public_plan.ts) · [Persistence boundary](../../src/server/workflows.ts) · [Renderer contract](../../web/src/api.ts)
+`7f8ee6a` keeps each source's dates and the quote-to-source proof on a saved answer. At that commit the answer card's `dataKind`, `dataOrigin` and `dataDate` reached the store only for a lookup that finished in one pass, and only when the date had the `YYYY-MM-DD` form. PR 3 closed that gap in item 1. [Planner](../../src/orchestrator/public_plan.ts) · [Persistence boundary](../../src/server/workflows.ts) · [Renderer contract](../../web/src/api.ts)
 
-**What shipped.**
+**What shipped in `7f8ee6a`.**
 
 - `publicResult` keeps each source's `title`, `url`, `lastCheckedAt` and `version`, plus `data`, `proof`, `missing` and `reason` when the result has them. It accepts only `https` URLs without credentials and drops a source whose query parameters look private. `partial`, `needs_input` and `incomplete` stay distinct outcomes.
 - The research panel shows the checked date and the data date, and labels a missing date. The spoken reader says "날짜 기록 없음" for an undated source, which also covers old `{title, url}` rows.
 - The durable-workspace test restarts the store and reads back a source with its `lastCheckedAt` and `version`, its proof and its missing item.
 
-**What is missing.** Most saved jobs lose the answer card's data date on the way to the store:
+**What `7f8ee6a` left out.** Most saved jobs lost the answer card's data date on the way to the store:
 
-- A background job always passes a progress callback to `researchPublic`. When the planner splits the request into two or more requirements, `plan()` hands the job to `#continueResearch` and returns `undefined`. `research()` then returns `researchSummary(plan)`, which has `text`, `sources`, `proof`, `missing` and `reason` but no `data`. `ResearchFinding` has no `data` field, so a checkpoint cannot keep it either. `#safePlan` rewrites each verified step with only its `text`, `sources` and `proof`.
-- `research()` copies the card into `data` only on the one-pass return. `publicResult` then keeps `data.date` only in the `YYYY-MM-DD` form. `answerCard` builds the date as `${year}년` from the criteria year, which is the usual case for an official API answer, so `publicResult` drops it. [Answer card](../../src/agents/welfare/answer_card.ts)
-- `StoredResearch`, which "맡긴 조사 결과 읽어줘" uses, parses only `text`, `sources` and `missing`. That reading never includes the data date, even when the stored result has one.
-- The React `JobSchema` parses `text`, the four source fields, `missing` and `data`. It drops `proof` and `reason`, so the panel receives neither.
+- A background job always passes a progress callback to `researchPublic`. When the planner split the request into two or more requirements, `plan()` handed the job to `#continueResearch` and returned `undefined`. `research()` then returned `researchSummary(plan)`, which had `text`, `sources`, `proof`, `missing` and `reason` but no `data`. `ResearchFinding` had no `data` field, so a checkpoint could not keep it either. `#safePlan` rewrote each verified step with only its `text`, `sources` and `proof`.
+- `research()` copied the card into `data` only on the one-pass return. `publicResult` then kept `data.date` only in the `YYYY-MM-DD` form. `answerCard` builds the date as `${year}년` from the criteria year, which is the usual case for an official API answer, so `publicResult` dropped it. [Answer card](../../src/agents/welfare/answer_card.ts)
+- `StoredResearch`, which "맡긴 조사 결과 읽어줘" used, parsed only `text`, `sources` and `missing`. That reading never included the data date, even when the stored result had one.
+- The React `JobSchema` parsed `text`, the four source fields, `missing` and `data`. It dropped `proof` and `reason`, so the panel received neither.
 - The research-panel test that renders `data` supplies the workspace response directly. It shows that the panel draws `data`. It does not show that the worker saves `data`.
 
-PR 3 closes these gaps first, in remaining-work item 1. Then it adds the two tests the draft required:
+PR 3 closed these gaps in item 1 and added the two tests the draft required:
 
-- A store round trip keeps `data.kind` and `data.date`. Separate cases cover a dated official answer, a criteria-year answer, a stored example, a private program, a job with two requirements, an old row and a missing-field answer, each with its correct label.
-- The panel and the spoken reader give the same dates and amounts.
+- A store round trip keeps each source's `data.kind` and `data.date`. The durable-workspace tests cover a job with two requirements across a checkpoint, a restart and an answer, a one-pass job, and an old row. The store tests cover a dated official answer, a criteria-year answer, a stored example, a private program and a missing field. The research-panel and reading tests check the label of each kind. [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Store tests](../../tests/unit/server-workflows.test.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts) · [Reading tests](../../tests/unit/research-reading.test.ts)
+- The panel and the spoken reader give the same dates and amounts. One durable-workspace test opens the panel in Chromium and compares the dates and amounts on the row with the text that the listen button and the automatic delivery speak. [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts)
 
 ### PR 2 · Restore the next decision after an authentication handoff (shipped)
 
@@ -79,43 +79,70 @@ PR 3 closes these gaps first, in remaining-work item 1. Then it adds the two tes
 
 The recovery test drives the resumed choice over HTTP. Before the participant pilot, choose a resumed handoff through the Electron overlay, by voice, and in the native accessibility harness on an installed build. [Native accessibility harness](../../apps/desktop/test/native-a11y.cjs)
 
-### PR 3 · Let residents hear and manage their research (4 to 5 days remaining)
+### PR 3 · Let residents hear and manage their research (shipped)
 
-A resident who delegated research by voice should not need the panel to get it back. Main covers the common case, because the result arrives on its own. A resident who asks about one job, answers its question or cancels it still has to use the panel. [Workflow panel](../../web/src/workflows.tsx) · [Worker](../../src/server/workflows.ts)
+A resident who delegated research by voice does not need the panel to get it back. The result arrives on its own at the next quiet moment. A resident can also ask about one job, answer its question or cancel it in their own words. The panel still lists every job. [Workflow panel](../../web/src/workflows.tsx) · [Worker](../../src/server/workflows.ts)
 
-**What main already does.** These parts of the draft have shipped:
+**Delivery and receipts (`9523e24`).** The first part of PR 3 built these pieces:
 
-- Each job has a delivery token in `cg_job_delivery`. A job that queues again after an answer gets a new token. `GET /api/session/:sid/workspace/deliveries` lists undelivered results, and `DELETE /api/session/:sid/workspace/research/:jobId/delivery/:token` records that the resident heard one. This is the per-revision acknowledgement that the draft proposed as a new `/ack` route, so PR 3 needs no new route for it. [Store](../../src/server/workflow_store.ts)
+- Each job has a delivery token in `cg_job_delivery`. A job that queues again after an answer gets a new token. `GET /api/session/:sid/workspace/deliveries` lists undelivered results, and `DELETE /api/session/:sid/workspace/research/:jobId/delivery/:token` records that the resident heard one. This is the per-revision acknowledgement that the draft proposed as a new `/ack` route, so PR 3 needed no new route for it. [Store](../../src/server/workflow_store.ts)
 - `watchResearch` checks for results when the app starts and when a job is queued. While a job is queued or running, or a finished result waits for a quiet moment, it checks again every 10 seconds, whether or not the panel is open. With no open job and nothing waiting, it sends no requests. It reads a result aloud when `canReportResearch()` allows it: consent is granted, nothing is speaking or listening, and no authentication handoff or confirmation is pending. [Delivery watcher](../../web/src/research-delivery.ts) · [Delivery rules](../../web/src/conversation.ts)
 - Every workspace route rejects a session that lacks a personal device or granted consent, so a shared profile gets no results.
 - The panel answers a pending question with its `questionRevision`, cancels a running job and deletes a finished one.
-- "맡긴 조사 결과 읽어줘" reads the newest finished job with its sources and checked dates.
 - The research-panel tests cover a result read while the panel is closed, a late receipt that does not cause a repeat, a lost connection that reads the result once, and a closed panel that sends no requests while no job is running.
 
 **Keep reading the full result.** The draft proposed a generic "조사 결과가 준비됐어요" cue, with the full result read only on request. Main reads the full result at the next quiet moment instead. Keep main's behavior. The resident hears the answer without making a second request, and the quiet-moment rules already hold delivery during speech, sign-in and approvals.
 
-**Remaining work.**
+**What the rest of PR 3 shipped.** The item numbers are those of the earlier remaining-work list.
 
-1. Finish PR 1's data path before adding its tests. Add an optional `data` field to `ResearchSource`, so a verified step's source carries its answer card's kind, origin and date through `#safePlan` and `researchSummary`. A job with several requirements can cite cards with different dates, and one job-level `data` value cannot describe them all. Readers fall back to the job-level `data` of older rows. Accept the `YYYY년` date that `answerCard` builds in `publicResult`. Parse `data` in `StoredResearch`, and `proof` and `reason` in `JobSchema`, so the panel and both readings work from the same fields. [Research contract](../../src/core/research.ts) · [Planner](../../src/orchestrator/public_plan.ts) · [Persistence boundary](../../src/server/workflows.ts)
-2. Route saved-research requests through the planner. Today an exact-phrase regex in `SessionOrchestrator` handles only the read request. GPT Live passes the caller's own words, so a request such as "아까 맡긴 거 어떻게 됐어?" misses the regex. Add decision kinds for reading, answering and cancelling a saved job next to `delegate_research` in `DECISION_KINDS`. Give the planner each open job's ID, the resident's original request and the job state. Keep result text out of intent analysis, because it comes from web pages. Then delete the regex. [Planner decisions](../../src/orchestrator/public_task.ts) · [Session](../../src/orchestrator/session.ts) · [Live delegation](../../src/server/voice_edge.ts)
-3. When several jobs fit, offer a short numbered choice. `ChoiceKeySchema` is a fixed list, so add keys for picking a saved job and bind each one to its job ID, the way `auth-done` is bound to a `handoffId`. Act only on the chosen job. [Choice contract](../../src/core/choices.ts)
-4. Return the job ID from `delegateResearch`. `Workflows.bind`, the approval consumer and the public planner reduce it to a boolean today. Keep the ID on the turn, so "그거 취소해 줘" right after delegating targets the same job. [Session binding and routes](../../src/server/workflows.ts) · [Approval consumer](../../src/orchestrator/application.ts)
-5. Use one formatter for automatic delivery and for reading on request. The delivery parser keeps only `text` and `missing`, so automatic delivery leaves out the source and its dates. Read the subject, the answer, the source name, its data date and its checked date, then the items still to verify. [Delivery watcher](../../web/src/research-delivery.ts)
-6. Answer and cancel by voice. A spoken answer calls the same `store.answer` with the current `questionRevision`. An answer that changes the research scope requires fresh consent. A spoken cancel calls `Workflows.cancel`, and the existing lease fence keeps a late worker from publishing.
-7. Settle two delivery edge cases. `playResearch` counts muted narration as heard, so a resident who unmutes later never hears that result. Decide whether mute holds delivery or whether the transcript line counts as delivered. A result read on request keeps its delivery token, so the watcher can read it again later. Record the receipt when the on-request reading finishes.
+1. **Per-source data.** `ResearchSource` carries an optional `data` field with the answer card's kind, origin and date through checkpoints, `researchSummary` and `publicResult`, which now accepts a `YYYY년` date. The panel and both readings parse a stored result with one `StoredResearch` schema, and an older row falls back to its job-level `data`. [Research contract](../../src/core/research.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Store tests](../../tests/unit/server-workflows.test.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts)
+2. **Planner routing.** The planner has one decision kind for saved research, `saved_research`, with the action `read`, `answer` or `cancel`. For each of the newest eight jobs it receives a short reference, the request, the state and the saved date, and never the result text. The exact-phrase regex is deleted. [Planner decisions](../../src/orchestrator/public_task.ts) · [Saved research](../../src/orchestrator/saved_research.ts) · [Planner tests](../../tests/e2e/public-planner.test.ts) · [Decision tests](../../tests/unit/public-task.test.ts)
+3. **Numbered choice.** When several jobs fit, Cheongeum asks which one and numbers up to three of them, newest first. The keys `job-1` to `job-3` appear as buttons that show only the number. A button, or a spoken choice that the planner resolves to one of the offered jobs, acts on that job only. [Choice contract](../../src/core/choices.ts) · [Choice tests](../../tests/e2e/choices.test.ts) · [Journey tests](../../tests/e2e/saved-research-journey.test.ts)
+4. **Job ID.** `ResearchDesk.delegate` returns the job ID, and the session remembers the job that it saved last. "그거 취소해 줘" right after a delegation cancels that job, even when an older job is still open. [Research desk](../../src/core/research_desk.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Planner tests](../../tests/e2e/public-planner.test.ts)
+5. **One formatter.** `researchReading` builds one text: the subject, the answer, each source's name, data kind, data date and checked date, then the items still to verify. The watcher, the panel's listen button and a reading on request all speak that text, and over GPT Live the app reads it word for word. A job that waits on a question ends with that question, even when its stored text was cut. The text is spoken in the job's own language and is not translated into the session's. [Reading](../../src/speech/research_reading.ts) · [Reading tests](../../tests/unit/research-reading.test.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Voice edge tests](../../tests/unit/voice-edge.test.ts)
+6. **Answer and cancel by voice.** A spoken answer goes to the same `store.answer` with the `questionRevision` that the planner saw for that job, and the job continues at once without a further confirmation. If the job asked something new in between, the store refuses the answer and the resident hears that the question changed. A spoken cancel calls `Workflows.cancel`, so the lease fence keeps a late worker from publishing. Both writes check the session inside the store's transaction, before the first statement and again before the commit, so a Stop that arrives first leaves the job as it was on SQLite and on PostgreSQL. A cancel gives the job a new delivery receipt, so a late receipt for the reading cannot acknowledge the cancel notice. A request to start new research stays a separate delegation. [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Research desk tests](../../tests/unit/research-desk.test.ts)
+7. **Delivery edge cases.** When narration is muted or the PC has no speech, the transcript line counts as delivered and the receipt is recorded at once. A result read on request records its receipt when playback ends, so the watcher does not deliver it again. If that receipt does not reach the server, a later reply that carries the same receipt still plays. [Delivery rules](../../web/src/conversation.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts)
 
-**Acceptance.** Run these cases through Hono and Chromium:
+**Acceptance.** Each case names the tests that cover it. The journey tests run the real server, worker, store and conversation window in Chromium. The planner model, the welfare record and the speech are fakes.
 
 - Complete the opening journey by voice through GPT Live, and again by keyboard. Close the app after enqueue, reopen, and hear the result with its source, data date and checked date without opening the panel.
+  - [Journey tests](../../tests/e2e/saved-research-journey.test.ts): `%s 조사를 맡기고 앱을 닫았다 열면 패널을 열지 않아도 주제, 출처, 자료 기준일, 확인일, 남은 항목 순서로 한 번 듣고, 그다음에 열 때는 조용하다`, with one row each for the keyboard, one-shot voice and a GPT Live handoff.
 - With two finished jobs, "아까 맡긴 거 읽어줘" offers a numbered choice. Picking one reads only that job.
+  - [Journey tests](../../tests/e2e/saved-research-journey.test.ts): `듣지 않은 끝난 조사가 둘일 때 읽어 달라고 하면 번호만 적힌 버튼 두 개가 나오고, 2번을 누르면 그 조사만 읽고 그 인수증만 보내며, 감시는 남은 조사만 전한다`.
+  - [Choice tests](../../tests/e2e/choices.test.ts): `끝난 조사가 둘이면 번호를 붙여 묻고 고르는 버튼을 내며, 2번 버튼은 그 조사만 읽고 인수증을 싣는다. 다른 응답이 나간 뒤의 지난 제안은 만료다` and, for a spoken number, `번호를 말하면 플래너가 물어 둔 선택지의 번호와 ref를 받고, 그 ref로 답한 조사만 읽는다`.
 - A heard result stays quiet on the next launch. A result read on request is not delivered again.
+  - [Journey tests](../../tests/e2e/saved-research-journey.test.ts): the third launch of the opening journey, and the watcher step of the two-job case.
+  - [Research panel tests](../../tests/e2e/research-panel.test.ts): `말로 요청해 읽은 저장한 조사는 한 번 말하고 다 들은 뒤에 인수증을 한 번 보내며, 목록에 남은 줄을 감시가 다시 말하거나 쓰지 않는다`.
+  - [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts): `말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않고, 모델에 가는 대화에는 자리 표시만 남기며, 인수증을 받은 뒤에는 다시 전달하지 않는다`.
 - Cancel a running job by voice, and verify that a late worker cannot publish its result.
+  - [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts): `조사 중인 것을 말로 취소하면 늦게 끝난 조사가 결과를 남기지 못하고, 취소했다는 말의 인수증을 받은 뒤에는 중단 소식을 전하지 않는다`.
 - Answer a pending question by voice. An answer for an old `questionRevision` gets 409 and changes nothing.
+  - [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts): `맡긴 조사가 되물은 것에 말로 답하면 그 답으로 조사를 이어서 끝낸다` for the spoken answer, and the `needs_input` row of `serves verified public findings as %s and preserves progress` for the 409.
 - A shared user sees and hears zero personal results.
+  - [Journey tests](../../tests/e2e/saved-research-journey.test.ts): `공용 기기로 설정한 PC에서는 저장소에 끝난 조사가 있어도 듣지도 보지도 못하고, 전달 목록은 거절되며, 플래너에 조사 목록이 가지 않는다`.
+  - [Planner tests](../../tests/e2e/public-planner.test.ts): `공용 기기에서 모델이 저장한 조사를 골라도 저장소를 열지 않고 개인 기기 안내만 한다`.
 - The two PR 1 cases above pass.
+  - The PR 1 section names their tests.
 - When the PostgreSQL backend is deployed, the same claim and receipt cases pass on it.
+  - [Store tests](../../tests/unit/server-workflows.test.ts): every case in the `describe.each(databases)` block runs on SQLite, and on PostgreSQL when `CHEONGEUM_TEST_DATABASE_URL` is set. The block holds the claim, cancel and retry cases, the receipt cases for a reopened store, an answered job and a cancelled job, and the `summaries` case.
 
-[Store tests](../../tests/unit/server-workflows.test.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Voice delegation tests](../../tests/e2e/voice-edge.test.ts)
+**Known limits.**
+
+- A saved-research voice command needs a configured LLM. None runs while the planner is not consulted, which includes an open application form, a guided fill and an approval wait. The panel and the watcher still work.
+- A one-pass job that asks a question cannot take a spoken answer. The reply asks the resident to delegate the research again.
+- A bare "네" or "응" does not answer a job's yes-or-no question.
+- When several asking jobs fit an answer, a spoken number gives the chosen job the answer the resident said first. If the planner writes a different answer with the number, as for "2번에 부산이라고 답해 줘" or a copied "2번", Cheongeum sends nothing, names both answers and asks for the answer again. A planner that keeps copying the number keeps getting that question.
+- A spoken answer goes to the question revision the planner saw, not the one the resident last heard. If the panel answers a job and the job asks something new before Cheongeum announces it, a spoken answer goes to the new question.
+- A saved reading is spoken in the job's language. A job delegated in Korean is read in Korean in an English session.
+- "그거 언제 끝나?" is answered from the progress of the foreground task, not from the saved job.
+- A reading that is spoken with the device voice (`localSpeechOnly`) records no receipt.
+- The panel's listen button does nothing while narration is muted, and records no receipt.
+- The PostgreSQL rows of the store tests run only with a DSN. CI has none.
+- Real GPT Live and the real planner model need a manual check with `npm run check-voice` and `npm run check-llm`. The tests use fakes for both, and the Live journey speaks to the conversation WebSocket route without a WebRTC call. Two points of the numbered choice depend on the real models:
+  - The planner must return the chosen option's reference for "2번", "두 번째 거" or a subject.
+  - GPT Live speaks the numbered question in its own voice and can rephrase the numbers.
+
+[Journey tests](../../tests/e2e/saved-research-journey.test.ts) · [Store tests](../../tests/unit/server-workflows.test.ts) · [Research panel tests](../../tests/e2e/research-panel.test.ts) · [Durable workspace tests](../../tests/e2e/durable-workspace.test.ts) · [Voice delegation tests](../../tests/e2e/voice-edge.test.ts)
 
 ## Extensions after the first release
 
