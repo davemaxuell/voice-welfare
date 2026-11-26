@@ -93,11 +93,11 @@ it("test_choice_route_validates_and_reports_expired_offers", async () => {
 const ASK_TO_READ = "아까 맡긴 조사 읽어 줘";
 const twoReady = () => [savedJob("job-1", "아동수당 신청 방법", {kind: "ready"}), savedJob("job-2", "기초연금 신청 서류", {kind: "ready"})];
 const PendingPick = z.object({pendingPick: z.object({options: z.array(z.object({number: z.number(), ref: z.string()}))}).optional()});
-function secondOptionPlanner(action: "read" | "answer" | "cancel", answer: string | null = null) {
+function secondOptionPlanner(action: "read" | "answer" | "cancel", answer: string | null = null, copied: string | null = null) {
   return new FakeLlm(request => {
     if (request.schemaName !== "public_service_decision") return undefined;
     const second = PendingPick.parse(JSON.parse(request.user)).pendingPick?.options.find(option => option.number === 2);
-    return (second === undefined ? savedDecision(action, [], answer) : savedDecision(action, [second.ref])).public_service_decision;
+    return (second === undefined ? savedDecision(action, [], answer) : savedDecision(action, [second.ref], copied)).public_service_decision;
   });
 }
 
@@ -252,6 +252,16 @@ it("답하려던 조사가 여럿이면 번호로 묻고, 번호를 말하면 �
   expect(desk.answer.mock.calls).toEqual([["job-2", 2, "서울이요"]]);
   const pending = plannerPayloads(model)[1]?.pendingPick;
   expect(pending).toEqual({action: "answer", options: [{number: 1, ref: "j1"}, {number: 2, ref: "j2"}]});
+});
+
+it("번호로 고를 때 플래너가 '2번'을 답 칸에 옮겨 적어도 받아 둔 답을 그 조사에 넣는다", async () => {
+  const {session} = await runtime.createBrowserSession();
+  const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: 1}), savedJob("job-2", "기초연금 신청 서류", {kind: "asking", revision: 2})]);
+  session.deps.research = desk;
+  withLlm(session, secondOptionPlanner("answer", "서울이요", "2번"));
+  await session.handleTurn("서울이요");
+  expect((await session.handleTurn("2번")).speech).toBe("답을 받았어요. 이어서 조사할게요.");
+  expect(desk.answer.mock.calls).toEqual([["job-2", 2, "서울이요"]]);
 });
 
 const secondPicks: [string, (session: SessionOrchestrator, turnId: string) => Promise<TurnResult | undefined>][] = [

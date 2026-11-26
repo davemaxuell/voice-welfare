@@ -450,7 +450,8 @@ export interface PlannerSaved { readonly jobs: readonly PlannerJob[]; readonly p
 function withHeldAnswer(raw: unknown, pick: PlannerPick | undefined): { raw: unknown; held: boolean } {
   if (pick?.action !== "answer" || !isRecord(raw) || raw.kind !== "saved_research" || !isRecord(raw.research)) return { raw, held: false };
   const { action, jobs, answer } = raw.research;
-  const chosen = action === "answer" && answer == null && Array.isArray(jobs) && jobs.length === 1 && pick.options.some(option => option.ref === jobs[0]);
+  // 버튼을 누른 것과 같이, 물어 둔 조사 하나를 고른 말은 받아 둔 답을 넣는다. 모델이 '2번'을 답 칸에 옮겨 적어도 그 말은 답이 아니다.
+  const chosen = action === "answer" && Array.isArray(jobs) && jobs.length === 1 && pick.options.some(option => option.ref === jobs[0]);
   return chosen ? { raw: { ...raw, research: { ...raw.research, answer: pick.answer } }, held: true } : { raw, held: false };
 }
 

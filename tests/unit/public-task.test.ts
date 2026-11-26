@@ -283,7 +283,7 @@ it("고르라고 물어 둔 것이 있을 때만 pendingPick과 그 안내 문�
   expect(answering.system).toBe(reading.system);
 });
 
-it("답을 넣으려다 물어 둔 선택지 하나만 짚고 답을 비운 결정에는 받아 둔 답을 넣고, 그 밖의 답은 주민이 한 말에 있을 때만 받는다", async () => {
+it("답을 넣으려다 물어 둔 선택지 하나만 짚은 결정에는 모델이 답 칸에 무엇을 적었든 받아 둔 답을 넣는다", async () => {
   const jobs = ["j1", "j2", "j3"].map(ref => ({ref, request: "조사 " + ref, state: "asking", savedOn: "2026-11-25"} as const));
   const held: PlannerSaved = {jobs, pick: {action: "answer", answer: "서울이요", options: [{number: 1, ref: "j1"}, {number: 2, ref: "j2"}]}};
   const decided = (said: string, raw: unknown, saved: PlannerSaved = held) =>
@@ -291,8 +291,8 @@ it("답을 넣으려다 물어 둔 선택지 하나만 짚고 답을 비운 결�
   const unclear = {kind: "saved_research_unclear"};
   expect(await decided("2번", savedAction("answer", null, ["j2"]))).toMatchObject({kind: "saved_research", research: {action: "answer", jobs: ["j2"], answer: "서울이요"}});
   expect(await decided("첫 번째 거", savedAction("answer", undefined, ["j1"]))).toMatchObject({research: {action: "answer", jobs: ["j1"], answer: "서울이요"}});
-  expect(await decided("2번에 부산이라고 답해 줘", savedAction("answer", "부산", ["j2"]))).toMatchObject({research: {action: "answer", jobs: ["j2"], answer: "부산"}});
-  expect(await decided("2번", savedAction("answer", "서울이요", ["j2"])), "말에 없는 답은 받아 둔 답과 같아도 모델이 적을 수 없다").toEqual(unclear);
+  expect(await decided("option one", savedAction("answer", "option one", ["j1"])), "고른 말을 답 칸에 옮겨 적음").toMatchObject({research: {action: "answer", jobs: ["j1"], answer: "서울이요"}});
+  expect(await decided("2번에 부산이라고 답해 줘", savedAction("answer", "부산", ["j2"])), "버튼과 같이 받아 둔 답").toMatchObject({research: {action: "answer", jobs: ["j2"], answer: "서울이요"}});
   expect(await decided("세 번째 거", savedAction("answer", null, ["j3"])), "물어 둔 선택지가 아닌 조사").toEqual(unclear);
   expect(await decided("둘 다", savedAction("answer", null, ["j1", "j2"])), "선택지 둘").toEqual(unclear);
   expect(await decided("2번", savedAction("answer", null, [])), "짚지 않음").toEqual(unclear);
