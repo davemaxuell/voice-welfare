@@ -69,6 +69,8 @@ export const READING_PLACEHOLDER = "[저장한 조사 결과를 읽어 드렸어
 
 export interface PlannerView {
   readonly saved: PlannerSaved;
+  /** 플래너가 본 그대로의 조사 목록 */
+  readonly jobs: readonly SavedJob[];
   resolve(ref: string): string | undefined;
 }
 
@@ -80,6 +82,7 @@ export function plannerView(jobs: readonly SavedJob[], lastSaved: string | undef
   const listed = jobs.slice(0, LISTED).map((job, i) => ({ ...job, ref: `j${i + 1}` }));
   const ids = new Map(listed.map(job => [job.ref, job.id]));
   return {
+    jobs: jobs.slice(0, LISTED),
     saved: { jobs: listed.map(job => ({
       ref: job.ref, request: Array.from(redact(job.request)).slice(0, REQUEST_LENGTH).join(""), state: plannerState(job.phase), savedOn: job.savedOn,
       ...(job.id === lastSaved ? { lastSaved: true } : {}),
@@ -157,7 +160,8 @@ export class SavedResearch {
     const desk = s.deps.research, lang = s.lang;
     if (desk === undefined) return this.unclear();
     const named = new Set(request.jobs.map(ref => view.resolve(ref)));
-    const listed = await desk.recent(LISTED);
+    // 답은 플래너가 본 질문의 번호로 넣는다. 그사이 질문이 바뀌었으면 저장소가 받지 않는다(stale).
+    const listed = request.action === "answer" ? view.jobs : await desk.recent(LISTED);
     const meant = request.jobs.length === 0 ? listed : listed.filter(job => named.has(job.id));
     const [job, ...others] = meant.filter(candidate => fits(request.action, candidate.phase));
     if (job === undefined) return draft(s.state, "none", NOTHING_FITS[request.action](meant)[lang], { lang });

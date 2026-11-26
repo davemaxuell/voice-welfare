@@ -609,6 +609,18 @@ it.each([
   expect(desk.answer.mock.calls).toEqual([["job-2", 3, "서울"]]);
 });
 
+it("플래너가 본 뒤 조사의 질문이 바뀌면 답은 플래너가 본 질문의 번호로 넣고, 저장소가 받지 않으면 질문이 바뀌었다고 알린다", async () => {
+  const {session} = await open();
+  const asked = (revision: number) => [savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision})];
+  const desk = deskOf(asked(1));
+  desk.recent.mockResolvedValueOnce(asked(1)).mockResolvedValue(asked(3));
+  desk.answer.mockImplementation(async (_jobId, revision) => revision === 3 ? "queued" : "stale");
+  session.deps.research = desk;
+  withLlm(session, new FakeLlm(savedDecision("answer", [], "서울")));
+  expect((await session.handleTurn("서울이요")).speech).toBe("그 질문은 이미 바뀌었어요.");
+  expect(desk.answer.mock.calls).toEqual([["job-1", 1, "서울"]]);
+});
+
 it("이어서 답을 받을 수 없는 되물음에 답하면 새로 맡겨 달라고 알리고 아무것도 넣지 않는다", async () => {
   const {session} = await open();
   const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: undefined})]);
