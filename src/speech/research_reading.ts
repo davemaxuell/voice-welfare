@@ -74,6 +74,11 @@ const YEAR_ONLY = /^(\d{4})년$/u;
 const squash = (text: string) => text.replace(/\s+/gu, " ").trim();
 const present = (text: string) => text.length > 0;
 
+export function spokenRequest(request: string): string {
+  const name = Array.from(squash(request));
+  return name.length > MAX_PROMPT ? `${name.slice(0, MAX_PROMPT).join("")}…` : name.join("");
+}
+
 function realDay(value: string): boolean {
   const day = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(value);
@@ -128,9 +133,8 @@ export function researchReading(job: ReadingJob, { brevity, speakable }: Reading
   const missing = (result?.missing ?? []).map(squash).filter(present);
   const textHasSources = result?.data !== undefined;
   const cited = result === undefined || textHasSources ? [] : result.sources;
-  const subject = Array.from(squash(job.prompt));
   const headline = HEADLINE[HEADLINE_OF_STATE.get(job.state) ?? "update"][lang];
-  const parts = [headline(subject.length > MAX_PROMPT ? `${subject.slice(0, MAX_PROMPT).join("")}…` : subject.join(""))];
+  const parts = [headline(spokenRequest(job.prompt))];
   if (text.length > 0) parts.push(...findingsWithQuestion(text, job.question, brevity, lang));
   else if (missing.length === 0) parts.push(stateNote(job.state, lang));
   for (const { title, lastCheckedAt, data } of cited.slice(0, MAX_SOURCES)) {
