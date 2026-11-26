@@ -358,7 +358,7 @@ it("말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않�
   expect(first.speech).toContain("출처 확인일 2026년 11월 19일");
   expect(first.speech).toContain("마감일");
 
-  const sentToModels = JSON.stringify([session.plannerTurns, session.recentVoiceDialogue()]);
+  const sentToModels = JSON.stringify([session.plannerTurns, session.recentVoiceDialogue(), session.recentDialogue(8)]);
   expect(sentToModels).toContain(READING_PLACEHOLDER);
   expect(sentToModels).not.toMatch(/신분증|복지로 공식 자료|마감일/u);
   expect(session.plannerTurns.at(-1)?.exchange.assistant).toBe(READING_PLACEHOLDER);
@@ -373,6 +373,14 @@ it("말로 요청해 읽은 저장한 조사는 '짧게'에서도 줄이지 않�
   expect(second.savedResearch).toEqual({jobId, reading: true});
   session.personal.saveSpeech({length: "normal"});
   expect((await session.handleTurn("쉽게 말해 줘")).speech).toContain("출처 복지로 공식 자료");
+
+  const chat = new FakeLlm({chat_route: {route: "general", reply: "1년은 보통 365일이에요.", searchQuery: null}});
+  withLlm(session, chat);
+  await session.handleTurn("1년은 며칠이야");
+  const routed = chat.calls.filter(call => call.schemaName === "chat_route").map(call => call.user);
+  expect(routed).toHaveLength(1);
+  expect(routed[0]).toContain(READING_PLACEHOLDER);
+  expect(routed[0]).not.toMatch(/신분증|복지로 공식 자료|마감일/u);
 });
 
 it("영어로 맡긴 한 번에 끝나는 조사는 번역한 카드의 답과 다음 할 일만 저장하고 출처와 날짜는 읽을 때 더한다", async () => {

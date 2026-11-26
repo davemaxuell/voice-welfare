@@ -617,7 +617,7 @@ export class SessionOrchestrator {
     // 시작 문맥에 메시지 틀이 들어갈 자리를 남긴다.
     let remaining = 6400;
     for (const message of this.#history.slice(-64).reverse()) {
-      const text = this.#dialogueText(message.hiddenFromModels === true ? READING_PLACEHOLDER : message.text);
+      const text = strip(redactPictureText(this.modelHistoryText(message)));
       if (text.length === 0) continue;
       const excerpt = utf8Prefix(text, 800);
       const bytes = Buffer.byteLength(excerpt);
@@ -1479,6 +1479,7 @@ export class SessionOrchestrator {
     const stopped = this.superseded(turn) && out.semanticAction !== "stop";
     const state = stopped ? "STOPPED" : out.state;
     const reading = !stopped && out.savedResearch?.reading === true;
+    const hidden = reading || out.hiddenFromModels === true;
     let speech: string = stopped ? FIXED.stopBusy[this.lang] : out.speech;
     const d = this.dialogue;
     const pending = d.approval;
@@ -1530,15 +1531,15 @@ export class SessionOrchestrator {
       const reply = out.pictureHistory !== undefined && out.pictureHistory.length > 0 ? redactText(out.pictureHistory) :
         recorded === out.speech && out.historySpeech !== undefined ? out.historySpeech : redactText(recorded);
       this.#history.push({ turnId: turn.id, role: "user", text: userText, at, state, intentType: turn.intentType },
-        { turnId: turn.id, role: "assistant", text: reply, at, state, ...(reading ? { hiddenFromModels: true as const } : {}) });
-      const modelReply = reading ? redactText(READING_PLACEHOLDER) : reply;
+        { turnId: turn.id, role: "assistant", text: reply, at, state, ...(hidden ? { hiddenFromModels: true as const } : {}) });
+      const modelReply = hidden ? redactText(READING_PLACEHOLDER) : reply;
       if (localSpeechOnly || state === "AUTH_HANDOFF" || state === "STOPPED" || turn.intentType.startsWith("PERSONAL_") ||
           turn.intentType === "SECRET_DISCLOSURE" || userText === REDACTED || this.#consent !== "granted") {
         this.#clearPlannerDialogue();
       } else {
         const [exchange] = this.plannerDialogue([], [{user: turn.original ?? userText, assistant: modelReply}]);
         if (exchange) {
-          this.#plannerTurns.push({ id: turn.id, exchange: { ...exchange, turnId: turn.id }, localize: !reading && reply === speech && out.pictureHistory === undefined && out.historySpeech === undefined });
+          this.#plannerTurns.push({ id: turn.id, exchange: { ...exchange, turnId: turn.id }, localize: !hidden && reply === speech && out.pictureHistory === undefined && out.historySpeech === undefined });
           if (this.#plannerTurns.length > PLANNER_EXCHANGES) this.#plannerTurns.shift();
           this.#rememberPublicTurn(turn, out, state, view, userText, modelReply);
         } else this.#clearPlannerDialogue();
@@ -1689,7 +1690,12 @@ export class SessionOrchestrator {
   }
 
   recentDialogue(n = 6) {
-    return this.#history.slice(-n).map(row => historyLine(row.role, this.modelSpeech(row.text)));
+    return this.#history.slice(-n).map(row => historyLine(row.role, this.modelHistoryText(row)));
+  }
+
+  /** 모델에 보내는 기록 한 줄. 저장한 조사를 읽은 응답은 자리 표시로 보낸다. */
+  modelHistoryText(row: HistoryRow): Redacted {
+    return this.modelSpeech(row.hiddenFromModels === true ? READING_PLACEHOLDER : row.text);
   }
 
   get history(): readonly HistoryRow[] { return this.#history; }

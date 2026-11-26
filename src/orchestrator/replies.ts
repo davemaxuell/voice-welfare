@@ -80,14 +80,16 @@ export class SessionReplies {
   /** "쉽게 말해줘": 직전 안내를 쉬운 말로(LLM이 없거나 숫자를 바꿔 말하면 그대로 다시). */
   async rephrase(turn: Turn): Promise<Draft> {
     const s = this.session;
-    const last = s.history.findLast(row => row.role === "assistant")?.text;
+    const row = s.history.findLast(row => row.role === "assistant");
+    const last = row?.text;
     if (last === undefined || last.length === 0) return draft(s.state, "rephrase", "아직 드린 안내가 없어요. 무엇을 도와드릴까요?");
+    const derived = row?.hiddenFromModels === true ? { hiddenFromModels: true } : {};
     // "그 번호를 다시 천천히": 바꿔 말하지 않고 그대로, 전화번호는 한 자리씩. 전화번호를 물었으면 전화번호가 있는 문장만
     // ('그 번호'만으로는 접수번호일 수도 있어 다 말한다).
     if (replyPatterns.slowly.test(turn.text)) {
       const sentences = last.split(replyPatterns.sentenceGap).filter(sentence => strip(sentence).length > 0);
       const numbered = replyPatterns.phoneAsked.test(turn.text) ? sentences.filter(hasPhoneNumber) : [];
-      return draft(s.state, "rephrase", `천천히 다시 말씀드릴게요. ${spellPhoneNumbers((numbered.length > 0 ? numbered : sentences).join(" "))}`);
+      return draft(s.state, "rephrase", `천천히 다시 말씀드릴게요. ${spellPhoneNumbers((numbered.length > 0 ? numbered : sentences).join(" "))}`, derived);
     }
     const model = s.deps.webLlm ?? s.deps.llm;
     if (model !== undefined) {
@@ -100,10 +102,10 @@ export class SessionReplies {
       if (changed.length > 0) {
         turn.ctx.trace("VERIFYING", AGENT_IDS.verifier, `쉬운 말에 직전 안내에 없는 숫자(${changed.join(", ")}) → 직전 안내 그대로`);
       } else if (text.length > 0) {
-        return draft(s.state, "rephrase", `쉽게 다시 말씀드릴게요. ${text}`);
+        return draft(s.state, "rephrase", `쉽게 다시 말씀드릴게요. ${text}`, derived);
       }
     }
-    return draft(s.state, "rephrase", `천천히 다시 말씀드릴게요. ${last}`);
+    return draft(s.state, "rephrase", `천천히 다시 말씀드릴게요. ${last}`, derived);
   }
 
   /**
@@ -115,12 +117,12 @@ export class SessionReplies {
     const s = this.session;
     const view = s.web.currentView;
     turn.ctx.trace("PLANNING", AGENT_IDS.welfare, "자유 대화 분류");
-    const last = s.history.findLast(row => row.role === "assistant")?.text;
+    const last = s.history.findLast(row => row.role === "assistant");
     const llm = s.deps.llm;
     const utterance = redactText(text);
     const out = llm === undefined ? {} : await raceAbort(signal => chatRoute(llm, s.modelSpeech(utterance), {
       page: view?.title === undefined ? undefined : s.modelSpeech(view.title),
-      lastAssistant: last === undefined ? undefined : s.modelSpeech(last),
+      lastAssistant: last === undefined ? undefined : s.modelHistoryText(last),
       need: s.dialogue.hasPendingInteraction ? undefined : s.need.context(),
       recent: s.recentDialogue(8), askedJustNow: s.lastSemantic === "clarify",
     }, signal), turn.ctx.signal);

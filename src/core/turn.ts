@@ -192,6 +192,8 @@ type DraftExtras = Partial<Pick<TurnResult,
   pictureHistory?: string;
   /** 기록에 말 대신 가림 표시만 남기는 응답 */
   privateHistory?: boolean;
+  /** 모델에 가는 기록에는 자리 표시만 남기는 응답(저장한 조사를 읽은 글로 만든 응답) */
+  hiddenFromModels?: boolean;
   /** 목표 수행이 브라우저를 움직인 횟수 */
   browserIterations?: number;
   /** 현재 사용자의 탭과 별개로 조사 창에서 실제로 확인한 공개 문서 제목. */
