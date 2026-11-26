@@ -1,6 +1,5 @@
 import type { JobPhase, SavedJob } from "../core/research_desk.ts";
 import { draft, type Draft, type Lang } from "../core/turn.ts";
-import { redactText } from "../safety/privacy.ts";
 import type { PlannerJob, PlannerSaved, SavedDecision } from "./public_task.ts";
 import type { SessionOrchestrator } from "./session.ts";
 
@@ -81,7 +80,7 @@ export class SavedResearch {
     const desk = this.#session.deps.research;
     if (desk === undefined) return undefined;
     const jobs = await desk.recent(LISTED).catch(() => undefined);
-    return jobs === undefined ? undefined : plannerView(jobs, this.#lastSaved, redactText);
+    return jobs === undefined ? undefined : plannerView(jobs, this.#lastSaved, text => this.#session.modelSpeech(text));
   }
 
   unclear(): Draft {

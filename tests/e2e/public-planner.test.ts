@@ -355,6 +355,19 @@ it("제 말로 맡긴 조사를 물으면 플래너가 고른 조사를 읽어 �
   ]}]);
 });
 
+it("부르는 이름이나 금고 값이 든 조사 주제는 가려서 플래너에 보낸다", async () => {
+  const {session} = await open();
+  session.deps.research = deskOf([savedJob("job-1", "민들레 님 기초연금 서류", {kind: "ready"}), savedJob("job-2", "010-2345-6789 번호로 받는 안내", {kind: "ready"})]);
+  session.personal.setCallName("민들레");
+  session.personal.saveVault({phone: "010-2345-6789"});
+  const model = new FakeLlm({public_service_decision: {kind: "conversation", reply: "네.", ...unusedFields}});
+  withLlm(session, model);
+  await session.handleTurn(ASKED);
+  const [payload] = plannerPayloads(model);
+  expect(payload?.savedJobs).toHaveLength(2);
+  expect(JSON.stringify(payload)).not.toMatch(/민들레|010-2345-6789/u);
+});
+
 it("다른 언어로 맡긴 조사는 세션 언어로 옮기지 않고 그 조사의 언어로 그대로 읽는다", async () => {
   const {session} = await open();
   const english = "Results for “Basic pension papers”. Bring your ID.";
