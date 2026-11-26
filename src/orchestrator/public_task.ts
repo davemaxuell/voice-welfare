@@ -329,6 +329,14 @@ delegate_research with a goal that combines that job's request and their reply.
 Requests about application reminders saved locally in 청음 still use existing, and a request to start new
 research still uses delegate_research. Use null research for every other kind.`;
 
+const PENDING_PICK = `
+pendingPick is the question 청음 just asked: several saved jobs fit pendingPick.action, and the resident was asked
+which one. Each option has the number 청음 spoke for a job and that job's ref. When the resident chooses one, by its
+number in any wording ("2번", "두 번째 거", "the second one") or by its subject ("아동수당 거"), use saved_research
+with pendingPick.action and only that option's ref in jobs. When pendingPick.action is answer, 청음 already holds
+the reply the resident gave, so set answer to null for such a choice and never put the number or the subject in
+answer. Decide any other request as usual.`;
+
 const uniqueInOrder = <T>(values: Iterable<T>) => [...new Set(values)];
 
 export class PublicTask {
@@ -435,7 +443,16 @@ export interface PlannerJob {
   readonly savedOn: string;
   readonly lastSaved?: true;
 }
-export interface PlannerSaved { readonly jobs: readonly PlannerJob[] }
+export type PlannerPick = { readonly options: readonly { readonly number: number; readonly ref: string }[] }
+  & ({ readonly action: Exclude<typeof SAVED_ACTIONS[number], "answer"> } | { readonly action: "answer"; readonly answer: string });
+export interface PlannerSaved { readonly jobs: readonly PlannerJob[]; readonly pick?: PlannerPick }
+
+function withHeldAnswer(raw: unknown, pick: PlannerPick | undefined): { raw: unknown; held: boolean } {
+  if (pick?.action !== "answer" || !isRecord(raw) || raw.kind !== "saved_research" || !isRecord(raw.research)) return { raw, held: false };
+  const { action, jobs, answer } = raw.research;
+  const chosen = action === "answer" && answer == null && Array.isArray(jobs) && jobs.length === 1 && pick.options.some(option => option.ref === jobs[0]);
+  return chosen ? { raw: { ...raw, research: { ...raw.research, answer: pick.answer } }, held: true } : { raw, held: false };
+}
 
 export interface DecideOptions {
   need?: NeedContext;
@@ -460,6 +477,9 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     ref: redactText(job.ref), request: redactText(job.request), state: redactText(job.state), savedOn: redactText(job.savedOn),
     ...(job.lastSaved === true ? { lastSaved: true } : {}),
   }));
+  const pick = options.saved?.pick;
+  const pendingPick = pick === undefined ? undefined :
+    { action: redactText(pick.action), options: pick.options.map(option => ({ number: option.number, ref: redactText(option.ref) })) };
   let choice: string | null = null;
   if (task.question !== "" && task.choices.length > 0) {
     const key = commandKey(utterance);
@@ -480,6 +500,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     + "For a question about that page, use a browser lookup and inspect it before asking which service or document it describes. "
     + "Use the existing safeguards for personal records, login and identity checks.";
   if (savedJobs.length > 0) system += SAVED_JOBS;
+  if (pendingPick !== undefined) system += PENDING_PICK;
   const exchanges = options.dialogue ?? [];
   const included = new Set(exchanges.map(entry => entry.turnId));
   const additionalRecent = recent.filter(turn => turn.turnId === undefined || !included.has(turn.turnId));
@@ -495,7 +516,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     const index = (exchanges.length + i) * 2;
     return { agency: turn.agency === null ? null : redactText(turn.agency), request: project(turn.request, index), reply: project(turn.reply, index + 1) };
   });
-  const raw = await llm.generate({
+  const reply = await llm.generate({
     system: system + "\nAgency catalog: " + JSON.stringify(AGENCY_CATALOG),
     user: redactedJson({
       utterance: destination.text, replyLanguage: redactText(language), voice, koreaDate: redactText(todayIso()), task: task.context(),
@@ -508,9 +529,11 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
       ...(savedNotes !== undefined && savedNotes.length > 0 ? { savedNotes: savedNotes.map(note => publicDestinations(note).text) } : {}),
       ...(speechCandidates.length > 0 ? { speechCandidates: speechCandidates.map(name => redactText(name)), corroborated } : {}),
       ...(savedJobs.length > 0 ? { savedJobs } : {}),
+      ...(pendingPick === undefined ? {} : { pendingPick }),
     }),
     schemaName: "public_service_decision", schema: research ? RESEARCH_SCHEMA : DECISION_SCHEMA, signal,
   });
+  const { raw, held } = withHeldAnswer(reply, pick);
   let spansFor: SpansFor = () => [];
   if (scan !== undefined && isRecord(raw)) {
     const texts = [raw.agency, raw.subject, raw.goal, raw.question, raw.reply, isRecord(raw.research) ? raw.research.answer : undefined,
@@ -525,7 +548,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     const listed = new Set(options.saved?.jobs.map(job => job.ref));
     const request = decision?.research;
     const usable = options.saved !== undefined && request !== undefined && request.jobs.every(ref => listed.has(ref))
-      && (request.action !== "answer" || destination.text.includes(request.answer));
+      && (request.action !== "answer" || held || destination.text.includes(request.answer));
     return usable ? decision : UNCLEAR_SAVED;
   }
   if (decision?.kind === "inspect_personal" && decision.agency !== undefined && !PUBLIC_AGENCIES.has(decision.agency) &&

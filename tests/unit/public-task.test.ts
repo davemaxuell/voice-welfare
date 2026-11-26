@@ -254,6 +254,55 @@ it("저장한 조사 결정이 보낸 목록 밖의 조사를 가리키거나 �
   expect(await decided({kind: "existing"}, {saved})).toBeUndefined();
 });
 
+it("고르라고 물어 둔 것이 있을 때만 pendingPick과 그 안내 문단을 보내고, 받아 둔 답은 보내지 않는다", async () => {
+  const jobs = [
+    {ref: "j1", request: "새로 맡긴 조사", state: "working", savedOn: "2026-11-26"},
+    {ref: "j2", request: "기초연금 신청 서류", state: "asking", savedOn: "2026-11-25"},
+    {ref: "j3", request: "아동수당 신청 방법", state: "asking", savedOn: "2026-11-24"},
+  ] as const;
+  const options = [{number: 1, ref: "j2"}, {number: 3, ref: "j3"}];
+  const said = redactText("2번");
+  const ask = async (saved: PlannerSaved) => {
+    const {llm, calls} = fake(oracle.cases.find);
+    await decide(llm, said, "ko", new PublicTask(), {voice: true, recent: [], signal, saved});
+    return {system: calls[0]?.system ?? "", user: z.record(z.string(), z.unknown()).parse(JSON.parse(calls[0]?.user ?? "{}"))};
+  };
+  const listed = await ask({jobs});
+  expect(Object.keys(listed.user)).not.toContain("pendingPick");
+  expect(listed.system).not.toContain("pendingPick");
+
+  const reading = await ask({jobs, pick: {action: "read", options}});
+  expect(Object.keys(reading.user)).toEqual([...Object.keys(listed.user), "pendingPick"]);
+  expect(reading.user.pendingPick).toEqual({action: "read", options});
+  expect(reading.system.startsWith(listed.system.slice(0, listed.system.indexOf("\nAgency catalog: ")))).toBe(true);
+  expect(reading.system).toContain("pendingPick");
+
+  const answering = await ask({jobs, pick: {action: "answer", answer: "구별되는답", options}});
+  expect(answering.user.pendingPick).toEqual({action: "answer", options});
+  expect(JSON.stringify(answering.user)).not.toContain("구별되는답");
+  expect(answering.system).toBe(reading.system);
+});
+
+it("답을 넣으려다 물어 둔 선택지 하나만 짚고 답을 비운 결정에는 받아 둔 답을 넣고, 그 밖의 답은 주민이 한 말에 있을 때만 받는다", async () => {
+  const jobs = ["j1", "j2", "j3"].map(ref => ({ref, request: "조사 " + ref, state: "asking", savedOn: "2026-11-25"} as const));
+  const held: PlannerSaved = {jobs, pick: {action: "answer", answer: "서울이요", options: [{number: 1, ref: "j1"}, {number: 2, ref: "j2"}]}};
+  const decided = (said: string, raw: unknown, saved: PlannerSaved = held) =>
+    decide(fake(raw).llm, redactText(said), "ko", new PublicTask(), {voice: true, recent: [], signal, saved});
+  const unclear = {kind: "saved_research_unclear"};
+  expect(await decided("2번", savedAction("answer", null, ["j2"]))).toMatchObject({kind: "saved_research", research: {action: "answer", jobs: ["j2"], answer: "서울이요"}});
+  expect(await decided("첫 번째 거", savedAction("answer", undefined, ["j1"]))).toMatchObject({research: {action: "answer", jobs: ["j1"], answer: "서울이요"}});
+  expect(await decided("2번에 부산이라고 답해 줘", savedAction("answer", "부산", ["j2"]))).toMatchObject({research: {action: "answer", jobs: ["j2"], answer: "부산"}});
+  expect(await decided("2번", savedAction("answer", "서울이요", ["j2"])), "말에 없는 답은 받아 둔 답과 같아도 모델이 적을 수 없다").toEqual(unclear);
+  expect(await decided("세 번째 거", savedAction("answer", null, ["j3"])), "물어 둔 선택지가 아닌 조사").toEqual(unclear);
+  expect(await decided("둘 다", savedAction("answer", null, ["j1", "j2"])), "선택지 둘").toEqual(unclear);
+  expect(await decided("2번", savedAction("answer", null, [])), "짚지 않음").toEqual(unclear);
+
+  const reading: PlannerSaved = {jobs, pick: {action: "read", options: [{number: 1, ref: "j1"}, {number: 2, ref: "j2"}]}};
+  expect(await decided("2번", savedAction("answer", null, ["j2"]), reading), "읽으려다 물어 둔 것에는 받아 둔 답이 없다").toEqual(unclear);
+  expect(await decided("2번", readSaved(["j2"]), reading)).toMatchObject({kind: "saved_research", research: {action: "read", jobs: ["j2"]}});
+  expect(await decided("2번", savedAction("answer", null, ["j2"]), {jobs}), "물어 둔 것이 없음").toEqual(unclear);
+});
+
 it("review_completion grades evidence as Python does", async () => {
   for (const [name, expected] of Object.entries(oracle.reviews)) {
     const replies: Record<string, unknown> = {
