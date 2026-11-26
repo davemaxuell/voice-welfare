@@ -138,6 +138,90 @@ describe.each(databases)("%s", (kind, dsn) => {
     expect(await store.deleteNote(saved)).toBe(true);
     expect(await store.search("장학금", vector, model)).toEqual([]);
   });
+
+  it("결과가 있는 끝난 조사의 인수증은 다시 연 저장소에 결과와 함께 남고, 다른 조사의 번호나 다른 소유자로는 지워지지 않는다", options, async () => {
+    const [store, other] = await database(dsn);
+    const result = { text: "신청서를 준비하세요.", sources: [firstSource] };
+    const ids: string[] = [];
+    for (const prompt of ["가 제도의 서류", "나 제도의 마감일"]) {
+      ids.push(await store.enqueue(randomUUID(), prompt, "ko"));
+      const job = await store.claim();
+      if (job === undefined) throw new Error("Expected a claimed job");
+      expect(await store.finish(job, "completed", result)).toBe(true);
+    }
+    const reopened = await WorkflowStore.open(store.path, store.owner, store.dsn);
+    const pending = await reopened.pendingDeliveries();
+    const [first, second] = ids.map(id => pending.find(row => row.id === id));
+    if (first === undefined || second === undefined || pending.length !== 2) throw new Error("Expected two pending deliveries");
+    expect([first, second].map(row => [row.state, row.result])).toEqual([["completed", result], ["completed", result]]);
+    await reopened.heard(first.id, second.token);
+    await other.heard(first.id, first.token);
+    expect(await other.pendingDeliveries()).toEqual([]);
+    expect(await reopened.pendingDeliveries()).toEqual(pending);
+    await reopened.heard(first.id, first.token);
+    expect(await store.pendingDeliveries()).toEqual([second]);
+  });
+
+  it("답을 받아 다시 줄을 선 조사는 새 인수증 번호를 받고, 예전 번호로는 새 결과의 전달이 지워지지 않는다", options, async () => {
+    const [store] = await database(dsn);
+    const id = await store.enqueue(randomUUID(), savedPlan.goal, "ko");
+    const asking = await store.claim();
+    if (asking === undefined) throw new Error("Expected a claimed job");
+    const waiting: ResearchPlan = { ...savedPlan, steps: savedPlan.steps.map(step => step.outcome ? step :
+      { ...step, attempts: 1, outcome: { status: "waiting", question: "어떤 지역인가요?" } }) };
+    expect(await store.saveProgress(asking, 0, { version: 1, plan: waiting, activeMs: 1, continuations: 0 })).toBe(true);
+    expect(await store.finish(asking, "needs_input", { text: "어떤 지역인가요?" })).toBe(true);
+    const [asked] = await store.pendingDeliveries();
+    expect(asked).toMatchObject({ id, state: "needs_input", questionRevision: 1, token: expect.any(String) });
+
+    expect(await store.answer(id, 1, "서울")).toBe(true);
+    const [queued] = await store.pendingDeliveries();
+    expect(queued).toMatchObject({ id, state: "queued", result: null, token: expect.any(String) });
+    expect(queued?.token).not.toBe(asked?.token);
+
+    const resumed = await store.claim();
+    if (resumed === undefined) throw new Error("Expected the answered job");
+    const result = { text: "금요일에 마감합니다.", sources: [secondSource] };
+    expect(await store.finish(resumed, "completed", result)).toBe(true);
+    await store.heard(id, asked?.token ?? "");
+    expect(await store.pendingDeliveries()).toEqual([{ id, prompt: savedPlan.goal, language: "ko", state: "completed", result, token: queued?.token }]);
+    await store.heard(id, queued?.token ?? "");
+    expect(await store.pendingDeliveries()).toEqual([]);
+  });
+
+  it("그만둔 조사의 인수증은 들었다고 알릴 때까지 같은 번호로 남는다", options, async () => {
+    const [store] = await database(dsn);
+    const id = await store.enqueue(randomUUID(), "공개 서류 확인", "ko");
+    const row = { id, prompt: "공개 서류 확인", language: "ko", result: null };
+    const token = (await store.jobs())[0]?.deliveryToken;
+    if (token === undefined) throw new Error("Expected a delivery token");
+    expect(await store.cancel(id)).toBe(true);
+    expect(await store.jobs()).toEqual([{ ...row, state: "cancelled", deliveryToken: token }]);
+    expect(await store.pendingDeliveries()).toEqual([{ ...row, state: "cancelled", token }]);
+    await store.heard(id, token);
+    expect(await store.jobs()).toEqual([{ ...row, state: "cancelled" }]);
+    expect(await store.pendingDeliveries()).toEqual([]);
+  });
+
+  it("조사 요약은 최근에 맡긴 것부터 limit건을 주고, 맡긴 날은 맡긴 순간의 한국 날짜다", options, async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const [store] = await database(dsn);
+      vi.setSystemTime(new Date("2026-03-01T14:59:59Z"));
+      const evening = await store.enqueue(randomUUID(), "자정 전에 맡긴 조사", "ko");
+      vi.setSystemTime(new Date("2026-03-01T15:00:00Z"));
+      const midnight = await store.enqueue(randomUUID(), "자정에 맡긴 조사", "en");
+      vi.setSystemTime(new Date("2026-03-05T00:00:00Z"));
+      const working = { phase: { kind: "working" } };
+      expect(await store.summaries(8)).toEqual([
+        { ...working, id: midnight, prompt: "자정에 맡긴 조사", language: "en", savedOn: "2026-03-02" },
+        { ...working, id: evening, prompt: "자정 전에 맡긴 조사", language: "ko", savedOn: "2026-03-01" },
+      ]);
+      expect((await store.summaries(1)).map(job => job.id)).toEqual([midnight]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 const oracle = z.object({
