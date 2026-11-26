@@ -284,6 +284,21 @@ describe("연구 책상", () => {
     expect(await desk.answer(id, 1, "서울")).toBe("queued");
   });
 
+  it("저장소를 여는 사이 세션 세대가 바뀌면 답도 취소도 저장소에 쓰지 않는다", async () => {
+    const { flows, session, desk } = setup();
+    const store = await flows.store();
+    const id = await asking(store, "아동수당 신청 방법", 1);
+    const before = await store.jobs();
+    const open = flows.store.bind(flows);
+    const bumped = async () => { const opened = await open(); session.generation++; return opened; };
+    vi.spyOn(flows, "store").mockImplementationOnce(bumped);
+    expect(await desk.answer(id, 1, "서울")).toBe("refused");
+    vi.spyOn(flows, "store").mockImplementationOnce(bumped);
+    expect(await desk.cancel(id)).toBeUndefined();
+    expect(await store.jobs()).toEqual(before);
+    expect(await desk.cancel(id)).toMatchObject({ request: "아동수당 신청 방법" });
+  });
+
   it("저장소를 읽는 사이 세션 세대가 바뀌면 읽은 것을 내주지 않는다", async () => {
     const { flows, session, desk } = setup();
     const store = await flows.store();

@@ -429,8 +429,8 @@ export class Workflows {
     record(published ? result?.reason ?? (state === "completed" ? "verified" : state === "needs_input" ? "needs_input" : "no_progress") : "lease_lost");
   }
 
-  async cancel(store: WorkflowStore, jobId: string): Promise<boolean> {
-    const changed = await store.cancel(jobId);
+  async cancel(store: WorkflowStore, jobId: string, current: () => boolean = () => true): Promise<boolean> {
+    const changed = await store.cancel(jobId, current);
     if (changed && this.#jobId === jobId) this.#active?.abort("cancelled");
     return changed;
   }
@@ -471,7 +471,7 @@ export class Workflows {
     const answer = await this.safeText(text, 600);
     if (answer === undefined) return "unsafe";
     if (!current()) return "refused";
-    if (!await (await this.store()).answer(jobId, revision, answer)) return "stale";
+    if (!await (await this.store()).answer(jobId, revision, answer, current)) return current() ? "stale" : "refused";
     await this.reconfigure();
     return "queued";
   }

@@ -315,8 +315,9 @@ export class WorkflowStore {
     });
   }
 
-  async answer(jobId: string, revision: number, answer: string): Promise<boolean> {
+  async answer(jobId: string, revision: number, answer: string, current: () => boolean = () => true): Promise<boolean> {
     return await this.transaction(async sql => {
+      if (!current()) return false;
       const id = [this.owner, jobId];
       if (await sql.run("UPDATE cg_jobs SET state=state WHERE owner=? AND id=? AND state='needs_input'", id) !== 1) return false;
       const [raw] = await sql.rows("SELECT revision,checkpoint FROM cg_job_progress WHERE id=?", [jobId]);
@@ -348,8 +349,9 @@ export class WorkflowStore {
     });
   }
 
-  async cancel(jobId: string): Promise<boolean> {
+  async cancel(jobId: string, current: () => boolean = () => true): Promise<boolean> {
     return await this.transaction(async sql => {
+      if (!current()) return false;
       const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',result=NULL,lease=NULL,expires=NULL WHERE owner=? AND id=?
                           AND state IN ('queued','running','needs_input')`, [this.owner, jobId]) === 1;
       if (cancelled) await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
