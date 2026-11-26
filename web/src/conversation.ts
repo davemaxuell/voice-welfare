@@ -670,11 +670,12 @@ const presentedResearch = new Set<string>();
 let claimedReading: { token: string; turnId: string } | undefined;
 // 다 들은 인수증마다 그 인수증을 싣고 온 응답. 인수증이 서버에 닿지 않아 같은 인수증으로 새 응답이 오면 그 응답은 들려준다.
 const heardReadings = new Map<string, Set<string>>();
-const researchChunks = new Map<string, number>();
+const researchChunks = new Map<string, { text: string; next: number }>();
 const researchSilent = () => ui.voiceMode.known && (narrationMuted || !ui.voiceMode.tts);
 async function playResearch(token: string, text: string, lang?: Lang) {
-  const heard = researchSilent() || await speakAndWaitFrom(text, researchChunks.get(token) ?? 0, speechPrefs.rate, lang,
-    next => researchChunks.set(token, next));
+  const stopped = researchChunks.get(token);
+  const heard = researchSilent() || await speakAndWaitFrom(text, stopped?.text === text ? stopped.next : 0, speechPrefs.rate, lang,
+    next => researchChunks.set(token, { text, next }));
   if (heard) researchChunks.delete(token);
   return heard;
 }

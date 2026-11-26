@@ -397,6 +397,48 @@ it("말로 취소한 조사는 취소했다는 말을 다 들은 뒤에 인수�
   await screen(page.locator("#log li").filter({hasText: notice})).toHaveCount(0);
 });
 
+it("읽다가 끊긴 조사를 말로 취소하면 같은 인수증의 취소 안내는 처음부터 들려주고 다 들은 뒤에 인수증을 보낸다", async () => {
+  const speech: string[] = [], receipts: string[] = [];
+  const reading = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요.", cancelled = "‘기초연금’ 조사를 취소했어요.";
+  await page.exposeFunction("testHeard", async (line: string) => { speech.push(line); return speech.length === 1 ? "played" : speech.length === 2 ? "cancelled" : "played"; });
+  await page.route(url => url.pathname === "/src/speaker.ts" && !url.searchParams.has("original"), route =>
+    route.fulfill({contentType: "text/javascript", body: `
+      export * from '/src/speaker.ts?original';
+      export const serverTts = { cancel() {}, async speak(text, _audio, fromChunk = 0, _rate, _lang, onChunkPlayed) {
+        const chunks = text.split(/(?<=[.?!]) +/u);
+        for (let i = fromChunk; i < chunks.length; i++) {
+          if (await window.testHeard(chunks[i]) !== "played") return "cancelled";
+          onChunkPlayed?.(i + 1);
+        }
+        return "played";
+      } };`}));
+  await page.route("**/api/health", async route => {
+    const response = await route.fetch();
+    await route.fulfill({json: {...await response.json(), workspaceAvailable: true, tts: {supported: true, provider: "test-tts"}}});
+  });
+  await page.route("**/api/session/*/workspace/deliveries", route => route.fulfill({json: {pending: []}}));
+  await page.route("**/api/session/*/workspace/research/job/delivery/shared-receipt", route => {
+    receipts.push(route.request().method());
+    return route.fulfill({json: {heard: true}});
+  });
+  let turns = 0;
+  await page.route("**/api/turn", async route => {
+    const response = await route.fetch();
+    const first = turns++ === 0;
+    await route.fulfill({json: {...await response.json(), speech: first ? reading : cancelled, lang: "ko",
+      savedResearch: {jobId: "job", token: "shared-receipt", reading: first}}});
+  });
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => speech.length, {timeout: 15_000}).toBe(2);
+  expect(receipts).toEqual([]);
+  await page.locator("#command").fill("맡긴 조사 취소해 줘");
+  await page.locator("#command").press("Enter");
+  await expect.poll(() => speech.at(-1), {timeout: 15_000}).toBe(cancelled);
+  await expect.poll(() => receipts, {timeout: 15_000}).toEqual(["DELETE"]);
+  expect(speech).toEqual(["‘기초연금’ 조사 결과예요.", "신분증을 준비하세요.", cancelled]);
+});
+
 it("패널의 듣기 단추는 다 읽은 뒤에 그 조사의 인수증을 보내고, 인수증이 없는 조사는 읽기만 한다", async () => {
   const speech: string[] = [], playback = latch(), receipts: string[] = [];
   await recordResearchSpeech(speech, {playback: playback.promise});
