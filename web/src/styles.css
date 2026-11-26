@@ -437,6 +437,8 @@ dialog::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(6px);
 .decision:has(h3:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .decision .row, .recovery .row { margin-top: 1rem; }
 .decision .row button { min-height: 46px; padding-inline: 1.15rem; border-radius: var(--radius-pill); }
+#job-choices { margin: .5rem var(--pad) .25rem; }
+#job-choices button { min-height: 46px; min-width: 4.5rem; padding-inline: 1.15rem; border-radius: var(--radius-pill); }
 .decision p { margin-top: .6rem; }
 .decision .status { margin-top: .7rem; padding: .75rem .9rem; border-radius: var(--radius-md); background: var(--surface); }
 .decision .status:empty { display: none; }
