@@ -1039,7 +1039,7 @@ export class SessionOrchestrator {
 
   async #localized(r: TurnResult): Promise<TurnResult> {
     const lang = this.lang, reviewer = this.deps.llm;
-    if (lang === "ko" || r.lang === lang || reviewer === undefined || r.localSpeechOnly === true) return r;
+    if (lang === "ko" || r.lang === lang || reviewer === undefined || r.localSpeechOnly === true || r.savedResearch?.reading === true) return r;
     const started = performance.now();
     const epoch = this.#queue.epoch;
     const signal = this.#controller.signal;

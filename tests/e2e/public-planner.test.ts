@@ -355,6 +355,21 @@ it("제 말로 맡긴 조사를 물으면 플래너가 고른 조사를 읽어 �
   ]}]);
 });
 
+it("다른 언어로 맡긴 조사는 세션 언어로 옮기지 않고 그 조사의 언어로 그대로 읽는다", async () => {
+  const {session} = await open();
+  const english = "Results for “Basic pension papers”. Bring your ID.";
+  const desk = deskOf([{...savedJob("job-1", "Basic pension papers", {kind: "ready"}), language: "en"}]);
+  desk.read.mockImplementation(async jobId => ({jobId, speech: english, lang: "en", sources: [], receipt: {token: "receipt-" + jobId}}));
+  session.deps.research = desk;
+  session.setLanguage("ja");
+  const model = new FakeLlm(readSaved(["j1"]));
+  withLlm(session, model);
+  const reply = await session.handleTurn("頼んだ調査はどうなりましたか");
+  expect(reply).toMatchObject({lang: "en", speech: english, savedResearch: {jobId: "job-1", reading: true}});
+  expect(model.calls.map(call => call.schemaName)).not.toContain("translate_out");
+  expect(session.lang).toBe("ja");
+});
+
 it("같은 말에 플래너가 신청 기록이라고 하면 전처럼 신청 기록을 알려 주고 조사는 읽지 않는다", async () => {
   const {session} = await open();
   const desk = deskOf([savedJob("job-1", "기초연금 신청 서류", {kind: "ready"})]);
