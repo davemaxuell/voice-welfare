@@ -367,8 +367,11 @@ export class WorkflowStore {
     return await this.#whileCurrent(current, async sql => {
       const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',result=NULL,lease=NULL,expires=NULL WHERE owner=? AND id=?
                           AND state IN ('queued','running','needs_input')`, [this.owner, jobId]) === 1;
-      if (cancelled) await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
-      return cancelled;
+      if (!cancelled) return false;
+      await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
+      // 취소 안내는 새로 들을 말이다. 앞서 읽은 결과의 늦은 인수증이 취소 안내까지 들은 것으로 치지 않게 인수증을 바꾼다.
+      await sql.run("UPDATE cg_job_delivery SET token=? WHERE id=?", [randomUUID(), jobId]);
+      return true;
     });
   }
 

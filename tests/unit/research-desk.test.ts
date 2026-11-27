@@ -218,7 +218,7 @@ describe("연구 책상", () => {
     expect(await store.jobs()).toEqual(before);
   });
 
-  it("취소는 조사 중이거나 되묻는 조사만 그만두고 그 요청과 남은 인수증을 돌려주며, 이미 끝난 조사에는 아무것도 하지 않는다", async () => {
+  it("취소는 조사 중이거나 되묻는 조사만 그만두고 그 요청과, 인수증이 남아 있었으면 새 인수증을 돌려주며, 이미 끝난 조사에는 아무것도 하지 않는다", async () => {
     const { flows, desk } = setup();
     const store = await flows.store();
     const ready = await finished(store, "끝난 조사", "completed", { text: "답" });
@@ -228,8 +228,11 @@ describe("연구 책상", () => {
     const tokens = new Map((await store.pendingDeliveries()).map(row => [row.id, row.token]));
     await store.heard(heard, tokens.get(heard) ?? "");
 
-    expect(await desk.cancel(queued)).toEqual({ request: "차례를 기다리는 조사", token: tokens.get(queued) });
-    expect(await desk.cancel(waiting)).toEqual({ request: "질문을 아직 못 들은 조사", token: tokens.get(waiting) });
+    const cancelledQueued = await desk.cancel(queued), cancelledWaiting = await desk.cancel(waiting);
+    expect(cancelledQueued).toEqual({ request: "차례를 기다리는 조사", token: expect.any(String) });
+    expect(cancelledWaiting).toEqual({ request: "질문을 아직 못 들은 조사", token: expect.any(String) });
+    expect([cancelledQueued?.token, cancelledWaiting?.token]).not.toContain(tokens.get(queued));
+    expect([cancelledQueued?.token, cancelledWaiting?.token]).not.toContain(tokens.get(waiting));
     expect(await desk.cancel(heard)).toEqual({ request: "질문을 들은 조사" });
     const states = async () => new Map((await store.jobs()).map(job => [job.id, job.state]));
     expect(await states()).toEqual(new Map([[queued, "cancelled"], [waiting, "cancelled"], [heard, "cancelled"], [ready, "completed"]]));
@@ -297,6 +300,21 @@ describe("연구 책상", () => {
     expect(await desk.cancel(id)).toBeUndefined();
     expect(await store.jobs()).toEqual(before);
     expect(await desk.cancel(id)).toMatchObject({ request: "아동수당 신청 방법" });
+  });
+
+  it("말로 취소하면 인수증을 새로 주어, 앞서 읽은 결과의 늦은 인수증이 취소 안내를 들은 것으로 치지 않는다", async () => {
+    const { flows, desk } = setup();
+    const store = await flows.store();
+    const id = await asking(store, "아동수당 신청 방법", 1);
+    const [reading] = await store.pendingDeliveries();
+    if (reading === undefined) throw new Error("Expected a pending reading");
+    const cancelled = await desk.cancel(id);
+    expect(cancelled?.token).toEqual(expect.any(String));
+    expect(cancelled?.token).not.toBe(reading.token);
+    await store.heard(id, reading.token);
+    expect(await store.pendingDeliveries()).toMatchObject([{ id, state: "cancelled", token: cancelled?.token }]);
+    await store.heard(id, cancelled?.token ?? "");
+    expect(await store.pendingDeliveries()).toEqual([]);
   });
 
   it("저장소를 읽는 사이 세션 세대가 바뀌면 읽은 것을 내주지 않는다", async () => {
