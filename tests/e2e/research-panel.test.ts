@@ -254,7 +254,7 @@ it("패널의 듣기 단추는 자동 전달과 같은 글을 그 조사의 언�
 
 const READING = "‘기초연금’ 조사 결과예요. 신분증을 준비하세요. 출처 복지로 공식 자료. 출처 확인일 2026년 11월 19일.";
 
-async function serveReading(options: {failFirstReceipt?: true; state?: string} = {}) {
+async function serveReading(options: {failFirstReceipt?: true; failReceipts?: true; state?: string} = {}) {
   const token = "reading-receipt";
   const state = {asked: false, heard: false, polls: 0, receipts: [] as string[]};
   await page.route("**/api/session/*/workspace/deliveries", route => {
@@ -263,7 +263,7 @@ async function serveReading(options: {failFirstReceipt?: true; state?: string} =
   });
   await page.route(`**/api/session/*/workspace/research/job/delivery/${token}`, route => {
     state.receipts.push(route.request().method());
-    if (options.failFirstReceipt === true && state.receipts.length === 1) return route.fulfill({status: 503, json: {error: "down"}});
+    if (options.failReceipts === true || (options.failFirstReceipt === true && state.receipts.length === 1)) return route.fulfill({status: 503, json: {error: "down"}});
     state.heard = true;
     return route.fulfill({json: {heard: true}});
   });
@@ -323,6 +323,18 @@ it("읽은 저장한 조사의 인수증을 보내지 못해도 다시 말하지
   expect(speech).toEqual([READING]);
   expect(state.receipts).toEqual(["DELETE", "DELETE"]);
   await screen(page.locator("#log li").filter({hasText: READING})).toHaveCount(1);
+});
+
+it("인수증이 서버에 닿지 않은 저장한 조사를 다시 읽어 달라고 하면 같은 인수증이어도 다시 들려준다", async () => {
+  const speech: string[] = [];
+  await recordResearchSpeech(speech);
+  const state = await serveReading({failReceipts: true});
+  await openWorkspace([]);
+  await askToRead();
+  await expect.poll(() => state.receipts.length, {timeout: 15_000}).toBeGreaterThan(0);
+  expect(speech).toEqual([READING]);
+  await askToRead();
+  await expect.poll(() => speech, {timeout: 15_000}).toEqual([READING, READING]);
 });
 
 it("말로 요청해 읽던 저장한 조사의 재생이 끊기면 인수증을 보내지 않고, 감시가 나중에 그 결과를 줄 하나 더 쓰지 않고 다시 들려준다", async () => {

@@ -668,7 +668,8 @@ export async function speakResearch(text: string, lang?: Lang): Promise<boolean>
 const ACTIVE_RESEARCH_POLL_MS = 2000;
 const presentedResearch = new Set<string>();
 let claimedReading: { token: string; turnId: string } | undefined;
-const heardReadings = new Set<string>();
+// 다 들은 인수증마다 그 인수증을 싣고 온 응답. 인수증이 서버에 닿지 않아 같은 인수증으로 새 응답이 오면 그 응답은 들려준다.
+const heardReadings = new Map<string, Set<string>>();
 const researchChunks = new Map<string, number>();
 const researchSilent = () => ui.voiceMode.known && (narrationMuted || !ui.voiceMode.tts);
 async function playResearch(token: string, text: string, lang?: Lang) {
@@ -808,18 +809,18 @@ function pendingReceipt(result: Pick<Spoken, "savedResearch" | "localSpeechOnly"
   return saved?.token !== undefined && result.localSpeechOnly !== true ? { jobId: saved.jobId, token: saved.token } : undefined;
 }
 
-function speakReading(sessionId: string, { jobId, token }: { jobId: string; token: string }, text: string, lang: Lang | undefined) {
+function speakReading(sessionId: string, { jobId, token }: { jobId: string; token: string }, text: string, lang: Lang | undefined, reply: string) {
   const current = researchPlayback.get(token);
   if (current !== undefined) return current;
   const play = async () => {
-    if (heardReadings.has(token)) return true;
+    if (heardReadings.get(token)?.has(reply) === true) return true;
     const generation = stoppedGeneration;
     const heard = await playResearch(token, text, lang);
     if (!heard || sessionId !== ui.sessionId || stoppedGeneration !== generation) {
       if (claimedReading?.token === token) claimedReading = undefined;
       return false;
     }
-    heardReadings.add(token);
+    heardReadings.set(token, (heardReadings.get(token) ?? new Set<string>()).add(reply));
     presentedResearch.delete(token);
     if (!await recordHeard(sessionId, jobId, token)) researchStarted();
     return true;
@@ -832,7 +833,7 @@ function speakReading(sessionId: string, { jobId, token }: { jobId: string; toke
 async function speakTurn(result: Spoken, text = result.speech) {
   const id = result.sessionId, token = result.turnId;
   const receipt = pendingReceipt(result);
-  if (receipt !== undefined && id !== undefined) return speakReading(id, receipt, text, result.lang);
+  if (receipt !== undefined && id !== undefined) return speakReading(id, receipt, text, result.lang, result.turnId ?? text);
   if (result.researchDelivery === "outcome" && token !== undefined && id !== undefined && result.localSpeechOnly !== true) {
     const current = researchPlayback.get(token);
     if (current !== undefined) return current;
