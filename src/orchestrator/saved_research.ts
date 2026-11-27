@@ -3,7 +3,7 @@ import { RESEARCH_RESTART } from "../core/research_copy.ts";
 import type { AnswerOutcome, JobPhase, ResearchDesk, SavedJob, SavedPick } from "../core/research_desk.ts";
 import { draft, type Draft, type Lang } from "../core/turn.ts";
 import { spokenRequest } from "../speech/research_reading.ts";
-import type { PlannerJob, PlannerSaved, SavedDecision } from "./public_task.ts";
+import type { PlannerJob, PlannerSaved, SavedDecision, UnclearSaved } from "./public_task.ts";
 import type { SessionOrchestrator } from "./session.ts";
 
 type SavedAction = SavedDecision["action"];
@@ -21,6 +21,12 @@ const WHICH_SAVED: Phrase = {
   ko: "어느 조사를 말씀하시는지 잘 모르겠어요. 맡기신 조사의 주제를 말씀해 주세요.",
   en: "I’m not sure which saved research you mean. Please tell me what it was about.",
   zh: "我不确定您指的是哪一项调查。请告诉我它的主题。", ja: "どの調査のことか分かりませんでした。調査の内容を教えてください。",
+};
+const TWO_ANSWERS: Record<Lang, (name: string, held: string, heard: string) => string> = {
+  ko: (name, held, heard) => `‘${name}’ 조사의 답이 ‘${held}’인지 ‘${heard}’인지 몰라서 아직 보내지 않았어요. 보낼 답을 다시 말씀해 주세요.`,
+  en: (name, held, heard) => `I’m not sure whether your answer for “${name}” is “${held}” or “${heard}”, so I haven’t sent it. Please say the answer again.`,
+  zh: (name, held, heard) => `我不确定“${name}”的回答是“${held}”还是“${heard}”，所以还没有发送。请再说一次您的回答。`,
+  ja: (name, held, heard) => `「${name}」へのお答えが「${held}」か「${heard}」か分からなかったので、まだ送っていません。お答えをもう一度お話しください。`,
 };
 const NOTHING_ASKED: Phrase = {
   ko: "지금 답을 기다리는 조사가 없어요.", en: "No saved research is waiting for an answer right now.",
@@ -193,10 +199,14 @@ export class SavedResearch {
     return jobs === undefined ? undefined : plannerView(jobs, this.#lastSaved, text => s.modelSpeech(text), s.offeredPick);
   }
 
-  unclear(): Draft {
+  // 넣을 답이 둘이면 둘 다 들려주고 묻는다. 고르라고 물어 둔 것은 이 응답으로 끝나므로, 다음 말은 새로 듣는다.
+  unclear(differing?: UnclearSaved["differing"], view?: PlannerView): Draft {
     const s = this.#session;
     if (s.deps.research === undefined) return draft(s.state, "clarify", NEEDS_PERSONAL_DEVICE);
-    return draft(s.state, "clarify", WHICH_SAVED[s.lang], { lang: s.lang });
+    const jobId = differing === undefined ? undefined : view?.resolve(differing.job);
+    const job = view?.jobs.find(candidate => candidate.id === jobId);
+    if (differing === undefined || job === undefined) return draft(s.state, "clarify", WHICH_SAVED[s.lang], { lang: s.lang });
+    return draft(s.state, "clarify", TWO_ANSWERS[s.lang](spokenRequest(job.request), ...differing.answers), { lang: s.lang });
   }
 
   async handle(request: SavedDecision, view: PlannerView): Promise<Draft> {

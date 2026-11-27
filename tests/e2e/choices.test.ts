@@ -254,14 +254,16 @@ it("답하려던 조사가 여럿이면 번호로 묻고, 번호를 말하면 �
   expect(pending).toEqual({action: "answer", options: [{number: 1, ref: "j1"}, {number: 2, ref: "j2"}]});
 });
 
-it("번호로 고를 때 플래너가 '2번'을 답 칸에 옮겨 적어도 받아 둔 답을 그 조사에 넣는다", async () => {
+it.each([["2번", "2번"], ["2번에 부산이라고 답해 줘", "부산"]])("번호로 고르는 말 '%s'에 플래너가 받아 둔 답과 다른 답을 적으면 보내지 않고 두 답을 들려주며 다시 묻는다", async (said, written) => {
   const {session} = await runtime.createBrowserSession();
   const desk = deskOf([savedJob("job-1", "아동수당 신청 방법", {kind: "asking", revision: 1}), savedJob("job-2", "기초연금 신청 서류", {kind: "asking", revision: 2})]);
   session.deps.research = desk;
-  withLlm(session, secondOptionPlanner("answer", "서울이요", "2번"));
+  withLlm(session, secondOptionPlanner("answer", "서울이요", written));
   await session.handleTurn("서울이요");
-  expect((await session.handleTurn("2번")).speech).toBe("답을 받았어요. 이어서 조사할게요.");
-  expect(desk.answer.mock.calls).toEqual([["job-2", 2, "서울이요"]]);
+  expect((await session.handleTurn(said)).speech)
+    .toBe(`‘기초연금 신청 서류’ 조사의 답이 ‘서울이요’인지 ‘${written}’인지 몰라서 아직 보내지 않았어요. 보낼 답을 다시 말씀해 주세요.`);
+  expect(desk.answer).not.toHaveBeenCalled();
+  expect(session.offeredPick).toBeUndefined();
 });
 
 const secondPicks: [string, (session: SessionOrchestrator, turnId: string) => Promise<TurnResult | undefined>][] = [

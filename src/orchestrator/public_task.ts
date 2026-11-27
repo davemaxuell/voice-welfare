@@ -133,7 +133,9 @@ const DECISION = z.strictObject({
 });
 export type PublicDecision = z.output<typeof DECISION>;
 export type SavedDecision = NonNullable<PublicDecision["research"]>;
-export type UnclearSaved = { readonly kind: "saved_research_unclear" } & { readonly [K in Exclude<keyof PublicDecision, "kind">]?: never };
+/** 고른 조사에 넣을 답이 둘이면 job(플래너가 본 ref)과 answers(받아 둔 답, 이번에 들은 답)를 함께 돌려준다. */
+export type UnclearSaved = { readonly kind: "saved_research_unclear"; readonly differing?: { readonly job: string; readonly answers: readonly [string, string] } }
+  & { readonly [K in Exclude<keyof PublicDecision, "kind">]?: never };
 const UNCLEAR_SAVED: UnclearSaved = Object.freeze({ kind: "saved_research_unclear" });
 
 export function singleBrowserIntent(cmd: NonNullable<PublicDecision["command"]>): Intent {
@@ -335,7 +337,8 @@ which one. Each option has the number 청음 spoke for a job and that job's ref.
 number in any wording ("2번", "두 번째 거", "the second one") or by its subject ("아동수당 거"), use saved_research
 with pendingPick.action and only that option's ref in jobs. When pendingPick.action is answer, 청음 already holds
 the reply the resident gave, so set answer to null for such a choice and never put the number or the subject in
-answer. Decide any other request as usual.`;
+answer. If the resident also gives a different answer with the choice, put only that new answer in answer. Decide any
+other request as usual.`;
 
 const uniqueInOrder = <T>(values: Iterable<T>) => [...new Set(values)];
 
@@ -447,12 +450,15 @@ export type PlannerPick = { readonly options: readonly { readonly number: number
   & ({ readonly action: Exclude<typeof SAVED_ACTIONS[number], "answer"> } | { readonly action: "answer"; readonly answer: string });
 export interface PlannerSaved { readonly jobs: readonly PlannerJob[]; readonly pick?: PlannerPick }
 
-function withHeldAnswer(raw: unknown, pick: PlannerPick | undefined): { raw: unknown; held: boolean } {
-  if (pick?.action !== "answer" || !isRecord(raw) || raw.kind !== "saved_research" || !isRecord(raw.research)) return { raw, held: false };
+function withHeldAnswer(raw: unknown, pick: PlannerPick | undefined): { raw: unknown; held: boolean; differs: boolean } {
+  if (pick?.action !== "answer" || !isRecord(raw) || raw.kind !== "saved_research" || !isRecord(raw.research)) return { raw, held: false, differs: false };
   const { action, jobs, answer } = raw.research;
-  // 버튼을 누른 것과 같이, 물어 둔 조사 하나를 고른 말은 받아 둔 답을 넣는다. 모델이 '2번'을 답 칸에 옮겨 적어도 그 말은 답이 아니다.
   const chosen = action === "answer" && Array.isArray(jobs) && jobs.length === 1 && pick.options.some(option => option.ref === jobs[0]);
-  return chosen ? { raw: { ...raw, research: { ...raw.research, answer: pick.answer } }, held: true } : { raw, held: false };
+  if (!chosen) return { raw, held: false, differs: false };
+  // 버튼을 누른 것과 같이, 물어 둔 조사 하나를 고른 말은 받아 둔 답을 넣는다. 모델이 다른 답을 적었으면 새 답인지
+  // 고른 말('2번')을 옮겨 적은 것인지 알 수 없으니 넣지 않는다.
+  if (answer != null && answer !== pick.answer) return { raw, held: false, differs: true };
+  return { raw: { ...raw, research: { ...raw.research, answer: pick.answer } }, held: true, differs: false };
 }
 
 export interface DecideOptions {
@@ -534,7 +540,7 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     }),
     schemaName: "public_service_decision", schema: research ? RESEARCH_SCHEMA : DECISION_SCHEMA, signal,
   });
-  const { raw, held } = withHeldAnswer(reply, pick);
+  const { raw, held, differs } = withHeldAnswer(reply, pick);
   let spansFor: SpansFor = () => [];
   if (scan !== undefined && isRecord(raw)) {
     const texts = [raw.agency, raw.subject, raw.goal, raw.question, raw.reply, isRecord(raw.research) ? raw.research.answer : undefined,
@@ -550,7 +556,8 @@ export async function decide(llm: StructuredLlm, utterance: Redacted, language: 
     const request = decision?.research;
     const usable = options.saved !== undefined && request !== undefined && request.jobs.every(ref => listed.has(ref))
       && (request.action !== "answer" || held || destination.text.includes(request.answer));
-    return usable ? decision : UNCLEAR_SAVED;
+    if (!usable || request.action !== "answer" || pick?.action !== "answer" || !differs) return usable ? decision : UNCLEAR_SAVED;
+    return { kind: "saved_research_unclear", differing: { job: request.jobs[0] ?? "", answers: [pick.answer, request.answer] } };
   }
   if (decision?.kind === "inspect_personal" && decision.agency !== undefined && !PUBLIC_AGENCIES.has(decision.agency) &&
       !utterance.includes(decision.agency) && !(decision.continuation && decision.agency === task.agency)) return undefined;

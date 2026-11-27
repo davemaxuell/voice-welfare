@@ -204,7 +204,7 @@ export class PublicPlanner {
     if (decision.kind === "saved_research_unclear") {
       if (research) return undefined;
       turn.intentType = "CLARIFY";
-      return s.finish(turn, s.saved.unclear());
+      return s.finish(turn, s.saved.unclear(decision.differing, view));
     }
     if (!research && !personalContext && decision.kind !== "inspect_personal" && decision.needUpdate) {
       const quotes = decision.needUpdate.changes.flatMap(change => change.quote === null ? [] : [change.quote]);
