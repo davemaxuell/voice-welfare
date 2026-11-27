@@ -99,6 +99,32 @@ describe.each(databases)("%s", (kind, dsn) => {
     expect((await store.jobs())[0]?.state).toBe("failed");
   });
 
+  it("쓰는 사이에 멈춤이 오면 말로 한 답도 취소도 되돌린다", options, async () => {
+    const [store] = await database(dsn);
+    const id = await store.enqueue(randomUUID(), savedPlan.goal, "ko");
+    const job = await store.claim();
+    if (job === undefined) throw new Error("Expected a claimed job");
+    const plan: ResearchPlan = { ...savedPlan, steps: savedPlan.steps.map(step => step.outcome ? step :
+      { ...step, attempts: 1, outcome: { status: "waiting", question: "어떤 지역인가요?" } }) };
+    expect(await store.saveProgress(job, 0, { version: 1, plan, activeMs: 0, continuations: 0 })).toBe(true);
+    expect(await store.finish(job, "needs_input", { text: "어떤 지역인가요?" })).toBe(true);
+    const before = await store.jobs();
+    // 첫 문장이 데이터베이스에 다녀오는 사이에 멈춤이 온다.
+    let stopped = false;
+    const transaction = store.transaction.bind(store);
+    const spy = vi.spyOn(store, "transaction").mockImplementation(((body, opts) => transaction(sql => body({ ...sql, run: async (statement, args) => {
+      const changed = await sql.run(statement, args);
+      stopped = true;
+      return changed;
+    } }), opts)) as typeof store.transaction);
+    expect(await store.answer(id, 1, "서울", () => !stopped)).toBe(false);
+    stopped = false;
+    expect(await store.cancel(id, () => !stopped)).toBe(false);
+    spy.mockRestore();
+    expect(await store.jobs()).toEqual(before);
+    expect(await store.answer(id, 1, "서울")).toBe(true);
+  });
+
   it("test_semantic_and_keyword_recall_and_forget", options, async () => {
     const [store, other] = await database(dsn);
     const vector = [1, ...Array<number>(DIMENSIONS - 1).fill(0)];

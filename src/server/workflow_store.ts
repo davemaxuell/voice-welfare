@@ -130,6 +130,7 @@ function numbered(statement: string): string {
 const now = () => Date.now() / 1000;
 const liveClaim = "owner=? AND id=? AND state='running' AND lease=? AND expires>?";
 const savedProgress = z.object({ revision: z.number(), checkpoint: z.string() });
+class Superseded extends Error {}
 
 /** Python 3.12 sum() of floats: Neumaier compensated summation. */
 function floatSum(values: Iterable<number>): number {
@@ -315,9 +316,22 @@ export class WorkflowStore {
     });
   }
 
+  // 세션이 그대로일 때만 쓴다. PostgreSQL에서는 쓰는 사이에도 멈춤이 올 수 있어 커밋 직전에 한 번 더 보고, 바뀌었으면 되돌린다.
+  async #whileCurrent(current: () => boolean, body: (sql: Sql) => Promise<boolean>): Promise<boolean> {
+    try {
+      return await this.transaction(async sql => {
+        if (!current() || !await body(sql)) return false;
+        if (!current()) throw new Superseded();
+        return true;
+      });
+    } catch (error) {
+      if (error instanceof Superseded) return false;
+      throw error;
+    }
+  }
+
   async answer(jobId: string, revision: number, answer: string, current: () => boolean = () => true): Promise<boolean> {
-    return await this.transaction(async sql => {
-      if (!current()) return false;
+    return await this.#whileCurrent(current, async sql => {
       const id = [this.owner, jobId];
       if (await sql.run("UPDATE cg_jobs SET state=state WHERE owner=? AND id=? AND state='needs_input'", id) !== 1) return false;
       const [raw] = await sql.rows("SELECT revision,checkpoint FROM cg_job_progress WHERE id=?", [jobId]);
@@ -350,8 +364,7 @@ export class WorkflowStore {
   }
 
   async cancel(jobId: string, current: () => boolean = () => true): Promise<boolean> {
-    return await this.transaction(async sql => {
-      if (!current()) return false;
+    return await this.#whileCurrent(current, async sql => {
       const cancelled = await sql.run(`UPDATE cg_jobs SET state='cancelled',result=NULL,lease=NULL,expires=NULL WHERE owner=? AND id=?
                           AND state IN ('queued','running','needs_input')`, [this.owner, jobId]) === 1;
       if (cancelled) await sql.run("DELETE FROM cg_job_progress WHERE id=?", [jobId]);
