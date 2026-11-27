@@ -81,6 +81,14 @@ ${question}` }, { state: "needs_input", question });
     expect(read(asking, "normal").endsWith(question)).toBe(true);
   });
 
+  it("저장할 때 길어서 잘린 글에는 빠진 질문을 붙여, 짧게 읽어도 자세히 읽어도 질문을 읽는다", () => {
+    const question = "어느 구에 사시나요?";
+    const findings = "신분증이 필요해요. 신청서도 내야 해요. 주민센터에서 받아요.";
+    const cut = job({ text: findings }, { state: "needs_input", question });
+    expect(read(cut, "short")).toContain(`여쭤볼 것이 있어요. 신분증이 필요해요. 신청서도 내야 해요. ${question}`);
+    expect(read(cut, "normal")).toContain(`여쭤볼 것이 있어요. ${findings} ${question}`);
+  });
+
   it("출처는 세 곳까지, 남은 항목은 다섯 개까지 말하고 나머지는 개수로 알린다", () => {
     const sources = Array.from({ length: 5 }, (_, i) => ({ ...bare, title: `출처 ${i + 1}번`, url: `https://www.gov.kr/${i}` }));
     const missing = Array.from({ length: 7 }, (_, i) => `항목 ${i + 1}`);

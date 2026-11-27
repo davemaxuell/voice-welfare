@@ -104,11 +104,14 @@ function firstSentences(text: string, lang: Lang): string {
   return sentences.length <= SHORT_SENTENCES ? text : sentences.slice(0, SHORT_SENTENCES).join(lang === "zh" || lang === "ja" ? "" : " ");
 }
 
-// 묻는 조사의 질문은 저장된 글의 끝에 있다(researchSummary). 짧게 읽어도 질문은 빼지 않는다.
-function shortText(text: string, question: string | undefined, lang: Lang): string[] {
+// 묻는 조사의 질문은 저장된 글의 끝에 있다(researchSummary). 글이 길어 저장할 때 잘렸으면 질문이 빠졌으니 따로 붙인다.
+// 짧게 읽어도 질문은 빼지 않는다.
+function findingsWithQuestion(text: string, question: string | undefined, brevity: ReadingOptions["brevity"], lang: Lang): string[] {
   const asked = question?.trim() ?? "";
-  if (asked.length === 0 || !text.endsWith(asked)) return [firstSentences(text, lang)];
-  return [firstSentences(text.slice(0, -asked.length).trim(), lang), asked];
+  const cut = asked.length > 0 && !text.endsWith(asked);
+  if (brevity !== "short") return cut ? [text, asked] : [text];
+  if (asked.length === 0) return [firstSentences(text, lang)];
+  return [firstSentences(cut ? text : text.slice(0, -asked.length).trim(), lang), asked];
 }
 
 export function researchReading(job: ReadingJob, { brevity, speakable }: ReadingOptions): string {
@@ -121,7 +124,7 @@ export function researchReading(job: ReadingJob, { brevity, speakable }: Reading
   const subject = Array.from(squash(job.prompt));
   const headline = HEADLINE[HEADLINE_OF_STATE.get(job.state) ?? "update"][lang];
   const parts = [headline(subject.length > MAX_PROMPT ? `${subject.slice(0, MAX_PROMPT).join("")}…` : subject.join(""))];
-  if (text.length > 0) parts.push(...(brevity === "short" ? shortText(text, job.question, lang) : [text]));
+  if (text.length > 0) parts.push(...findingsWithQuestion(text, job.question, brevity, lang));
   else if (missing.length === 0) parts.push(stateNote(job.state, lang));
   for (const { title, lastCheckedAt, data } of cited.slice(0, MAX_SOURCES)) {
     parts.push([resultWord("source", lang), squash(title)].filter(present).join(" "));
